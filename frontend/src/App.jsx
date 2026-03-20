@@ -133,7 +133,7 @@ const RootHandler = () => {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["admin", "hr", "employee"]}>
+    <ProtectedRoute allowedRoles={["admin", "hr", "employee", "super_admin"]}>
       <DashboardHandler />
     </ProtectedRoute>
   );
@@ -222,7 +222,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/mobile-view/unauthorized" element={<Unauthorized />} />
 
-            <Route element={<ProtectedRoute allowedRoles={['admin', 'hr', 'employee']} />}>
+            <Route element={<ProtectedRoute allowedRoles={['admin', 'hr', 'employee', 'super_admin']} />}>
               <Route path="/mobile-view" element={<MobileDashboardHandler />} />
               <Route path="/mobile-view/attendance" element={<MobileAttendance />} />
               <Route path="/mobile-view/holidays" element={<MobileHolidayManagement />} />
