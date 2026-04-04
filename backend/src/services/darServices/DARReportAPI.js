@@ -407,7 +407,7 @@ export async function buildReport(orgId, employeeIds, dateStart, dateEnd, report
 // GET /dar/reports/preview
 router.get('/preview', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'HR') {
+    if (user_type !== 'admin' && user_type !== 'hr') {
         return res.status(403).json({ ok: false, message: 'Access denied.' });
     }
 
@@ -440,7 +440,7 @@ router.get('/preview', authenticateJWT, catchAsync(async (req, res) => {
 // Frontend sends already-fetched DAR data; backend does LLM summarization without DB reads.
 router.post('/preview/client', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type } = req.user;
-    if (user_type !== 'admin' && user_type !== 'HR') {
+    if (user_type !== 'admin' && user_type !== 'hr') {
         return res.status(403).json({ ok: false, message: 'Access denied.' });
     }
 
@@ -522,7 +522,7 @@ router.post('/preview/client', authenticateJWT, catchAsync(async (req, res) => {
 // GET /dar/reports/history — last 50 generated reports for this org
 router.get('/history', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'HR') {
+    if (user_type !== 'admin' && user_type !== 'hr') {
         return res.status(403).json({ ok: false, message: 'Access denied.' });
     }
     const history = await attendanceDB('dar_report_history')
@@ -535,7 +535,7 @@ router.get('/history', authenticateJWT, catchAsync(async (req, res) => {
 // GET /dar/reports/schedules — list all schedule configs for this org
 router.get('/schedules', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'HR') {
+    if (user_type !== 'admin' && user_type !== 'hr') {
         return res.status(403).json({ ok: false, message: 'Access denied.' });
     }
     const schedules = await attendanceDB('dar_report_schedules')
@@ -547,7 +547,7 @@ router.get('/schedules', authenticateJWT, catchAsync(async (req, res) => {
 // POST /dar/reports/schedules — upsert a schedule config
 router.post('/schedules', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'HR') {
+    if (user_type !== 'admin' && user_type !== 'hr') {
         return res.status(403).json({ ok: false, message: 'Access denied.' });
     }
 
@@ -580,7 +580,7 @@ router.post('/schedules', authenticateJWT, catchAsync(async (req, res) => {
 // DELETE /dar/reports/schedules/:frequency — remove a schedule
 router.delete('/schedules/:frequency', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'HR') {
+    if (user_type !== 'admin' && user_type !== 'hr') {
         return res.status(403).json({ ok: false, message: 'Access denied.' });
     }
     const { frequency } = req.params;

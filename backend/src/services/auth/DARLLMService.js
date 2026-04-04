@@ -12,10 +12,10 @@ function buildDailyContext(dateList, activitiesByDate, eventsByDate) {
         return {
             date,
             day: new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' }),
-            work_items: sanitizeList(activities, 'title').slice(0, 4),
-            work_types: sanitizeList(activities, 'activity_type').slice(0, 3),
-            meeting_items: sanitizeList(events, 'title').slice(0, 4),
-            meeting_types: sanitizeList(events, 'type').slice(0, 3),
+            work_items: sanitizeList(activities, 'title').slice(0, 10),
+            work_types: sanitizeList(activities, 'activity_type').slice(0, 6),
+            meeting_items: sanitizeList(events, 'title').slice(0, 8),
+            meeting_types: sanitizeList(events, 'type').slice(0, 5),
             work_count: activities.length,
             meeting_count: events.length,
         };
@@ -29,19 +29,19 @@ function buildWeeklyContext(dailyContext) {
         const weekNumber = Math.floor(i / 7) + 1;
         const dates = block.map((d) => d.date);
 
-        const workItems = [...new Set(block.flatMap((d) => d.work_items || []))].slice(0, 6);
-        const workTypes = [...new Set(block.flatMap((d) => d.work_types || []))].slice(0, 4);
-        const meetingItems = [...new Set(block.flatMap((d) => d.meeting_items || []))].slice(0, 5);
-        const meetingTypes = [...new Set(block.flatMap((d) => d.meeting_types || []))].slice(0, 4);
+        const workItems = [...new Set(block.flatMap((d) => d.work_items || []))];
+        const workTypes = [...new Set(block.flatMap((d) => d.work_types || []))];
+        const meetingItems = [...new Set(block.flatMap((d) => d.meeting_items || []))];
+        const meetingTypes = [...new Set(block.flatMap((d) => d.meeting_types || []))];
 
         weekly.push({
             week: weekNumber,
             range: `${dates[0]} to ${dates[dates.length - 1]}`,
             active_days: block.filter((d) => d.work_count > 0 || d.meeting_count > 0).length,
-            work_items: workItems,
-            work_types: workTypes,
-            meeting_items: meetingItems,
-            meeting_types: meetingTypes,
+            work_items: [...new Set(block.flatMap((d) => d.work_items || []))].slice(0, 15),
+            work_types: [...new Set(block.flatMap((d) => d.work_types || []))].slice(0, 8),
+            meeting_items: [...new Set(block.flatMap((d) => d.meeting_items || []))].slice(0, 10),
+            meeting_types: [...new Set(block.flatMap((d) => d.meeting_types || []))].slice(0, 8),
             work_count: block.reduce((sum, d) => sum + d.work_count, 0),
             meeting_count: block.reduce((sum, d) => sum + d.meeting_count, 0),
         });
@@ -102,38 +102,30 @@ function buildContextSummary(dailyContext) {
 }
 
 function getFormatRules(reportType, totalDays) {
-    if (reportType === 'monthly' || (reportType === 'custom' && totalDays > 7)) {
+    if (totalDays > 7) {
         return [
-            'Use monthly format with week blocks exactly like this:',
-            'Week 1',
-            '1. <day-1 work summary>',
-            '   Meetings: <day-1 meetings/events summary>',
-            '2. <day-2 work summary>',
-            '   Meetings: <day-2 meetings/events summary>',
-            '...',
-            '7. <day-7 work summary>',
-            '   Meetings: <day-7 meetings/events summary>',
-            'Week 2 ...',
-            'Rules for each numbered day line:',
-            '- Print meetings/events on the next line only when that day has meetings/events.',
-            '- Use this pattern: "n. <work>" and, when applicable, add "   Meetings: <meetings/events>" on next line.',
-            '- If no work, write: "n. No work updates."',
-            '- If no meetings/events on that day, do not add a Meetings line.',
-            '- No separate trailing section like "Meetings/Events:" outside week blocks.',
-            '- Keep strict chronological order by day within each week.',
-            '- Use plain text only; no JSON, markdown, or code fences.',
+            'For this long-range/monthly report, you MUST group the work_summary by weeks.',
+            'Format EXACTLY like this (using these exact headers):',
+            'Week 1-',
+            '<Analysis of work and impact for the first 7 days>',
+            '',
+            'Week 2-',
+            '<Analysis of work and impact for the next 7 days>',
+            '...and so on.',
+            'Direct Outcome Rule:',
+            '- Use professional, direct, and outcome-focused language.',
+            '- If a week is empty, simply state: "No activity logged." DO NOT add robotic filler about "notable declines" or productivity.',
+            '- Each "Week X-" header must be followed by a concise, human-sounding narrative.',
         ].join('\n');
     }
 
     return [
-        'Use day-by-day format exactly like this:',
-        '1. Mon',
-        '   Work: ...',
-        '   Meetings: ...',
-        '2. Tue',
-        '   Work: ...',
-        '   Meetings: ...',
-        'Meetings must always be on a separate new line from Work.',
+        'Each day MUST be a professional, detailed analytical summary of what was accomplished.',
+        'Format exactly like this:',
+        '1. <DayName (e.g. Mon)>',
+        '   Work: <A detailed paragraph or bullets describing specific work accomplishments>',
+        '   Meetings: <Summary of meetings/events>',
+        'Use the "Work Breakdown" to provide specific context for each day.',
     ].join('\n');
 }
 
@@ -147,29 +139,31 @@ async function buildPrompt({ employeeName, reportType, dateList, activitiesByDat
 
     return {
         system: [
-            'You generate concise employee DAR summaries.',
+            'You are a Direct, Professional, and Outcome-Focused Analyst who generates insightful employee DAR summaries.',
             'Return strict JSON only. No markdown, no explanation.',
-            'Use only the provided context. Do not invent facts.',
+            'IMPORTANT: Avoid "robotic" AI filler words like "Notably", "Similarly", "Furthermore", or "Notably".',
+            'DO NOT comment on reporting behavior (e.g., "marking a significant decline"). Focus solely on accomplishments or the absence of data.',
             'JSON schema: {"report_summary": string, "work_summary": string}',
-            'Meetings/events must be embedded within each corresponding day/week block only.',
-            'Never add a separate standalone section like "Meetings/Events:" at the end.',
+            'The "report_summary" should be a high-level qualitative observation of achievements (1 sentence). Use a natural, professional human tone.',
+            'The "work_summary" should be a detailed, fact-based breakdown focusing on impact.',
         ].join(' '),
         user: [
             `Employee: ${employeeName}`,
             `Report type: ${reportType}`,
             `Date range: ${dateList[0]} to ${dateList[dateList.length - 1]}`,
             '',
+            'Analysis Instructions:',
+            '- Describe what the employee actually accomplished using human-like, dense professionalism.',
+            '- Avoid generic framing sentences like "Employee engaged in a wide range of..."',
+            '- For days/weeks without data, use exactly "No activity logged." and leave it at that.',
+            '',
             'Formatting rules:',
             formatRules,
             '',
-            'Summary stats:',
-            JSON.stringify(contextSummary),
-            '',
-            contextLabel,
+            'Employee Context Data:',
             JSON.stringify(contextData),
             '',
-            'Write a short report_summary (1 sentence) and a work_summary that strictly follows the required format.',
-            'If there is no work or meeting data for a day/week, mention that explicitly.',
+            'Provide the detailed analytical report in JSON format.',
         ].join('\n'),
     };
 }
@@ -258,8 +252,8 @@ function normalizeNonJSONContent(rawContent) {
     const text = String(rawContent || '').trim();
     if (!text) {
         return {
-            report_summary: 'Monthly summary generated from available DAR records for the selected period.',
-            work_summary: 'Worked on recorded DAR activities and updates during the selected period.',
+            report_summary: 'Monthly activity overview for the selected range.',
+            work_summary: 'No activity logged.',
         };
     }
 
@@ -384,16 +378,24 @@ function sanitizeReportSummaryText(reportSummary) {
         .replace(/\s+/g, ' ')
         .trim();
 
-    if (/['"]report_summary['"]\s*:|['"]work_summary['"]\s*:/i.test(text)) {
-        const extracted = text.match(/report_summary['"]?\s*:\s*['"]([\s\S]*?)['"]\s*,\s*['"]work_summary/i);
-        if (extracted?.[1]) {
-            text = extracted[1].trim();
-        } else {
-            text = text.replace(/^\{[\s\S]*?\}\s*/g, '').trim();
-        }
+    // Aggressively strip any leaked JSON structures at the start
+    // Matches: {"report_summary": "...", "report_summary": "...", "report_summary":
+    const prefixesToStrip = [
+        /^\{?\s*["']?report_summary["']?\s*:\s*["']?/i,
+        /^\{?\s*["']?report_summary["']?\s*:\s*/i,
+        /^\{?\s*/
+    ];
+    
+    let cleaned = text;
+    for (const regex of prefixesToStrip) {
+        cleaned = cleaned.replace(regex, '');
     }
 
-    const firstSentence = text.split(/(?<=[.!?])\s+/)[0]?.trim() || text;
+    // Strip trailing JSON artifacts
+    cleaned = cleaned.replace(/["']?\s*,?\s*["']?work_summary["']?\s*:[\s\S]*$/i, '');
+    cleaned = cleaned.replace(/["']?\s*\}?\s*$/i, '');
+
+    const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0]?.trim() || cleaned;
     return firstSentence || 'Monthly summary generated from available DAR records for the selected period.';
 }
 
@@ -434,7 +436,7 @@ async function requestGroqJSON({ model, prompt }) {
     const body = {
         model,
         temperature: 0.1,
-        max_completion_tokens: 420,
+        max_completion_tokens: 1200,
         messages: [
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user },
@@ -486,14 +488,8 @@ export async function generateNarrativeWithGroq({
 
     try {
         const normalized = await requestGroqJSON({ model, prompt });
-        const isWeekStyle = reportType === 'monthly' || (reportType === 'custom' && dateList.length > 7);
         const finalReportSummary = sanitizeReportSummaryText(normalized.report_summary);
-        let finalWorkSummary = sanitizeWorkSummaryText(normalized.work_summary);
-        if (isWeekStyle) {
-            finalWorkSummary = buildDeterministicMonthlyWorkSummary(dateList, activitiesByDate, eventsByDate);
-            finalWorkSummary = enforceWeeklyMeetingSections(finalWorkSummary, dateList, eventsByDate);
-            finalWorkSummary = sanitizeWorkSummaryText(finalWorkSummary);
-        }
+        const finalWorkSummary = sanitizeWorkSummaryText(normalized.work_summary);
 
         return {
             ...normalized,

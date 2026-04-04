@@ -38,3 +38,16 @@ export const deleteEvent = catchAsync(async (req, res) => {
     await DarEventService.deleteEvent({ event_id, org_id });
     res.json({ ok: true, message: "Deleted successfully" });
 });
+
+export const getAllEventsAdmin = catchAsync(async (req, res) => {
+    const { org_id, user_type } = req.user;
+
+    if (user_type !== 'admin' && user_type !== 'hr') {
+        return res.status(403).json({ ok: false, message: 'Access denied. Admins or HR only.' });
+    }
+
+    const { date_from, date_to } = req.query;
+    const data = await DarEventService.getAllEventsAdmin({ org_id, date_from, date_to });
+
+    res.json({ ok: true, data });
+});

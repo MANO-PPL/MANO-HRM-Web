@@ -69,7 +69,7 @@ export const getAllActivitiesAdmin = catchAsync(async (req, res) => {
     const { org_id, user_type } = req.user;
 
     if (user_type !== 'admin' && user_type !== 'hr') {
-        return res.status(403).json({ ok: false, message: 'Access denied. Admins only.' });
+        return res.status(403).json({ ok: false, message: 'Access denied. Admins or HR only.' });
     }
 
     const { date, startDate, endDate } = req.query;

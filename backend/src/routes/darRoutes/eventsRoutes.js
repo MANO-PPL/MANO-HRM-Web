@@ -14,4 +14,7 @@ router.put('/update/:id', authenticateJWT, DarEventController.updateEvent);
 // DELETE /dar/event/delete/:id
 router.delete('/delete/:id', authenticateJWT, DarEventController.deleteEvent);
 
+// GET /dar/events/admin/all
+router.get('/admin/all', authenticateJWT, DarEventController.getAllEventsAdmin);
+
 export default router;

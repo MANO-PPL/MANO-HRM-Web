@@ -51,3 +51,17 @@ export async function deleteEvent({ event_id, org_id }) {
         .where({ event_id, org_id })
         .del();
 }
+
+export async function getAllEventsAdmin({ org_id, date_from, date_to }) {
+    let query = attendanceDB("events_meetings")
+        .select(
+            "*",
+            attendanceDB.raw("DATE_FORMAT(event_date, '%Y-%m-%d') as event_date")
+        )
+        .where("org_id", org_id);
+
+    if (date_from) query.where("event_date", ">=", date_from);
+    if (date_to) query.where("event_date", "<=", date_to);
+
+    return query.orderBy("event_date", "asc").orderBy("start_time", "asc");
+}
