@@ -221,7 +221,7 @@ const ApplyLeave = () => {
                         ${isSelected ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105 z-10' : ''}
                         ${inRange ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-transparent' : ''}
                         ${!isSelected && !inRange && holiday ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' : ''}
-                        ${!isSelected && !inRange && !holiday && isWeekend ? 'bg-slate-50 dark:bg-slate-800/50 text-slate-400 border-transparent' : ''}
+                        ${!isSelected && !inRange && !holiday && isWeekend ? 'bg-slate-50 dark:bg-github-dark-subtle/50 text-slate-400 border-transparent' : ''}
                         ${!isSelected && !inRange && !holiday && !isWeekend ? 'bg-white dark:bg-dark-card hover:border-indigo-300 dark:hover:border-indigo-600 border-transparent' : ''}
                     `}
                     title={holiday ? holiday.holiday_name : ''}
@@ -253,41 +253,41 @@ const ApplyLeave = () => {
                 {/* Stats Row */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {/* Same stats cards as before, reusing logic */}
-                    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border">
                         <div className="flex justify-between items-start mb-2">
-                            <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Total</span>
+                            <span className="text-slate-500 dark:text-github-dark-muted text-xs font-bold uppercase tracking-wider">Total</span>
                             <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-500"><FileText size={16} /></div>
                         </div>
-                        <h3 className="text-2xl font-bold text-slate-800 dark:text-white">{stats.totalApplied}</h3>
+                        <h3 className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.totalApplied}</h3>
                     </div>
-                    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border">
                         <div className="flex justify-between items-start mb-2">
-                            <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Approved</span>
+                            <span className="text-slate-500 dark:text-github-dark-muted text-xs font-bold uppercase tracking-wider">Approved</span>
                             <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-lg text-green-500"><CheckCircle size={16} /></div>
                         </div>
-                        <h3 className="text-2xl font-bold text-slate-800 dark:text-white">{stats.approved}</h3>
+                        <h3 className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.approved}</h3>
                     </div>
-                    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border">
                         <div className="flex justify-between items-start mb-2">
-                            <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Pending</span>
+                            <span className="text-slate-500 dark:text-github-dark-muted text-xs font-bold uppercase tracking-wider">Pending</span>
                             <div className="p-2 bg-amber-50 dark:bg-amber-900/30 rounded-lg text-amber-500"><Clock size={16} /></div>
                         </div>
-                        <h3 className="text-2xl font-bold text-slate-800 dark:text-white">{stats.pending}</h3>
+                        <h3 className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.pending}</h3>
                     </div>
-                    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border">
                         <div className="flex justify-between items-start mb-2">
-                            <span className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Rejected</span>
+                            <span className="text-slate-500 dark:text-github-dark-muted text-xs font-bold uppercase tracking-wider">Rejected</span>
                             <div className="p-2 bg-red-50 dark:bg-red-900/30 rounded-lg text-red-500"><XCircle size={16} /></div>
                         </div>
-                        <h3 className="text-2xl font-bold text-slate-800 dark:text-white">{stats.rejected}</h3>
+                        <h3 className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.rejected}</h3>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
 
                     {/* Left Column: Form */}
-                    <div className="bg-white dark:bg-dark-card rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 md:p-8">
-                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+                    <div className="bg-white dark:bg-dark-card rounded-2xl shadow-lg border border-slate-200 dark:border-github-dark-border p-6 md:p-8">
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-github-dark-text mb-6 flex items-center gap-2">
                             <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg text-indigo-600 dark:text-indigo-400">
                                 <FileText size={20} />
                             </div>
@@ -306,7 +306,7 @@ const ApplyLeave = () => {
                                     value={formData.subject}
                                     onChange={handleChange}
                                     placeholder="e.g. Sick Leave, Vacation, Family Emergency"
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
                                 />
                             </div>
 
@@ -321,7 +321,7 @@ const ApplyLeave = () => {
                                             required
                                             value={formData.start_date}
                                             onChange={handleChange}
-                                            className="w-full pl-4 pr-3 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium calendar-picker-indicator-dark"
+                                            className="w-full pl-4 pr-3 py-3 bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium calendar-picker-indicator-dark"
                                         />
                                     </div>
                                 </div>
@@ -334,7 +334,7 @@ const ApplyLeave = () => {
                                             required
                                             value={formData.end_date}
                                             onChange={handleChange}
-                                            className="w-full pl-4 pr-3 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium calendar-picker-indicator-dark"
+                                            className="w-full pl-4 pr-3 py-3 bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium calendar-picker-indicator-dark"
                                         />
                                     </div>
                                 </div>
@@ -354,7 +354,7 @@ const ApplyLeave = () => {
                                     value={formData.reason}
                                     onChange={handleChange}
                                     placeholder="Detailed explanation..."
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all resize-none"
+                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all resize-none"
                                 ></textarea>
                             </div>
 
@@ -367,11 +367,11 @@ const ApplyLeave = () => {
                                         onChange={handleFileChange}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                     />
-                                    <div className="w-full flex items-center gap-3 px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl group-hover:border-indigo-400 transition-all">
+                                    <div className="w-full flex items-center gap-3 px-4 py-3 bg-slate-50 dark:bg-github-dark-subtle/50 border border-dashed border-slate-300 dark:border-github-dark-border rounded-xl group-hover:border-indigo-400 transition-all">
                                         <div className="p-2 bg-white dark:bg-slate-700 rounded-lg text-slate-500 dark:text-slate-300">
                                             {formData.document ? <CheckCircle size={18} className="text-green-500" /> : <Paperclip size={18} />}
                                         </div>
-                                        <span className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                                        <span className="text-sm text-slate-500 dark:text-github-dark-muted truncate">
                                             {formData.document ? formData.document.name : "Click to attach file or drag here"}
                                         </span>
                                     </div>
@@ -402,22 +402,22 @@ const ApplyLeave = () => {
                     <div className="space-y-6 flex flex-col h-full">
 
                         {/* Interactive Calendar - Fixed Height Container */}
-                        <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 flex-shrink-0">
+                        <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border p-6 flex-shrink-0">
                             <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
                                     <CalendarIcon className="text-indigo-500" size={20} />
                                     {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
                                 </h3>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}
-                                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 transition-colors"
+                                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-github-dark-muted transition-colors"
                                     >
                                         <ChevronLeft size={20} />
                                     </button>
                                     <button
                                         onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}
-                                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 transition-colors"
+                                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-github-dark-muted transition-colors"
                                     >
                                         <ChevronRight size={20} />
                                     </button>
@@ -435,13 +435,13 @@ const ApplyLeave = () => {
                                 {renderCalendar()}
                             </div>
 
-                            <div className="mt-4 flex gap-4 text-xs text-slate-500 dark:text-slate-400 justify-center">
+                            <div className="mt-4 flex gap-4 text-xs text-slate-500 dark:text-github-dark-muted justify-center">
                                 <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-amber-50 border border-amber-200"></div> Holiday</div>
                                 <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-indigo-600"></div> Selected</div>
                             </div>
 
                             {/* Current Month Holidays List */}
-                            <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+                            <div className="mt-4 border-t border-slate-100 dark:border-github-dark-border pt-4">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Holidays in {currentDate.toLocaleString('default', { month: 'long' })}</h4>
                                 {holidays.filter(h => {
                                     const hDate = new Date(h.holiday_date);
@@ -467,8 +467,8 @@ const ApplyLeave = () => {
                         </div>
 
                         {/* Brief History List - Scrollable */}
-                        <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 flex-grow flex flex-col min-h-0">
-                            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex-shrink-0">Recent History</h3>
+                        <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border p-6 flex-grow flex flex-col min-h-0">
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text mb-4 flex-shrink-0">Recent History</h3>
 
                             <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-grow" style={{ maxHeight: '300px' }}>
                                 {leaves.length === 0 ? (
@@ -481,9 +481,9 @@ const ApplyLeave = () => {
                                             const statusStyle = getStatusInfo(leave.status);
                                             const StatusIcon = statusStyle.icon;
                                             return (
-                                                <div key={leave.leave_id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                                <div key={leave.leave_id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-100 dark:border-github-dark-border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                                                     <div>
-                                                        <h4 className="font-semibold text-slate-800 dark:text-white text-sm">{leave.leave_type}</h4>
+                                                        <h4 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">{leave.leave_type}</h4>
                                                         <p className="text-xs text-slate-500">{new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}</p>
                                                     </div>
                                                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold ${statusStyle.bg} ${statusStyle.color}`}>

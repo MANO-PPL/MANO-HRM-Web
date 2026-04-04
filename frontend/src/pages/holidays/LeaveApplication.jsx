@@ -35,17 +35,17 @@ const AttachmentModal = ({ file, onClose }) => {
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={onClose}>
-            <div className="relative bg-white dark:bg-slate-900 rounded-2xl overflow-hidden w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+            <div className="relative bg-white dark:bg-github-dark-subtle rounded-2xl overflow-hidden w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400">
                             {isImage ? <ImageIcon size={20} /> : <FileText size={20} />}
                         </div>
                         <div>
-                            <h3 className="font-bold text-slate-800 dark:text-white text-sm">
+                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text text-sm">
                                 {(file.file_key || file.name)?.split('/').pop() || 'Attachment'}
                             </h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                            <p className="text-xs text-slate-500 dark:text-github-dark-muted">
                                 {file.file_type || 'Unknown Type'}
                             </p>
                         </div>
@@ -63,10 +63,10 @@ const AttachmentModal = ({ file, onClose }) => {
                     {isImage ? (
                         <img src={file.file_url} alt="Attachment" className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
                     ) : isPdf ? (
-                        <iframe src={file.file_url} className="w-full h-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white" title="PDF Viewer"></iframe>
+                        <iframe src={file.file_url} className="w-full h-full rounded-lg border border-slate-200 dark:border-github-dark-border bg-white" title="PDF Viewer"></iframe>
                     ) : (
                         <div className="text-center">
-                            <p className="text-slate-500 dark:text-slate-400 mb-4">This file type cannot be previewed.</p>
+                            <p className="text-slate-500 dark:text-github-dark-muted mb-4">This file type cannot be previewed.</p>
                             <a href={file.file_url} download className="text-indigo-600 hover:underline">Download to view</a>
                         </div>
                     )}
@@ -323,11 +323,11 @@ const LeaveApplication = () => {
             <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-14rem)] min-h-[600px]">
 
                 {/* LEFT PANEL: LIST */}
-                <div className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
+                <div className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col">
                     {/* Header & Search */}
-                    <div className="p-4 border-b border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
                         <div className="flex justify-between items-center px-1">
-                            <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Leave Requests</h3>
+                            <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text uppercase tracking-wider">Leave Requests</h3>
                             <button
                                 onClick={() => setShowForm(true)}
                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-xs font-bold"
@@ -345,13 +345,13 @@ const LeaveApplication = () => {
                                     placeholder="Search by name..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                                 />
                             </div>
                             <select
                                 value={statusFilter}
                                 onChange={(e) => setStatusFilter(e.target.value)}
-                                className="px-2 py-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                                className="px-2 py-2 text-xs bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
                             >
                                 <option value="all">All</option>
                                 <option value="pending">Pending</option>
@@ -378,15 +378,15 @@ const LeaveApplication = () => {
                                                 {(request.user_name || 'U').charAt(0).toUpperCase()}
                                             </div>
                                             <div>
-                                                <p className={`text-sm font-semibold ${selectedLeave?.lr_id === request.lr_id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-white'}`}>{request.user_name}</p>
-                                                <p className="text-xs text-slate-500 dark:text-slate-400">{request.email}</p>
+                                                <p className={`text-sm font-semibold ${selectedLeave?.lr_id === request.lr_id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-github-dark-text'}`}>{request.user_name}</p>
+                                                <p className="text-xs text-slate-500 dark:text-github-dark-muted">{request.email}</p>
                                             </div>
                                         </div>
-                                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-slate-600 bg-slate-50 dark:text-slate-400 dark:bg-slate-800`}>
+                                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-slate-600 bg-slate-50 dark:text-github-dark-muted dark:bg-github-dark-subtle`}>
                                             {request.leave_type}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 mt-3">
+                                    <div className="flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted mt-3">
                                         <div className="flex items-center gap-1">
                                             <Calendar size={12} />
                                             {new Date(request.start_date).toLocaleDateString()}
@@ -404,14 +404,14 @@ const LeaveApplication = () => {
                 </div>
 
                 {/* RIGHT PANEL: DETAILS */}
-                <div className="w-full lg:w-2/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
+                <div className="w-full lg:w-2/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
                     {selectedLeave ? (
                         <>
                             {/* Detail Header */}
-                            <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-start bg-slate-50/50 dark:bg-slate-800/10">
+                            <div className="p-6 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-start bg-slate-50/50 dark:bg-github-dark-subtle/10">
                                 <div>
-                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Leave Request #{selectedLeave.lr_id}</h2>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                                    <h2 className="text-xl font-bold text-slate-900 dark:text-github-dark-text mb-1">Leave Request #{selectedLeave.lr_id}</h2>
+                                    <p className="text-sm text-slate-500 dark:text-github-dark-muted flex items-center gap-2">
                                         By {selectedLeave.user_name}
                                     </p>
                                 </div>
@@ -432,21 +432,21 @@ const LeaveApplication = () => {
                                 {/* Grid Layout for details */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                                     <div>
-                                        <h4 className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold mb-3">Leave Details</h4>
+                                        <h4 className="text-xs uppercase tracking-wider text-slate-500 dark:text-github-dark-muted font-semibold mb-3">Leave Details</h4>
                                         <div className="space-y-4">
-                                            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700">
-                                                <span className="text-sm text-slate-500 dark:text-slate-400 block mb-1">Type</span>
-                                                <span className="font-semibold text-slate-800 dark:text-white">{selectedLeave.leave_type}</span>
+                                            <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                <span className="text-sm text-slate-500 dark:text-github-dark-muted block mb-1">Type</span>
+                                                <span className="font-semibold text-slate-800 dark:text-github-dark-text">{selectedLeave.leave_type}</span>
                                             </div>
                                             <div className="flex gap-4">
-                                                <div className="flex-1 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700">
-                                                    <span className="text-sm text-slate-500 dark:text-slate-400 block mb-1">From</span>
+                                                <div className="flex-1 bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                    <span className="text-sm text-slate-500 dark:text-github-dark-muted block mb-1">From</span>
                                                     <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
                                                         {new Date(selectedLeave.start_date).toLocaleDateString()}
                                                     </span>
                                                 </div>
-                                                <div className="flex-1 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700">
-                                                    <span className="text-sm text-slate-500 dark:text-slate-400 block mb-1">To</span>
+                                                <div className="flex-1 bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                    <span className="text-sm text-slate-500 dark:text-github-dark-muted block mb-1">To</span>
                                                     <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
                                                         {new Date(selectedLeave.end_date).toLocaleDateString()}
                                                     </span>
@@ -462,9 +462,9 @@ const LeaveApplication = () => {
                                     </div>
 
                                     <div>
-                                        <h4 className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold mb-3">Justification & Remarks</h4>
+                                        <h4 className="text-xs uppercase tracking-wider text-slate-500 dark:text-github-dark-muted font-semibold mb-3">Justification & Remarks</h4>
                                         <div className="space-y-4 h-full">
-                                            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700">
+                                            <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
                                                 <div className="flex items-start gap-3">
                                                     <MessageSquare size={18} className="text-slate-400 mt-1" />
                                                     <div>
@@ -476,14 +476,14 @@ const LeaveApplication = () => {
 
                                             {/* Attachments Section - Condensed with Inline Expansion */}
                                             {selectedLeave.attachments && selectedLeave.attachments.length > 0 && (
-                                                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700 overflow-hidden">
+                                                <div className="bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border overflow-hidden">
                                                     <div
                                                         className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors"
                                                         onClick={() => setAttachmentsExpanded(!attachmentsExpanded)}
                                                     >
                                                         <div className="flex items-center gap-3">
                                                             <Paperclip size={18} className="text-slate-400" />
-                                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                                                            <span className="text-sm font-medium text-slate-700 dark:text-github-dark-text">
                                                                 {selectedLeave.attachments.length} Attachments
                                                             </span>
                                                         </div>
@@ -497,18 +497,18 @@ const LeaveApplication = () => {
 
                                                     {/* Expanded Content */}
                                                     {attachmentsExpanded && (
-                                                        <div className="px-4 pb-4 pt-0 space-y-2 border-t border-slate-100 dark:border-slate-700/50 mt-2">
+                                                        <div className="px-4 pb-4 pt-0 space-y-2 border-t border-slate-100 dark:border-github-dark-border/50 mt-2">
                                                             {selectedLeave.attachments.map((file, index) => (
                                                                 <div
                                                                     key={index}
                                                                     onClick={() => setViewingAttachment(file)}
-                                                                    className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg hover:border-indigo-200 dark:hover:border-indigo-900/50 hover:shadow-sm transition-all group cursor-pointer"
+                                                                    className="flex items-center gap-3 p-3 bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-github-dark-border rounded-lg hover:border-indigo-200 dark:hover:border-indigo-900/50 hover:shadow-sm transition-all group cursor-pointer"
                                                                 >
                                                                     <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                                                                         <FileText size={16} />
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
-                                                                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                                                        <p className="text-sm font-medium text-slate-700 dark:text-github-dark-text truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                                                                             {file.file_key.split('/').pop()}
                                                                         </p>
                                                                         <p className="text-[10px] text-slate-400 uppercase font-bold">
@@ -527,8 +527,8 @@ const LeaveApplication = () => {
 
                                             {/* Action / Remarks Section */}
                                             {selectedLeave.status === 'pending' ? (
-                                                <div className="bg-white dark:bg-slate-800 p-4 rounded-lg border-2 border-slate-100 dark:border-slate-700 shadow-sm">
-                                                    <h5 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3">Admin Action</h5>
+                                                <div className="bg-white dark:bg-github-dark-subtle p-4 rounded-lg border-2 border-slate-100 dark:border-github-dark-border shadow-sm">
+                                                    <h5 className="text-sm font-bold text-slate-700 dark:text-github-dark-text mb-3">Admin Action</h5>
 
 
 
@@ -536,7 +536,7 @@ const LeaveApplication = () => {
                                                         value={adminAction.remarks}
                                                         onChange={(e) => setAdminAction({ ...adminAction, remarks: e.target.value })}
                                                         placeholder="Add remarks (required for rejection)..."
-                                                        className="w-full p-3 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none min-h-[80px] mb-3"
+                                                        className="w-full p-3 text-sm bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-github-dark-text rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none min-h-[80px] mb-3"
                                                     ></textarea>
 
                                                     <div className="flex gap-2">
@@ -555,8 +555,8 @@ const LeaveApplication = () => {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700">
-                                                    <span className="text-sm text-slate-500 dark:text-slate-400 block mb-1">
+                                                <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                    <span className="text-sm text-slate-500 dark:text-github-dark-muted block mb-1">
                                                         Admin Remarks
                                                     </span>
                                                     <p className="text-sm text-slate-700 dark:text-slate-300 font-medium">
@@ -595,8 +595,8 @@ const LeaveApplication = () => {
 
                 {/* --- TOP: APPLY FORM --- */}
                 <div className="w-full">
-                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-                        <div className="flex items-center gap-2 mb-6 border-b border-slate-100 dark:border-slate-700 pb-4">
+                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-6">
+                        <div className="flex items-center gap-2 mb-6 border-b border-slate-100 dark:border-github-dark-border pb-4">
                             {isAdmin && (
                                 <button
                                     onClick={() => setShowForm(false)}
@@ -606,12 +606,12 @@ const LeaveApplication = () => {
                                 </button>
                             )}
                             <Plus className="text-indigo-600 dark:text-indigo-400" size={20} />
-                            <h3 className="text-lg font-bold text-slate-800 dark:text-white">Apply for Leave</h3>
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Apply for Leave</h3>
                         </div>
 
                         <form onSubmit={handleApply} className="space-y-5">
                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1.5">Leave Type</label>
+                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Leave Type</label>
                                 <div className="relative">
                                     <select
                                         value={['Casual Leave', 'Sick Leave'].includes(formData.leave_type) ? formData.leave_type : 'Other'}
@@ -624,7 +624,7 @@ const LeaveApplication = () => {
                                                 setFormData({ ...formData, leave_type: e.target.value });
                                             }
                                         }}
-                                        className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-700 dark:text-slate-200 font-medium cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-slate-900"
+                                        className="w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-700 dark:text-github-dark-text font-medium cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-slate-900"
                                     >
                                         <option>Casual Leave</option>
                                         <option>Sick Leave</option>
@@ -638,7 +638,7 @@ const LeaveApplication = () => {
                                         placeholder="Enter custom leave type"
                                         value={formData.leave_type}
                                         onChange={(e) => setFormData({ ...formData, leave_type: e.target.value })}
-                                        className="w-full px-3 py-2.5 mt-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-700 dark:text-slate-200"
+                                        className="w-full px-3 py-2.5 mt-3 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-700 dark:text-github-dark-text"
                                     />
                                 )}
                             </div>
@@ -670,20 +670,20 @@ const LeaveApplication = () => {
                             )}
 
                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1.5">Reason</label>
+                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Reason</label>
                                 <textarea
                                     required
                                     rows="1"
                                     value={formData.reason}
                                     onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                                     onInput={handleTextareaInput}
-                                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-700 dark:text-slate-200 resize-none placeholder-slate-400 overflow-hidden min-h-[42px]"
+                                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-700 dark:text-github-dark-text resize-none placeholder-slate-400 overflow-hidden min-h-[42px]"
                                     placeholder="Why do you need leave?"
                                 ></textarea>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1.5">Attachments (Optional)</label>
+                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Attachments (Optional)</label>
                                 <div className="space-y-3">
                                     {/* Upload Area */}
                                     <div className="relative group">
@@ -697,13 +697,13 @@ const LeaveApplication = () => {
                                         />
                                         <label
                                             htmlFor="leave-attachment"
-                                            className="w-full flex flex-col items-center gap-2 px-4 py-6 bg-slate-50 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all group-hover:scale-[1.01]"
+                                            className="w-full flex flex-col items-center gap-2 px-4 py-6 bg-slate-50 dark:bg-github-dark-subtle border-2 border-dashed border-slate-300 dark:border-github-dark-border rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all group-hover:scale-[1.01]"
                                         >
                                             <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                                                 <Paperclip size={18} />
                                             </div>
                                             <div className="text-center">
-                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                                                <span className="text-sm font-medium text-slate-700 dark:text-github-dark-text">
                                                     Click to upload documents
                                                 </span>
                                                 <p className="text-xs text-slate-400 mt-1">
@@ -717,13 +717,13 @@ const LeaveApplication = () => {
                                     {formData.attachments && formData.attachments.length > 0 && (
                                         <div className="grid grid-cols-1 gap-2">
                                             {formData.attachments.map((file, index) => (
-                                                <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                                                <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
                                                     <div className="flex items-center gap-3 overflow-hidden">
                                                         <div className="w-8 h-8 rounded bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
                                                             <FileText size={16} />
                                                         </div>
                                                         <div className="min-w-0">
-                                                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
+                                                            <p className="text-sm font-medium text-slate-700 dark:text-github-dark-text truncate">
                                                                 {file.name}
                                                             </p>
                                                             <p className="text-[10px] text-slate-400 uppercase font-bold">
@@ -762,14 +762,14 @@ const LeaveApplication = () => {
 
                 {/* --- BOTTOM: HISTORY LIST --- */}
                 <div className="w-full">
-                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col h-full min-h-[500px]">
+                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col h-full min-h-[500px]">
 
                         {/* --- LIST HEADER WITH FILTERS --- */}
-                        <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-700 flex flex-wrap gap-4 justify-between items-center bg-slate-50/50 dark:bg-slate-800/10">
+                        <div className="px-6 py-5 border-b border-slate-200 dark:border-github-dark-border flex flex-wrap gap-4 justify-between items-center bg-slate-50/50 dark:bg-github-dark-subtle/10">
                             <div>
-                                <h3 className="font-bold text-slate-800 dark:text-white">Leave History</h3>
+                                <h3 className="font-bold text-slate-800 dark:text-github-dark-text">Leave History</h3>
                                 <div className="flex items-center gap-2 mt-1">
-                                    <div className="text-xs font-medium text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">
+                                    <div className="text-xs font-medium text-slate-500 bg-slate-100 dark:bg-github-dark-subtle px-2 py-1 rounded-md">
                                         {filteredLeaves.length} Records
                                     </div>
                                     <div className="text-xs font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-500/20 dark:text-indigo-200 px-3 py-1.5 rounded-md border border-indigo-100 dark:border-indigo-500/30">
@@ -784,7 +784,7 @@ const LeaveApplication = () => {
                                     <select
                                         value={selectedMonth}
                                         onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                                        className="pl-3 pr-8 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm appearance-none cursor-pointer"
+                                        className="pl-3 pr-8 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm font-medium text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm appearance-none cursor-pointer"
                                     >
                                         {Array.from({ length: 12 }, (_, i) => (
                                             <option key={i} value={i}>
@@ -800,7 +800,7 @@ const LeaveApplication = () => {
                                     <select
                                         value={selectedYear}
                                         onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                                        className="pl-3 pr-8 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm appearance-none cursor-pointer"
+                                        className="pl-3 pr-8 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm font-medium text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm appearance-none cursor-pointer"
                                     >
                                         {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
                                             <option key={year} value={year}>{year}</option>
@@ -820,7 +820,7 @@ const LeaveApplication = () => {
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left">
-                                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-[11px] uppercase text-slate-500 font-bold tracking-wider">
+                                    <thead className="bg-slate-50 dark:bg-github-dark-subtle/50 text-[11px] uppercase text-slate-500 font-bold tracking-wider">
                                         <tr>
                                             <th className="px-6 py-4">Type</th>
                                             <th className="px-6 py-4">Current Status</th>
@@ -834,7 +834,7 @@ const LeaveApplication = () => {
                                         {filteredLeaves.map((leave) => (
                                             <tr key={leave.lr_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
                                                 <td className="px-6 py-4">
-                                                    <div className="font-semibold text-sm text-slate-800 dark:text-white">{leave.leave_type}</div>
+                                                    <div className="font-semibold text-sm text-slate-800 dark:text-github-dark-text">{leave.leave_type}</div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide ${leave.status === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' :
@@ -862,7 +862,7 @@ const LeaveApplication = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 max-w-[200px]">
-                                                    <p className="text-sm text-slate-600 dark:text-slate-400 truncate" title={leave.reason}>
+                                                    <p className="text-sm text-slate-600 dark:text-github-dark-muted truncate" title={leave.reason}>
                                                         {leave.reason}
                                                     </p>
                                                 </td>

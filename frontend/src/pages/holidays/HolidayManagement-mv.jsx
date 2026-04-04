@@ -35,14 +35,14 @@ const AttachmentModal = ({ file, onClose }) => {
     return createPortal(
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-4">
             <div className="absolute -inset-10 bg-black/80 backdrop-blur-md" onClick={onClose}></div>
-            <div className="relative z-10 bg-white dark:bg-slate-900 rounded-2xl overflow-hidden w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+            <div className="relative z-10 bg-white dark:bg-github-dark-subtle rounded-2xl overflow-hidden w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400">
                             {isImage ? <FileText size={20} /> : <FileText size={20} />}
                         </div>
                         <div className="overflow-hidden">
-                            <h3 className="font-bold text-slate-800 dark:text-white text-sm truncate max-w-[200px]">
+                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text text-sm truncate max-w-[200px]">
                                 {(file.file_key || file.name)?.split('/').pop() || 'Attachment'}
                             </h3>
                         </div>
@@ -55,10 +55,10 @@ const AttachmentModal = ({ file, onClose }) => {
                     {isImage ? (
                         <img src={file.file_url} alt="Attachment" className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
                     ) : isPdf ? (
-                        <iframe src={file.file_url} className="w-full h-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white" title="PDF Viewer"></iframe>
+                        <iframe src={file.file_url} className="w-full h-full rounded-lg border border-slate-200 dark:border-github-dark-border bg-white" title="PDF Viewer"></iframe>
                     ) : (
                         <div className="text-center">
-                            <p className="text-slate-500 dark:text-slate-400 mb-4">This file type cannot be previewed.</p>
+                            <p className="text-slate-500 dark:text-github-dark-muted mb-4">This file type cannot be previewed.</p>
                             <a href={file.file_url} download className="text-indigo-600 hover:underline font-bold">Download to view</a>
                         </div>
                     )}
@@ -205,13 +205,13 @@ const HolidayManagement = () => {
         <MobileDashboardLayout title="Holidays & Leave">
 
             {/* TABS - Standardized Full Width */}
-            <div className="bg-slate-100 dark:bg-slate-800 p-1 flex shadow-sm mb-4">
+            <div className="bg-slate-100 dark:bg-github-dark-subtle p-1 flex shadow-sm mb-4">
                 <button
                     onClick={() => setActiveTab('holidays')}
                     className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2
                         ${activeTab === 'holidays'
-                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                            : 'text-slate-500 dark:text-slate-400'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-github-dark-text shadow-sm'
+                            : 'text-slate-500 dark:text-github-dark-muted'
                         }`}
                 >
                     <Umbrella size={16} /> Holidays
@@ -220,8 +220,8 @@ const HolidayManagement = () => {
                     onClick={() => setActiveTab('my_leaves')}
                     className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2
                         ${activeTab === 'my_leaves'
-                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                            : 'text-slate-500 dark:text-slate-400'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-github-dark-text shadow-sm'
+                            : 'text-slate-500 dark:text-github-dark-muted'
                         }`}
                 >
                     <Calendar size={16} /> My Leaves
@@ -230,15 +230,15 @@ const HolidayManagement = () => {
                     onClick={() => setActiveTab('requests')}
                     className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2
                         ${activeTab === 'requests'
-                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                            : 'text-slate-500 dark:text-slate-400'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-github-dark-text shadow-sm'
+                            : 'text-slate-500 dark:text-github-dark-muted'
                         }`}
                 >
                     <Shield size={16} /> Requests
                 </button>
             </div>
 
-            <div className="px-4 pb-20 min-h-screen bg-slate-50 dark:bg-slate-900">
+            <div className="px-4 pb-20 min-h-screen bg-slate-50 dark:bg-github-dark-subtle">
 
                 {/* --- HOLIDAYS TAB --- */}
                 {activeTab === 'holidays' && (
@@ -257,7 +257,7 @@ const HolidayManagement = () => {
                                     <div
                                         key={idx}
                                         onClick={() => setSelectedHoliday(holiday)}
-                                        className="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 active:scale-[0.98] transition-all cursor-pointer"
+                                        className="bg-white dark:bg-github-dark-subtle p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-sm flex items-center gap-4 active:scale-[0.98] transition-all cursor-pointer"
                                     >
                                         {/* Date Badge */}
                                         <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl flex flex-col items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
@@ -265,7 +265,7 @@ const HolidayManagement = () => {
                                             <span className="text-[10px] font-bold uppercase mt-1">{new Date(holiday.holiday_date).toLocaleDateString('en-US', { month: 'short' })}</span>
                                         </div>
                                         <div className="flex-1">
-                                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">{holiday.holiday_name}</h4>
+                                            <h4 className="font-bold text-slate-900 dark:text-github-dark-text text-sm">{holiday.holiday_name}</h4>
                                             <p className="text-xs text-slate-400 mt-0.5">{new Date(holiday.holiday_date).toLocaleDateString('en-US', { weekday: 'long' })}</p>
                                         </div>
                                         <button className="text-slate-400">
@@ -299,15 +299,15 @@ const HolidayManagement = () => {
                                 <div
                                     key={leave.lr_id}
                                     onClick={() => setSelectedLeaf(leave)}
-                                    className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden active:scale-[0.98] transition-all cursor-pointer"
+                                    className="bg-white dark:bg-github-dark-subtle p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-sm relative overflow-hidden active:scale-[0.98] transition-all cursor-pointer"
                                 >
                                     <div className="flex justify-between items-start mb-2">
                                         <div className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wide ${getStatusColor(leave.status)}`}>
                                             {leave.status}
                                         </div>
                                     </div>
-                                    <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">{leave.leave_type}</h3>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 line-clamp-1">{leave.reason}</p>
+                                    <h3 className="text-base font-bold text-slate-900 dark:text-github-dark-text mb-1">{leave.leave_type}</h3>
+                                    <p className="text-xs text-slate-500 dark:text-github-dark-muted mb-4 line-clamp-1">{leave.reason}</p>
 
                                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
                                         <Calendar size={14} />
@@ -338,12 +338,12 @@ const HolidayManagement = () => {
                 {activeTab === 'requests' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
                         {/* Sub Tabs */}
-                        <div className="bg-white dark:bg-slate-800 p-1 rounded-lg flex mb-2 border border-slate-100 dark:border-slate-700">
+                        <div className="bg-white dark:bg-github-dark-subtle p-1 rounded-lg flex mb-2 border border-slate-100 dark:border-github-dark-border">
                             <button
                                 onClick={() => setRequestSubTab('pending')}
                                 className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all
                                 ${requestSubTab === 'pending'
-                                        ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white'
+                                        ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-github-dark-text'
                                         : 'text-slate-400'}`}
                             >
                                 Pending
@@ -352,7 +352,7 @@ const HolidayManagement = () => {
                                 onClick={() => setRequestSubTab('history')}
                                 className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all
                                 ${requestSubTab === 'history'
-                                        ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white'
+                                        ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-github-dark-text'
                                         : 'text-slate-400'}`}
                             >
                                 History
@@ -360,12 +360,12 @@ const HolidayManagement = () => {
                         </div>
 
                         {/* Filter */}
-                        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center gap-2 bg-white dark:bg-github-dark-subtle px-3 py-2 rounded-xl border border-slate-200 dark:border-github-dark-border">
                             <span className="text-xs text-slate-500 font-medium">Filter Status:</span>
                             <select
                                 value={requestStatusFilter}
                                 onChange={(e) => setRequestStatusFilter(e.target.value)}
-                                className="flex-1 bg-transparent text-xs font-bold text-slate-900 dark:text-white outline-none"
+                                className="flex-1 bg-transparent text-xs font-bold text-slate-900 dark:text-github-dark-text outline-none"
                             >
                                 <option value="All">All</option>
                                 <option value="Approved">Approved</option>
@@ -389,14 +389,14 @@ const HolidayManagement = () => {
                                     <div
                                         key={req.lr_id}
                                         onClick={() => setSelectedLeaf(req)}
-                                        className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer"
+                                        className="bg-white dark:bg-github-dark-subtle p-4 rounded-xl border border-slate-100 dark:border-github-dark-border shadow-sm active:scale-[0.98] transition-all cursor-pointer"
                                     >
                                         <div className="flex justify-between items-start mb-2">
                                             <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${getStatusColor(req.status)}`}>
                                                 {req.status}
                                             </div>
                                         </div>
-                                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">{req.leave_type}</h3>
+                                        <h3 className="text-sm font-bold text-slate-900 dark:text-github-dark-text">{req.leave_type}</h3>
                                         <p className="text-xs text-slate-500 mt-0.5 mb-2">{req.user_name}</p>
 
                                         <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -422,46 +422,46 @@ const HolidayManagement = () => {
             {isAddModalOpen && createPortal(
                 <div className="fixed inset-0 z-[600] flex items-end justify-center">
                     <div className="absolute -inset-10 bg-black/60 backdrop-blur-md" onClick={() => setIsAddModalOpen(false)}></div>
-                    <div className="relative z-10 w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl p-6 animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
+                    <div className="relative z-10 w-full max-w-md bg-white dark:bg-github-dark-subtle rounded-t-3xl p-6 animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-center mb-6">
                             <span className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
                         </div>
-                        <h3 className="text-lg font-bold text-center mb-6 text-slate-900 dark:text-white">Add New Holiday</h3>
+                        <h3 className="text-lg font-bold text-center mb-6 text-slate-900 dark:text-github-dark-text">Add New Holiday</h3>
 
                         <form onSubmit={handleAddHoliday} className="space-y-4">
-                            <div className="border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 bg-white dark:bg-slate-800">
+                            <div className="border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-2 bg-white dark:bg-github-dark-subtle">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Holiday Name</label>
                                 <input
                                     type="text"
                                     required
                                     value={newHoliday.name}
                                     onChange={(e) => setNewHoliday({ ...newHoliday, name: e.target.value })}
-                                    className="w-full text-sm font-bold bg-transparent outline-none dark:text-white"
+                                    className="w-full text-sm font-bold bg-transparent outline-none dark:text-github-dark-text"
                                     placeholder="e.g. Christmas Day"
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
-                                <div className="border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 bg-white dark:bg-slate-800">
+                                <div className="border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-2 bg-white dark:bg-github-dark-subtle">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Date</label>
                                     <input
                                         type="date"
                                         required
                                         value={newHoliday.date}
                                         onChange={(e) => setNewHoliday({ ...newHoliday, date: e.target.value })}
-                                        className="w-full text-xs font-bold bg-transparent outline-none dark:text-white"
+                                        className="w-full text-xs font-bold bg-transparent outline-none dark:text-github-dark-text"
                                     />
                                 </div>
-                                <div className="relative border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1 bg-white dark:bg-slate-800">
+                                <div className="relative border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-1 bg-white dark:bg-github-dark-subtle">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase block">Type</label>
                                     <select
-                                        className="w-full bg-transparent text-sm font-bold text-slate-800 dark:text-white outline-none py-1 appearance-none"
+                                        className="w-full bg-transparent text-sm font-bold text-slate-800 dark:text-github-dark-text outline-none py-1 appearance-none"
                                         value={newHoliday.type}
                                         onChange={(e) => setNewHoliday({ ...newHoliday, type: e.target.value })}
                                     >
-                                        <option value="Public" className="bg-white dark:bg-slate-900">Public</option>
-                                        <option value="Optional" className="bg-white dark:bg-slate-900">Optional</option>
-                                        <option value="Observance" className="bg-white dark:bg-slate-900">Observance</option>
+                                        <option value="Public" className="bg-white dark:bg-github-dark-subtle">Public</option>
+                                        <option value="Optional" className="bg-white dark:bg-github-dark-subtle">Optional</option>
+                                        <option value="Observance" className="bg-white dark:bg-github-dark-subtle">Observance</option>
                                     </select>
                                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none mt-2" />
                                 </div>
@@ -480,18 +480,18 @@ const HolidayManagement = () => {
             {showApplyModal && createPortal(
                 <div className="fixed inset-0 z-[600] flex items-end justify-center">
                     <div className="absolute -inset-10 bg-black/60 backdrop-blur-md" onClick={() => setShowApplyModal(false)}></div>
-                    <div className="relative z-10 w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl p-6 animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
+                    <div className="relative z-10 w-full max-w-md bg-white dark:bg-github-dark-subtle rounded-t-3xl p-6 animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-center mb-6">
                             <span className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
                         </div>
-                        <h3 className="text-lg font-bold text-center mb-6 text-slate-900 dark:text-white">Apply for Leave</h3>
+                        <h3 className="text-lg font-bold text-center mb-6 text-slate-900 dark:text-github-dark-text">Apply for Leave</h3>
 
                         <form onSubmit={handleApplyLeave} className="space-y-4">
                             {/* Type */}
-                            <div className="relative border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1">
+                            <div className="relative border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-1">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Leave Type</label>
                                 <select
-                                    className="w-full bg-transparent text-sm font-bold text-slate-800 dark:text-white outline-none py-1 appearance-none"
+                                    className="w-full bg-transparent text-sm font-bold text-slate-800 dark:text-github-dark-text outline-none py-1 appearance-none"
                                     value={applyForm.leave_type}
                                     onChange={(e) => setApplyForm({ ...applyForm, leave_type: e.target.value })}
                                 >
@@ -504,21 +504,21 @@ const HolidayManagement = () => {
 
                             {/* Dates */}
                             <div className="grid grid-cols-2 gap-3">
-                                <div className="border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 bg-white dark:bg-slate-800">
+                                <div className="border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-2 bg-white dark:bg-github-dark-subtle">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Start Date</label>
                                     <input
                                         type="date"
-                                        className="w-full text-xs font-bold bg-transparent outline-none dark:text-white"
+                                        className="w-full text-xs font-bold bg-transparent outline-none dark:text-github-dark-text"
                                         value={applyForm.start_date}
                                         onChange={(e) => setApplyForm({ ...applyForm, start_date: e.target.value })}
                                         required
                                     />
                                 </div>
-                                <div className="border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 bg-white dark:bg-slate-800">
+                                <div className="border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-2 bg-white dark:bg-github-dark-subtle">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">End Date</label>
                                     <input
                                         type="date"
-                                        className="w-full text-xs font-bold bg-transparent outline-none dark:text-white"
+                                        className="w-full text-xs font-bold bg-transparent outline-none dark:text-github-dark-text"
                                         value={applyForm.end_date}
                                         onChange={(e) => setApplyForm({ ...applyForm, end_date: e.target.value })}
                                         required
@@ -527,10 +527,10 @@ const HolidayManagement = () => {
                             </div>
 
                             {/* Reason */}
-                            <div className="border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
+                            <div className="border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-2">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Reason</label>
                                 <textarea
-                                    className="w-full bg-transparent text-sm text-slate-800 dark:text-white outline-none resize-none h-20"
+                                    className="w-full bg-transparent text-sm text-slate-800 dark:text-github-dark-text outline-none resize-none h-20"
                                     placeholder="Enter reason..."
                                     value={applyForm.reason}
                                     onChange={(e) => setApplyForm({ ...applyForm, reason: e.target.value })}
@@ -538,7 +538,7 @@ const HolidayManagement = () => {
                             </div>
 
                             {/* Attachments */}
-                            <div className="border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-3 flex items-center justify-between cursor-pointer active:bg-slate-50 relative">
+                            <div className="border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-3 flex items-center justify-between cursor-pointer active:bg-slate-50 relative">
                                 <span className="text-sm text-slate-500">Attach Documents (Optional)</span>
                                 <div className="w-6 h-6 rounded-full border border-indigo-600 flex items-center justify-center text-indigo-600">
                                     <Plus size={14} />
@@ -578,11 +578,11 @@ const HolidayManagement = () => {
             {selectedLeaf && createPortal(
                 <div className="fixed inset-0 z-[600] flex items-center justify-center p-4">
                     <div className="absolute -inset-10 bg-black/60 backdrop-blur-md" onClick={() => setSelectedLeaf(null)}></div>
-                    <div className="relative z-10 w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-0 overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                    <div className="relative z-10 w-full max-w-sm bg-white dark:bg-github-dark-subtle rounded-3xl p-0 overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
                         {/* Header */}
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+                        <div className="p-6 border-b border-slate-100 dark:border-github-dark-border">
                             <div className="flex justify-between items-start mb-1">
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Leave Request #{selectedLeaf.lr_id}</h3>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-github-dark-text">Leave Request #{selectedLeaf.lr_id}</h3>
                                 <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getStatusColor(selectedLeaf.status)}`}>
                                     {selectedLeaf.status}
                                 </div>
@@ -595,18 +595,18 @@ const HolidayManagement = () => {
                             {/* Type */}
                             <div>
                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Type</label>
-                                <p className="text-sm font-bold text-slate-800 dark:text-white mt-1">{selectedLeaf.leave_type}</p>
+                                <p className="text-sm font-bold text-slate-800 dark:text-github-dark-text mt-1">{selectedLeaf.leave_type}</p>
                             </div>
 
                             {/* Dates */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase">From</label>
-                                    <p className="text-sm font-bold text-slate-800 dark:text-white mt-1">{new Date(selectedLeaf.start_date).toLocaleDateString()}</p>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-github-dark-text mt-1">{new Date(selectedLeaf.start_date).toLocaleDateString()}</p>
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-400 uppercase">To</label>
-                                    <p className="text-sm font-bold text-slate-800 dark:text-white mt-1">{new Date(selectedLeaf.end_date).toLocaleDateString()}</p>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-github-dark-text mt-1">{new Date(selectedLeaf.end_date).toLocaleDateString()}</p>
                                 </div>
                             </div>
 
@@ -621,7 +621,7 @@ const HolidayManagement = () => {
                             {/* Reason */}
                             <div>
                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Justification & Remarks</label>
-                                <div className="mt-2 text-sm text-slate-600 dark:text-slate-300 italic p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                                <div className="mt-2 text-sm text-slate-600 dark:text-slate-300 italic p-3 bg-slate-50 dark:bg-github-dark-subtle rounded-xl border border-slate-100 dark:border-github-dark-border">
                                     "{selectedLeaf.reason}"
                                 </div>
                             </div>
@@ -635,7 +635,7 @@ const HolidayManagement = () => {
                                             <div
                                                 key={i}
                                                 onClick={() => setViewingAttachment(file)}
-                                                className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                                                className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-github-dark-border text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                                             >
                                                 <Paperclip size={14} className="text-indigo-500" />
                                                 <span className="truncate flex-1 font-medium">{file.file_key?.split('/').pop() || 'Attachment'}</span>
@@ -648,7 +648,7 @@ const HolidayManagement = () => {
                         </div>
 
                         {/* Footer / Close */}
-                        <div className="p-4 border-t border-slate-100 dark:border-slate-800">
+                        <div className="p-4 border-t border-slate-100 dark:border-github-dark-border">
                             <button
                                 onClick={() => setSelectedLeaf(null)}
                                 className="w-full py-3 text-slate-500 font-bold text-sm hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
@@ -665,18 +665,18 @@ const HolidayManagement = () => {
             {selectedHoliday && createPortal(
                 <div className="fixed inset-0 z-[600] flex items-center justify-center p-6">
                     <div className="absolute -inset-10 bg-black/60 backdrop-blur-md" onClick={() => setSelectedHoliday(null)}></div>
-                    <div className="relative z-10 w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                    <div className="relative z-10 w-full max-w-sm bg-white dark:bg-github-dark-subtle rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
                         {/* Header */}
                         <div className="flex justify-between items-start mb-6">
                             <div>
-                                <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{selectedHoliday.holiday_name}</h3>
-                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                <h3 className="text-2xl font-bold text-slate-900 dark:text-github-dark-text">{selectedHoliday.holiday_name}</h3>
+                                <p className="text-sm text-slate-500 dark:text-github-dark-muted mt-1">
                                     {new Date(selectedHoliday.holiday_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric' })}
                                 </p>
                             </div>
                             <button
                                 onClick={() => setSelectedHoliday(null)}
-                                className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+                                className="p-2 bg-slate-100 dark:bg-github-dark-subtle rounded-full text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
                             >
                                 <X size={20} />
                             </button>
@@ -686,12 +686,12 @@ const HolidayManagement = () => {
                         <div className="space-y-6">
                             {/* Date */}
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-600 dark:text-slate-300">
+                                <div className="w-12 h-12 bg-slate-100 dark:bg-github-dark-subtle rounded-2xl flex items-center justify-center text-slate-600 dark:text-slate-300">
                                     <Calendar size={20} />
                                 </div>
                                 <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase">Date</p>
-                                    <p className="text-base font-bold text-slate-900 dark:text-white">
+                                    <p className="text-base font-bold text-slate-900 dark:text-github-dark-text">
                                         {new Date(selectedHoliday.holiday_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                                     </p>
                                 </div>
@@ -699,12 +699,12 @@ const HolidayManagement = () => {
 
                             {/* Type */}
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-600 dark:text-slate-300">
+                                <div className="w-12 h-12 bg-slate-100 dark:bg-github-dark-subtle rounded-2xl flex items-center justify-center text-slate-600 dark:text-slate-300">
                                     <Umbrella size={20} />
                                 </div>
                                 <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase">Type</p>
-                                    <p className="text-base font-bold text-slate-900 dark:text-white">
+                                    <p className="text-base font-bold text-slate-900 dark:text-github-dark-text">
                                         {selectedHoliday.holiday_type || 'Public Holiday'}
                                     </p>
                                 </div>
@@ -712,12 +712,12 @@ const HolidayManagement = () => {
 
                             {/* Day */}
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-600 dark:text-slate-300">
+                                <div className="w-12 h-12 bg-slate-100 dark:bg-github-dark-subtle rounded-2xl flex items-center justify-center text-slate-600 dark:text-slate-300">
                                     <Clock size={20} />
                                 </div>
                                 <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase">Day</p>
-                                    <p className="text-base font-bold text-slate-900 dark:text-white">
+                                    <p className="text-base font-bold text-slate-900 dark:text-github-dark-text">
                                         {new Date(selectedHoliday.holiday_date).toLocaleDateString('en-US', { weekday: 'long' })}
                                     </p>
                                 </div>

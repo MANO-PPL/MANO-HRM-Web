@@ -36,17 +36,17 @@ const AttachmentModal = ({ file, onClose }) => {
     return createPortal(
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-4">
             <div className="absolute -inset-10 bg-black/80 backdrop-blur-md" onClick={onClose}></div>
-            <div className="relative z-10 bg-white dark:bg-slate-900 rounded-2xl overflow-hidden w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+            <div className="relative z-10 bg-white dark:bg-github-dark-subtle rounded-2xl overflow-hidden w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400">
                             {isImage ? <ImageIcon size={20} /> : <FileText size={20} />}
                         </div>
                         <div className="overflow-hidden">
-                            <h3 className="font-bold text-slate-800 dark:text-white text-sm truncate max-w-[150px]">
+                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text text-sm truncate max-w-[150px]">
                                 {(file.file_key || file.name)?.split('/').pop() || 'Attachment'}
                             </h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                            <p className="text-xs text-slate-500 dark:text-github-dark-muted">
                                 {file.file_type || 'Unknown Type'}
                             </p>
                         </div>
@@ -64,10 +64,10 @@ const AttachmentModal = ({ file, onClose }) => {
                     {isImage ? (
                         <img src={file.file_url} alt="Attachment" className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
                     ) : isPdf ? (
-                        <iframe src={file.file_url} className="w-full h-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white" title="PDF Viewer"></iframe>
+                        <iframe src={file.file_url} className="w-full h-full rounded-lg border border-slate-200 dark:border-github-dark-border bg-white" title="PDF Viewer"></iframe>
                     ) : (
                         <div className="text-center">
-                            <p className="text-slate-500 dark:text-slate-400 mb-4">This file type cannot be previewed.</p>
+                            <p className="text-slate-500 dark:text-github-dark-muted mb-4">This file type cannot be previewed.</p>
                             <a href={file.file_url} download className="text-indigo-600 hover:underline">Download to view</a>
                         </div>
                     )}
@@ -289,9 +289,9 @@ const LeaveApplication = () => {
             <MobileDashboardLayout title="Leave Requests">
                 <div className="space-y-4 pb-20">
                     {/* Header & Controls */}
-                    <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 space-y-3 sticky top-0 z-10">
+                    <div className="bg-white dark:bg-github-dark-subtle p-4 rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border space-y-3 sticky top-0 z-10">
                         <div className="flex justify-between items-center">
-                            <h3 className="font-bold text-slate-800 dark:text-white">Leave Requests</h3>
+                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text">Leave Requests</h3>
                             <button
                                 onClick={() => setShowForm(true)}
                                 className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg shadow-sm text-xs font-bold"
@@ -307,13 +307,13 @@ const LeaveApplication = () => {
                                     placeholder="Search..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
                                 />
                             </div>
                             <select
                                 value={statusFilter}
                                 onChange={(e) => setStatusFilter(e.target.value)}
-                                className="px-2 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                                className="px-2 py-2 text-xs bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
                             >
                                 <option value="all">All</option>
                                 <option value="pending">Pending</option>
@@ -332,7 +332,7 @@ const LeaveApplication = () => {
                                 <div
                                     key={request.lr_id}
                                     onClick={() => setSelectedLeave(request)}
-                                    className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm active:scale-[0.98] transition-all"
+                                    className="bg-white dark:bg-github-dark-subtle p-4 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm active:scale-[0.98] transition-all"
                                 >
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex items-center gap-3">
@@ -340,8 +340,8 @@ const LeaveApplication = () => {
                                                 {(request.user_name || 'U').charAt(0).toUpperCase()}
                                             </div>
                                             <div>
-                                                <p className="text-sm font-bold text-slate-800 dark:text-white">{request.user_name}</p>
-                                                <p className="text-xs text-slate-500 dark:text-slate-400">{request.email}</p>
+                                                <p className="text-sm font-bold text-slate-800 dark:text-github-dark-text">{request.user_name}</p>
+                                                <p className="text-xs text-slate-500 dark:text-github-dark-muted">{request.email}</p>
                                             </div>
                                         </div>
                                         <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${request.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
@@ -351,7 +351,7 @@ const LeaveApplication = () => {
                                             {request.status}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 mt-3 pt-3 border-t border-slate-50 dark:border-slate-800">
+                                    <div className="flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted mt-3 pt-3 border-t border-slate-50 dark:border-github-dark-border">
                                         <div className="flex items-center gap-1">
                                             <Calendar size={12} />
                                             {new Date(request.start_date).toLocaleDateString()}
@@ -378,12 +378,12 @@ const LeaveApplication = () => {
                         <h3 className="font-bold text-lg">Request Details</h3>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
-                        <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/10">
+                    <div className="bg-white dark:bg-github-dark-subtle rounded-xl border border-slate-200 dark:border-github-dark-border overflow-hidden shadow-sm">
+                        <div className="p-5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/10">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">{selectedLeave.leave_type}</h2>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                    <h2 className="text-lg font-bold text-slate-900 dark:text-github-dark-text">{selectedLeave.leave_type}</h2>
+                                    <p className="text-sm text-slate-500 dark:text-github-dark-muted mt-1">
                                         By {selectedLeave.user_name}
                                     </p>
                                 </div>
@@ -397,17 +397,17 @@ const LeaveApplication = () => {
 
                         <div className="p-5 space-y-6">
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
-                                    <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">From</span>
-                                    <span className="font-mono text-sm font-semibold text-slate-800 dark:text-white">{new Date(selectedLeave.start_date).toLocaleDateString()}</span>
+                                <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-3 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                    <span className="text-xs text-slate-500 dark:text-github-dark-muted block mb-1">From</span>
+                                    <span className="font-mono text-sm font-semibold text-slate-800 dark:text-github-dark-text">{new Date(selectedLeave.start_date).toLocaleDateString()}</span>
                                 </div>
-                                <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
-                                    <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">To</span>
-                                    <span className="font-mono text-sm font-semibold text-slate-800 dark:text-white">{new Date(selectedLeave.end_date).toLocaleDateString()}</span>
+                                <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-3 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                    <span className="text-xs text-slate-500 dark:text-github-dark-muted block mb-1">To</span>
+                                    <span className="font-mono text-sm font-semibold text-slate-800 dark:text-github-dark-text">{new Date(selectedLeave.end_date).toLocaleDateString()}</span>
                                 </div>
                             </div>
 
-                            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700">
+                            <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
                                 <div className="flex items-start gap-3">
                                     <MessageSquare size={16} className="text-slate-400 mt-0.5" />
                                     <div>
@@ -422,7 +422,7 @@ const LeaveApplication = () => {
                                     <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Attachments</h4>
                                     <div className="space-y-2">
                                         {selectedLeave.attachments.map((file, index) => (
-                                            <div key={index} onClick={() => setViewingAttachment(file)} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700 cursor-pointer">
+                                            <div key={index} onClick={() => setViewingAttachment(file)} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border cursor-pointer">
                                                 <FileText size={16} className="text-indigo-500" />
                                                 <span className="text-sm truncate flex-1">{file.file_key.split('/').pop()}</span>
                                                 <ExternalLink size={14} className="text-slate-400" />
@@ -434,13 +434,13 @@ const LeaveApplication = () => {
 
                             {/* Admin Action Area */}
                             {isAdmin && selectedLeave.status === 'pending' && (
-                                <div className="border-t border-slate-100 dark:border-slate-800 pt-5 mt-2">
-                                    <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-3">Take Action</h4>
+                                <div className="border-t border-slate-100 dark:border-github-dark-border pt-5 mt-2">
+                                    <h4 className="text-sm font-bold text-slate-800 dark:text-github-dark-text mb-3">Take Action</h4>
                                     <textarea
                                         value={adminAction.remarks}
                                         onChange={(e) => setAdminAction({ ...adminAction, remarks: e.target.value })}
                                         placeholder="Enter remarks..."
-                                        className="w-full p-3 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white rounded-lg mb-3 min-h-[80px]"
+                                        className="w-full p-3 text-sm bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-github-dark-text rounded-lg mb-3 min-h-[80px]"
                                     ></textarea>
                                     <div className="grid grid-cols-2 gap-3">
                                         <button onClick={() => handleAdminAction('rejected')} className="py-2.5 bg-red-100 text-red-700 font-bold rounded-lg text-sm">Reject</button>
@@ -451,9 +451,9 @@ const LeaveApplication = () => {
 
                             {/* Details for User (Remarks) */}
                             {(!isAdmin || selectedLeave.status !== 'pending') && (
-                                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700">
-                                    <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Admin Remarks</span>
-                                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{selectedLeave.admin_comment || "No remarks provided."}</p>
+                                <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                    <span className="text-xs text-slate-500 dark:text-github-dark-muted block mb-1">Admin Remarks</span>
+                                    <p className="text-sm font-medium text-slate-800 dark:text-github-dark-text">{selectedLeave.admin_comment || "No remarks provided."}</p>
                                 </div>
                             )}
 
@@ -484,7 +484,7 @@ const LeaveApplication = () => {
         <MobileDashboardLayout title="Apply Leave">
             <div className="space-y-6 pb-20">
                 {/* Form Card */}
-                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-5">
+                <div className="bg-white dark:bg-github-dark-subtle rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-5">
                     <div
                         onClick={() => setShowForm(!showForm)}
                         className="flex justify-between items-center cursor-pointer"
@@ -493,13 +493,13 @@ const LeaveApplication = () => {
                             <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
                                 <Plus size={18} />
                             </div>
-                            <h3 className="font-bold text-slate-800 dark:text-white">Apply New Leave</h3>
+                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text">Apply New Leave</h3>
                         </div>
                         <ChevronDown className={`transition-transform ${showForm ? 'rotate-180' : ''}`} size={20} />
                     </div>
 
                     {showForm && (
-                        <form onSubmit={handleApply} className="mt-5 space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-2">
+                        <form onSubmit={handleApply} className="mt-5 space-y-4 pt-4 border-t border-slate-100 dark:border-github-dark-border animate-in fade-in slide-in-from-top-2">
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Leave Type</label>
                                 <select
@@ -513,7 +513,7 @@ const LeaveApplication = () => {
                                             setFormData({ ...formData, leave_type: e.target.value });
                                         }
                                     }}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 rounded-lg text-sm"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm"
                                 >
                                     <option>Casual Leave</option>
                                     <option>Sick Leave</option>
@@ -526,7 +526,7 @@ const LeaveApplication = () => {
                                     placeholder="Enter type"
                                     value={formData.leave_type}
                                     onChange={(e) => setFormData({ ...formData, leave_type: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 rounded-lg text-sm mt-2"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm mt-2"
                                 />
                             )}
 
@@ -551,7 +551,7 @@ const LeaveApplication = () => {
                                     value={formData.reason}
                                     onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                                     onInput={handleTextareaInput}
-                                    className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 rounded-lg text-sm min-h-[60px] resize-none"
+                                    className="w-full px-3 py-3 bg-slate-50 dark:bg-github-dark-subtle dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm min-h-[60px] resize-none"
                                     placeholder="Reason..."
                                     required
                                 />
@@ -582,8 +582,8 @@ const LeaveApplication = () => {
                 {/* History List */}
                 <div>
                     <div className="flex justify-between items-center px-2 mb-3">
-                        <h3 className="font-bold text-slate-700 dark:text-white">My History</h3>
-                        <div className="bg-white dark:bg-slate-800 rounded-lg border p-1 flex gap-1">
+                        <h3 className="font-bold text-slate-700 dark:text-github-dark-text">My History</h3>
+                        <div className="bg-white dark:bg-github-dark-subtle rounded-lg border p-1 flex gap-1">
                             <select
                                 value={selectedMonth}
                                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
@@ -604,11 +604,11 @@ const LeaveApplication = () => {
                                 <div
                                     key={leave.lr_id}
                                     onClick={() => setSelectedLeave(leave)}
-                                    className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm active:scale-[0.98] transition-transform"
+                                    className="bg-white dark:bg-github-dark-subtle p-4 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm active:scale-[0.98] transition-transform"
                                 >
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <h4 className="font-bold text-slate-800 dark:text-white">{leave.leave_type}</h4>
+                                            <h4 className="font-bold text-slate-800 dark:text-github-dark-text">{leave.leave_type}</h4>
                                             <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
                                                 <Calendar size={12} />
                                                 <span>{new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}</span>
