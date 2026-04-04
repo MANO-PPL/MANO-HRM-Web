@@ -11,8 +11,14 @@ export default {
         poppins: ['Poppins', 'sans-serif'],
       },
       colors: {
-        'dark-bg': '#101828',
-        'dark-card': '#1E2939',
+        'dark-bg': '#010409',
+        'dark-card': '#0d1117',
+        'github-dark-bg': '#010409',
+        'github-dark-subtle': '#0d1117',
+        'github-dark-border': '#30363d',
+        'github-dark-text': '#f0f6fc',
+        'github-dark-muted': '#8b949e',
+        'github-dark-accent': '#58a6ff',
       }
     },
   },

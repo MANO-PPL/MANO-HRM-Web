@@ -4,6 +4,45 @@
 @tailwind components;
 @tailwind utilities;
 
+html.platform-zoomed {
+    font-size: 13px; /* Native 80% scale equivalent (13/16) */
+    background-color: #f8fafc;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+.dar-context {
+    font-size: 12.8px; /* 80% scale equivalent (0.8 * 16) */
+}
+
+html.dark,
+html.dark.platform-zoomed {
+    background-color: #010409;
+}
+
+html.platform-zoomed body,
+html.platform-zoomed #root {
+    min-height: 100vh !important;
+    background-color: inherit;
+}
+
+/* Fix Tailwind units - now standard 100vh works perfectly */
+html.platform-zoomed .min-h-screen,
+html.platform-zoomed [class*="min-h-screen"] {
+    min-height: 100vh !important;
+}
+
+html.platform-zoomed .h-screen,
+html.platform-zoomed [class*="h-screen"],
+html.platform-zoomed [class*="h-[screen]"] {
+    height: 100vh !important;
+}
+
+/* Sidebar height fix */
+html.platform-zoomed aside {
+    height: 100vh !important;
+}
+
 html,
 body,
 #root {
@@ -34,7 +73,7 @@ body,
     }
 
     .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #334155;
+        background: #30363d;
     }
 
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
@@ -53,15 +92,32 @@ body,
 
 /* Recharts Dark Mode Overrides */
 .dark .recharts-default-tooltip {
-    background-color: #1e293b !important;
-    border-color: #334155 !important;
+    background-color: #0d1117 !important;
+    border-color: #30363d !important;
 }
 
 .dark .recharts-tooltip-item,
 .dark .recharts-default-tooltip .recharts-tooltip-label {
-    color: #f8fafc !important;
+    color: #f0f6fc !important;
+}
+
+/* Platform Zoomed Overrides for High Density */
+html.platform-zoomed .recharts-responsive-container {
+    margin-bottom: -10px;
+}
+
+html.platform-zoomed .grid {
+    gap: 1rem; /* Closer gaps for higher density */
+}
+
+html.platform-zoomed .p-6 {
+    padding: 1.25rem !important; /* Slightly smaller padding for cards */
+}
+
+html.platform-zoomed .space-y-8 > * + * {
+    margin-top: 1.5rem !important;
 }
 
 .dark .recharts-tooltip-cursor {
-    fill: #334155 !important;
+    fill: #161b22 !important;
 }

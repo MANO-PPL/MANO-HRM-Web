@@ -141,6 +141,24 @@ const RootHandler = () => {
   );
 };
 
+const ScaleManager = () => {
+  const location = useLocation();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    // Showcase is only shown on "/" when no user is logged in.
+    const isShowcase = !user && location.pathname === "/";
+    
+    if (isShowcase) {
+      document.documentElement.classList.remove("platform-zoomed");
+    } else {
+      document.documentElement.classList.add("platform-zoomed");
+    }
+  }, [location.pathname, user]);
+
+  return null;
+};
+
 const MobileDashboardHandler = () => {
   const { user } = useAuth();
   if (user?.user_type === 'employee') {
@@ -153,6 +171,7 @@ function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
+        <ScaleManager />
         <ToastContainer position="top-right" autoClose={3000} />
         <Routes>
 
@@ -190,19 +209,19 @@ function App() {
             <Route element={<ProtectedRoute allowedRoles={['admin', 'hr']} />}>
               <Route path="/attendance-monitoring" element={<AttendanceMonitoring />} />
               <Route path="/reports" element={<Reports />} />
-              <Route path="/policy-builder" element={<PolicyBuilder />} />
+              <Route path="/shift-management" element={<PolicyBuilder />} />
               <Route path="/geofencing" element={<GeoFencing />} />
               <Route path="/employees" element={<EmployeeList />} />
               <Route path="/employees/add" element={<EmployeeForm />} />
               <Route path="/employees/edit/:id" element={<EmployeeForm />} />
               <Route path="/employees/bulk" element={<BulkUpload />} />
               <Route path="/holidays/bulk" element={<BulkHolidayImport />} />
+              <Route path="/dar-admin" element={<DARAdmin />} />
             </Route>
 
             {/* Admin Only Routes */}
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
               <Route path="/subscription" element={<Subscription />} />
-              <Route path="/dar-admin" element={<DARAdmin />} />
             </Route>
 
             {/* Super Admin Only Routes */}
