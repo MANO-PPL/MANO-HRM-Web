@@ -185,7 +185,7 @@ const EmployeeDashboard = () => {
                     <div className="space-y-3">
                         {upcomingHolidays.length > 0 ? (
                             upcomingHolidays.slice(0, 3).map((holiday, index) => (
-                                <div key={index} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-100 dark:border-github-dark-border/50">
+                                <div key={index} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-100 dark:border-github-dark-border">
                                     <div className="flex flex-col items-center justify-center w-10 h-10 bg-white dark:bg-slate-700 rounded-lg shadow-sm text-center border border-slate-200 dark:border-github-dark-border">
                                         <span className="text-[10px] text-slate-500 font-bold uppercase">{new Date(holiday.date).toLocaleString('default', { month: 'short' })}</span>
                                         <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text">{new Date(holiday.date).getDate()}</span>

@@ -46,7 +46,7 @@ const MobileSidebar = ({ isOpen, onClose }) => {
 
             {/* Sidebar */}
             <aside
-                className={`fixed top-0 left-0 bottom-0 w-72 bg-white dark:bg-[#111827] z-50 transform transition-transform duration-300 ease-in-out shadow-2xl flex flex-col border-r border-slate-100 dark:border-github-dark-border/50 ${isOpen ? 'translate-x-0' : '-translate-x-full'
+                className={`fixed top-0 left-0 bottom-0 w-72 bg-white dark:bg-github-dark-subtle z-50 transform transition-transform duration-300 ease-in-out shadow-2xl flex flex-col border-r border-slate-200 dark:border-github-dark-border ${isOpen ? 'translate-x-0' : '-translate-x-full'
                     }`}
             >
                 {/* Header */}
