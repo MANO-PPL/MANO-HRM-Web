@@ -287,7 +287,8 @@ export async function processTimeOut(context) {
       time_out_lat: latitude,
       time_out_lng: longitude,
       time_out_address: address,
-      overtime_hours: totalHours > (rules.overtime?.threshold || 8) ? (totalHours - (rules.overtime?.threshold || 8)) : 0,
+      // Overtime requires OT tracking to be enabled AND a minimum 30-minute (0.5 hr) buffer
+      overtime_hours: (rules.overtime?.enabled !== false && totalHours >= ((rules.overtime?.threshold || 8) + 0.5)) ? parseFloat((totalHours - (rules.overtime?.threshold || 8)).toFixed(2)) : 0,
       status: status,
       metadata: JSON.stringify(metadata),
       updated_at: attendanceDB.fn.now(),
@@ -394,8 +395,11 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       const shift = await getUserShift(user_id);
       const rules = ShiftService.getShiftRules(shift);
       const threshold = rules.overtime?.threshold || 8;
-      if (totalHours > threshold) {
-        overtimeHours = totalHours - threshold;
+      const buffer = 0.5; // 30 minutes minimum overtime required
+      const isEnabled = rules.overtime?.enabled !== false;
+      
+      if (isEnabled && totalHours >= (threshold + buffer)) {
+        overtimeHours = parseFloat((totalHours - threshold).toFixed(2));
       }
     } catch (e) {
       // Ignore missing shift/policy errors during sync
