@@ -188,38 +188,35 @@ const EmployeeForm = () => {
         );
     }
 
-    return (
-        <MobileDashboardLayout title={isEditMode ? "Edit Employee" : "Add Employee"} hideSidebar={true}>
-            <form onSubmit={handleSubmit} className="space-y-6 pb-20 relative min-h-screen bg-slate-50 dark:bg-github-dark-subtle p-4">
+    const SaveButton = (
+        <button
+            onClick={handleSubmit}
+            disabled={isSaving}
+            className="px-3 py-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-sm active:scale-95 transition-all disabled:opacity-50 flex items-center gap-1.5"
+        >
+            {isSaving ? (
+                <Loader2 className="animate-spin" size={16} />
+            ) : (
+                <>
+                    <Save size={16} />
+                    <span>Save</span>
+                </>
+            )}
+        </button>
+    );
 
-                {/* Header Actions */}
-                <div className="flex items-center justify-between mb-2">
-                    <button
-                        type="button"
-                        onClick={() => navigate('/employees')}
-                        className="flex items-center gap-2 text-slate-800 dark:text-github-dark-text transition-colors"
-                    >
-                        <X size={24} />
-                        <span className="font-medium">Cancel</span>
-                    </button>
-                    <button
-                        type="submit"
-                        disabled={isSaving}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-md shadow-indigo-200 dark:shadow-indigo-900/30 transition-all active:scale-95 disabled:opacity-70"
-                    >
-                        {isSaving ? (
-                            <span>Saving...</span>
-                        ) : (
-                            <>
-                                <Save size={18} />
-                                <span>Save Changes</span>
-                            </>
-                        )}
-                    </button>
-                </div>
+    return (
+        <MobileDashboardLayout 
+            title={isEditMode ? "Edit Employee" : "Add Employee"} 
+            hideSidebar={true}
+            showBackButton={true}
+            headerAction={SaveButton}
+        >
+            <form onSubmit={handleSubmit} className="space-y-6 pb-20 relative min-h-screen p-4">
+
 
                 {/* Form Card */}
-                <div className="bg-white dark:bg-github-dark-subtle p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border">
+                <div className="space-y-6">
 
                     {/* PROFILE IMAGE (ONLY VISIBLE IN EDIT MODE) */}
                     {isEditMode && (
@@ -264,7 +261,7 @@ const EmployeeForm = () => {
                             <User size={14} /> Personal Information
                         </h3>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-4">
                             {/* Full Name */}
                             <div className="space-y-1.5 col-span-1">
                                 <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Full Name</label>
@@ -327,7 +324,7 @@ const EmployeeForm = () => {
                             <Briefcase size={14} /> Work Details
                         </h3>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-4">
                             {/* Department */}
                             <div className="space-y-1.5 col-span-1">
                                 <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Department</label>

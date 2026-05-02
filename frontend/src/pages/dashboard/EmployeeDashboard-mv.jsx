@@ -112,7 +112,7 @@ const EmployeeDashboard = () => {
                 {/* 2. Today's Status Card */}
                 <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border">
                     <h3 className="text-sm font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider mb-4 flex items-center gap-2">
-                        <Clock size={16} /> Today's Status
+                        <Clock size={14} /> Today's Status
                     </h3>
                     <div className="flex items-center justify-between">
                         <div className="flex flex-col gap-1">
@@ -142,7 +142,7 @@ const EmployeeDashboard = () => {
                 <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white dark:bg-dark-card p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
                         <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2">
-                            <CheckCircle size={20} />
+                            <CheckCircle size={18} />
                         </div>
                         <span className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.daysPresent}</span>
                         <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">Present Days</span>
@@ -150,7 +150,7 @@ const EmployeeDashboard = () => {
 
                     <div className="bg-white dark:bg-dark-card p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
                         <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-2">
-                            <AlertCircle size={20} />
+                            <AlertCircle size={18} />
                         </div>
                         <span className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.lateDays}</span>
                         <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">Late Check-ins</span>
@@ -158,7 +158,7 @@ const EmployeeDashboard = () => {
 
                     <div className="bg-white dark:bg-dark-card p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
                         <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center justify-center mb-2">
-                            <XCircle size={20} />
+                            <XCircle size={18} />
                         </div>
                         <span className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.daysAbsent}</span>
                         <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">Absents</span>
@@ -166,18 +166,44 @@ const EmployeeDashboard = () => {
 
                     <div className="bg-white dark:bg-dark-card p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
                         <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2">
-                            <TrendingUp size={20} />
+                            <TrendingUp size={18} />
                         </div>
                         <span className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.avgHours}h</span>
                         <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">Avg Hours</span>
                     </div>
                 </div>
 
-                {/* 4. Upcoming Holidays */}
+                {/* 4. Recent Activity */}
+                <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border">
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text flex items-center gap-2 mb-4">
+                        <Activity size={16} className="text-emerald-500" /> Recent Activity
+                    </h3>
+                    <div className="space-y-4">
+                        {recentActivity.length > 0 ? (
+                            recentActivity.slice(0, 5).map((activity, index) => (
+                                <div key={index} className="flex items-start gap-3">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                                        activity.action.toLowerCase().includes('in') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                                    }`}>
+                                        <Clock size={14} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate">{activity.action}</p>
+                                        <p className="text-xs text-slate-500 dark:text-github-dark-muted">{activity.time || activity.date}</p>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-4 text-sm text-slate-400 italic">No recent activity</div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 5. Upcoming Holidays */}
                 <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
-                            <Calendar size={16} className="text-indigo-500" /> Upcoming Holidays
+                            <Calendar size={14} className="text-indigo-500" /> Upcoming Holidays
                         </h3>
                         <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium cursor-pointer hover:underline" onClick={() => navigate('/holidays')}>View All</span>
                     </div>

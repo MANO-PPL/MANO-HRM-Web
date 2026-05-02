@@ -14,7 +14,8 @@ import {
     UserPlus,
     UserCheck,
     Briefcase,
-    RefreshCw
+    RefreshCw,
+    Activity
 } from 'lucide-react';
 import {
     LineChart,
@@ -31,6 +32,7 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { adminService } from '../../services/adminService';
+import { attendanceService } from '../../services/attendanceService';
 import { toast } from 'react-toastify';
 
 const AdminDashboard = () => {
@@ -84,11 +86,33 @@ const AdminDashboard = () => {
             setIsLoading(true);
             const res = await adminService.getDashboardStats(range, month, year);
             if (res.success) {
+                let finalActivities = res.activities || [];
+                
+                // Fallback: If no activities are returned from the main stats, 
+                // fetch real-time attendance to populate the feed
+                if (finalActivities.length === 0) {
+                    try {
+                        const attendanceRes = await attendanceService.getRealTimeAttendance();
+                        if (attendanceRes.data) {
+                            finalActivities = attendanceRes.data.map(record => ({
+                                id: `att-${record.acr_id}`,
+                                user: record.user_name,
+                                action: record.time_out ? 'Checked Out' : 'Checked In',
+                                time: record.time_out || record.time_in,
+                                profile_image_url: record.profile_image_url,
+                                role: record.designation || 'Staff'
+                            })).slice(0, 10);
+                        }
+                    } catch (attError) {
+                        console.error("Failed to fetch fallback activities", attError);
+                    }
+                }
+
                 const dataToCache = {
                     stats: res.stats,
                     trends: res.trends,
                     chartData: res.chartData,
-                    activities: res.activities
+                    activities: finalActivities
                 };
                 setStats(dataToCache.stats);
                 setTrends(dataToCache.trends);
@@ -117,156 +141,170 @@ const AdminDashboard = () => {
         { id: 2, type: 'error', message: '3 Unapproved Overtime requests.' },
     ];
 
+    const refreshButton = (
+        <button
+            onClick={handleRefresh}
+            className="text-slate-500 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+        >
+            <RefreshCw size={16} className={`${isLoading ? 'animate-spin' : ''}`} />
+        </button>
+    );
+
     return (
-        <MobileDashboardLayout title="Dashboard" hideHeader={false}>
-            <div className="py-2 space-y-8 animate-fade-in">
-                {/* Stats Stack */}
-                <div className="space-y-4">
+        <MobileDashboardLayout title="Dashboard" hideHeader={false} headerAction={refreshButton}>
+            <div className="pb-24 space-y-6 animate-fade-in px-1">
+
+                {/* Compact 2x2 Stats Grid */}
+                <div className="grid grid-cols-2 gap-3">
                     <StatCard
-                        title="Present Today"
+                        title="Present"
                         value={`${stats.presentToday}`}
                         total={`/ ${stats.totalEmployees}`}
                         trend={trends.present}
                         trendUp={parseFloat(trends.present) >= 0}
-                        icon={<CheckCircle size={20} className="text-emerald-500" strokeWidth={2} />}
-                        iconBg="border border-emerald-500/20 bg-emerald-500/10"
+                        icon={<CheckCircle size={16} />}
+                        color="emerald"
                         loading={isLoading}
                     />
                     <StatCard
                         title="Absent"
-                        value={`${stats.absentToday} Employees`}
+                        value={`${stats.absentToday}`}
                         trend={trends.absent}
                         trendUp={parseFloat(trends.absent) < 0}
-                        icon={<XCircle size={20} className="text-rose-500" strokeWidth={2} />}
-                        iconBg="border border-rose-500/20 bg-rose-500/10"
+                        icon={<XCircle size={16} />}
+                        color="rose"
                         loading={isLoading}
                     />
                     <StatCard
-                        title="Late Check-ins"
-                        value={`${stats.lateCheckins} Employees`}
+                        title="Late"
+                        value={`${stats.lateCheckins}`}
                         trend={trends.late}
                         trendUp={parseFloat(trends.late) < 0}
-                        icon={<Clock size={20} className="text-amber-500" strokeWidth={2} />}
-                        iconBg="border border-amber-500/20 bg-amber-500/10"
+                        icon={<Clock size={16} />}
+                        color="amber"
                         loading={isLoading}
                     />
                     <StatCard
-                        title="On Leave"
-                        value={`${stats.onLeave || 0} Planned`}
-                        trend=""
-                        icon={<Calendar size={20} className="text-indigo-400" strokeWidth={2} />}
-                        iconBg="border border-indigo-400/20 bg-indigo-400/10"
+                        title="Leave"
+                        value={`${stats.onLeave || 0}`}
+                        icon={<Calendar size={16} />}
+                        color="indigo"
                         loading={isLoading}
                     />
                 </div>
 
-                {/* Quick Actions */}
+                {/* Quick Actions Grid - Horizontal & Compact */}
                 <div>
-                    <h3 className="text-base font-semibold text-slate-800 dark:text-github-dark-text mb-3 px-1">Quick Actions</h3>
-                    <div className="space-y-3">
-                        <QuickLinkCard
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Management</h3>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                        <QuickAction
                             onClick={() => navigate('/employees')}
-                            icon={<UserPlus size={20} className="text-indigo-400" />}
-                            iconBg="bg-indigo-500/10"
-                            title="Add Employee"
+                            icon={<UserPlus size={16} />}
+                            label="Add Staff"
+                            color="indigo"
                         />
-                        <QuickLinkCard
+                        <QuickAction
                             onClick={() => navigate('/attendance-monitoring')}
-                            icon={<AlertTriangle size={20} className="text-rose-400" />}
-                            iconBg="bg-rose-500/10"
-                            title="Live Monitor"
+                            icon={<Activity size={16} />}
+                            label="Monitor"
+                            color="rose"
                         />
-                        <QuickLinkCard
+                        <QuickAction
                             onClick={() => navigate('/shifts')}
-                            icon={<Briefcase size={20} className="text-purple-400" />}
-                            iconBg="bg-purple-500/10"
-                            title="Manage Shifts"
+                            icon={<Briefcase size={16} />}
+                            label="Shifts"
+                            color="purple"
                         />
                     </div>
                 </div>
 
-                {/* Analytics Segment */}
-                <div>
-                    <h3 className="text-base font-semibold text-slate-800 dark:text-github-dark-text mb-3 px-1">Analytics</h3>
+                {/* Analytics Segment - Glassmorphism */}
+                <div className="bg-white/60 dark:bg-[#0d1117]/60 backdrop-blur-xl rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-white/5">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">Analytics</h4>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold uppercase tracking-widest mt-0.5">Weekly Trends</p>
+                        </div>
+                        <TrendingUp size={14} className="text-indigo-500" />
+                    </div>
 
-                    <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border">
-                        <h4 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Attendance Trends</h4>
-                        <p className="text-sm text-slate-500 dark:text-github-dark-muted mb-6 mt-1">Weekly Insight</p>
+                    <div className="h-48">
+                        {isLoading ? (
+                            <div className="w-full h-full animate-pulse bg-slate-100 dark:bg-white/5 rounded-xl"></div>
+                        ) : (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorPresent" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 9, fontWeight: 700 }} dy={10} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 9, fontWeight: 700 }} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '10px' }}
+                                    />
+                                    <Area type="monotone" dataKey="present" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorPresent)" name="Present" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        )}
+                    </div>
+                </div>
 
-                        <div className="h-64 mt-4">
-                            {isLoading ? (
-                                <div className="w-full h-full animate-pulse bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg"></div>
-                            ) : (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
-                                        <Tooltip
-                                            contentStyle={{ backgroundColor: '#1e293b', borderRadius: '8px', border: 'none', color: '#fff' }}
-                                            itemStyle={{ color: '#fff' }}
-                                        />
-                                        <Legend
-                                            verticalAlign="top"
-                                            height={36}
-                                            iconType="circle"
-                                            wrapperStyle={{ paddingBottom: '20px', fontSize: '12px', left: 0 }}
-                                        />
-                                        <Line type="monotone" dataKey="present" stroke="#10b981" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#0d1117' }} name="Present" />
-                                        <Line type="monotone" dataKey="absent" stroke="#f43f5e" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#0d1117' }} name="Absent" />
-                                        <Line type="monotone" dataKey="late" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#0d1117' }} name="Late" />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            )}
+                {/* Live Activity - Compact List */}
+                <div className="bg-white/60 dark:bg-[#0d1117]/60 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-100 dark:border-white/5 overflow-hidden">
+                    <div className="px-4 py-3 flex items-center justify-between border-b border-slate-50 dark:border-white/5">
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">Recent Activity</h3>
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live</span>
                         </div>
                     </div>
-                </div>
 
-                {/* Live Activity Segment */}
-                <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border">
-                    <div className="p-5 flex items-center justify-between border-b border-slate-100 dark:border-github-dark-border">
-                        <h3 className="font-bold text-lg text-slate-800 dark:text-github-dark-text">Live Activity</h3>
-                        <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
-                    </div>
-
-                    <div className="p-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                    <div className="divide-y divide-slate-50 dark:divide-white/5 max-h-[320px] overflow-y-auto">
                         {isLoading ? (
                             <div className="p-4 space-y-4">
                                 {[1, 2, 3].map(i => (
-                                    <div key={i} className="flex items-start gap-4 animate-pulse">
-                                        <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700"></div>
-                                        <div className="flex-1 space-y-2 py-1">
-                                            <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
-                                            <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
+                                    <div key={i} className="flex items-center gap-3 animate-pulse">
+                                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5"></div>
+                                        <div className="flex-1 space-y-2">
+                                            <div className="h-2.5 bg-slate-100 dark:bg-white/5 rounded w-1/3"></div>
+                                            <div className="h-2 bg-slate-100 dark:bg-white/5 rounded w-1/2"></div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
-                        ) : activities.length > 0 ? (
-                            <div className="flex flex-col">
-                                {activities.map((activity, index) => (
-                                    <div key={activity.id} className={`flex items-start gap-4 p-4 ${index !== activities.length - 1 ? 'border-b border-slate-50 dark:border-[#202b3d]' : ''}`}>
-                                        <div className="w-12 h-12 rounded-full flex items-center justify-center bg-[#2b2533] text-[#f43f5e] font-bold text-lg shrink-0 overflow-hidden">
-                                            {activity.profile_image_url ? (
-                                                <img src={`${activity.profile_image_url}?t=${avatarTimestamp}`} alt={activity.user} className="w-full h-full object-cover" />
-                                            ) : (
-                                                activity.user?.charAt(0) || '?'
-                                            )}
-                                        </div>
+                        ) : (activities && activities.length > 0) ? (
+                            activities.map((activity) => (
+                                <div key={activity.id} className="flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-white/5 transition-colors">
+                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-100 dark:bg-[#1a1f2e] text-indigo-500 font-black text-sm shrink-0 overflow-hidden shadow-sm border border-white dark:border-white/5">
+                                        {activity.profile_image_url ? (
+                                            <img src={`${activity.profile_image_url}?t=${avatarTimestamp}`} alt={activity.user} className="w-full h-full object-cover" />
+                                        ) : (
+                                            activity.user?.charAt(0) || '?'
+                                        )}
+                                    </div>
 
-                                        <div className="flex-1 min-w-0 pr-2">
-                                            <p className="text-[15px] font-bold text-slate-800 dark:text-github-dark-text truncate">{activity.user || 'Unknown User'}</p>
-                                            <p className="text-[13px] text-slate-500 dark:text-github-dark-muted mt-0.5 leading-snug">{activity.role || 'Employee'} • {activity.action}</p>
-                                        </div>
-
-                                        <div className="shrink-0 bg-slate-100 dark:bg-[#151b28] px-2.5 py-1.5 rounded text-[11px] font-bold text-slate-600 dark:text-slate-300 mt-1">
-                                            {activity.time ? activity.time.split(' ')[1] + ' ' + (activity.time.split(' ')[2] || '') : 'Now'}
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[13px] font-black text-slate-900 dark:text-white truncate uppercase tracking-tight">{activity.user || 'Unknown User'}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-500 uppercase tracking-tighter truncate">{activity.role || 'Staff'}</span>
+                                            <span className="w-1 h-1 bg-slate-300 dark:bg-slate-700 rounded-full"></span>
+                                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter truncate">{activity.action}</span>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
+
+                                    <div className="shrink-0 text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tabular-nums">
+                                        {activity.time ? activity.time.split(' ')[1] : 'Now'}
+                                    </div>
+                                </div>
+                            ))
                         ) : (
-                            <div className="p-8 text-center text-slate-500">
-                                No activity yet today
+                            <div className="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
+                                No activity recorded
                             </div>
                         )}
                     </div>
@@ -276,57 +314,67 @@ const AdminDashboard = () => {
     );
 };
 
-const StatCard = ({ title, value, total, icon, trend, trendUp, period, loading, iconBg }) => (
-    <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border relative overflow-hidden">
-        {loading ? (
-            <div className="animate-pulse space-y-4">
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div>
-                <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
-                <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/4"></div>
-            </div>
-        ) : (
-            <>
-                <div className="flex justify-between items-start mb-2">
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-300">{title}</p>
-                    <div className={`p-2 rounded-full ${iconBg}`}>
-                        {icon}
-                    </div>
+const StatCard = ({ title, value, total, icon, trend, trendUp, color, loading }) => {
+    const colors = {
+        emerald: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/10',
+        rose: 'text-rose-500 bg-rose-500/10 border-rose-500/10',
+        amber: 'text-amber-500 bg-amber-500/10 border-amber-500/10',
+        indigo: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/10'
+    };
+
+    return (
+        <div className="bg-white dark:bg-[#0d1117] p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-white/5 relative overflow-hidden group">
+            {loading ? (
+                <div className="animate-pulse space-y-3">
+                    <div className="h-2.5 bg-slate-100 dark:bg-white/5 rounded w-1/2"></div>
+                    <div className="h-6 bg-slate-100 dark:bg-white/5 rounded w-2/3"></div>
                 </div>
-
-                <h4 className="text-[28px] font-bold text-slate-800 dark:text-github-dark-text tracking-tight flex items-baseline gap-1">
-                    {value.split(' ')[0]}
-                    {value.split(' ')[1] && <span className="text-sm font-normal text-slate-800 dark:text-github-dark-text"> {value.split(' ').slice(1).join(' ')}</span>}
-                    {total && <span className="text-sm font-normal text-slate-400">{total}</span>}
-                </h4>
-
-                {trend !== undefined && trend !== "" && (
-                    <div className="flex items-center text-[13px] mt-2 font-bold">
-                        <span className={`${trendUp ? 'text-emerald-500' : 'text-rose-500'}`}>
-                            {trendUp && !trend.startsWith('+') && !trend.startsWith('-') ? '+' : ''}{trend}
-                        </span>
-                        <span className="text-slate-400 dark:text-github-dark-muted font-normal ml-1">vs yesterday</span>
+            ) : (
+                <>
+                    <div className="flex items-center gap-2 mb-2">
+                        <div className={`p-1.5 rounded-lg border ${colors[color]}`}>
+                            {icon}
+                        </div>
+                        <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest">{title}</p>
                     </div>
-                )}
-            </>
-        )}
-    </div>
-);
 
-const QuickLinkCard = ({ icon, title, onClick, iconBg }) => (
-    <div
-        onClick={onClick}
-        className="bg-white dark:bg-dark-card p-4 rounded-xl shadow-sm border border-slate-100 dark:border-github-dark-border flex items-center justify-between active:scale-[0.98] transition-all cursor-pointer"
-    >
-        <div className="flex items-center gap-4">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${iconBg}`}>
+                    <div className="flex items-baseline gap-1">
+                        <h4 className="text-2xl font-black text-slate-900 dark:text-white tracking-tighter">
+                            {value}
+                        </h4>
+                        {total && <span className="text-[10px] font-bold text-slate-400 tracking-tighter">{total}</span>}
+                    </div>
+
+                    {trend && (
+                        <div className={`text-[9px] mt-1.5 font-black uppercase tracking-tighter flex items-center gap-1 ${trendUp ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {trendUp ? '↑' : '↓'} {trend}
+                            <span className="text-slate-400 dark:text-slate-600">vs prev</span>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+};
+
+const QuickAction = ({ icon, label, onClick, color }) => {
+    const colors = {
+        indigo: 'text-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10 border-indigo-500/10',
+        rose: 'text-rose-500 bg-rose-500/5 hover:bg-rose-500/10 border-rose-500/10',
+        purple: 'text-purple-500 bg-purple-500/5 hover:bg-purple-500/10 border-purple-500/10'
+    };
+
+    return (
+        <button
+            onClick={onClick}
+            className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all active:scale-95 space-y-2 ${colors[color]}`}
+        >
+            <div className="p-2 rounded-xl bg-white dark:bg-[#0d1117] shadow-sm">
                 {icon}
             </div>
-            <h4 className="text-[15px] font-semibold text-slate-800 dark:text-github-dark-text tracking-wide">{title}</h4>
-        </div>
-        <div className="text-slate-400 dark:text-slate-300">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
-        </div>
-    </div>
-);
+            <span className="text-[10px] font-black uppercase tracking-tighter text-slate-700 dark:text-slate-300">{label}</span>
+        </button>
+    );
+};
 
 export default AdminDashboard;
