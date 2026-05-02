@@ -202,46 +202,52 @@ const GeoFencing = () => {
                         .filter(s => s.work_locations?.some(wl => wl.location_id === loc.location_id))
                         .map(s => s.id);
                     return (
-                        <div key={loc.location_id} className="bg-white dark:bg-dark-card rounded-xl p-4 shadow-sm border border-slate-100 dark:border-github-dark-border">
-                            <div className="flex justify-between items-start mb-3">
-                                <div className="flex-1 pr-4">
-                                    <h3
-                                        onClick={() => openAssignModal(loc)}
-                                        className="font-bold text-slate-800 dark:text-github-dark-text text-sm mb-1 flex items-center gap-2 cursor-pointer hover:text-indigo-600 transition-colors"
-                                    >
-                                        {loc.location_name}
-                                        <span className="bg-indigo-50 text-indigo-600 p-1 rounded-full text-[10px]">
+                        <div key={loc.location_id} className="bg-white dark:bg-dark-card rounded-2xl p-3.5 shadow-sm border border-slate-100 dark:border-github-dark-border group active:scale-[0.99] transition-all">
+                            <div className="flex items-start gap-3">
+                                <div className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${loc.is_active === 1 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-[15px] truncate pr-2">
+                                            {loc.location_name}
+                                        </h3>
+                                        <button 
+                                            onClick={() => openAssignModal(loc)}
+                                            className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 active:scale-95 transition-all"
+                                        >
                                             <Users size={12} />
-                                        </span>
-                                    </h3>
-                                    <p className="text-xs text-slate-400 line-clamp-2 mb-2">{loc.address}</p>
-                                </div>
-                                <div className={`w-2.5 h-2.5 rounded-full mt-1 shrink-0 ${loc.is_active === 1 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-                            </div>
+                                            Assign
+                                        </button>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 dark:text-github-dark-muted line-clamp-1 mb-3 flex items-center gap-1">
+                                        <MapPin size={10} className="shrink-0" />
+                                        {loc.address}
+                                    </p>
 
-                            {/* Action Bar */}
-                            <div className="flex justify-between items-center pt-3 border-t border-slate-50 dark:border-github-dark-border">
-                                <div className="flex items-center gap-1" onClick={() => openAssignModal(loc)}>
-                                    <div className="flex -space-x-2 overflow-hidden">
-                                        {assignedStaffIds.length > 0 ? (
-                                            <>
-                                                {assignedStaffIds.slice(0, 3).map((staffId, i) => {
-                                                    const s = staff.find(st => st.id === staffId);
-                                                    return (
-                                                        <div key={i} className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-slate-800 bg-slate-100 flex items-center justify-center text-[8px] font-bold text-slate-600">
-                                                            {s ? (s.image ? <img src={s.image} alt="" className="w-full h-full rounded-full object-cover" /> : s.name.charAt(0)) : '?'}
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex -space-x-1.5 overflow-hidden" onClick={() => openAssignModal(loc)}>
+                                            {assignedStaffIds.length > 0 ? (
+                                                <>
+                                                    {assignedStaffIds.slice(0, 4).map((staffId, i) => {
+                                                        const s = staff.find(st => st.id === staffId);
+                                                        return (
+                                                            <div key={i} className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-github-dark-subtle bg-slate-100 flex items-center justify-center text-[8px] font-semibold text-slate-600 overflow-hidden">
+                                                                {s ? (s.image ? <img src={s.image} alt="" className="w-full h-full object-cover" /> : s.name.charAt(0)) : '?'}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    {assignedStaffIds.length > 4 && (
+                                                        <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-github-dark-subtle bg-slate-50 dark:bg-github-dark-border flex items-center justify-center text-[8px] font-semibold text-slate-500">
+                                                            +{assignedStaffIds.length - 4}
                                                         </div>
-                                                    );
-                                                })}
-                                                {assignedStaffIds.length > 3 && (
-                                                    <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-slate-800 bg-slate-100 flex items-center justify-center text-[8px] font-bold text-slate-600">
-                                                        +{assignedStaffIds.length - 3}
-                                                    </div>
-                                                )}
-                                            </>
-                                        ) : (
-                                            <span className="text-[10px] text-slate-400 italic pl-1">No staff assigned</span>
-                                        )}
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-400 italic">No staff assigned</span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] text-slate-400 font-medium">{loc.radius}m radius</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -253,37 +259,47 @@ const GeoFencing = () => {
             {/* Floating Action Button */}
             <button 
                 onClick={() => setIsCreateModalOpen(true)}
-                className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 dark:bg-indigo-500 text-white rounded-2xl shadow-[0_4px_20px_rgba(99,102,241,0.4)] flex items-center justify-center hover:bg-indigo-700 hover:scale-105 active:scale-90 transition-all z-[40]"
+                style={{ bottom: 'calc(env(safe-area-inset-bottom) + 12px)', right: 16 }}
+                className="fixed w-14 h-14 bg-indigo-600 dark:bg-indigo-500 text-white rounded-2xl shadow-[0_4px_20px_rgba(99,102,241,0.4)] flex items-center justify-center hover:bg-indigo-700 hover:scale-105 active:scale-90 transition-all z-[40]"
             >
                 <Plus size={28} strokeWidth={2.5} />
             </button>
 
             {/* Assign Staff Modal */}
             {isModalOpen && createPortal(
-                <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/50 backdrop-blur-md animate-in fade-in duration-200">
-                    <div className="flex min-h-full items-end sm:items-center justify-center p-4">
-                        <div className="bg-white dark:bg-github-dark-subtle w-full max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-200 mx-auto relative z-10">
-                        {/* Header */}
-                        <div className="p-4 border-b border-slate-100 dark:border-github-dark-border flex justify-between items-center">
-                            <div>
-                                <h3 className="font-bold text-slate-900 dark:text-github-dark-text">Assign Staff</h3>
-                                <p className="text-xs text-slate-500">{selectedLocation?.location_name}</p>
+                <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setIsModalOpen(false)}>
+                    <div className="flex min-h-full items-end justify-center">
+                        <div 
+                            onClick={e => e.stopPropagation()}
+                            className="bg-white dark:bg-github-dark-subtle w-full rounded-t-[2.5rem] max-h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300 relative"
+                        >
+                            {/* Drag Handle */}
+                            <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-1" />
+                            
+                            {/* Header */}
+                            <div className="p-6 pb-2 flex justify-between items-center">
+                                <div>
+                                    <h3 className="font-semibold text-xl text-slate-900 dark:text-github-dark-text tracking-tight">Assign Staff</h3>
+                                    <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mt-1">
+                                        <MapPin size={12} className="text-indigo-500" />
+                                        {selectedLocation?.location_name}
+                                    </p>
+                                </div>
+                                <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90 transition-all">
+                                    <X size={20} />
+                                </button>
                             </div>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 bg-slate-100 dark:bg-github-dark-subtle rounded-full text-slate-500 hover:text-red-500">
-                                <X size={20} />
-                            </button>
-                        </div>
 
                         {/* Search */}
-                        <div className="p-4 pb-2">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <div className="px-6 py-4">
+                            <div className="relative group">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
                                 <input
                                     type="text"
-                                    placeholder="Search employees..."
+                                    placeholder="Search by name or role..."
                                     value={staffSearchTerm}
                                     onChange={(e) => setStaffSearchTerm(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-github-dark-subtle border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                                    className="w-full pl-11 pr-4 py-4 bg-slate-50 dark:bg-slate-800/50 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm font-normal focus:ring-0 outline-none transition-all"
                                 />
                             </div>
                         </div>
@@ -306,11 +322,11 @@ const GeoFencing = () => {
                                                 : 'bg-transparent'
                                                 }`}
                                         >
-                                            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center text-sm font-bold text-slate-600 shrink-0">
+                                            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center text-sm font-semibold text-slate-600 shrink-0">
                                                 {s.image ? <img src={s.image} alt="" className="w-full h-full object-cover" /> : s.name.charAt(0)}
                                             </div>
                                             <div className="flex-1">
-                                                <h4 className="text-sm font-bold text-slate-800 dark:text-github-dark-text">{s.name}</h4>
+                                                <h4 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text">{s.name}</h4>
                                                 <p className="text-[10px] text-slate-500">{s.role}</p>
                                             </div>
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isSelected
@@ -326,13 +342,13 @@ const GeoFencing = () => {
                         </div>
 
                         {/* Footer */}
-                        <div className="p-4 border-t border-slate-100 dark:border-github-dark-border bg-white dark:bg-github-dark-subtle rounded-b-2xl">
+                        <div className="p-6 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] border-t border-slate-50 dark:border-slate-800/50">
                             <button
                                 onClick={handleSaveAssignments}
-                                className="w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                className="w-full py-4 bg-indigo-600 dark:bg-indigo-500 text-white font-semibold rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                             >
-                                <CheckCircle2 size={18} />
-                                Confirm Assignment ({tempSelectedStaff.length})
+                                <CheckCircle2 size={20} />
+                                Confirm Changes ({tempSelectedStaff.length})
                             </button>
                         </div>
                         </div>
@@ -341,24 +357,30 @@ const GeoFencing = () => {
                 document.body
             )}
 
-            {/* Create Location Modal */}
+            {/* Create Location Bottom Sheet */}
             {isCreateModalOpen && createPortal(
-                <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/50 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setIsCreateModalOpen(false)}>
-                    <div className="flex min-h-full items-center justify-center p-4">
-                        <div className="bg-white dark:bg-github-dark-subtle w-full max-w-md rounded-2xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 mx-auto relative z-10" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b border-slate-100 dark:border-github-dark-border flex justify-between items-center bg-slate-50/50 dark:bg-github-dark-subtle/20 rounded-t-2xl">
-                            <div>
-                                <h3 className="font-bold text-slate-800 dark:text-github-dark-text">Create Location</h3>
-                                <p className="text-xs text-slate-500 dark:text-github-dark-muted">Add a new geo-fencing zone</p>
+                <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setIsCreateModalOpen(false)}>
+                    <div className="flex min-h-full items-end justify-center">
+                        <div 
+                            onClick={e => e.stopPropagation()}
+                            className="bg-white dark:bg-github-dark-subtle w-full rounded-t-[2.5rem] max-h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300 relative"
+                        >
+                            {/* Drag Handle */}
+                            <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-1" />
+                            
+                            <div className="p-6 pb-2 flex justify-between items-center">
+                                <div>
+                                    <h3 className="font-semibold text-xl text-slate-800 dark:text-github-dark-text tracking-tight">New Location</h3>
+                                    <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted mt-1">Add a new geo-fencing zone</p>
+                                </div>
+                                <button onClick={() => setIsCreateModalOpen(false)} className="w-10 h-10 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90 transition-all">
+                                    <X size={20} />
+                                </button>
                             </div>
-                            <button onClick={() => setIsCreateModalOpen(false)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors rounded-full">
-                                <X size={20} />
-                            </button>
-                        </div>
 
                         <form onSubmit={handleCreateGeofence} className="p-5 space-y-4">
                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Location Name *</label>
+                                <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Location Name *</label>
                                 <input
                                     type="text"
                                     required
@@ -370,16 +392,16 @@ const GeoFencing = () => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5 flex justify-between items-center">
+                                <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5 flex justify-between items-center">
                                     <span>Coordinates *</span>
-                                    <button 
-                                        type="button" 
-                                        onClick={useMyLocation}
-                                        className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-md flex items-center gap-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
-                                    >
-                                        <MapPin size={10} /> Use My Loc
-                                    </button>
                                 </label>
+                                <button 
+                                    type="button" 
+                                    onClick={useMyLocation}
+                                    className="w-full mb-3 py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold border-2 border-indigo-100 dark:border-indigo-900/30 active:scale-[0.98] transition-all"
+                                >
+                                    <MapPin size={16} /> Use My Current Location
+                                </button>
                                 <div className="grid grid-cols-2 gap-3">
                                     <input
                                         type="text"
@@ -401,7 +423,7 @@ const GeoFencing = () => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Address *</label>
+                                <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Address *</label>
                                 <textarea
                                     required
                                     value={newGeo.address}
@@ -413,9 +435,9 @@ const GeoFencing = () => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5 flex justify-between">
+                                <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5 flex justify-between">
                                     <span>Radius Slider</span>
-                                    <span className="text-indigo-600 dark:text-indigo-400">{newGeo.radius}m</span>
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{newGeo.radius}m</span>
                                 </label>
                                 <input
                                     type="range"
@@ -424,24 +446,31 @@ const GeoFencing = () => {
                                     step="10"
                                     value={newGeo.radius}
                                     onChange={(e) => setNewGeo({ ...newGeo, radius: e.target.value })}
-                                    className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                    className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600
+                                        [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 
+                                        [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 
+                                        [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white
+                                        [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full 
+                                        [&::-moz-range-thumb]:bg-indigo-600 [&::-moz-range-thumb]:border-none"
                                 />
                             </div>
 
-                            <button
-                                type="submit"
-                                disabled={isCreating}
-                                className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                            >
-                                {isCreating ? (
-                                    <>Creating...</>
-                                ) : (
-                                    <>
-                                        <Plus size={18} />
-                                        Create Location
-                                    </>
-                                )}
-                            </button>
+                            <div className="p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
+                                <button
+                                    type="submit"
+                                    disabled={isCreating}
+                                    className="w-full py-4 bg-indigo-600 dark:bg-indigo-500 hover:bg-indigo-700 text-white font-semibold rounded-2xl shadow-xl shadow-indigo-100 dark:shadow-none transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.98]"
+                                >
+                                    {isCreating ? (
+                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Plus size={20} strokeWidth={2.5} />
+                                            Save Location
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </form>
                         </div>
                     </div>

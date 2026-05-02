@@ -1,24 +1,32 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { 
+    Download, 
+    Calendar, 
     ChevronDown, 
-    History, 
+    History as HistoryIcon, 
+    Eye, 
     FileText, 
-    ExternalLink, 
-    Eye,
-    Calendar,
-    Download,
-    FileSpreadsheet,
-    FileType,
-    Table,
+    Clock, 
+    Table, 
+    Activity,
+    CheckCircle2,
+    ArrowRight,
+    Search,
+    X,
+    AlertCircle,
     DownloadCloud,
-    CheckCircle,
-    AlertCircle
+    FileSpreadsheet,
+    FileType
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { toast } from 'react-toastify';
+import MonthPicker from '../../components/MonthPicker';
+import MobileDatePicker from '../../components/MobileDatePicker';
 
-const Reports = () => {
+const MobileReports = () => {
+    // State (Synchronized with Web)
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
     const [reportType, setReportType] = useState('matrix_monthly');
@@ -37,12 +45,12 @@ const Reports = () => {
     ];
 
     const fileFormats = [
-        { id: 'xlsx', label: 'XLSX' },
-        { id: 'csv', label: 'CSV' },
-        { id: 'pdf', label: 'PDF' }
+        { id: 'xlsx', label: 'XLSX', icon: FileSpreadsheet, color: 'emerald' },
+        { id: 'csv', label: 'CSV', icon: FileType, color: 'blue' },
+        { id: 'pdf', label: 'PDF', icon: FileText, color: 'rose' }
     ];
 
-    // Export History with Persistence
+    // Export History
     const [exportHistory, setExportHistory] = useState(() => {
         const savedHistory = localStorage.getItem('attendance_export_history');
         return savedHistory ? JSON.parse(savedHistory) : [];
@@ -52,7 +60,7 @@ const Reports = () => {
         localStorage.setItem('attendance_export_history', JSON.stringify(exportHistory));
     }, [exportHistory]);
 
-    // Real Preview Data State
+    // Preview Data State
     const [previewData, setPreviewData] = useState({ columns: [], rows: [] });
     const [loadingPreview, setLoadingPreview] = useState(false);
 
@@ -110,212 +118,241 @@ const Reports = () => {
 
     return (
         <MobileDashboardLayout title="Reports & Exports">
-            <div className="space-y-3 px-2 pb-6 pt-2">
-                {/* Control Form area */}
-                <div className="bg-white dark:bg-dark-card text-slate-800 dark:text-github-dark-text rounded-xl p-4 shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col gap-4">
-                    
-                    {reportType !== 'employee_master' && (
-                        <div>
-                            <label className="block text-[10px] font-bold tracking-widest uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">
-                                {['matrix_monthly', 'lateness_report', 'attendance_detailed', 'attendance_summary'].includes(reportType) ? 'Select Month' : 'Select Date'}
-                            </label>
-                            <div className="relative bg-slate-50 dark:bg-github-dark-subtle/80 rounded-lg border border-slate-200 dark:border-github-dark-border flex items-center overflow-hidden">
-                                <div className="absolute left-3 z-10 text-indigo-500 dark:text-indigo-400">
-                                    <Calendar size={14} />
-                                </div>
+            <div className="min-h-screen bg-slate-50 dark:bg-black pb-24 transition-colors duration-300">
+                
+                {/* --- HEADER AREA --- */}
+                <div className="px-5 pt-6 space-y-6">
+                    {/* Standardized Tabs Card */}
+                    <motion.div 
+                        initial={{ opacity: 0, y: -10 }} 
+                        animate={{ opacity: 1, y: 0 }} 
+                        className="bg-slate-200/50 dark:bg-github-dark-border/50 p-1.5 flex rounded-2xl backdrop-blur-md border border-white/20 dark:border-white/5"
+                    >
+                        {['preview', 'history'].map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`flex-1 py-2.5 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                                    activeTab === tab 
+                                        ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 transform scale-[1.02]' 
+                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
+                                }`}
+                            >
+                                {tab === 'preview' ? <Eye size={14} /> : <HistoryIcon size={14} />}
+                                <span className="capitalize">{tab}</span>
+                            </button>
+                        ))}
+                    </motion.div>
+
+                    {/* Quick Info Bar - Now inside the card flow */}
+                    <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                                <FileText size={16} />
+                            </div>
+                            <div>
+                                <h3 className="text-[10px] font-black text-slate-800 dark:text-white uppercase leading-none">{reportType.replace('_', ' ')}</h3>
+                                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5">{activeTab === 'preview' ? 'Live Data View' : 'Past Exports'}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 dark:bg-white/5 rounded-full">
+                            <Clock size={10} className="text-slate-400" />
+                            <span className="text-[9px] font-black text-slate-500">{selectedMonth || selectedDate}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="px-5 py-6 space-y-6">
+                    {/* --- CONFIGURATION PANEL (Matched Size) --- */}
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-white/5 shadow-sm space-y-5">
+                        <div className="grid grid-cols-2 gap-4">
+                            {/* Date Picker */}
+                            <div className="space-y-0 flex-1">
                                 {['matrix_monthly', 'lateness_report', 'attendance_detailed', 'attendance_summary'].includes(reportType) ? (
-                                    <input
-                                        type="month"
+                                    <MonthPicker
+                                        label="Period"
                                         value={selectedMonth}
-                                        onChange={(e) => setSelectedMonth(e.target.value)}
-                                        className="w-full bg-transparent pl-9 pr-3 py-2 text-xs font-medium text-slate-800 dark:text-github-dark-text focus:outline-none appearance-none cursor-pointer"
+                                        onChange={setSelectedMonth}
                                     />
                                 ) : (
-                                    <input
-                                        type="date"
+                                    <MobileDatePicker
+                                        label="Period"
                                         value={selectedDate}
-                                        onChange={(e) => setSelectedDate(e.target.value)}
-                                        className="w-full bg-transparent pl-9 pr-3 py-2 text-xs font-medium text-slate-800 dark:text-github-dark-text focus:outline-none appearance-none cursor-pointer"
+                                        onChange={setSelectedDate}
                                     />
                                 )}
                             </div>
-                        </div>
-                    )}
 
-                    <div>
-                        <label className="block text-[10px] font-bold tracking-widest uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">
-                            Report Type
-                        </label>
-                        <div className="relative bg-slate-50 dark:bg-github-dark-subtle/80 rounded-lg border border-slate-200 dark:border-github-dark-border flex items-center overflow-hidden">
-                            <select
-                                value={reportType}
-                                onChange={(e) => setReportType(e.target.value)}
-                                className="w-full bg-transparent pl-3 pr-8 py-2 text-xs font-medium text-slate-800 dark:text-github-dark-text focus:outline-none appearance-none cursor-pointer"
-                            >
-                                {reportTypes.map(t => (
-                                    <option key={t.id} value={t.id} className="bg-white dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text">{t.label}</option>
-                                ))}
-                            </select>
-                            <div className="absolute right-3 pointer-events-none text-slate-400">
-                                <ChevronDown size={14} />
+                            {/* Report Type */}
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Type</label>
+                                <div className="relative group">
+                                    <select
+                                        value={reportType}
+                                        onChange={(e) => setReportType(e.target.value)}
+                                        className="w-full pl-3 pr-8 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold appearance-none focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer"
+                                    >
+                                        {reportTypes.map(t => (
+                                            <option key={t.id} value={t.id} className="bg-white dark:bg-github-dark-subtle text-slate-800 dark:text-white">{t.label}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div>
-                        <label className="block text-[10px] font-bold tracking-widest uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">
-                            File Format
-                        </label>
-                        <div className="flex bg-slate-50 dark:bg-github-dark-subtle/80 p-1 rounded-lg border border-slate-200 dark:border-github-dark-border gap-1">
-                            {fileFormats.map((format) => (
-                                <button
-                                    key={format.id}
-                                    onClick={() => setFileFormat(format.id)}
-                                    className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition-all ${
-                                        fileFormat === format.id 
-                                            ? 'bg-slate-200 dark:bg-slate-700/60 text-slate-800 dark:text-github-dark-text shadow-sm' 
-                                            : 'text-slate-500 hover:text-slate-700 dark:text-github-dark-muted dark:hover:text-slate-200'
-                                    }`}
-                                >
-                                    {format.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={handleGenerate}
-                        disabled={isGenerating}
-                        className="w-full py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 mt-2"
-                    >
-                        {isGenerating ? (
-                            <>
-                                <div className="w-3.5 h-3.5 border-2 border-white/60 border-t-white rounded-full animate-spin"></div>
-                                <span>Exporting...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Download size={14} />
-                                <span>Export Report</span>
-                            </>
-                        )}
-                    </button>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex bg-white dark:bg-dark-card p-1 rounded-lg border border-slate-200 dark:border-github-dark-border mt-4 shadow-sm">
-                    {[
-                        { id: 'preview', label: 'Preview', icon: Eye },
-                        { id: 'history', label: 'History', icon: History }
-                    ].map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`flex-1 py-1.5 flex items-center justify-center gap-1.5 rounded-md text-xs font-bold transition-all ${
-                                activeTab === tab.id 
-                                    ? 'bg-indigo-50 dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-100 dark:border-github-dark-border' 
-                                    : 'text-slate-500 hover:text-slate-700 dark:text-github-dark-muted dark:hover:text-slate-200 border border-transparent'
-                            }`}
-                        >
-                            <tab.icon size={12} /> {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Tab Content */}
-                <div className="mt-4">
-                    {activeTab === 'preview' && (
-                        <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden min-h-[250px] flex flex-col">
-                            {loadingPreview ? (
-                                <div className="flex flex-col items-center justify-center py-10 gap-3">
-                                    <div className="w-6 h-6 border-[3px] border-indigo-100 dark:border-indigo-900/30 border-t-indigo-500 dark:border-t-indigo-400 rounded-full animate-spin"></div>
-                                    <p className="text-slate-500 dark:text-github-dark-muted text-xs font-medium">Loading preview data...</p>
-                                </div>
-                            ) : previewData.rows && previewData.rows.length > 0 ? (
-                                <div className="overflow-x-auto w-full">
-                                    <table className="w-full text-left border-collapse min-w-max">
-                                        <thead className="bg-slate-50 dark:bg-github-dark-subtle/80 border-b border-slate-200 dark:border-github-dark-border">
-                                            <tr className="text-[9px] tracking-wider uppercase text-slate-500 dark:text-github-dark-muted font-bold">
-                                                {previewData.columns.map((col, idx) => (
-                                                    <th key={idx} className="px-3 py-2.5 whitespace-nowrap">{col}</th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                                            {previewData.rows.map((row, rIdx) => (
-                                                <tr key={rIdx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                                                    {row.map((cell, cIdx) => {
-                                                        const isStatusColumn = cIdx === row.length - 1 && typeof cell === 'string' && (cell.toLowerCase().includes('present') || cell.toLowerCase().includes('absent') || cell.toLowerCase().includes('late') || cell.toLowerCase().includes('leave'));
-                                                        return (
-                                                        <td key={cIdx} className="px-3 py-2.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                                            {isStatusColumn ? (
-                                                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                                                    cell.toLowerCase().includes('absent') ? 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' 
-                                                                    : cell.toLowerCase().includes('late') ? 'bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400'
-                                                                    : cell.toLowerCase().includes('present') ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
-                                                                    : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400'
-                                                                }`}>
-                                                                    {cell}
-                                                                </span>
-                                                            ) : (
-                                                                cell
-                                                            )}
-                                                        </td>
-                                                    )})}
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-10 gap-2">
-                                    <Table className="text-slate-200 dark:text-slate-700" size={32} />
-                                    <p className="text-slate-500 dark:text-github-dark-muted text-xs font-medium">No data available.</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {activeTab === 'history' && (
+                        {/* Format Selection */}
                         <div className="space-y-2">
-                            {exportHistory.length > 0 ? (
-                                exportHistory.map((report) => (
-                                    <div key={report.id} className="bg-white dark:bg-dark-card rounded-xl p-3 shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col gap-2">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                                                report.name.endsWith('.pdf') ? 'bg-red-50 text-red-500 dark:bg-red-500/10 dark:text-red-400' 
-                                                : report.name.endsWith('.csv') ? 'bg-green-50 text-green-500 dark:bg-green-500/10 dark:text-green-400'
-                                                : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
-                                            }`}>
-                                                {report.name.endsWith('.pdf') ? <FileText size={16} /> : report.name.endsWith('.csv') ? <FileType size={16} /> : <FileSpreadsheet size={16} />}
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">File Format</label>
+                            <div className="flex gap-2">
+                                {fileFormats.map((f) => (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setFileFormat(f.id)}
+                                        className={`flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border transition-all duration-300 ${
+                                            fileFormat === f.id 
+                                                ? 'bg-indigo-500 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' 
+                                                : 'bg-slate-50 dark:bg-black/20 border-slate-100 dark:border-white/5 text-slate-400 hover:text-slate-600'
+                                        }`}
+                                    >
+                                        <f.icon size={14} />
+                                        <span className="text-[10px] font-black uppercase">{f.id}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Action Button */}
+                        <button
+                            onClick={handleGenerate}
+                            disabled={isGenerating}
+                            className="w-full py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                        >
+                            {isGenerating ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <span>Generating...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Download size={16} strokeWidth={3} />
+                                    <span>Generate & Download</span>
+                                </>
+                            )}
+                        </button>
+                    </motion.div>
+
+                    {/* --- CONTENT SECTION --- */}
+                    <AnimatePresence mode="wait">
+                        {activeTab === 'preview' ? (
+                            <motion.div 
+                                key="preview"
+                                initial={{ opacity: 0, scale: 0.98 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.98 }}
+                                className="space-y-0 mt-6"
+                            >
+                                <div className="overflow-hidden flex flex-col min-h-[300px]">
+                                    <div className="px-5 py-4 border-b border-slate-100 dark:border-white/10 flex items-center justify-between bg-white dark:bg-github-dark-bg">
+                                        <span className="text-[10px] font-black text-slate-500 dark:text-github-dark-muted uppercase tracking-widest flex items-center gap-2">
+                                            <Table size={12} className="text-indigo-500" /> Data Preview
+                                        </span>
+                                        {previewData.rows?.length > 0 && (
+                                            <span className="text-[9px] font-black text-slate-400 px-2.5 py-1 bg-slate-100 dark:bg-white/5 rounded-full border border-slate-200 dark:border-white/10">
+                                                {previewData.rows.length} ROWS
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[500px] no-scrollbar">
+                                        {loadingPreview ? (
+                                            <div className="h-full flex flex-col items-center justify-center py-20 gap-3">
+                                                <div className="w-8 h-8 border-3 border-indigo-100 dark:border-indigo-900/30 border-t-indigo-500 rounded-full animate-spin" />
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crunching Data...</p>
                                             </div>
-                                            <div className="min-w-0 flex-1">
-                                                <h4 className="font-bold text-slate-800 dark:text-github-dark-text text-xs truncate pr-2">{report.type}</h4>
-                                                <p className="text-[10px] font-medium text-slate-500 dark:text-github-dark-muted truncate">{report.name}</p>
-                                                <div className="flex items-center gap-2 mt-0.5 text-[9px] font-medium">
-                                                    <span className="text-slate-500 dark:text-github-dark-muted">{report.date}</span>
-                                                    <span className="text-slate-300 dark:text-slate-600">•</span>
-                                                    <span className="text-slate-500 dark:text-github-dark-muted">{report.size}</span>
+                                        ) : previewData.rows?.length > 0 ? (
+                                            <table className="w-full text-left border-collapse min-w-max">
+                                                <thead className="sticky top-0 z-10 bg-white/95 dark:bg-github-dark-bg/95 backdrop-blur-md">
+                                                    <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-white/10">
+                                                        {previewData.columns.map((col, idx) => (
+                                                            <th key={idx} className="px-4 py-3 whitespace-nowrap">{col}</th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                                                    {previewData.rows.map((row, rIdx) => (
+                                                        <tr key={rIdx} className="hover:bg-indigo-50/50 dark:hover:bg-white/5 transition-colors">
+                                                            {row.map((cell, cIdx) => (
+                                                                <td key={cIdx} className="px-4 py-3 text-[11px] font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                                                    {cell}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center py-20 gap-3">
+                                                <Activity size={32} className="text-slate-200 dark:text-white/5" />
+                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">No results for this selection</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ) : (
+                            <motion.div 
+                                key="history"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-3 px-4"
+                            >
+                                {exportHistory.length > 0 ? (
+                                    exportHistory.map((report) => (
+                                        <div key={report.id} className="bg-white dark:bg-github-dark-subtle p-4 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm flex items-center gap-4 active:scale-[0.98] transition-all">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                                report.name.endsWith('.pdf') ? 'bg-rose-50 text-rose-500 dark:bg-rose-500/10' 
+                                                : report.name.endsWith('.csv') ? 'bg-blue-50 text-blue-500 dark:bg-blue-500/10'
+                                                : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10'
+                                            }`}>
+                                                {report.name.endsWith('.pdf') ? <FileText size={18} /> : report.name.endsWith('.csv') ? <FileType size={18} /> : <FileSpreadsheet size={18} />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex justify-between items-start">
+                                                    <h4 className="text-xs font-black text-slate-800 dark:text-white truncate pr-2 uppercase">{report.type}</h4>
+                                                    <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 shrink-0">READY</span>
+                                                </div>
+                                                <p className="text-[9px] font-bold text-slate-400 truncate mt-0.5">{report.name}</p>
+                                                <div className="flex items-center gap-3 mt-2 pt-2 border-t border-slate-50 dark:border-white/5">
+                                                    <div className="flex items-center gap-1">
+                                                        <Clock size={10} className="text-slate-300" />
+                                                        <span className="text-[9px] font-black text-slate-400">{report.date}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <DownloadCloud size={10} className="text-indigo-400" />
+                                                        <span className="text-[9px] font-black text-slate-400">{report.size}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
+                                    ))
+                                ) : (
+                                    <div className="bg-white dark:bg-github-dark-subtle rounded-2xl border border-dashed border-slate-200 dark:border-white/5 p-12 flex flex-col items-center justify-center gap-3 text-center">
+                                        <DownloadCloud size={32} className="text-slate-200 dark:text-white/10" />
+                                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Your export history is empty</p>
                                     </div>
-                                ))
-                            ) : (
-                                <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-6 flex flex-col items-center justify-center gap-2 text-center">
-                                    <DownloadCloud size={28} className="text-slate-300 dark:text-slate-700" />
-                                    <div>
-                                        <p className="text-slate-800 dark:text-github-dark-text font-bold text-xs">No Export History</p>
-                                        <p className="text-slate-500 dark:text-github-dark-muted text-[10px] mt-0.5">Generated reports will appear here</p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                )}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
         </MobileDashboardLayout>
     );
 };
 
-export default Reports;
+// Simple wrapper to fix naming conflict if any
+const MobileReportsWrapper = ({ children }) => children;
+
+export default MobileReports;
