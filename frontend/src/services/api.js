@@ -87,9 +87,14 @@ api.interceptors.response.use(
                 }
             } catch (refreshError) {
                 processQueue(refreshError, null);
-                setAccessToken(null);
-                if (window.location.pathname !== '/login') {
-                    window.location.href = '/login';
+                
+                // Only force logout if the backend explicitly rejected the refresh token (401/403)
+                // If it's a 500 error or network timeout, keep the session state intact
+                if (refreshError.response && (refreshError.response.status === 401 || refreshError.response.status === 403)) {
+                    setAccessToken(null);
+                    if (window.location.pathname !== '/login') {
+                        window.location.href = '/login';
+                    }
                 }
                 return Promise.reject(refreshError);
             } finally {
