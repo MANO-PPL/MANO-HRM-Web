@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { Clock, Radar, BarChart3, Calendar, MessageSquare, Sparkles, BrainCircuit, MapPin, Settings2, Cpu, ShieldAlert, ArrowRightLeft, TimerReset, Activity, Table2, ShieldCheck, Scale, HeartHandshake } from "lucide-react";
-import { siteData } from "../siteData";
+import { homeData, pageContent } from "../siteData";
 
 const featureIcons = [Clock, Radar, BarChart3, Calendar, MessageSquare, Sparkles, BrainCircuit, MapPin];
 
@@ -29,7 +29,7 @@ export default function MobileHomePage() {
             {/* Hero Section */}
             <section className="pt-24 pb-6 px-6 sm:px-10 text-center flex flex-col items-center justify-center min-h-[70vh]">
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
+                    initial={{ opacity: 0.1, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     className="mb-6 bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full"
                 >
@@ -57,7 +57,7 @@ export default function MobileHomePage() {
             {/* Core Features - Highly Compact */}
             <Section id="features" title="Core Solutions" subtitle="Everything you need to manage time and productivity sync effortlessly.">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {siteData.highlights.map((feature, idx) => {
+                    {homeData.highlights.map((feature, idx) => {
                         const Icon = featureIcons[idx] || Clock;
                         return (
                         <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-5 active:bg-white/10 transition-all">
@@ -88,7 +88,7 @@ export default function MobileHomePage() {
                     <div className="absolute left-[11px] top-2 bottom-2 w-[2px] bg-gradient-to-b from-blue-500/60 via-blue-400/30 to-transparent" />
 
                     <div className="flex flex-col gap-6">
-                        {siteData.homeData.workflowSteps.map((step, idx) => {
+                        {homeData.workflowSteps.map((step, idx) => {
                             const Icon = workflowIcons[step.icon] || Clock;
                             return (
                                 <div key={idx} className="relative">
@@ -117,7 +117,7 @@ export default function MobileHomePage() {
             {/* Impact Stats — Compact Grid */}
             <Section id="impact" title="Real Results" subtitle="Measurable outcomes from teams already using MANO.">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {siteData.homeData.impactStats.map((stat, idx) => {
+                    {homeData.impactStats.map((stat, idx) => {
                         const Icon = statIcons[stat.icon] || Activity;
                         return (
                             <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col items-center text-center">
@@ -136,7 +136,7 @@ export default function MobileHomePage() {
             {/* Pricing Summary */}
             <Section id="pricing" title="Plans Built For Every Stage" subtitle="Start lean, grow confidently, and scale with policy controls tailored for your workforce model.">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {siteData.pageContent['/pricing'].plans.map((plan, idx) => (
+                    {pageContent['/pricing'].plans.map((plan, idx) => (
                         <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-5">
                             <h3 className="text-white font-bold text-lg mb-1">{plan.name}</h3>
                             <p className="text-blue-400 text-[11px] font-semibold uppercase tracking-wider mb-2">{plan.audience}</p>

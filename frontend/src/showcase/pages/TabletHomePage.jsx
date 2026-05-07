@@ -5,7 +5,7 @@ import {
     Settings2, Cpu, ShieldAlert, ArrowRightLeft, TimerReset, Activity, Table2,
     ShieldCheck, Scale, HeartHandshake, CheckCircle2
 } from "lucide-react";
-import { siteData, homeData } from "../siteData";
+import { homeData, pageContent } from "../siteData";
 import useDeviceType from "../hooks/useDeviceType";
 
 const featureIcons = [Clock, Radar, BarChart3, Calendar, MessageSquare, Sparkles, BrainCircuit, MapPin];
@@ -39,7 +39,7 @@ export default function TabletHomePage() {
                     <div className="max-w-5xl mx-auto flex items-center gap-8">
                         <div className="flex-1">
                             <motion.div
-                                initial={{ opacity: 0, y: -10 }}
+                                initial={{ opacity: 0.1, y: -10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.5 }}
                                 className="mb-4 bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full inline-block"
@@ -48,7 +48,7 @@ export default function TabletHomePage() {
                             </motion.div>
 
                             <motion.h1
-                                initial={{ opacity: 0, y: 20 }}
+                                initial={{ opacity: 0.1, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.6, delay: 0.1 }}
                                 className="text-4xl font-extrabold text-white leading-tight mb-4"
@@ -60,7 +60,7 @@ export default function TabletHomePage() {
                             </motion.h1>
 
                             <motion.p
-                                initial={{ opacity: 0 }}
+                                initial={{ opacity: 0.1 }}
                                 animate={{ opacity: 1 }}
                                 transition={{ delay: 0.3 }}
                                 className="text-gray-400 text-sm leading-relaxed mb-6"
@@ -79,7 +79,7 @@ export default function TabletHomePage() {
                         </div>
 
                         <motion.div
-                            initial={{ opacity: 0, x: 20 }}
+                            initial={{ opacity: 0.1, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ duration: 0.7, delay: 0.2 }}
                             className="flex-1 max-w-[45%]"
@@ -93,7 +93,7 @@ export default function TabletHomePage() {
                     /* Landscape: centered text + image below */
                     <>
                         <motion.div
-                            initial={{ opacity: 0, y: -10 }}
+                            initial={{ opacity: 0.1, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.5 }}
                             className="mb-5 bg-blue-600/10 border border-blue-500/20 px-5 py-2 rounded-full"
@@ -102,7 +102,7 @@ export default function TabletHomePage() {
                         </motion.div>
 
                         <motion.h1
-                            initial={{ opacity: 0, y: 20 }}
+                            initial={{ opacity: 0.1, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.6, delay: 0.1 }}
                             className="text-5xl font-extrabold text-white leading-tight mb-5 max-w-3xl"
@@ -114,7 +114,7 @@ export default function TabletHomePage() {
                         </motion.h1>
 
                         <motion.p
-                            initial={{ opacity: 0 }}
+                            initial={{ opacity: 0.1 }}
                             animate={{ opacity: 1 }}
                             transition={{ delay: 0.3 }}
                             className="text-gray-400 text-base leading-relaxed mb-8 max-w-xl"
@@ -132,7 +132,7 @@ export default function TabletHomePage() {
                         </div>
 
                         <motion.div
-                            initial={{ opacity: 0, y: 30 }}
+                            initial={{ opacity: 0.1, y: 30 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.7, delay: 0.3 }}
                             className="max-w-3xl w-full"
@@ -150,7 +150,7 @@ export default function TabletHomePage() {
                 {isPortrait ? (
                     /* Portrait: alternating image + text cards for a richer look */
                     <div className="flex flex-col gap-6">
-                        {siteData.highlights.map((feature, idx) => {
+                        {homeData.highlights.map((feature, idx) => {
                             const Icon = featureIcons[idx] || Clock;
                             const isEven = idx % 2 === 0;
                             return (
@@ -183,7 +183,7 @@ export default function TabletHomePage() {
                 ) : (
                     /* Landscape: compact 3-col grid with icon cards */
                     <div className="grid gap-5 grid-cols-3">
-                        {siteData.highlights.map((feature, idx) => {
+                        {homeData.highlights.map((feature, idx) => {
                             const Icon = featureIcons[idx] || Clock;
                             return (
                                 <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/[0.07] hover:border-blue-500/20 transition-all group">
@@ -215,7 +215,7 @@ export default function TabletHomePage() {
                     <div className="relative pl-10 max-w-2xl mx-auto">
                         <div className="absolute left-[13px] top-2 bottom-2 w-[2px] bg-gradient-to-b from-blue-500/60 via-blue-400/30 to-transparent" />
                         <div className="flex flex-col gap-5">
-                            {siteData.homeData.workflowSteps.map((step, idx) => {
+                            {homeData.workflowSteps.map((step, idx) => {
                                 const Icon = workflowIcons[step.icon] || Clock;
                                 return (
                                     <div key={idx} className="relative">
@@ -240,7 +240,7 @@ export default function TabletHomePage() {
                 ) : (
                     /* Landscape: 3-col grid cards with step numbers */
                     <div className="grid grid-cols-3 gap-4">
-                        {siteData.homeData.workflowSteps.map((step, idx) => {
+                        {homeData.workflowSteps.map((step, idx) => {
                             const Icon = workflowIcons[step.icon] || Clock;
                             return (
                                 <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-5 relative overflow-hidden hover:border-blue-500/20 transition-all group">
@@ -265,7 +265,7 @@ export default function TabletHomePage() {
             {/* ─── Impact Stats ─── */}
             <Section id="impact" title="Real Results" subtitle="Measurable outcomes from teams already using MANO.">
                 <div className={`grid gap-4 ${isPortrait ? "grid-cols-3" : "grid-cols-6"}`}>
-                    {siteData.homeData.impactStats.map((stat, idx) => {
+                    {homeData.impactStats.map((stat, idx) => {
                         const Icon = statIcons[stat.icon] || Activity;
                         return (
                             <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center text-center hover:border-blue-500/20 transition-all">
@@ -284,7 +284,7 @@ export default function TabletHomePage() {
             {/* ─── Pricing ─── */}
             <Section id="pricing" title="Plans Built For Every Stage" subtitle="Start lean, grow confidently, and scale with policy controls tailored for your workforce model.">
                 <div className="grid grid-cols-3 gap-5 max-w-4xl mx-auto">
-                    {siteData.pageContent['/pricing'].plans.map((plan, idx) => (
+                    {pageContent['/pricing'].plans.map((plan, idx) => (
                         <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-blue-500/20 transition-all">
                             <h3 className="text-white font-bold text-lg mb-1">{plan.name}</h3>
                             <p className="text-blue-400 text-xs font-semibold uppercase tracking-wider mb-3">{plan.audience}</p>

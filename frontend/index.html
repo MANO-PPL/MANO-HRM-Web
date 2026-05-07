@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#030507" />
     <link rel="manifest" href="/manifest.json" />
+    
     <title>MANO Attendance | Smart Attendance & Workforce Management</title>
     <meta name="description" content="MANO Attendance is a smart attendance and workforce management platform with geofencing, leave workflows, attendance reports, and payroll-ready exports." />
     <meta name="keywords" content="MANO Attendance, attendance software, workforce management, geofencing attendance, leave management, payroll reports" />
@@ -90,7 +91,29 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Static SEO Fallback: Header -->
+      <div class="showcase-root site-bg">
+        <header style="position: fixed; top: 0; left: 0; right: 0; z-index: 100; padding: 0.5rem; background: rgba(0,0,0,0.8); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.1);">
+          <nav style="display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; padding: 0 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <img src="/mano-logo.svg" alt="Mano Logo" style="height: 1.75rem;" />
+              <span style="color: white; font-weight: bold; font-size: 1.1rem;">MANO</span>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+              <a href="/login" style="color: rgba(255,255,255,0.7); text-decoration: none; font-size: 0.8rem; font-weight: 600;">Login</a>
+            </div>
+          </nav>
+        </header>
+        <main style="padding-top: 5rem; text-align: center; color: white;">
+          <h1 style="font-size: 2.5rem; margin-bottom: 1rem;">Empowering your Workforce</h1>
+          <p style="color: #a0aec0; max-width: 600px; margin: 0 auto 2rem;">The AI-driven platform for smart attendance, productivity analytics, and workforce governance.</p>
+          <div style="display: flex; justify-content: center; gap: 1rem;">
+            <a href="/login" style="background: linear-gradient(to right, #2563eb, #3b82f6); color: white; padding: 0.75rem 2rem; border-radius: 0.75rem; text-decoration: none; font-weight: bold;">Get Started</a>
+          </div>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
