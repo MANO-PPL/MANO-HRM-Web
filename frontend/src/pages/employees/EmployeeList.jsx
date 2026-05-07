@@ -255,19 +255,29 @@ const EmployeeList = () => {
                         </div>
                         {/* Filter Tabs */}
                         <div className="flex bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-lg">
-                            {['Active', 'Inactive', 'Deleted'].map((status) => (
-                                <button
-                                    key={status}
-                                    onClick={() => setStatusFilter(status)}
-                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                                        statusFilter === status
-                                            ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                            : 'text-slate-600 dark:text-github-dark-muted hover:text-slate-900 dark:hover:text-slate-200'
-                                    }`}
-                                >
-                                    {status === 'Deleted' ? 'Trash' : status}
-                                </button>
-                            ))}
+                            {['Active', 'Inactive', 'Deleted'].map((status) => {
+                                const icons = {
+                                    Active: <UserCheck size={16} />,
+                                    Inactive: <UserX size={16} />,
+                                    Deleted: <Trash2 size={16} />
+                                };
+                                return (
+                                    <button
+                                        key={status}
+                                        onClick={() => setStatusFilter(status)}
+                                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center gap-2 ${
+                                            statusFilter === status
+                                                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                                : 'text-slate-600 dark:text-github-dark-muted hover:text-slate-900 dark:hover:text-slate-200'
+                                        }`}
+                                    >
+                                        <span className={statusFilter === status ? 'text-indigo-500' : 'text-slate-400'}>
+                                            {icons[status]}
+                                        </span>
+                                        {status === 'Deleted' ? 'Trash' : status}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 

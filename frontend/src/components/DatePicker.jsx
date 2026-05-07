@@ -98,16 +98,26 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
 
         // Days of the month
         for (let i = 1; i <= totalDays; i++) {
+            const date = new Date(currentYear, currentMonth, i);
+            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+            
+            let isDisabled = false;
+            if (minDate && dateStr < minDate) isDisabled = true;
+            if (maxDate && dateStr > maxDate) isDisabled = true;
+
             days.push(
                 <button
                     key={i}
-                    onClick={() => handleDayClick(i)}
+                    onClick={() => !isDisabled && handleDayClick(i)}
+                    disabled={isDisabled}
                     className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium transition-all
                         ${isSelected(i)
                             ? 'bg-indigo-600 text-white shadow-md'
                             : isToday(i)
                                 ? 'bg-indigo-50 text-indigo-600 border border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'
-                                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-github-dark-text'
+                                : isDisabled
+                                    ? 'text-slate-200 dark:text-slate-700 cursor-not-allowed'
+                                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-github-dark-text'
                         }
                     `}
                     type="button"

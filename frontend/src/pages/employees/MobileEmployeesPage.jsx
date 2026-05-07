@@ -377,19 +377,29 @@ const MobileEmployeesPage = () => {
 
                         {/* Status Tabs - Pill Style - Standardized */}
                         <div className="bg-slate-200/50 dark:bg-github-dark-border/50 p-1.5 flex rounded-2xl backdrop-blur-md border border-white/20 dark:border-white/5">
-                            {['Active', 'Inactive', 'Deleted'].map((status) => (
-                                <button
-                                    key={status}
-                                    onClick={() => handleTabChange(status)}
-                                    className={`flex-1 py-2.5 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center ${
-                                        statusFilter === status
-                                            ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 transform scale-[1.02]'
-                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
-                                    }`}
-                                >
-                                    {status === 'Deleted' ? 'Trash' : status}
-                                </button>
-                            ))}
+                            {['Active', 'Inactive', 'Deleted'].map((status) => {
+                                const icons = {
+                                    Active: <UserCheck size={14} />,
+                                    Inactive: <UserX size={14} />,
+                                    Deleted: <Trash2 size={14} />
+                                };
+                                return (
+                                    <button
+                                        key={status}
+                                        onClick={() => handleTabChange(status)}
+                                        className={`flex-1 py-2.5 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                                            statusFilter === status
+                                                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 transform scale-[1.02]'
+                                                : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
+                                        }`}
+                                    >
+                                        <div className={statusFilter === status ? 'text-indigo-500' : 'text-slate-400'}>
+                                            {icons[status]}
+                                        </div>
+                                        {status === 'Deleted' ? 'Trash' : status}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

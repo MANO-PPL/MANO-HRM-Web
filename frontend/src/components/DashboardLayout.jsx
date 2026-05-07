@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
-import NotificationDropdown from './NotificationDropdown';
+import NotificationSidebar from './NotificationSidebar';
 import Sidebar from './Sidebar';
 
 const DashboardLayout = ({ children, title = "Dashboard", noPadding = false }) => {
@@ -85,7 +85,7 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false }) =
                                     <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-github-dark-subtle animate-pulse"></span>
                                 )}
                             </button>
-                            <NotificationDropdown
+                            <NotificationSidebar
                                 isOpen={isNotificationOpen}
                                 onClose={() => setIsNotificationOpen(false)}
                             />
