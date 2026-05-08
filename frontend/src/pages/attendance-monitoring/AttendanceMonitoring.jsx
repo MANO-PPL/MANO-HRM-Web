@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, Tooltip as MapTooltip } from "react-leaflet";
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
@@ -55,6 +56,200 @@ import {
     AreaChart, Area
 } from 'recharts';
 
+
+// --- MAP HELPER COMPONENTS ---
+const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (!data || data.length === 0) return;
+        
+        // Find bounds for all markers
+        const points = [];
+        data.forEach(user => {
+            user.sessions.forEach(s => {
+                if (s.inLat && s.inLng) points.push([Number(s.inLat), Number(s.inLng)]);
+                if (s.outLat && s.outLng) points.push([Number(s.outLat), Number(s.outLng)]);
+            });
+        });
+
+        if (points.length > 0) {
+            map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
+        }
+    }, [searchTerm, departmentFilter, data.length > 0, map]);
+    return null;
+};
+
+const ClusterEvents = ({ setSelectedCluster }) => {
+    const map = useMap();
+    useEffect(() => {
+        const handleClusterClick = (e) => {
+            const markers = e.layer.getAllChildMarkers();
+            if (markers.length > 3) {
+                const data = markers.map(m => m.options.customSessionData).filter(Boolean);
+                setSelectedCluster({
+                    position: [e.latlng.lat, e.latlng.lng],
+                    data: data
+                });
+            } else {
+                e.layer.spiderfy();
+            }
+        };
+        map.on('clusterclick', handleClusterClick);
+        return () => {
+            map.off('clusterclick', handleClusterClick);
+        };
+    }, [map, setSelectedCluster]);
+    return null;
+};
+
+const ClusterDrillDownPopup = ({ data, onClose }) => {
+    const [selectedUser, setSelectedUser] = useState(null);
+
+    return (
+        <div className="bg-white dark:bg-[#0d1117] rounded-xl overflow-hidden w-[320px] flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="p-3 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 relative">
+                {selectedUser && (
+                    <button 
+                        onClick={() => setSelectedUser(null)}
+                        className="absolute left-2 top-2.5 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                )}
+                <div className={`flex items-center justify-between mb-0.5 ${selectedUser ? 'pl-6' : ''}`}>
+                    <h3 className="text-xs font-black text-slate-800 dark:text-github-dark-text uppercase tracking-widest">
+                        {selectedUser ? 'Session Details' : 'Location Group'}
+                    </h3>
+                    {!selectedUser && (
+                        <span className="bg-indigo-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">{data.length} Staff</span>
+                    )}
+                </div>
+                {!selectedUser && <p className="text-[9px] text-slate-500 font-medium">Multiple check-ins at this location</p>}
+            </div>
+
+            {/* Content Area */}
+            <div className="relative overflow-hidden bg-white dark:bg-[#0d1117]" style={{ height: '300px' }}>
+                <AnimatePresence initial={false} mode="wait">
+                    {!selectedUser ? (
+                        <motion.div 
+                            key="list"
+                            initial={{ x: -20, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: -20, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute inset-0 overflow-y-auto p-2 space-y-1.5 custom-scrollbar"
+                        >
+                            {data.map((m, idx) => (
+                                <div 
+                                    key={idx}
+                                    onClick={() => setSelectedUser(m)}
+                                    className="flex items-center gap-3 p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl cursor-pointer transition-all border border-transparent hover:border-indigo-100 dark:hover:border-indigo-500/20 group"
+                                >
+                                    <div className="w-9 h-9 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm overflow-hidden shrink-0 border border-indigo-100 dark:border-indigo-500/20">
+                                        {m.user.avatar.startsWith('http') ? <img src={m.user.avatar} className="w-full h-full object-cover" /> : m.user.avatar}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[11px] font-bold text-slate-800 dark:text-github-dark-text truncate leading-tight">{m.user.name}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${m.type === 'in' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : m.type === 'out' ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
+                                                {m.type === 'combined' ? 'Full Session' : m.type === 'in' ? 'Check In' : 'Check Out'}
+                                            </span>
+                                            <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-mono flex items-center gap-1">
+                                                <Clock size={8} /> {m.type === 'out' ? m.session.out : m.session.in}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-slate-300 group-hover:bg-indigo-500 group-hover:text-white transition-all">
+                                        <ChevronRight size={14} />
+                                    </div>
+                                </div>
+                            ))}
+                        </motion.div>
+                    ) : (
+                        <motion.div 
+                            key="detail"
+                            initial={{ x: 20, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: 20, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute inset-0 overflow-y-auto p-3 custom-scrollbar"
+                        >
+                            <div className="flex items-center gap-2.5 mb-4">
+                                <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-sm overflow-hidden shrink-0 shadow-md">
+                                    {selectedUser.user.avatar.startsWith('http') ? <img src={selectedUser.user.avatar} className="w-full h-full object-cover" /> : selectedUser.user.avatar}
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{selectedUser.user.name}</p>
+                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">{selectedUser.type === 'combined' ? 'Full Session Details' : selectedUser.user.role}</p>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-3">
+                                {selectedUser.type === 'combined' ? (
+                                    <>
+                                        <div className="space-y-2 bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Time In</span>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-md">{selectedUser.session.in}</span>
+                                            </div>
+                                            {selectedUser.session.inImage && (
+                                                <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle mt-2">
+                                                    <img src={selectedUser.session.inImage} className="w-full h-full object-cover" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2 bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
+                                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Time Out</span>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-900/30 px-2 py-0.5 rounded-md">{selectedUser.session.out}</span>
+                                            </div>
+                                            {selectedUser.session.outImage && (
+                                                <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle mt-2">
+                                                    <img src={selectedUser.session.outImage} className="w-full h-full object-cover" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center justify-between bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className={`w-1.5 h-1.5 rounded-full ${selectedUser.type === 'in' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{selectedUser.type === 'in' ? 'Check In' : 'Check Out'}</span>
+                                            </div>
+                                            <span className={`text-[10px] font-bold ${selectedUser.type === 'in' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'text-rose-600 bg-rose-50 dark:bg-rose-900/30'} px-2 py-0.5 rounded-md uppercase`}>{selectedUser.type === 'in' ? selectedUser.session.in : selectedUser.session.out}</span>
+                                        </div>
+                                        {(selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage) && (
+                                            <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-github-dark-border h-32 bg-slate-100 dark:bg-github-dark-subtle mt-2">
+                                                <img src={selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage} className="w-full h-full object-cover" />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                <div className="flex flex-col gap-1 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase">
+                                        <MapPin size={10} className="text-indigo-500" /> Location Details
+                                    </div>
+                                    <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal mt-0.5">
+                                        {selectedUser.type === 'out' ? selectedUser.session.outLocation : selectedUser.session.inLocation}
+                                    </p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+        </div>
+    );
+};
+
 const AttendanceMonitoring = () => {
     const navigate = useNavigate();
 
@@ -74,6 +269,7 @@ const AttendanceMonitoring = () => {
     };
     const [selectedRequest, setSelectedRequest] = useState(1); // For Detail View
     const [selectedLiveUser, setSelectedLiveUser] = useState(null); // For Live Attendance Detail Modal
+    const [selectedCluster, setSelectedCluster] = useState(null);
 
     const [loading, setLoading] = useState(true);
     const [attendanceData, setAttendanceData] = useState([]);
@@ -100,6 +296,7 @@ const AttendanceMonitoring = () => {
     });
 
     // Admin Override State
+    const [lockedMarkerId, setLockedMarkerId] = useState(null);
     const [overrideMode, setOverrideMode] = useState(false);
     const [overrideMethod, setOverrideMethod] = useState('fix');
     const [overrideIn, setOverrideIn] = useState('');
@@ -539,27 +736,6 @@ const AttendanceMonitoring = () => {
         return Object.entries(frequency).map(([name, value]) => ({ name, value }));
     };
 
-    // --- MAP HELPER COMPONENTS ---
-    const MapRecenter = ({ data }) => {
-        const map = useMap();
-        useEffect(() => {
-            if (!data || data.length === 0) return;
-            
-            // Find bounds for all markers
-            const points = [];
-            data.forEach(user => {
-                user.sessions.forEach(s => {
-                    if (s.inLat && s.inLng) points.push([Number(s.inLat), Number(s.inLng)]);
-                    if (s.outLat && s.outLng) points.push([Number(s.outLat), Number(s.outLng)]);
-                });
-            });
-
-            if (points.length > 0) {
-                map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
-            }
-        }, [data, map]);
-        return null;
-    };
 
 
     return (
@@ -573,7 +749,7 @@ const AttendanceMonitoring = () => {
                     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
                     transform-origin: bottom center;
                 }
-                .user-marker-in:hover .marker-inner, .user-marker-out:hover .marker-inner, .user-marker-combined:hover .marker-inner {
+                .user-marker-in:hover .marker-inner, .user-marker-out:hover .marker-inner, .user-marker-combined:hover .marker-inner, .marker-inner.locked {
                     transform: scale(1.2) translateY(-10px) !important;
                 }
                 .user-marker-in:hover, .user-marker-out:hover, .user-marker-combined:hover {
@@ -589,6 +765,61 @@ const AttendanceMonitoring = () => {
                 .premium-tooltip::before {
                     display: none !important;
                 }
+                
+                .cluster-marker-inner {
+                    width: 44px;
+                    height: 44px;
+                    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+                    border-radius: 14px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    font-weight: 800;
+                    font-size: 14px;
+                    box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.4);
+                    border: 2px solid white;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                    transform-origin: bottom center;
+                }
+                .cluster-marker:hover .cluster-marker-inner {
+                    transform: scale(1.1) translateY(-5px) !important;
+                    box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.5);
+                }
+
+                /* Premium Popup Styles */
+                .premium-popup .leaflet-popup-content-wrapper {
+                    background: white !important;
+                    color: #1e293b !important;
+                    border-radius: 12px !important;
+                    padding: 0 !important;
+                    border: 1px solid #e2e8f0 !important;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+                    overflow: hidden !important;
+                }
+                .premium-popup .leaflet-popup-content {
+                    margin: 0 !important;
+                    width: auto !important;
+                }
+                .premium-popup .leaflet-popup-tip {
+                    background: white !important;
+                    border: 1px solid #e2e8f0 !important;
+                }
+                .dark .premium-popup .leaflet-popup-content-wrapper {
+                    background: #0d1117 !important;
+                    color: #c9d1d9 !important;
+                    border: 1px solid #30363d !important;
+                }
+                .dark .premium-popup .leaflet-popup-tip {
+                    background: #0d1117 !important;
+                }
+                .dark .premium-popup .leaflet-popup-close-button {
+                    color: #8b949e !important;
+                }
+                .dark .premium-popup .leaflet-popup-close-button:hover {
+                    color: #f0f6fc !important;
+                    background: #30363d !important;
+                }
                 `}
             </style>
 
@@ -596,20 +827,20 @@ const AttendanceMonitoring = () => {
             <div className="space-y-6">
 
                 {/* Tabs */}
-                <div className="flex space-x-1 bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-lg w-fit">
+                <div className="flex space-x-1 bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-xl w-fit">
                     <button
                         onClick={() => setActiveTab('live')}
-                        className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'live' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'}`}
+                        className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${activeTab === 'live' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
-                        <LayoutGrid size={16} className={activeTab === 'live' ? 'text-indigo-500' : 'text-slate-400'} />
-                        Live Dashboard
+                        <LayoutGrid size={16} className={`${activeTab === 'live' ? 'text-indigo-500' : 'text-slate-400'} -mt-[1px]`} />
+                        <span className="leading-none">Live Dashboard</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('requests')}
-                        className={`relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'}`}
+                        className={`relative flex items-center gap-2 px-6 py-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
-                        <FileText size={16} className={activeTab === 'requests' ? 'text-indigo-500' : 'text-slate-400'} />
-                        Correction Requests
+                        <FileText size={16} className={`${activeTab === 'requests' ? 'text-indigo-500' : 'text-slate-400'} -mt-[1px]`} />
+                        <span className="leading-none">Correction Requests</span>
                         {requestCount > 0 && activeTab !== 'requests' && (
                             <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full animate-pulse border-2 border-slate-100 dark:border-github-dark-subtle">
                                 {requestCount}
@@ -717,14 +948,14 @@ const AttendanceMonitoring = () => {
                                             <button
                                                 key={view.id}
                                                 onClick={() => setActiveView(view.id)}
-                                                className={`flex items-center gap-2 px-5 py-2.5 rounded-md text-xs font-bold transition-all duration-200 ${
+                                                className={`flex items-center gap-2 px-5 py-3 rounded-md text-[11px] font-black uppercase tracking-tighter transition-all duration-200 ${
                                                     activeView === view.id 
                                                     ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
                                                     : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'
                                                 }`}
                                             >
-                                                <view.icon size={14} className={activeView === view.id ? 'text-indigo-500' : 'text-slate-400'} />
-                                                {view.label}
+                                                <view.icon size={14} className={`${activeView === view.id ? 'text-indigo-500' : 'text-slate-400'} -mt-[0.5px]`} />
+                                                <span className="leading-none">{view.label}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -1076,7 +1307,7 @@ const AttendanceMonitoring = () => {
                                                 </div>
                                             </div>
 
-                                            <MapRecenter data={filteredData} />
+                                            <MapRecenter data={filteredData} searchTerm={searchTerm} departmentFilter={departmentFilter} />
 
                                             {(() => {
                                                 const areCoordsSame = (lat1, lng1, lat2, lng2) => {
@@ -1085,269 +1316,237 @@ const AttendanceMonitoring = () => {
                                                            Math.abs(Number(lng1) - Number(lng2)) < 0.0001;
                                                 };
 
-                                                return filteredData.map(user => (
-                                                    user.sessions.map((session, sIdx) => {
-                                                        const isSameLoc = areCoordsSame(session.inLat, session.inLng, session.outLat, session.outLng);
+                                                const createClusterCustomIcon = function (cluster) {
+                                                    const count = cluster.getChildCount();
+                                                    return L.divIcon({
+                                                        className: 'cluster-marker',
+                                                        html: `<div class="cluster-marker-inner">
+                                                                <span>${count}</span>
+                                                                <div class="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                                                </div>
+                                                               </div>`,
+                                                        iconSize: [44, 44],
+                                                        iconAnchor: [22, 22]
+                                                    });
+                                                };
 
-                                                        if (isSameLoc) {
-                                                            return (
-                                                                <Marker 
-                                                                    key={`${user.id}-${sIdx}-combined`}
-                                                                    position={[Number(session.inLat), Number(session.inLng)]}
-                                                                    icon={L.divIcon({
-                                                                        className: 'user-marker-combined',
-                                                                        html: `<div class="marker-inner relative">
-                                                                                <div class="w-10 h-10 rounded-full border-2 border-transparent bg-white dark:bg-github-dark-subtle shadow-lg overflow-hidden flex items-center justify-center" style="border-image: linear-gradient(to bottom right, #10b981 50%, #f43f5e 50%) 1;">
-                                                                                    <div class="absolute inset-0 border-2 border-emerald-500 rounded-full" style="clip-path: polygon(0 0, 100% 0, 0 100%);"></div>
-                                                                                    <div class="absolute inset-0 border-2 border-rose-500 rounded-full" style="clip-path: polygon(100% 0, 100% 100%, 0 100%);"></div>
-                                                                                    ${user.avatar.startsWith('http') 
-                                                                                        ? `<img src="${user.avatar}" class="w-full h-full object-cover rounded-full" />` 
-                                                                                        : `<span class="text-xs font-black text-slate-600 dark:text-slate-300">${user.avatar}</span>`
-                                                                                    }
-                                                                                </div>
-                                                                                <div class="absolute -bottom-1 -right-1 w-5 h-5 bg-indigo-600 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
-                                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                                                                                </div>
-                                                                               </div>`,
-                                                                        iconSize: [40, 40],
-                                                                        iconAnchor: [20, 20]
-                                                                    })}
-                                                                >
-                                                                    <MapTooltip direction="auto" offset={[0, -10]} opacity={1} className="premium-tooltip" sticky={true}>
-                                                                        <div className="bg-white dark:bg-[#0d1117] rounded-xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden w-[320px] animate-in fade-in zoom-in-95 duration-200">
-                                                                            <div className="p-2.5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
-                                                                                <div className="flex items-center gap-2.5">
-                                                                                    <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0">
-                                                                                        {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
-                                                                                    </div>
-                                                                                    <div className="min-w-0">
-                                                                                        <p className="font-bold text-slate-800 dark:text-github-dark-text text-xs leading-tight">{user.name}</p>
-                                                                                        <p className="text-[9px] text-slate-500 font-medium">Full Session Details</p>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="p-2.5 space-y-3">
-                                                                                {/* In Section */}
-                                                                                <div className="space-y-2">
-                                                                                    <div className="flex items-center justify-between">
-                                                                                        <div className="flex items-center gap-1.5">
-                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time In</span>
-                                                                                        </div>
-                                                                                        <span className="text-[10px] font-bold text-emerald-600 px-2 py-0.5 rounded-full">{session.in}</span>
-                                                                                    </div>
-                                                                                    {session.inImage && (
-                                                                                        <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                            <img src={session.inImage} className="w-full h-full object-cover" />
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-
-                                                                                <div className="border-t border-slate-100 dark:border-github-dark-border pt-3 space-y-2">
-                                                                                    <div className="flex items-center justify-between">
-                                                                                        <div className="flex items-center gap-1.5">
-                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
-                                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time Out</span>
-                                                                                        </div>
-                                                                                        <span className="text-[10px] font-bold text-rose-600 px-2 py-0.5 rounded-full">{session.out}</span>
-                                                                                    </div>
-                                                                                    {session.outImage && (
-                                                                                        <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                            <img src={session.outImage} className="w-full h-full object-cover" />
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-
-                                                                                <div className="flex flex-col gap-0.5 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                                    <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 uppercase">
-                                                                                        <MapPin size={8} className="text-indigo-500" /> Location
-                                                                                    </div>
-                                                                                    <p className="text-[9px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal">{session.inLocation}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </MapTooltip>
-                                                                </Marker>
-                                                            );
-                                                        }
-
-                                                        return (
-                                                            <React.Fragment key={`${user.id}-${sIdx}`}>
-                                                        {session.inLat && session.inLng && (
-                                                            <Marker 
-                                                                position={[Number(session.inLat), Number(session.inLng)]}
-                                                                icon={L.divIcon({
-                                                                    className: 'user-marker-in',
-                                                                    html: `<div class="marker-inner relative">
-                                                                            <div class="w-10 h-10 rounded-full border-2 border-emerald-500 bg-white dark:bg-github-dark-subtle shadow-lg overflow-hidden flex items-center justify-center">
-                                                                                ${user.avatar.startsWith('http') 
-                                                                                    ? `<img src="${user.avatar}" class="w-full h-full object-cover" />` 
-                                                                                    : `<span class="text-xs font-black text-slate-600 dark:text-slate-300">${user.avatar}</span>`
-                                                                                }
-                                                                            </div>
-                                                                            <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
-                                                                                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                                                                            </div>
-                                                                           </div>`,
-                                                                    iconSize: [40, 40],
-                                                                    iconAnchor: [20, 20]
-                                                                })}
+                                                return (
+                                                    <>
+                                                        <ClusterEvents setSelectedCluster={setSelectedCluster} />
+                                                        
+                                                        {selectedCluster && (
+                                                            <Popup 
+                                                                position={selectedCluster.position} 
+                                                                onClose={() => setSelectedCluster(null)}
+                                                                className="premium-popup cluster-drill-down"
                                                             >
-                                                                <MapTooltip direction="auto" offset={[0, -10]} opacity={1} className="premium-tooltip" sticky={true}>
-                                                                    <div className="bg-white dark:bg-[#0d1117] rounded-xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden w-[280px] animate-in fade-in zoom-in-95 duration-200">
-                                                                        <div className="p-2.5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
-                                                                            <div className="flex items-center gap-2.5">
-                                                                                <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0">
-                                                                                    {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
-                                                                                </div>
-                                                                                <div className="min-w-0">
-                                                                                    <p className="font-bold text-slate-800 dark:text-github-dark-text text-xs leading-tight">{user.name}</p>
-                                                                                    <p className="text-[9px] text-slate-500 font-medium">{user.role}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="p-2.5 space-y-2.5">
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Login</span>
-                                                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full uppercase">{session.in}</span>
-                                                                            </div>
-                                                                            
-                                                                            {session.inImage && (
-                                                                                <div className="relative group/img rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                    <img src={session.inImage} className="w-full h-full object-cover" />
-                                                                                </div>
-                                                                            )}
-
-                                                                            <div className="flex flex-col gap-0.5 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                                <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 uppercase">
-                                                                                    <MapPin size={8} className="text-indigo-500" /> Location
-                                                                                </div>
-                                                                                <p className="text-[9px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal">{session.inLocation}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </MapTooltip>
-                                                                <Popup className="premium-popup">
-                                                                    <div className="p-1 min-w-[200px]">
-                                                                        <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-100">
-                                                                            <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-sm overflow-hidden">
-                                                                                {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="font-bold text-slate-800 text-sm leading-tight">{user.name}</p>
-                                                                                <p className="text-[10px] text-slate-500 font-medium">{user.role}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="space-y-2">
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</span>
-                                                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase">Time In</span>
-                                                                            </div>
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Time</span>
-                                                                                <span className="text-[10px] font-mono font-bold text-slate-700">{session.in}</span>
-                                                                            </div>
-                                                                            <div className="flex flex-col gap-1 mt-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
-                                                                                <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase">
-                                                                                    <MapPin size={10} /> Location
-                                                                                </div>
-                                                                                <p className="text-[10px] text-slate-600 leading-tight break-words whitespace-normal">{session.inLocation}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </Popup>
-                                                            </Marker>
+                                                                <ClusterDrillDownPopup data={selectedCluster.data} onClose={() => setSelectedCluster(null)} />
+                                                            </Popup>
                                                         )}
-                                                        {session.outLat && session.outLng && (
-                                                            <Marker 
-                                                                position={[Number(session.outLat), Number(session.outLng)]}
-                                                                icon={L.divIcon({
-                                                                    className: 'user-marker-out',
-                                                                    html: `<div class="marker-inner relative">
-                                                                            <div class="w-10 h-10 rounded-full border-2 border-rose-500 bg-white dark:bg-github-dark-subtle shadow-lg overflow-hidden flex items-center justify-center">
-                                                                                ${user.avatar.startsWith('http') 
-                                                                                    ? `<img src="${user.avatar}" class="w-full h-full object-cover" />` 
-                                                                                    : `<span class="text-xs font-black text-slate-600 dark:text-slate-300">${user.avatar}</span>`
-                                                                                }
-                                                                            </div>
-                                                                            <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-rose-500 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
-                                                                                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                                                                            </div>
-                                                                           </div>`,
-                                                                    iconSize: [40, 40],
-                                                                    iconAnchor: [20, 20]
-                                                                })}
-                                                            >
-                                                                <MapTooltip direction="auto" offset={[0, -10]} opacity={1} className="premium-tooltip" sticky={true}>
-                                                                    <div className="bg-white dark:bg-[#0d1117] rounded-xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden w-[280px] animate-in fade-in zoom-in-95 duration-200">
-                                                                        <div className="p-2.5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
-                                                                            <div className="flex items-center gap-2.5">
-                                                                                <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0">
-                                                                                    {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
-                                                                                </div>
-                                                                                <div className="min-w-0">
-                                                                                    <p className="font-bold text-slate-800 dark:text-github-dark-text text-xs leading-tight">{user.name}</p>
-                                                                                    <p className="text-[9px] text-slate-500 font-medium">{user.role}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="p-2.5 space-y-2.5">
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Logout</span>
-                                                                                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-2 py-0.5 rounded-full uppercase">{session.out}</span>
-                                                                            </div>
-                                                                            
-                                                                            {session.outImage && (
-                                                                                <div className="relative group/img rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                    <img src={session.outImage} className="w-full h-full object-cover" />
-                                                                                </div>
-                                                                            )}
 
-                                                                            <div className="flex flex-col gap-0.5 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                                <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 uppercase">
-                                                                                    <MapPin size={8} className="text-indigo-500" /> Location
+                                                        <MarkerClusterGroup
+                                                            chunkedLoading
+                                                            iconCreateFunction={createClusterCustomIcon}
+                                                            maxClusterRadius={40}
+                                                            spiderfyOnMaxZoom={true}
+                                                            showCoverageOnHover={false}
+                                                            zoomToBoundsOnClick={false}
+                                                        >
+                                                            {filteredData.flatMap(user => {
+                                                            return user.sessions.flatMap((session, sIdx) => {
+                                                                const isCombined = areCoordsSame(session.inLat, session.inLng, session.outLat, session.outLng);
+                                                                
+                                                                const markersToRender = [];
+                                                                
+                                                                if (isCombined) {
+                                                                    markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
+                                                                } else {
+                                                                    if (session.inLat && session.inLng) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
+                                                                    if (session.outLat && session.outLng) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
+                                                                }
+
+                                                                return markersToRender.map(m => {
+                                                                    const markerKey = `${user.id}-${sIdx}-${m.type}`;
+                                                                    const { type, lat, lng } = m;
+
+                                                                    return (
+                                                                        <Marker
+                                                                            key={markerKey}
+                                                                            position={[Number(lat), Number(lng)]}
+                                                                            customSessionData={{ user, session, type }}
+                                                                            eventHandlers={{
+                                                                                click: () => setLockedMarkerId(markerKey),
+                                                                                popupclose: () => { if (lockedMarkerId === markerKey) setLockedMarkerId(null); }
+                                                                            }}
+                                                                            icon={L.divIcon({
+                                                                                className: `user-marker-${type}`,
+                                                                                html: `<div class="marker-inner relative ${lockedMarkerId === markerKey ? 'locked' : ''}">
+                                                                                        <div class="w-10 h-10 rounded-full border-2 ${type === 'in' ? 'border-emerald-500' : type === 'out' ? 'border-rose-500' : 'border-transparent'} bg-white dark:bg-github-dark-subtle shadow-lg overflow-hidden flex items-center justify-center" ${type === 'combined' ? 'style="border-image: linear-gradient(to bottom right, #10b981 50%, #f43f5e 50%) 1;"' : ''}>
+                                                                                            ${type === 'combined' ? `
+                                                                                                <div class="absolute inset-0 border-2 border-emerald-500 rounded-full" style="clip-path: polygon(0 0, 100% 0, 0 100%);"></div>
+                                                                                                <div class="absolute inset-0 border-2 border-rose-500 rounded-full" style="clip-path: polygon(100% 0, 100% 100%, 0 100%);"></div>
+                                                                                            ` : ''}
+                                                                                            ${user.avatar.startsWith('http') 
+                                                                                                ? `<img src="${user.avatar}" class="w-full h-full object-cover" />` 
+                                                                                                : `<span class="text-xs font-black text-slate-600 dark:text-slate-300">${user.avatar}</span>`
+                                                                                            }
+                                                                                        </div>
+                                                                                        <div class="absolute -bottom-1 -right-1 w-4 h-4 ${type === 'in' ? 'bg-emerald-500' : type === 'out' ? 'bg-rose-500' : 'bg-indigo-600'} rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
+                                                                                            ${type === 'in' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>' : 
+                                                                                              type === 'out' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' :
+                                                                                              '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'}
+                                                                                        </div>
+                                                                                       </div>`,
+                                                                                iconSize: [40, 40],
+                                                                                iconAnchor: [20, 20]
+                                                                            })}
+                                                                        >
+                                                                            {lockedMarkerId !== markerKey && (
+                                                                                <MapTooltip direction="auto" offset={[0, -10]} opacity={1} className="premium-tooltip" sticky={true}>
+                                                                                    <div className={`bg-white dark:bg-[#0d1117] rounded-xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden ${type === 'combined' ? 'w-[320px]' : 'w-[280px]'} animate-in fade-in zoom-in-95 duration-200`}>
+                                                                                        <div className="p-2.5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
+                                                                                            <div className="flex items-center gap-2.5">
+                                                                                                <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0">
+                                                                                                    {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
+                                                                                                </div>
+                                                                                                <div className="min-w-0">
+                                                                                                    <p className="font-bold text-slate-800 dark:text-github-dark-text text-xs leading-tight">{user.name}</p>
+                                                                                                    <p className="text-[9px] text-slate-500 font-medium">{type === 'combined' ? 'Full Session Details' : user.role}</p>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="p-2.5 space-y-2.5">
+                                                                                            {type === 'combined' ? (
+                                                                                                <>
+                                                                                                    <div className="space-y-2">
+                                                                                                        <div className="flex items-center justify-between">
+                                                                                                            <div className="flex items-center gap-1.5">
+                                                                                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time In</span>
+                                                                                                            </div>
+                                                                                                            <span className="text-[10px] font-bold text-emerald-600 px-2 py-0.5 rounded-full">{session.in}</span>
+                                                                                                        </div>
+                                                                                                        {session.inImage && (
+                                                                                                            <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
+                                                                                                                <img src={session.inImage} className="w-full h-full object-cover" />
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                    <div className="border-t border-slate-100 dark:border-github-dark-border pt-3 space-y-2">
+                                                                                                        <div className="flex items-center justify-between">
+                                                                                                            <div className="flex items-center gap-1.5">
+                                                                                                                <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
+                                                                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time Out</span>
+                                                                                                            </div>
+                                                                                                            <span className="text-[10px] font-bold text-rose-600 px-2 py-0.5 rounded-full">{session.out}</span>
+                                                                                                        </div>
+                                                                                                        {session.outImage && (
+                                                                                                            <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
+                                                                                                                <img src={session.outImage} className="w-full h-full object-cover" />
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                </>
+                                                                                            ) : (
+                                                                                                <>
+                                                                                                    <div className="flex items-center justify-between">
+                                                                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{type === 'in' ? 'Login' : 'Logout'}</span>
+                                                                                                        <span className={`text-[10px] font-bold ${type === 'in' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-rose-600 bg-rose-50 dark:bg-rose-900/20'} px-2 py-0.5 rounded-full uppercase`}>{type === 'in' ? session.in : session.out}</span>
+                                                                                                    </div>
+                                                                                                    {(type === 'in' ? session.inImage : session.outImage) && (
+                                                                                                        <div className="relative group/img rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle">
+                                                                                                            <img src={type === 'in' ? session.inImage : session.outImage} className="w-full h-full object-cover" />
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                </>
+                                                                                            )}
+                                                                                            <div className="flex flex-col gap-0.5 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                                                                <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 uppercase">
+                                                                                                    <MapPin size={8} className="text-indigo-500" /> Location
+                                                                                                </div>
+                                                                                                <p className="text-[9px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal">{type === 'out' ? session.outLocation : session.inLocation}</p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </MapTooltip>
+                                                                            )}
+                                                                            <Popup className="premium-popup">
+                                                                                <div className={`bg-white dark:bg-[#0d1117] rounded-xl overflow-hidden ${type === 'combined' ? 'w-[320px]' : 'w-[280px]'}`}>
+                                                                                    <div className="p-2.5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
+                                                                                        <div className="flex items-center gap-2.5">
+                                                                                            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0">
+                                                                                                {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
+                                                                                            </div>
+                                                                                            <div className="min-w-0">
+                                                                                                <p className="font-bold text-slate-800 dark:text-github-dark-text text-xs leading-tight">{user.name}</p>
+                                                                                                <p className="text-[9px] text-slate-500 font-medium">{type === 'combined' ? 'Full Session Details' : user.role}</p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="p-2.5 space-y-2.5">
+                                                                                        {type === 'combined' ? (
+                                                                                            <>
+                                                                                                <div className="space-y-2">
+                                                                                                    <div className="flex items-center justify-between">
+                                                                                                        <div className="flex items-center gap-1.5">
+                                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time In</span>
+                                                                                                        </div>
+                                                                                                        <span className="text-[10px] font-bold text-emerald-600 px-2 py-0.5 rounded-full">{session.in}</span>
+                                                                                                    </div>
+                                                                                                    {session.inImage && (
+                                                                                                        <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
+                                                                                                            <img src={session.inImage} className="w-full h-full object-cover" />
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                                <div className="border-t border-slate-100 dark:border-github-dark-border pt-3 space-y-2">
+                                                                                                    <div className="flex items-center justify-between">
+                                                                                                        <div className="flex items-center gap-1.5">
+                                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
+                                                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time Out</span>
+                                                                                                        </div>
+                                                                                                        <span className="text-[10px] font-bold text-rose-600 px-2 py-0.5 rounded-full">{session.out}</span>
+                                                                                                    </div>
+                                                                                                    {session.outImage && (
+                                                                                                        <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
+                                                                                                            <img src={session.outImage} className="w-full h-full object-cover" />
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                <div className="flex items-center justify-between">
+                                                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{type === 'in' ? 'Login' : 'Logout'}</span>
+                                                                                                    <span className={`text-[10px] font-bold ${type === 'in' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-rose-600 bg-rose-50 dark:bg-rose-900/20'} px-2 py-0.5 rounded-full uppercase`}>{type === 'in' ? session.in : session.out}</span>
+                                                                                                </div>
+                                                                                                {(type === 'in' ? session.inImage : session.outImage) && (
+                                                                                                    <div className="relative group/img rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle">
+                                                                                                        <img src={type === 'in' ? session.inImage : session.outImage} className="w-full h-full object-cover" />
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </>
+                                                                                        )}
+                                                                                        <div className="flex flex-col gap-0.5 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                                                            <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 uppercase">
+                                                                                                <MapPin size={8} className="text-indigo-500" /> Location
+                                                                                            </div>
+                                                                                            <p className="text-[9px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal">{type === 'out' ? session.outLocation : session.inLocation}</p>
+                                                                                        </div>
+                                                                                    </div>
                                                                                 </div>
-                                                                                <p className="text-[9px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal">{session.outLocation}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </MapTooltip>
-                                                                <Popup className="premium-popup">
-                                                                    <div className="p-1 min-w-[200px]">
-                                                                        <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-100">
-                                                                            <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-sm overflow-hidden">
-                                                                                {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="font-bold text-slate-800 text-sm leading-tight">{user.name}</p>
-                                                                                <p className="text-[10px] text-slate-500 font-medium">{user.role}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="space-y-2">
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</span>
-                                                                                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full uppercase">Time Out</span>
-                                                                            </div>
-                                                                            <div className="flex items-center justify-between">
-                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Time</span>
-                                                                                <span className="text-[10px] font-mono font-bold text-slate-700">{session.out}</span>
-                                                                            </div>
-                                                                            <div className="flex flex-col gap-1 mt-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
-                                                                                <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase">
-                                                                                    <MapPin size={10} /> Location
-                                                                                </div>
-                                                                                <p className="text-[10px] text-slate-600 leading-tight break-words whitespace-normal">{session.outLocation}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </Popup>
-                                                            </Marker>
-                                                        )}
-                                                    </React.Fragment>
-                                                        );
-                                                    })
-                                                ));
-                                            })()}
+                                                                            </Popup>
+                                                                        </Marker>
+                                                                    );
+                                                                });
+                                                            });
+                                                        })}
+                                                    </MarkerClusterGroup>
+                                                </>
+                                            );
+                                        })()}
                                         </MapContainer>
                                     </div>
                                 ) : activeView === 'graph' ? (

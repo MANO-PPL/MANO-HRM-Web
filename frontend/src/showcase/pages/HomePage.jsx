@@ -10,39 +10,15 @@ const heroIcons = [ShieldCheck, MapPin, Clock3, Workflow];
 const statIcons = [Activity, Users, TimerReset];
 
 export default function HomePage() {
-    const [isRevealed, setIsRevealed] = useState(false);
     const { hash } = useLocation();
 
-    // Auto-reveal if navigating via hash (e.g., from footer links)
-    useEffect(() => {
-        if (hash) setIsRevealed(true);
-    }, [hash]);
-
-    useEffect(() => {
-        // Fallback: Reveal content after a delay in case scroll doesn't happen (good for SEO/bots)
-        const timer = setTimeout(() => setIsRevealed(true), 3000);
-
-        const handleScroll = () => {
-            if (window.scrollY > 50) {
-                setIsRevealed(true);
-            }
-        };
-
-        window.addEventListener('scroll', handleScroll);
-        return () => {
-            window.removeEventListener('scroll', handleScroll);
-            clearTimeout(timer);
-        };
-    }, []);
-
-    const revealContent = () => setIsRevealed(true);
-
     return (
-        <div className={`homepage-wrapper ${isRevealed ? 'is-revealed' : ''}`}>
-            <section className="hero-wrap container hero-fold-exclusive">
+        <div className="homepage-wrapper is-revealed">
+            {/* Hero Section - Now visible immediately without the 'fold' gimmick */}
+            <section className="hero-wrap container" style={{ paddingBottom: '4rem' }}>
                 <div className="hero-grid">
                     <motion.div
-                        initial={{ opacity: 0.1, x: -20 }}
+                        initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.6 }}
                     >
@@ -51,21 +27,8 @@ export default function HomePage() {
                         <p className="lead-copy">{homeData.subtext}</p>
 
                         <div className="hero-actions">
-                            <Link to="/get-started" className="btn-primary" onClick={revealContent}>{homeData.ctaPrimary}</Link>
-                            <a 
-                                href="#contact" 
-                                className="btn-ghost" 
-                                onClick={(e) => {
-                                    revealContent();
-                                    // Smooth scroll fallback if the hash scroll fails due to late rendering
-                                    setTimeout(() => {
-                                        const el = document.getElementById('contact');
-                                        if (el) el.scrollIntoView({ behavior: 'smooth' });
-                                    }, 100);
-                                }}
-                            >
-                                {homeData.ctaSecondary}
-                            </a>
+                            <Link to="/login" className="btn-primary">{homeData.ctaPrimary}</Link>
+                            <a href="#contact" className="btn-ghost">{homeData.ctaSecondary}</a>
                         </div>
 
                         <ul className="check-list">
@@ -79,29 +42,16 @@ export default function HomePage() {
 
                     <motion.div
                         className="hero-visual glass-card"
-                        initial={{ opacity: 0.1, scale: 0.95 }}
+                        initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.6, delay: 0.2 }}
                     >
                         <img src={homeData.heroImage} alt="Platform Dashboard" />
                     </motion.div>
                 </div>
-
-                {!isRevealed && (
-                    <motion.div
-                        className="scroll-indicator"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 1, duration: 1 }}
-                        onClick={revealContent}
-                    >
-                        <span>Scroll to discover</span>
-                        <ChevronDown className="bounce-icon" />
-                    </motion.div>
-                )}
             </section>
 
-            <div className={`content-reveal-container ${isRevealed ? 'revealed' : 'pre-reveal'}`}>
+            <div className="content-reveal-container revealed">
                 <MotionSection id="features" className="container section-gap">
                     <div className="section-title-wrap">
                         <h2>Product Highlights</h2>

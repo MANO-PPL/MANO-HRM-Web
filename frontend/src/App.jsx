@@ -231,7 +231,7 @@ const ScaleManager = () => {
   useEffect(() => {
     // Showcase is only shown on "/" when no user is logged in.
     const isShowcase = !user && location.pathname === "/";
-    
+
     if (isShowcase) {
       document.documentElement.classList.remove("platform-zoomed");
     } else {
@@ -287,7 +287,7 @@ function App() {
               <Route path="/profile" element={<ResponsiveRoute DesktopComponent={Profile} MobileComponent={MobileProfile} />} />
               <Route path="/daily-activity" element={<ResponsiveRoute DesktopComponent={DailyActivity} MobileComponent={DailyActivityMobile} />} />
               <Route path="/apply-leave" element={<ResponsiveRoute DesktopComponent={LeaveApplication} MobileComponent={MobileLeaveApplication} />} />
-              
+
               {/* Mobile-Only Pages fallback */}
               <Route path="/notifications" element={<MobileNotifications />} />
               <Route path="/feedback" element={<MobileFeedback />} />

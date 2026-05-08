@@ -180,3 +180,7 @@ html.platform-zoomed .space-y-8 > * + * {
 .dark .recharts-tooltip-cursor {
     fill: #161b22 !important;
 }
+
+.cluster-drill-down .leaflet-popup-content-wrapper { padding: 0 !important; background: transparent !important; box-shadow: none !important; }
+.cluster-drill-down .leaflet-popup-content { margin: 0 !important; width: auto !important; }
+.cluster-drill-down .leaflet-popup-tip { display: none !important; }

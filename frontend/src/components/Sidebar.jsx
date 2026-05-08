@@ -101,9 +101,9 @@ const Sidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
             `}>
                 <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100 dark:border-github-dark-border">
-                    <div className="flex items-center gap-3 font-bold text-xl text-indigo-600 dark:text-github-dark-accent">
-                        <img src="/mano-logo.svg" alt="MANO" className="w-8 h-8" />
-                        <span>MANO</span>
+                    <div className="flex items-center gap-3 font-black text-xl text-indigo-600 dark:text-github-dark-accent tracking-tighter">
+                        <img src="/mano-logo.svg" alt="MANO" className="w-8 h-8 object-contain" />
+                        <span className="leading-none">MANO</span>
                     </div>
                     <button
                         className="md:hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"

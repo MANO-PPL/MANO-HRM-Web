@@ -19,6 +19,7 @@ import {
     Tooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, Tooltip as MapTooltip } from "react-leaflet";
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
@@ -360,14 +361,14 @@ const MobileAttendanceMonitoring = () => {
                                 <button
                                     key={tab}
                                     onClick={() => handleTabChange(tab)}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 relative ${
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-300 relative ${
                                         isActive 
-                                            ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 transform scale-[1.02] shadow-sm' 
-                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
-                                    }`}
-                                >
-                                    <Icon size={14} className={isActive ? 'text-indigo-500' : 'text-slate-400'} />
-                                    <span className="truncate">{label}</span>
+                                             ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 transform scale-[1.02] shadow-sm' 
+                                             : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
+                                     }`}
+                                 >
+                                     <Icon size={14} className={`${isActive ? 'text-indigo-500' : 'text-slate-400'} -mt-[1px]`} />
+                                     <span className="truncate leading-none">{label}</span>
                                     {tab === 'requests' && requestCount > 0 && !isActive && (
                                         <span className="ml-1 bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
                                             {requestCount}
@@ -388,16 +389,16 @@ const MobileAttendanceMonitoring = () => {
                                         <button
                                             key={sub.id}
                                             onClick={() => setActiveSubTab(sub.id)}
-                                            className={`flex items-center gap-2 py-3 relative transition-all duration-300 whitespace-nowrap ${
+                                            className={`flex items-center gap-2 py-4 relative transition-all duration-300 whitespace-nowrap ${
                                                 isActive 
-                                                    ? 'text-indigo-600 dark:text-indigo-400' 
-                                                    : 'text-slate-400 dark:text-github-dark-muted'
-                                            }`}
-                                        >
-                                            <sub.icon size={16} className={isActive ? 'text-indigo-500' : 'text-slate-400'} />
-                                            <span className={`text-[11px] font-bold ${isActive ? 'opacity-100' : 'opacity-70'}`}>
-                                                {sub.label}
-                                            </span>
+                                                     ? 'text-indigo-600 dark:text-indigo-400' 
+                                                     : 'text-slate-400 dark:text-github-dark-muted'
+                                             }`}
+                                         >
+                                             <sub.icon size={16} className={`${isActive ? 'text-indigo-500' : 'text-slate-400'} -mt-[0.5px]`} />
+                                             <span className={`text-[11px] font-black uppercase tracking-tighter leading-none ${isActive ? 'opacity-100' : 'opacity-70'}`}>
+                                                 {sub.label}
+                                             </span>
                                             {isActive && (
                                                 <motion.div 
                                                     layoutId="subTabUnderline"
@@ -717,6 +718,8 @@ const MobileAttendanceMonitoring = () => {
                                      {activeSubTab === 'map' && (
                                          <MapView 
                                              data={filteredEmployees}
+                                             searchTerm={searchTerm}
+                                             selectedDept={selectedDept}
                                              activeTheme={activeTheme}
                                              MAP_THEMES={MAP_THEMES}
                                              isThemeMenuOpen={isThemeMenuOpen}
@@ -1188,8 +1191,167 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
     );
 };
 
-// --- MAP HELPER COMPONENTS ---
-const MapRecenter = ({ data }) => {
+const ClusterDrillDownPopup = ({ data, onClose }) => {
+    const [selectedUser, setSelectedUser] = useState(null);
+
+    return (
+        <div className="bg-white dark:bg-[#0d1117] rounded-xl overflow-hidden w-[280px] flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="p-3 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 relative">
+                {selectedUser && (
+                    <button 
+                        onClick={() => setSelectedUser(null)}
+                        className="absolute left-2 top-2.5 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                )}
+                <div className={`flex items-center justify-between mb-0.5 ${selectedUser ? 'pl-6' : ''}`}>
+                    <h3 className="text-[10px] font-black text-slate-800 dark:text-github-dark-text uppercase tracking-widest">
+                        {selectedUser ? 'Session Details' : 'Location Group'}
+                    </h3>
+                    {!selectedUser && (
+                        <span className="bg-indigo-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full">{data.length} Staff</span>
+                    )}
+                </div>
+                {!selectedUser && <p className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Multiple check-ins at this location</p>}
+            </div>
+
+            {/* Content Area */}
+            <div className="relative overflow-hidden bg-white dark:bg-[#0d1117]" style={{ height: '280px' }}>
+                <AnimatePresence initial={false} mode="wait">
+                    {!selectedUser ? (
+                        <motion.div 
+                            key="list"
+                            initial={{ x: -20, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: -20, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute inset-0 overflow-y-auto p-2 space-y-1.5 no-scrollbar"
+                        >
+                            {data.map((m, idx) => (
+                                <div 
+                                    key={idx}
+                                    onClick={() => setSelectedUser(m)}
+                                    className="flex items-center gap-2.5 p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl cursor-pointer transition-all border border-transparent hover:border-indigo-100 dark:hover:border-indigo-500/20 group"
+                                >
+                                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-xs overflow-hidden shrink-0 border border-indigo-100 dark:border-indigo-500/20">
+                                        {m.user.avatar.length > 1 ? <img src={m.user.avatar} className="w-full h-full object-cover" /> : m.user.avatar}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] font-black text-slate-800 dark:text-github-dark-text truncate leading-tight">{m.user.name}</p>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${m.type === 'in' ? 'bg-emerald-100 text-emerald-600' : m.type === 'out' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                                                {m.type === 'combined' ? 'Full' : m.type === 'in' ? 'In' : 'Out'}
+                                            </span>
+                                            <span className="text-[8px] text-slate-400 dark:text-github-dark-muted font-mono font-bold">
+                                                {m.type === 'out' ? m.session.out : m.session.in}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <ChevronRight size={12} className="text-slate-300" />
+                                </div>
+                            ))}
+                        </motion.div>
+                    ) : (
+                        <motion.div 
+                            key="detail"
+                            initial={{ x: 20, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: 20, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute inset-0 overflow-y-auto p-3 no-scrollbar"
+                        >
+                            <div className="flex items-center gap-2.5 mb-4">
+                                <div className="w-9 h-9 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-black text-xs overflow-hidden shrink-0 shadow-md">
+                                    {selectedUser.user.avatar.length > 1 ? <img src={selectedUser.user.avatar} className="w-full h-full object-cover" /> : selectedUser.user.avatar}
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-black text-slate-800 dark:text-github-dark-text text-[11px] leading-tight">{selectedUser.user.name}</p>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5">{selectedUser.type === 'combined' ? 'Full Session' : selectedUser.user.role}</p>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-3">
+                                {selectedUser.type === 'combined' ? (
+                                    <>
+                                        <div className="space-y-1.5 bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Login</span>
+                                                <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">{selectedUser.session.in}</span>
+                                            </div>
+                                            {selectedUser.session.inImage && (
+                                                <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle mt-1">
+                                                    <img src={selectedUser.session.inImage} className="w-full h-full object-cover" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1.5 bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Logout</span>
+                                                <span className="text-[9px] font-black text-rose-600 bg-rose-50 dark:bg-rose-900/30 px-1.5 py-0.5 rounded">{selectedUser.session.out}</span>
+                                            </div>
+                                            {selectedUser.session.outImage && (
+                                                <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle mt-1">
+                                                    <img src={selectedUser.session.outImage} className="w-full h-full object-cover" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center justify-between bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{selectedUser.type === 'in' ? 'Check In' : 'Check Out'}</span>
+                                            <span className={`text-[9px] font-black ${selectedUser.type === 'in' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'text-rose-600 bg-rose-50 dark:bg-rose-900/30'} px-1.5 py-0.5 rounded uppercase`}>{selectedUser.type === 'in' ? selectedUser.session.in : selectedUser.session.out}</span>
+                                        </div>
+                                        {(selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage) && (
+                                            <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-github-dark-border h-28 bg-slate-100 dark:bg-github-dark-subtle mt-2">
+                                                <img src={selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage} className="w-full h-full object-cover" />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                <div className="flex flex-col gap-1 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                    <div className="flex items-center gap-1.5 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                                        <MapPin size={10} className="text-indigo-500" /> Location Details
+                                    </div>
+                                    <p className="text-[9px] text-slate-600 dark:text-slate-300 leading-tight break-words mt-0.5 font-medium">
+                                        {selectedUser.type === 'out' ? selectedUser.session.outLocation : selectedUser.session.inLocation}
+                                    </p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+        </div>
+    );
+};
+
+const ClusterEvents = ({ setSelectedCluster }) => {
+    const map = useMap();
+    useEffect(() => {
+        const handleClusterClick = (e) => {
+            const markers = e.layer.getAllChildMarkers();
+            if (markers.length > 3) {
+                const data = markers.map(m => m.options.customSessionData).filter(Boolean);
+                setSelectedCluster({
+                    position: [e.latlng.lat, e.latlng.lng],
+                    data: data
+                });
+            } else {
+                e.layer.spiderfy();
+            }
+        };
+        map.on('clusterclick', handleClusterClick);
+        return () => {
+            map.off('clusterclick', handleClusterClick);
+        };
+    }, [map]);
+    return null;
+};
+
+const MapRecenter = ({ data, searchTerm, selectedDept }) => {
     const map = useMap();
     useEffect(() => {
         if (!data || data.length === 0) return;
@@ -1206,11 +1368,27 @@ const MapRecenter = ({ data }) => {
         if (points.length > 0) {
             map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
         }
-    }, [data, map]);
+    }, [searchTerm, selectedDept, data.length > 0, map]);
     return null;
 };
 
-const MapView = ({ data, activeTheme, MAP_THEMES, isThemeMenuOpen, setIsThemeMenuOpen, setActiveTheme }) => {
+const createClusterCustomIcon = (cluster) => {
+    const count = cluster.getChildCount();
+    let colorClass = 'bg-indigo-600';
+    if (count > 10) colorClass = 'bg-rose-600';
+    else if (count > 5) colorClass = 'bg-amber-600';
+
+    return L.divIcon({
+        html: `<div class="flex items-center justify-center ${colorClass} text-white rounded-full border-4 border-white dark:border-github-dark-subtle shadow-xl w-10 h-10 ring-4 ring-indigo-500/20">
+                <span class="text-xs font-black">${count}</span>
+               </div>`,
+        className: 'custom-marker-cluster',
+        iconSize: L.point(40, 40, true),
+    });
+};
+
+const MapView = ({ data, searchTerm, selectedDept, activeTheme, MAP_THEMES, isThemeMenuOpen, setIsThemeMenuOpen, setActiveTheme }) => {
+    const [selectedCluster, setSelectedCluster] = useState(null);
     const areCoordsSame = (lat1, lng1, lat2, lng2) => {
         if (!lat1 || !lng1 || !lat2 || !lng2) return false;
         return Math.abs(Number(lat1) - Number(lat2)) < 0.0001 && 
@@ -1297,10 +1475,28 @@ const MapView = ({ data, activeTheme, MAP_THEMES, isThemeMenuOpen, setIsThemeMen
                         </div>
                     </div>
 
-                    <MapRecenter data={data} />
+                    <MapRecenter data={data} searchTerm={searchTerm} selectedDept={selectedDept} />
+                    <ClusterEvents setSelectedCluster={setSelectedCluster} />
 
-                    {data.map(user => (
-                        user.sessions.map((session, sIdx) => {
+                    {selectedCluster && (
+                        <Popup 
+                            position={selectedCluster.position} 
+                            onClose={() => setSelectedCluster(null)}
+                            closeButton={false}
+                        >
+                            <ClusterDrillDownPopup data={selectedCluster.data} onClose={() => setSelectedCluster(null)} />
+                        </Popup>
+                    )}
+
+                    <MarkerClusterGroup
+                        chunkedLoading
+                        maxClusterRadius={50}
+                        iconCreateFunction={createClusterCustomIcon}
+                        showCoverageOnHover={false}
+                        spiderfyOnMaxZoom={true}
+                    >
+                        {data.map(user => (
+                            user.sessions.map((session, sIdx) => {
                             const isSameLoc = areCoordsSame(session.inLat, session.inLng, session.outLat, session.outLng);
 
                             if (isSameLoc) {
@@ -1308,6 +1504,7 @@ const MapView = ({ data, activeTheme, MAP_THEMES, isThemeMenuOpen, setIsThemeMen
                                     <Marker 
                                         key={`${user.id}-${sIdx}-combined`}
                                         position={[Number(session.inLat), Number(session.inLng)]}
+                                        customSessionData={{ user, session, type: 'combined' }}
                                         icon={L.divIcon({
                                             className: 'user-marker-combined',
                                             html: `<div class="marker-inner relative">
@@ -1387,6 +1584,7 @@ const MapView = ({ data, activeTheme, MAP_THEMES, isThemeMenuOpen, setIsThemeMen
                                     {session.inLat && session.inLng && (
                                         <Marker 
                                             position={[Number(session.inLat), Number(session.inLng)]}
+                                            customSessionData={{ user, session, type: 'in' }}
                                             icon={L.divIcon({
                                                 className: 'user-marker-in',
                                                 html: `<div class="marker-inner relative">
@@ -1435,6 +1633,7 @@ const MapView = ({ data, activeTheme, MAP_THEMES, isThemeMenuOpen, setIsThemeMen
                                     {session.outLat && session.outLng && (
                                         <Marker 
                                             position={[Number(session.outLat), Number(session.outLng)]}
+                                            customSessionData={{ user, session, type: 'out' }}
                                             icon={L.divIcon({
                                                 className: 'user-marker-out',
                                                 html: `<div class="marker-inner relative">
@@ -1484,10 +1683,11 @@ const MapView = ({ data, activeTheme, MAP_THEMES, isThemeMenuOpen, setIsThemeMen
                             );
                         })
                     ))}
+                    </MarkerClusterGroup>
                 </MapContainer>
             </div>
         </div>
     );
 };
 
-export default MobileAttendanceMonitoring;
+export default MobileAttendanceMonitoring; 
