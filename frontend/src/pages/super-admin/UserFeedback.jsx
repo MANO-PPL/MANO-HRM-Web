@@ -321,21 +321,21 @@ ${item.description}
                         </div>
 
                         {/* Search & Filter Sub-Header */}
-                        <div className="p-3 border-b border-slate-200 dark:border-github-dark-border shrink-0 space-y-2.5 bg-slate-50/30 dark:bg-github-dark-subtle/5">
-                            {/* Search bar (Fixed Overlap by changing padding from pl-8.5 to pl-9) */}
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <div className="p-3 border-b border-slate-200 dark:border-github-dark-border shrink-0 flex items-center gap-2 bg-slate-50/30 dark:bg-github-dark-subtle/5">
+                            {/* Search bar */}
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                                 <input 
                                     type="text" 
-                                    placeholder={`Search in ${activeCategoryTab === 'bug' ? 'bugs' : 'feedbacks'}...`}
+                                    placeholder={`Search...`}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-9 pr-8 py-1.5 bg-white dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-slate-900 dark:text-github-dark-text"
+                                    className="w-full pl-9 pr-8 h-10 bg-white dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-slate-900 dark:text-github-dark-text"
                                 />
                                 {searchQuery && (
                                     <button 
                                         onClick={() => setSearchQuery('')}
-                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650"
                                     >
                                         <X size={13} />
                                     </button>
@@ -343,16 +343,14 @@ ${item.description}
                             </div>
 
                             {/* Dropdown Filters */}
-                            <div className="flex gap-2">
-                                <div className="w-full">
-                                    <MinimalSelect
-                                        options={["Newest First", "Oldest First"]}
-                                        value={sortBy === 'newest' ? 'Newest First' : 'Oldest First'}
-                                        onChange={(val) => setSortBy(val === 'Newest First' ? 'newest' : 'oldest')}
-                                        size="sm"
-                                        triggerClassName="w-full justify-between text-[11px] border-slate-200 dark:border-github-dark-border font-semibold shadow-sm"
-                                    />
-                                </div>
+                            <div className="w-28 shrink-0">
+                                <MinimalSelect
+                                    options={["Newest", "Oldest"]}
+                                    value={sortBy === 'newest' ? 'Newest' : 'Oldest'}
+                                    onChange={(val) => setSortBy(val === 'Newest' ? 'newest' : 'oldest')}
+                                    size="sm"
+                                    triggerClassName="w-full justify-between h-10 px-3 !bg-white dark:!bg-github-dark-bg !border-slate-200 dark:!border-github-dark-border rounded-xl text-xs font-semibold shadow-sm text-slate-800 dark:text-slate-300"
+                                />
                             </div>
                         </div>
 
