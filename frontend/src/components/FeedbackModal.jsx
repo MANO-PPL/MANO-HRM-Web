@@ -87,7 +87,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                         animate={{ x: 0 }}
                         exit={{ x: '100%' }}
                         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                        className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d]"
+                        className="relative w-full max-w-2xl h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d]"
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
@@ -112,7 +112,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                             {/* Tab Switcher - Premium Segmented Control */}
                             <div className="relative">
                                 <label className="block text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.15em] mb-4">Select Category</label>
-                                <div className="grid grid-cols-2 p-1.5 bg-slate-100 dark:bg-[#010409] border border-slate-200 dark:border-[#30363d] rounded-xl relative overflow-hidden">
+                                <div className="grid grid-cols-2 p-1.5 bg-slate-100 dark:bg-[#010409] border border-slate-200 dark:border-[#30363d] rounded-lg relative overflow-hidden">
                                     <button
                                         onClick={() => setType('BUG')}
                                         className={`relative z-10 py-3 text-xs font-black uppercase tracking-widest transition-colors ${type === 'BUG' ? 'text-white' : 'text-slate-500 dark:text-[#8b949e]'}`}
@@ -128,7 +128,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                                     
                                     {/* Animated Active Background */}
                                     <motion.div
-                                        className={`absolute inset-y-1.5 left-1.5 w-[calc(50%-6px)] rounded-lg shadow-lg shadow-black/10 ${type === 'BUG' ? 'bg-red-600' : 'bg-indigo-600'}`}
+                                        className={`absolute inset-y-1.5 left-1.5 w-[calc(50%-6px)] rounded-md shadow-lg shadow-black/10 ${type === 'BUG' ? 'bg-red-600' : 'bg-indigo-600'}`}
                                         animate={{ x: type === 'BUG' ? '0%' : '100%' }}
                                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                                     />
@@ -146,7 +146,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                                         type="text"
                                         value={title}
                                         onChange={(e) => setTitle(e.target.value)}
-                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-[#010409] border border-slate-200 dark:border-[#30363d] rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none text-slate-800 dark:text-[#f0f6fc] text-sm font-bold transition-all placeholder:text-slate-400 dark:placeholder:text-[#484f58]"
+                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-[#010409] border border-slate-200 dark:border-[#30363d] rounded-lg focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none text-slate-800 dark:text-[#f0f6fc] text-sm font-bold transition-all placeholder:text-slate-400 dark:placeholder:text-[#484f58]"
                                         placeholder={type === 'BUG' ? "Describe the anomaly..." : "What's on your mind?"}
                                     />
                                 </div>
@@ -160,7 +160,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                                         value={description}
                                         onChange={(e) => setDescription(e.target.value)}
                                         rows={6}
-                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-[#010409] border border-slate-200 dark:border-[#30363d] rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none text-slate-800 dark:text-[#c9d1d9] text-sm font-medium resize-none transition-all placeholder:text-slate-400 dark:placeholder:text-[#484f58]"
+                                        className="w-full px-5 py-4 bg-slate-50 dark:bg-[#010409] border border-slate-200 dark:border-[#30363d] rounded-lg focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none text-slate-800 dark:text-[#c9d1d9] text-sm font-medium resize-none transition-all placeholder:text-slate-400 dark:placeholder:text-[#484f58]"
                                         placeholder="Provide as much detail as possible to help us analyze the situation..."
                                     />
                                 </div>
@@ -170,7 +170,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                                     <label className="block text-[10px] font-black text-slate-500 dark:text-[#8b949e] uppercase tracking-[0.15em] mb-3">
                                         Visual Evidence
                                     </label>
-                                    <div className="group relative border-2 border-dashed border-slate-200 dark:border-[#30363d] rounded-[2rem] p-8 text-center transition-all hover:border-indigo-500/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10">
+                                    <div className="group relative border-2 border-dashed border-slate-200 dark:border-[#30363d] rounded-lg p-8 text-center transition-all hover:border-indigo-500/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10">
                                         <input
                                             type="file"
                                             id="sidebar-feedback-files"
@@ -180,7 +180,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                                             onChange={handleFileChange}
                                         />
                                         <label htmlFor="sidebar-feedback-files" className="cursor-pointer flex flex-col items-center gap-4">
-                                            <div className="w-14 h-14 bg-white dark:bg-[#0d1117] border border-slate-100 dark:border-[#30363d] rounded-2xl shadow-sm flex items-center justify-center text-slate-400 group-hover:text-indigo-500 group-hover:scale-110 transition-all duration-300">
+                                            <div className="w-14 h-14 bg-white dark:bg-[#0d1117] border border-slate-100 dark:border-[#30363d] rounded-lg shadow-sm flex items-center justify-center text-slate-400 group-hover:text-indigo-500 group-hover:scale-110 transition-all duration-300">
                                                 <Upload size={24} />
                                             </div>
                                             <div>
@@ -199,7 +199,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                                 {files.length > 0 && (
                                     <div className="grid grid-cols-2 gap-4">
                                         {files.map((file, idx) => (
-                                            <div key={idx} className="relative group rounded-2xl overflow-hidden border border-slate-200 dark:border-[#30363d] aspect-video">
+                                            <div key={idx} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-[#30363d] aspect-video">
                                                 <img
                                                     src={URL.createObjectURL(file)}
                                                     alt="preview"
@@ -227,14 +227,14 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                                 <button
                                     type="button"
                                     onClick={onClose}
-                                    className="flex-1 px-4 py-4 rounded-xl border border-slate-200 dark:border-[#30363d] text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-[#8b949e] hover:bg-white dark:hover:bg-[#161b22] transition-all active:scale-[0.98]"
+                                    className="flex-1 px-4 py-4 rounded-lg border border-slate-200 dark:border-[#30363d] text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-[#8b949e] hover:bg-white dark:hover:bg-[#161b22] transition-all active:scale-[0.98]"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleSubmit}
                                     disabled={loading}
-                                    className={`flex-[2] py-4 rounded-xl text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-[0.97] flex items-center justify-center gap-3 ${loading ? 'opacity-70 bg-slate-400' : type === 'BUG' ? 'bg-red-600 shadow-red-600/20 hover:bg-red-700' : 'bg-indigo-600 shadow-indigo-600/20 hover:bg-indigo-700'}`}
+                                    className={`flex-[2] py-4 rounded-lg text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-[0.97] flex items-center justify-center gap-3 ${loading ? 'opacity-70 bg-slate-400' : type === 'BUG' ? 'bg-red-600 shadow-red-600/20 hover:bg-red-700' : 'bg-indigo-600 shadow-indigo-600/20 hover:bg-indigo-700'}`}
                                 >
                                     {loading ? (
                                         <Loader2 className="animate-spin" size={16} />

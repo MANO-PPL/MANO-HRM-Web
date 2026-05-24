@@ -83,7 +83,7 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
         if (!dateStr) return '';
         const date = new Date(dateStr);
         if (isNaN(date.getTime())) return dateStr;
-        return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
     };
 
     const renderCalendar = () => {
@@ -138,11 +138,11 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
 
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border ${isOpen ? 'border-indigo-500 ring-1 ring-indigo-500/20' : 'border-slate-200 dark:border-github-dark-border'} rounded-lg flex items-center justify-between cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-slate-900 group`}
+                className={`w-full py-2.5 px-4 bg-white dark:bg-dark-card border ${isOpen ? 'border-indigo-500 ring-1 ring-indigo-500/20' : 'border-slate-200 dark:border-github-dark-border'} rounded-xl flex items-center justify-between gap-2 cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm group select-none`}
             >
                 <div className="flex items-center gap-2 overflow-hidden">
-                    <Calendar size={16} className={`${value ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
-                    <span className={`text-sm ${value ? 'text-slate-800 dark:text-github-dark-text font-medium' : 'text-slate-400'}`}>
+                    <Calendar size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span className={`text-sm font-medium ${value ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'} truncate`}>
                         {value ? formatDateDisplay(value) : placeholder}
                     </span>
                 </div>
@@ -150,12 +150,12 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
                 {value ? (
                     <button
                         onClick={clearDate}
-                        className="p-1 text-slate-400 hover:text-red-500 transition-colors rounded-full hover:bg-slate-200 dark:hover:bg-slate-700"
+                        className="p-1 text-slate-400 hover:text-red-500 transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 shrink-0"
                     >
                         <X size={14} />
                     </button>
                 ) : (
-                    <ChevronDown size={14} className="text-slate-400 group-hover:text-slate-600" />
+                    <ChevronDown size={14} className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 shrink-0" />
                 )}
             </div>
 

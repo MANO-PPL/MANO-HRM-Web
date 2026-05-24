@@ -57,19 +57,19 @@ const MonthPicker = ({ label, value, onChange, placeholder = "Select month" }) =
 
     return (
         <div className="relative" ref={containerRef}>
-            {label && <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-1.5">{label}</label>}
+            {label && <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">{label}</label>}
 
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full h-10 px-3 bg-slate-50 dark:bg-black/20 border ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-100 dark:border-white/5'} rounded-xl flex items-center justify-between cursor-pointer transition-all dark:text-white`}
+                className={`w-full py-2.5 px-4 bg-white dark:bg-dark-card border ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-200 dark:border-github-dark-border'} rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-sm select-none`}
             >
                 <div className="flex items-center gap-2 overflow-hidden">
-                    <Calendar size={14} className="text-indigo-500" />
-                    <span className={`text-xs font-bold ${value ? 'text-slate-800 dark:text-white' : 'text-slate-400'}`}>
+                    <Calendar size={18} className="text-indigo-500 shrink-0" />
+                    <span className={`text-sm font-medium ${value ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'} truncate`}>
                         {value ? formatDateDisplay(value) : placeholder}
                     </span>
                 </div>
-                <ChevronDown size={14} className={`text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={14} className={`text-slate-400 transition-transform duration-300 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
             </div>
 
             {isOpen && (

@@ -203,6 +203,7 @@ const Attendance = () => {
     // Month for Reports/History/Analytics
     const [reportYear, setReportYear] = useState(today.getFullYear());
     const [reportMonthIdx, setReportMonthIdx] = useState(today.getMonth()); // 0-11
+    const [fileFormat, setFileFormat] = useState('xlsx');
 
     // Derived YYYY-MM string for API
     const reportMonth = `${reportYear}-${String(reportMonthIdx + 1).padStart(2, '0')}`;
@@ -573,11 +574,11 @@ const Attendance = () => {
     const handleDownloadReport = async () => {
         const toastId = toast.loading("Generating report...");
         try {
-            const data = await attendanceService.downloadMyReport(reportMonth);
+            const data = await attendanceService.downloadMyReport(reportMonth, fileFormat);
             const url = window.URL.createObjectURL(new Blob([data]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `My_Attendance_${reportMonth}.xlsx`);
+            link.setAttribute('download', `My_Attendance_${reportMonth}.${fileFormat}`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -1310,6 +1311,15 @@ const Attendance = () => {
                                     {Array.from({ length: 5 }, (_, i) => today.getFullYear() - 2 + i).map(year => (
                                         <option key={year} value={year}>{year}</option>
                                     ))}
+                                </select>
+                                <select
+                                    value={fileFormat}
+                                    onChange={(e) => setFileFormat(e.target.value)}
+                                    className="px-3 py-1.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                                >
+                                    <option value="xlsx">Excel (xlsx)</option>
+                                    <option value="csv">CSV (csv)</option>
+                                    <option value="pdf">PDF (pdf)</option>
                                 </select>
                                 <button
                                     onClick={handleDownloadReport}

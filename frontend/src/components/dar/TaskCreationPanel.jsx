@@ -183,6 +183,7 @@ const TaskCreationPanel = ({ onClose, onUpdate, initialTimeIn = "09:30", attenda
         }
 
         // If all success
+        toast.success("Daily tasks saved successfully!");
         if (onDraftUpdate) onDraftUpdate(null); // Clear drafts on successful save
         onClose();
     };

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useAuth } from "./AuthContext.jsx";
+import LoadingScreen from "../components/LoadingScreen.jsx";
 
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { user, authChecked } = useAuth();
@@ -32,7 +33,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   }, [user, authChecked, allowedRoles]);
 
   if (!authChecked) {
-    return null;
+    return <LoadingScreen message="Verifying session security..." />;
   }
 
   if (showRedirect) {

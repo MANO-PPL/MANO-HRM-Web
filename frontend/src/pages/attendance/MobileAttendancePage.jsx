@@ -116,6 +116,7 @@ const MobileAttendancePage = () => {
     const [correctionHistory, setCorrectionHistory] = useState([]);
     const [loading, setLoading] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [fileFormat, setFileFormat] = useState('xlsx');
 
     // Dates
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -309,11 +310,11 @@ const MobileAttendancePage = () => {
         if (!reportMonth) return;
         setIsDownloading(true);
         try {
-            const blob = await attendanceService.downloadMyReport(reportMonth, 'xlsx');
+            const blob = await attendanceService.downloadMyReport(reportMonth, fileFormat);
             const url = window.URL.createObjectURL(new Blob([blob]));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Attendance_Report_${reportMonth}.xlsx`);
+            link.setAttribute('download', `Attendance_Report_${reportMonth}.${fileFormat}`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -1088,7 +1089,19 @@ const MobileAttendancePage = () => {
                                         <div className="bg-indigo-600 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-500/20">
                                             <div className="relative z-10">
                                                 <h3 className="text-xl font-black tracking-tight mb-2">Monthly Summary</h3>
-                                                <p className="text-indigo-100/70 text-[11px] font-medium mb-6 max-w-[200px]">Download your detailed attendance report for {new Date(reportMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
+                                                <p className="text-indigo-100/70 text-[11px] font-medium mb-4 max-w-[200px]">Download your detailed attendance report for {new Date(reportMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
+                                                <div className="mb-5">
+                                                    <label className="block text-[9px] font-black uppercase text-indigo-200 tracking-wider mb-2">File Format</label>
+                                                    <select
+                                                        value={fileFormat}
+                                                        onChange={(e) => setFileFormat(e.target.value)}
+                                                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-2xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-white/20 cursor-pointer"
+                                                    >
+                                                        <option value="xlsx" className="text-slate-800">Excel (xlsx)</option>
+                                                        <option value="csv" className="text-slate-800">CSV (csv)</option>
+                                                        <option value="pdf" className="text-slate-800">PDF (pdf)</option>
+                                                    </select>
+                                                </div>
                                                 <button
                                                     onClick={downloadReport}
                                                     disabled={isDownloading}

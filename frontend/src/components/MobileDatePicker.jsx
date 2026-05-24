@@ -59,7 +59,7 @@ const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date" 
     const formatDateDisplay = (dateStr) => {
         if (!dateStr) return '';
         const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+        return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
     };
 
     const renderCalendar = () => {
@@ -100,15 +100,15 @@ const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date" 
 
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full h-11 px-4 bg-slate-50 dark:bg-black border ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-100 dark:border-slate-800'} rounded-2xl flex items-center justify-between cursor-pointer transition-all dark:text-white`}
+                className={`w-full py-2.5 px-4 bg-white dark:bg-dark-card border ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-200 dark:border-github-dark-border'} rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-sm select-none`}
             >
                 <div className="flex items-center gap-2 overflow-hidden">
-                    <Calendar size={16} className="text-indigo-500" />
-                    <span className={`text-sm font-semibold ${value ? 'text-slate-800 dark:text-white' : 'text-slate-400'}`}>
+                    <Calendar size={18} className="text-indigo-500 shrink-0" />
+                    <span className={`text-sm font-medium ${value ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'} truncate`}>
                         {value ? formatDateDisplay(value) : placeholder}
                     </span>
                 </div>
-                <ChevronDown size={16} className={`text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={16} className={`text-slate-400 transition-transform duration-300 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
             </div>
 
             {isOpen && (

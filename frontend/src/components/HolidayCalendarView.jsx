@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 
-const HolidayCalendarView = ({ holidays, leaves = [], onDelete, isAdmin, currentDate, onDateChange }) => {
+const HolidayCalendarView = ({ holidays, leaves = [], selectedLeave = null, onDelete, isAdmin, currentDate, onDateChange }) => {
     const displayDate = currentDate || new Date();
     const year = displayDate.getFullYear();
     const month = displayDate.getMonth();
@@ -56,7 +56,35 @@ const HolidayCalendarView = ({ holidays, leaves = [], onDelete, isAdmin, current
             if (targetMonth > 11) { targetMonth = 0; targetYear++; }
         }
         const dateStr = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        return leaves.filter(l => l.start_date <= dateStr && l.end_date >= dateStr);
+        return leaves.filter(l => {
+            const start = l.start_date ? l.start_date.split('T')[0] : '';
+            const end = l.end_date ? l.end_date.split('T')[0] : '';
+            return start <= dateStr && end >= dateStr;
+        });
+    };
+
+    const getSelectedLeaveState = (day, type) => {
+        if (!selectedLeave || !selectedLeave.start_date || !selectedLeave.end_date) return null;
+        let targetMonth = month;
+        let targetYear = year;
+        if (type === 'prev') {
+            targetMonth = month - 1;
+            if (targetMonth < 0) { targetMonth = 11; targetYear--; }
+        } else if (type === 'next') {
+            targetMonth = month + 1;
+            if (targetMonth > 11) { targetMonth = 0; targetYear++; }
+        }
+        const dateStr = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const start = selectedLeave.start_date.split('T')[0];
+        const end = selectedLeave.end_date.split('T')[0];
+        if (dateStr >= start && dateStr <= end) {
+            return {
+                isStart: dateStr === start,
+                isEnd: dateStr === end,
+                isInBetween: dateStr > start && dateStr < end
+            };
+        }
+        return null;
     };
 
     return (
@@ -109,6 +137,13 @@ const HolidayCalendarView = ({ holidays, leaves = [], onDelete, isAdmin, current
                         month === new Date().getMonth() &&
                         year === new Date().getFullYear();
 
+                    const leaveState = getSelectedLeaveState(dayObj.day, dayObj.type);
+                    const highlightClass = leaveState
+                        ? `bg-indigo-50/50 dark:bg-indigo-900/10 border-y border-indigo-150 dark:border-indigo-950/50 
+                           ${leaveState.isStart ? 'rounded-l-xl border-l border-indigo-200 dark:border-indigo-900/50 z-10' : ''} 
+                           ${leaveState.isEnd ? 'rounded-r-xl border-r border-indigo-200 dark:border-indigo-900/50 z-10' : ''}`
+                        : '';
+
                     return (
                         <div
                             key={index}
@@ -116,6 +151,7 @@ const HolidayCalendarView = ({ holidays, leaves = [], onDelete, isAdmin, current
                                 aspect-square p-2 border-r border-b border-slate-100 dark:border-github-dark-border relative transition-all group
                                 ${!isCurrentMonth ? 'bg-slate-50/20 dark:bg-github-dark-subtle/10' : 'bg-white dark:bg-dark-card hover:bg-slate-50/50 dark:hover:bg-slate-800/40'}
                                 ${index % 7 === 6 ? 'border-r-0' : ''}
+                                ${highlightClass}
                             `}
                         >
                             <div className="flex justify-start mb-1">
@@ -123,7 +159,11 @@ const HolidayCalendarView = ({ holidays, leaves = [], onDelete, isAdmin, current
                                     w-8 h-8 flex items-center justify-center rounded-full text-xs font-black transition-all
                                     ${isToday 
                                         ? 'bg-blue-600 text-white shadow-xl scale-110 z-10' 
-                                        : isCurrentMonth ? 'text-slate-700 dark:text-github-dark-text' : 'text-slate-300 dark:text-slate-600'}
+                                        : leaveState && (leaveState.isStart || leaveState.isEnd)
+                                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30 scale-105 z-10'
+                                            : leaveState && leaveState.isInBetween
+                                                ? 'text-indigo-600 dark:text-indigo-400 font-extrabold'
+                                                : isCurrentMonth ? 'text-slate-700 dark:text-github-dark-text' : 'text-slate-300 dark:text-slate-600'}
                                 `}>
                                     {dayObj.day}
                                 </span>

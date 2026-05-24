@@ -125,7 +125,7 @@ const NotificationSidebar = ({ isOpen, onClose }) => {
                         )}
 
                         {/* List */}
-                        <div className="flex-1 overflow-y-auto px-2 custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto px-2 no-scrollbar">
                             {filteredNotifications.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-center px-6">
                                     <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">

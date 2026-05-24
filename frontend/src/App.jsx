@@ -46,6 +46,7 @@ import SystemLogs from "./pages/super-admin/SystemLogs"
 
 import MobileLogin from "./pages/user-auth/Login-mv";
 import MobileForgotPassword from "./pages/user-auth/ForgotPassword-mv";
+import SuperAdminLoginMobile from "./pages/user-auth/SuperAdminLogin-mv";
 import MobileAdminDashboard from "./pages/dashboard/AdminDashboard-mv";
 import MobileEmployeeDashboard from "./pages/dashboard/EmployeeDashboard-mv";
 import MobileAttendance from "./pages/attendance/MobileAttendancePage";
@@ -241,7 +242,7 @@ function App() {
           {/* Public Route: Login */}
           <Route element={<PublicRoute />}>
             <Route path="/login" element={<ResponsiveRoute DesktopComponent={Login} MobileComponent={MobileLogin} />} />
-            <Route path="/org-login" element={<SuperAdminLogin />} />
+            <Route path="/org-login" element={<ResponsiveRoute DesktopComponent={SuperAdminLogin} MobileComponent={SuperAdminLoginMobile} />} />
             <Route path="/forgot-password" element={<ResponsiveRoute DesktopComponent={ForgotPassword} MobileComponent={MobileForgotPassword} />} />
           </Route>
 
