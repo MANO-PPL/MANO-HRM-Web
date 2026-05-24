@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { useAuth } from '../../context/AuthContext';
@@ -89,6 +89,14 @@ const LeaveApplication = () => {
     const [selectedLeave, setSelectedLeave] = useState(null); // For Detail View
     const [viewingAttachment, setViewingAttachment] = useState(null);
     const [adminAction, setAdminAction] = useState({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
+    const adminRemarksRef = useRef(null);
+
+    useEffect(() => {
+        if (adminRemarksRef.current) {
+            adminRemarksRef.current.style.height = 'auto';
+            adminRemarksRef.current.style.height = adminRemarksRef.current.scrollHeight + 'px';
+        }
+    }, [adminAction.remarks, selectedLeave]);
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
         title: '',
@@ -278,7 +286,7 @@ const LeaveApplication = () => {
 
             const res = await api.put(`/leaves/admin/status/${selectedLeave.lr_id}`, payload);
             if (res.data.ok) {
-                toast.success(`Leave request ${actionStatus.toLowerCase()}`);
+                toast.success(`Leave request ${actionStatus.toLowerCase()} successfully`);
                 const updatedLeaves = leaves.map(l =>
                     l.lr_id === selectedLeave.lr_id
                         ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks }
@@ -462,10 +470,12 @@ const LeaveApplication = () => {
                                 <div className="border-t border-slate-100 dark:border-github-dark-border pt-5 mt-2">
                                     <h4 className="text-sm font-bold text-slate-800 dark:text-github-dark-text mb-3">Take Action</h4>
                                     <textarea
+                                        ref={adminRemarksRef}
                                         value={adminAction.remarks}
                                         onChange={(e) => setAdminAction({ ...adminAction, remarks: e.target.value })}
+                                        rows="1"
                                         placeholder="Enter remarks..."
-                                        className="w-full p-3 text-sm bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-github-dark-text rounded-lg mb-3 min-h-[80px]"
+                                        className="w-full p-3 text-sm bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-github-dark-text rounded-lg resize-none overflow-hidden min-h-[42px] mb-3"
                                     ></textarea>
                                     <div className="grid grid-cols-2 gap-3">
                                         <button onClick={() => handleAdminAction('rejected')} className="py-2.5 bg-red-100 text-red-700 font-bold rounded-lg text-sm">Reject</button>

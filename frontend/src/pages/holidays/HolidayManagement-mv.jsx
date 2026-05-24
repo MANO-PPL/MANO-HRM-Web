@@ -122,6 +122,14 @@ const HolidayManagement = () => {
     const [isEditMode, setIsEditMode] = useState(false);
     const [holidayActionSheet, setHolidayActionSheet] = useState(null); // For edit/delete menu
     const [remarks, setRemarks] = useState('');
+    const adminRemarksRef = useRef(null);
+
+    useEffect(() => {
+        if (adminRemarksRef.current) {
+            adminRemarksRef.current.style.height = 'auto';
+            adminRemarksRef.current.style.height = adminRemarksRef.current.scrollHeight + 'px';
+        }
+    }, [remarks, selectedLeaf]);
 
     // --- CONFIRM MODAL STATE ---
     const [confirmModal, setConfirmModal] = useState({
@@ -256,13 +264,13 @@ const HolidayManagement = () => {
 
     const handleAdminAction = async (status) => {
         try {
-            const res = await api.put(`/leaves/admin/approve-reject/${selectedLeaf.lr_id}`, {
-                status,
-                remarks: remarks || ''
+            const res = await api.put(`/leaves/admin/status/${selectedLeaf.lr_id}`, {
+                status: status.charAt(0).toUpperCase() + status.slice(1),
+                admin_comment: remarks || ''
             });
 
             if (res.data.ok) {
-                toast.success(`Leave ${status} successfully`);
+                toast.success(`Leave request ${status.toLowerCase()} successfully`);
                 setSelectedLeaf(null);
                 setRemarks('');
                 loadData();
@@ -318,7 +326,7 @@ const HolidayManagement = () => {
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 py-2.5 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-2
+                                className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2
                                     ${activeTab === tab.id
                                         ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-md transform scale-[1.02]'
                                         : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
@@ -585,7 +593,7 @@ const HolidayManagement = () => {
             {holidayActionSheet && createPortal(
                 <div className="fixed inset-0 z-[600] flex items-end justify-center">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setHolidayActionSheet(null)}></div>
-                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-[2.5rem] p-6 animate-in slide-in-from-bottom duration-300 pb-[env(safe-area-inset-bottom)]">
+                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-2xl p-6 animate-in slide-in-from-bottom duration-300 pb-[env(safe-area-inset-bottom)]">
                         <div className="flex justify-center mb-6">
                             <span className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
                         </div>
@@ -623,7 +631,7 @@ const HolidayManagement = () => {
                                         onConfirm: async () => {
                                             try {
                                                 await holidayService.deleteHolidays([holidayActionSheet.holiday_id]);
-                                                toast.success("Holiday deleted");
+                                                toast.success("Holiday deleted successfully");
                                                 setHolidayActionSheet(null);
                                                 setConfirmModal(prev => ({ ...prev, isOpen: false }));
                                                 loadData();
@@ -653,7 +661,7 @@ const HolidayManagement = () => {
             {isAddModalOpen && createPortal(
                 <div className="fixed inset-0 z-[600] flex items-end justify-center">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)}></div>
-                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-[2.5rem] p-6 animate-in slide-in-from-bottom duration-300 min-h-[80vh] max-h-[95vh] overflow-y-auto pb-[15vh] border-t border-slate-100 dark:border-slate-800">
+                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-2xl p-6 animate-in slide-in-from-bottom duration-300 min-h-[80vh] max-h-[95vh] overflow-y-auto pb-[15vh] border-t border-slate-100 dark:border-slate-800">
                         <div className="flex justify-center mb-6">
                             <span className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
                         </div>
@@ -703,7 +711,7 @@ const HolidayManagement = () => {
             {showApplyModal && createPortal(
                 <div className="fixed inset-0 z-[600] flex items-end justify-center">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowApplyModal(false)}></div>
-                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-[2.5rem] p-6 animate-in slide-in-from-bottom duration-300 min-h-[85vh] max-h-[95vh] overflow-y-auto pb-[15vh] border-t border-slate-100 dark:border-slate-800">
+                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-2xl p-6 animate-in slide-in-from-bottom duration-300 min-h-[85vh] max-h-[95vh] overflow-y-auto pb-[15vh] border-t border-slate-100 dark:border-slate-800">
                         <div className="flex justify-center mb-6">
                             <span className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
                         </div>
@@ -885,10 +893,12 @@ const HolidayManagement = () => {
                                     <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
                                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-2">Admin Remarks</label>
                                         <textarea
+                                            ref={adminRemarksRef}
                                             placeholder="Enter approval/rejection remarks..."
                                             value={remarks}
                                             onChange={(e) => setRemarks(e.target.value)}
-                                            className="w-full bg-transparent text-sm font-medium text-slate-800 dark:text-white outline-none resize-none h-24"
+                                            rows="1"
+                                            className="w-full bg-transparent text-sm font-medium text-slate-800 dark:text-white outline-none resize-none overflow-hidden min-h-[24px]"
                                         ></textarea>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">

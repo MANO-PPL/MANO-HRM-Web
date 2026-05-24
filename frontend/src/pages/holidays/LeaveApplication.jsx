@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -81,7 +81,7 @@ const AttachmentModal = ({ file, onClose }) => {
     );
 };
 
-const LeaveApplication = () => {
+const LeaveApplication = ({ onSelectLeave }) => {
     const navigate = useNavigate();
 
 
@@ -91,6 +91,15 @@ const LeaveApplication = () => {
     const [selectedLeave, setSelectedLeave] = useState(null); // For Detail View
     const [viewingAttachment, setViewingAttachment] = useState(null);
     const [adminAction, setAdminAction] = useState({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
+    const adminRemarksRef = useRef(null);
+
+    useEffect(() => {
+        if (adminRemarksRef.current) {
+            adminRemarksRef.current.style.height = 'auto';
+            adminRemarksRef.current.style.height = adminRemarksRef.current.scrollHeight + 'px';
+        }
+    }, [adminAction.remarks, selectedLeave]);
+
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
         title: '',
@@ -120,6 +129,12 @@ const LeaveApplication = () => {
     useEffect(() => {
         setAttachmentsExpanded(false);
     }, [selectedLeave]);
+
+    useEffect(() => {
+        if (onSelectLeave) {
+            onSelectLeave(selectedLeave);
+        }
+    }, [selectedLeave, onSelectLeave]);
 
     const [showForm, setShowForm] = useState(false);
     const [isCustomType, setIsCustomType] = useState(false);
@@ -289,7 +304,7 @@ const LeaveApplication = () => {
 
             const res = await api.put(`/leaves/admin/status/${selectedLeave.lr_id}`, payload);
             if (res.data.ok) {
-                toast.success(`Leave request ${actionStatus.toLowerCase()}`);
+                toast.success(`Leave request ${actionStatus.toLowerCase()} successfully`);
                 // Update local state
                 const updatedLeaves = leaves.map(l =>
                     l.lr_id === selectedLeave.lr_id
@@ -383,7 +398,7 @@ const LeaveApplication = () => {
                     </div>
 
                     {/* List */}
-                    <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-700">
+                    <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-700 no-scrollbar">
                         {filteredLeaves.length === 0 ? (
                             <div className="p-10 text-center text-slate-400 text-sm">No requests found.</div>
                         ) : (
@@ -449,143 +464,125 @@ const LeaveApplication = () => {
                                 </div>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-6">
-                                {/* Grid Layout for details */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                                    <div>
-                                        <h4 className="text-xs uppercase tracking-wider text-slate-500 dark:text-github-dark-muted font-semibold mb-3">Leave Details</h4>
-                                        <div className="space-y-4">
-                                            <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                <span className="text-sm text-slate-500 dark:text-github-dark-muted block mb-1">Type</span>
-                                                <span className="font-semibold text-slate-800 dark:text-github-dark-text">{selectedLeave.leave_type}</span>
+                            <div className="flex-1 overflow-y-auto p-6 no-scrollbar">
+                                <div className="flex flex-col gap-6 mb-8">
+                                    {/* Consolidated Leave Details Card */}
+                                    <div className="bg-slate-50 dark:bg-[#0d1117] p-6 rounded-xl border border-slate-200/80 dark:border-[#30363d] w-full space-y-5 shadow-sm">
+                                        <div>
+                                            <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">Leave Type</span>
+                                            <span className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">{selectedLeave.leave_type}</span>
+                                        </div>
+                                        
+                                        <div className="flex gap-10">
+                                            <div>
+                                                <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">From</span>
+                                                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300 text-sm">{new Date(selectedLeave.start_date).toLocaleDateString()}</span>
                                             </div>
-                                            <div className="flex gap-4">
-                                                <div className="flex-1 bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                    <span className="text-sm text-slate-500 dark:text-github-dark-muted block mb-1">From</span>
-                                                    <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
-                                                        {new Date(selectedLeave.start_date).toLocaleDateString()}
-                                                    </span>
-                                                </div>
-                                                <div className="flex-1 bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                    <span className="text-sm text-slate-500 dark:text-github-dark-muted block mb-1">To</span>
-                                                    <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
-                                                        {new Date(selectedLeave.end_date).toLocaleDateString()}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-lg border border-indigo-100 dark:border-indigo-900/30">
-                                                <span className="text-sm text-indigo-600 dark:text-indigo-400 block mb-1">Duration</span>
-                                                <span className="font-bold text-indigo-700 dark:text-indigo-300">
-                                                    {calculateDays(selectedLeave.start_date, selectedLeave.end_date)} Days
-                                                </span>
+                                            <div>
+                                                <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">To</span>
+                                                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300 text-sm">{new Date(selectedLeave.end_date).toLocaleDateString()}</span>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    <div>
-                                        <h4 className="text-xs uppercase tracking-wider text-slate-500 dark:text-github-dark-muted font-semibold mb-3">Justification & Remarks</h4>
-                                        <div className="space-y-4 h-full">
-                                            <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                <div className="flex items-start gap-3">
-                                                    <MessageSquare size={18} className="text-slate-400 mt-1" />
-                                                    <div>
-                                                        <span className="text-xs text-slate-400 mb-1 block">Reason</span>
-                                                        <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{selectedLeave.reason}"</p>
+                                        <div>
+                                            <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">Duration</span>
+                                            <span className="font-bold text-indigo-600 dark:text-indigo-400 text-sm">{calculateDays(selectedLeave.start_date, selectedLeave.end_date)} Days</span>
+                                        </div>
+
+                                        <div>
+                                            <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">Reason</span>
+                                            <p className="text-sm text-slate-700 dark:text-slate-300 italic mt-0.5">"{selectedLeave.reason}"</p>
+                                        </div>
+
+                                        {/* Attachments Section - Condensed with Inline Expansion */}
+                                        {selectedLeave.attachments && selectedLeave.attachments.length > 0 && (
+                                            <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-4">
+                                                <div
+                                                    className="flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 p-2 -mx-2 rounded-lg transition-colors gap-10"
+                                                    onClick={() => setAttachmentsExpanded(!attachmentsExpanded)}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <Paperclip size={18} className="text-slate-400" />
+                                                        <span className="text-sm font-medium text-slate-700 dark:text-github-dark-text">
+                                                            {selectedLeave.attachments.length} Attachments
+                                                        </span>
                                                     </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Attachments Section - Condensed with Inline Expansion */}
-                                            {selectedLeave.attachments && selectedLeave.attachments.length > 0 && (
-                                                <div className="bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border overflow-hidden">
                                                     <div
-                                                        className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors"
-                                                        onClick={() => setAttachmentsExpanded(!attachmentsExpanded)}
+                                                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1"
                                                     >
-                                                        <div className="flex items-center gap-3">
-                                                            <Paperclip size={18} className="text-slate-400" />
-                                                            <span className="text-sm font-medium text-slate-700 dark:text-github-dark-text">
-                                                                {selectedLeave.attachments.length} Attachments
-                                                            </span>
-                                                        </div>
-                                                        <div
-                                                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1"
-                                                        >
-                                                            {attachmentsExpanded ? 'Hide' : 'View All'}
-                                                            <ChevronDown size={14} className={`transform transition-transform ${attachmentsExpanded ? 'rotate-180' : ''}`} />
-                                                        </div>
+                                                        {attachmentsExpanded ? 'Hide' : 'View All'}
+                                                        <ChevronDown size={14} className={`transform transition-transform ${attachmentsExpanded ? 'rotate-180' : ''}`} />
                                                     </div>
+                                                </div>
 
-                                                    {/* Expanded Content */}
-                                                    {attachmentsExpanded && (
-                                                        <div className="px-4 pb-4 pt-0 space-y-2 border-t border-slate-100 dark:border-github-dark-border/50 mt-2">
-                                                            {selectedLeave.attachments.map((file, index) => (
-                                                                <div
-                                                                    key={index}
-                                                                    onClick={() => setViewingAttachment(file)}
-                                                                    className="flex items-center gap-3 p-3 bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-github-dark-border rounded-lg hover:border-indigo-200 dark:hover:border-indigo-900/50 hover:shadow-sm transition-all group cursor-pointer"
-                                                                >
-                                                                    <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                                                                        <FileText size={16} />
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <p className="text-sm font-medium text-slate-700 dark:text-github-dark-text truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                                                                            {file.file_key.split('/').pop()}
-                                                                        </p>
-                                                                        <p className="text-[10px] text-slate-400 uppercase font-bold">
-                                                                            {file.file_type ? file.file_type.split('/')[1]?.toUpperCase() : 'FILE'}
-                                                                        </p>
-                                                                    </div>
-                                                                    <div className="text-slate-300 group-hover:text-indigo-500 transition-colors">
-                                                                        <ExternalLink size={14} />
-                                                                    </div>
+                                                {/* Expanded Content */}
+                                                {attachmentsExpanded && (
+                                                    <div className="mt-3 space-y-2">
+                                                        {selectedLeave.attachments.map((file, index) => (
+                                                            <div
+                                                                key={index}
+                                                                onClick={() => setViewingAttachment(file)}
+                                                                className="flex items-center gap-3 p-3 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-[#30363d] rounded-lg hover:border-indigo-200 dark:hover:border-indigo-900/50 hover:shadow-sm transition-all group cursor-pointer"
+                                                            >
+                                                                <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                                                    <FileText size={16} />
                                                                 </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* Action / Remarks Section */}
-                                            {selectedLeave.status === 'pending' ? (
-                                                <div className="bg-white dark:bg-github-dark-subtle p-4 rounded-lg border-2 border-slate-100 dark:border-github-dark-border shadow-sm">
-                                                    <h5 className="text-sm font-bold text-slate-700 dark:text-github-dark-text mb-3">Admin Action</h5>
-
-
-
-                                                    <textarea
-                                                        value={adminAction.remarks}
-                                                        onChange={(e) => setAdminAction({ ...adminAction, remarks: e.target.value })}
-                                                        placeholder="Add remarks (required for rejection)..."
-                                                        className="w-full p-3 text-sm bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-github-dark-text rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none min-h-[80px] mb-3"
-                                                    ></textarea>
-
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => handleAdminAction('approved')}
-                                                            className="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-md hover:bg-emerald-700"
-                                                        >
-                                                            <CheckCircle size={16} /> Approve
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleAdminAction('rejected')}
-                                                            className="flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 bg-red-600 text-white shadow-md hover:bg-red-700"
-                                                        >
-                                                            <XCircle size={16} /> Reject
-                                                        </button>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-medium text-slate-700 dark:text-github-dark-text truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                                                        {file.file_key.split('/').pop()}
+                                                                    </p>
+                                                                    <p className="text-[10px] text-slate-400 uppercase font-bold">
+                                                                        {file.file_type ? file.file_type.split('/')[1]?.toUpperCase() : 'FILE'}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="text-slate-300 group-hover:text-indigo-500 transition-colors">
+                                                                    <ExternalLink size={14} />
+                                                                </div>
+                                                            </div>
+                                                        ))}
                                                     </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Action / Remarks Section */}
+                                        {selectedLeave.status === 'pending' ? (
+                                            <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-4">
+                                                <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-2">Admin Action</span>
+                                                <textarea
+                                                    ref={adminRemarksRef}
+                                                    value={adminAction.remarks}
+                                                    onChange={(e) => setAdminAction({ ...adminAction, remarks: e.target.value })}
+                                                    rows="1"
+                                                    placeholder="Add remarks (required for rejection)..."
+                                                    className="w-full p-3 text-sm bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-github-dark-text rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none overflow-hidden min-h-[42px] mb-3"
+                                                ></textarea>
+
+                                                <div className="flex gap-3 max-w-xs">
+                                                    <button
+                                                        onClick={() => handleAdminAction('approved')}
+                                                        className="flex-1 py-2 px-4 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 bg-emerald-600 text-white shadow-md hover:bg-emerald-700 cursor-pointer active:scale-95"
+                                                    >
+                                                        <CheckCircle size={14} /> Approve
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleAdminAction('rejected')}
+                                                        className="flex-1 py-2 px-4 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 bg-red-600 text-white shadow-md hover:bg-red-700 cursor-pointer active:scale-95"
+                                                    >
+                                                        <XCircle size={14} /> Reject
+                                                    </button>
                                                 </div>
-                                            ) : (
-                                                <div className="bg-slate-50 dark:bg-github-dark-subtle/50 p-4 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                    <span className="text-sm text-slate-500 dark:text-github-dark-muted block mb-1">
-                                                        Admin Remarks
-                                                    </span>
-                                                    <p className="text-sm text-slate-700 dark:text-slate-300 font-medium">
-                                                        {selectedLeave.admin_comment || "No remarks provided."}
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
+                                            </div>
+                                        ) : (
+                                            <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-4">
+                                                <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">
+                                                    Admin Remarks
+                                                </span>
+                                                <p className="text-sm text-slate-700 dark:text-slate-300 font-medium mt-0.5">
+                                                    {selectedLeave.admin_comment || "No remarks provided."}
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
