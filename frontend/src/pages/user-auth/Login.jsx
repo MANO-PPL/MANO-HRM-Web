@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, Shield, Activity, Zap, Cpu, Sun, Moon } from "lucide-react";
 import ReCAPTCHA from "react-google-recaptcha";
+import LoadingScreen from "../../components/LoadingScreen";
 
 const Login = () => {
     const isCaptchaEnabled = String(import.meta.env.VITE_ENABLE_CAPTCHA).toLowerCase().trim() !== 'false';
@@ -65,6 +66,11 @@ const Login = () => {
 
     return (
         <div className="relative min-h-screen bg-slate-50 dark:bg-[#010404] font-poppins selection:bg-indigo-500/30 overflow-hidden transition-colors duration-500">
+            <AnimatePresence>
+                {loading && (
+                    <LoadingScreen message="Establishing secure session..." />
+                )}
+            </AnimatePresence>
 
             {/* Background Visuals (Global - Not Scaled) */}
             <div className="fixed inset-0 z-0 opacity-100 dark:opacity-100 transition-opacity duration-500 pointer-events-none">

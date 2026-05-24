@@ -29,7 +29,7 @@ import {
   Sun, Moon, Layers, ChevronDown, Edit2, Save, X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-
+import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 
 const GeoFencing = () => {
@@ -502,6 +502,9 @@ const GeoFencing = () => {
       },
     ];
 
+    const employee = users.find(u => u.user_id === userId);
+    const empName = employee ? employee.user_name : "Employee";
+
     try {
       // optimistic UI update
       setUsers((prev) =>
@@ -523,9 +526,14 @@ const GeoFencing = () => {
       );
 
       await updateLocationAssignments(payload);
+      if (isAssigned) {
+        toast.success(`${empName} removed from ${selectedLocation.location_name}`);
+      } else {
+        toast.success(`${empName} assigned to ${selectedLocation.location_name}`);
+      }
     } catch (err) {
       console.error("Assignment update failed", err);
-      alert("Failed to update assignment. Please retry.");
+      toast.error("Failed to update assignment. Please retry.");
 
       // rollback on failure
       const data = await fetchWorkLocationUsers();

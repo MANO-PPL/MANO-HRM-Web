@@ -16,6 +16,8 @@ import {
 
 import { adminService } from '../../services/adminService';
 import { toast } from 'react-toastify';
+import DatePicker from '../../components/DatePicker';
+import MonthPicker from '../../components/MonthPicker';
 
 const Reports = () => {
     const navigate = useNavigate();
@@ -101,27 +103,19 @@ const Reports = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 flex-1 w-full">
                             {reportType !== 'employee_master' && (
                                 <div>
-                                    <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5 ml-1">
-                                        {['matrix_monthly', 'lateness_report', 'attendance_detailed', 'attendance_summary'].includes(reportType) ? 'Select Month' : 'Select Date'}
-                                    </label>
-                                    <div className="relative">
-                                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        {['matrix_monthly', 'lateness_report', 'attendance_detailed', 'attendance_summary'].includes(reportType) ? (
-                                            <input
-                                                type="month"
-                                                value={selectedMonth}
-                                                onChange={(e) => setSelectedMonth(e.target.value)}
-                                                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm font-medium text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                            />
-                                        ) : (
-                                            <input
-                                                type="date"
-                                                value={selectedDate}
-                                                onChange={(e) => setSelectedDate(e.target.value)}
-                                                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm font-medium text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                            />
-                                        )}
-                                    </div>
+                                    {['matrix_monthly', 'attendance_detailed', 'attendance_summary'].includes(reportType) ? (
+                                        <MonthPicker
+                                            label="Select Month"
+                                            value={selectedMonth}
+                                            onChange={(val) => setSelectedMonth(val)}
+                                        />
+                                    ) : (
+                                        <DatePicker
+                                            label="Select Date"
+                                            value={selectedDate}
+                                            onChange={(val) => setSelectedDate(val)}
+                                        />
+                                    )}
                                 </div>
                             )}
 
@@ -135,9 +129,7 @@ const Reports = () => {
                                     <option value="matrix_daily">Daily Attendance Matrix</option>
                                     <option value="matrix_weekly">Weekly Attendance Matrix</option>
                                     <option value="matrix_monthly">Monthly Attendance Matrix</option>
-                                    <option value="lateness_report">Lateness & Overtime Report</option>
-                                    <option value="attendance_detailed">Detailed Attendance Log (Original)</option>
-                                    <option value="attendance_summary">Monthly Summary (Original)</option>
+                                    <option value="attendance_summary">Monthly Summary Report</option>
                                     <option value="employee_master">Employee Master Data</option>
                                 </select>
                             </div>
@@ -217,7 +209,7 @@ const Reports = () => {
                                         </p>
                                     </div>
                                 </div>
-                                <div className="overflow-x-auto custom-scrollbar">
+                                <div className="overflow-x-auto no-scrollbar">
                                     {loadingPreview ? (
                                         <div className="flex flex-col items-center justify-center py-20 gap-4">
                                             <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
@@ -225,19 +217,52 @@ const Reports = () => {
                                         </div>
                                     ) : previewData.rows && previewData.rows.length > 0 ? (
                                         <table className="w-full text-left border-collapse">
-                                            <thead className="sticky top-16 z-10 bg-slate-50/95 dark:bg-github-dark-subtle/95 backdrop-blur-md shadow-sm">
-                                                <tr className="text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
-                                                    {previewData.columns.map((col, idx) => (
-                                                        <th key={idx} className="px-6 py-5 whitespace-nowrap tracking-wider">{col}</th>
-                                                    ))}
-                                                </tr>
+                                            <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-github-dark-subtle/95 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-github-dark-border">
+                                                {previewData.headers ? (
+                                                    <>
+                                                        <tr className="text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
+                                                            {previewData.headers[0].map((cell, idx) => (
+                                                                <th 
+                                                                    key={idx} 
+                                                                    rowSpan={cell.rowspan} 
+                                                                    colSpan={cell.colspan} 
+                                                                    className="px-6 py-4 whitespace-nowrap tracking-wider text-center border-r border-slate-100 dark:border-slate-800 last:border-r-0"
+                                                                >
+                                                                    {cell.label}
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                        <tr className="text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold">
+                                                            {previewData.headers[1].map((cell, idx) => (
+                                                                <th 
+                                                                    key={idx} 
+                                                                    className="px-6 py-3 whitespace-nowrap tracking-wider text-center border-r border-slate-100 dark:border-slate-800 last:border-r-0"
+                                                                >
+                                                                    {cell.label}
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                    </>
+                                                ) : (
+                                                    <tr className="text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
+                                                        {previewData.columns.map((col, idx) => (
+                                                            <th key={idx} className="px-6 py-4 whitespace-nowrap tracking-wider text-left">
+                                                                {col?.toString().split('\n').map((line, lIdx) => (
+                                                                    <div key={lIdx} className="leading-tight">{line}</div>
+                                                                ))}
+                                                            </th>
+                                                        ))}
+                                                    </tr>
+                                                )}
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                                 {previewData.rows.map((row, rIdx) => (
                                                     <tr key={rIdx} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group">
                                                         {row.map((cell, cIdx) => (
-                                                            <td key={cIdx} className="px-6 py-5 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
-                                                                {cell}
+                                                            <td key={cIdx} className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
+                                                                {cell?.toString().split('\n').map((line, lIdx) => (
+                                                                    <div key={lIdx} className="leading-normal">{line}</div>
+                                                                ))}
                                                             </td>
                                                         ))}
                                                     </tr>
@@ -265,9 +290,9 @@ const Reports = () => {
                                     </h3>
 
                                 </div>
-                                <div className="overflow-x-auto custom-scrollbar">
+                                <div className="overflow-x-auto no-scrollbar">
                                     <table className="w-full text-left border-collapse">
-                                        <thead className="sticky top-16 z-10 bg-slate-50/95 dark:bg-github-dark-subtle/95 backdrop-blur-md shadow-sm">
+                                        <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-github-dark-subtle/95 backdrop-blur-md shadow-sm">
                                             <tr className="bg-slate-50/50 dark:bg-github-dark-subtle/50 text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
                                                 <th className="px-6 py-5">File Name</th>
                                                 <th className="px-6 py-5">Generated</th>

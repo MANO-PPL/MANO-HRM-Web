@@ -158,32 +158,48 @@ const GeoFencing = () => {
         setIsModalOpen(true);
     };
 
-    const toggleStaffSelection = (staffId) => {
-        setTempSelectedStaff(prev =>
-            prev.includes(staffId)
-                ? prev.filter(id => id !== staffId)
-                : [...prev, staffId]
-        );
-    };
-
-    const handleSaveAssignments = async () => {
-        const originallyAssigned = staff
-            .filter(s => s.work_locations?.some(wl => wl.location_id === selectedLocation.location_id))
-            .map(s => s.id);
+    const toggleStaffAssignmentRealTime = async (staffId, isAssigned) => {
+        if (!selectedLocation) return;
 
         const payload = [{
             work_location_id: selectedLocation.location_id,
-            add: tempSelectedStaff.filter(id => !originallyAssigned.includes(id)),
-            remove: originallyAssigned.filter(id => !tempSelectedStaff.includes(id))
+            add: isAssigned ? [] : [staffId],
+            remove: isAssigned ? [staffId] : []
         }];
 
+        const s = staff.find(x => x.id === staffId);
+        const staffName = s ? s.name : "Employee";
+
         try {
+            // Optimistic UI update
+            setStaff(prev =>
+                prev.map(x =>
+                    x.id === staffId
+                        ? {
+                              ...x,
+                              work_locations: isAssigned
+                                  ? x.work_locations.filter(wl => wl.location_id !== selectedLocation.location_id)
+                                  : [...x.work_locations, { location_id: Number(selectedLocation.location_id) }]
+                          }
+                        : x
+                )
+            );
+            // Update checkbox check states
+            setTempSelectedStaff(prev =>
+                isAssigned ? prev.filter(id => id !== staffId) : [...prev, staffId]
+            );
+
             await updateLocationAssignments(payload);
-            toast.success(`Staff assignments updated for ${selectedLocation.location_name}`);
-            setIsModalOpen(false);
-            loadData(); // reload users to get updated work_locations
+            
+            if (isAssigned) {
+                toast.success(`${staffName} removed from ${selectedLocation.location_name}`);
+            } else {
+                toast.success(`${staffName} assigned to ${selectedLocation.location_name}`);
+            }
         } catch (error) {
+            console.error("Assignment update failed", error);
             toast.error("Failed to update staff assignments");
+            loadData(); // reload on error to restore correct state
         }
     };
 
@@ -316,7 +332,7 @@ const GeoFencing = () => {
                                     return (
                                         <div
                                             key={s.id}
-                                            onClick={() => toggleStaffSelection(s.id)}
+                                            onClick={() => toggleStaffAssignmentRealTime(s.id, isSelected)}
                                             className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${isSelected
                                                 ? 'bg-indigo-50/50 dark:bg-indigo-900/10'
                                                 : 'bg-transparent'
@@ -344,11 +360,11 @@ const GeoFencing = () => {
                         {/* Footer */}
                         <div className="p-6 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] border-t border-slate-50 dark:border-slate-800/50">
                             <button
-                                onClick={handleSaveAssignments}
+                                onClick={() => setIsModalOpen(false)}
                                 className="w-full py-4 bg-indigo-600 dark:bg-indigo-500 text-white font-semibold rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                             >
                                 <CheckCircle2 size={20} />
-                                Confirm Changes ({tempSelectedStaff.length})
+                                Done
                             </button>
                         </div>
                         </div>
