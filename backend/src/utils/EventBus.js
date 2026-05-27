@@ -59,6 +59,36 @@ class AppEventBus extends EventEmitter {
                 console.error('[EventBus DB Error Log Error]:', err);
             }
         });
+
+        // Listen for notifications and save to Database, then emit 'notification_saved' for Socket.IO
+        this.on(this.events.NOTIFICATION, async (payload) => {
+            try {
+                const notificationData = {
+                    org_id: payload.org_id || null,
+                    user_id: payload.user_id,
+                    title: payload.title || '',
+                    message: payload.message || '',
+                    type: payload.type || 'INFO',
+                    related_entity_type: payload.related_entity_type || null,
+                    related_entity_id: payload.related_entity_id || null,
+                    is_read: 0,
+                    created_at: attendanceDB.fn.now(),
+                    updated_at: attendanceDB.fn.now()
+                };
+                const [insertedId] = await attendanceDB('notifications').insert(notificationData);
+                
+                // Fetch the fully inserted database row to get exact timestamps and auto-generated fields
+                const savedNotification = await attendanceDB('notifications')
+                    .where({ notification_id: insertedId })
+                    .first();
+
+                if (savedNotification) {
+                    this.emit('notification_saved', savedNotification);
+                }
+            } catch (err) {
+                console.error('[EventBus DB Notification Error]:', err);
+            }
+        });
     }
 
     emitNotification(payload) {

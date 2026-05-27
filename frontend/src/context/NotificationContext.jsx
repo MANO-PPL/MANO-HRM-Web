@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { notificationService } from '../services/notificationService';
 import { useAuth } from './AuthContext';
+import { io } from 'socket.io-client';
 
 const NotificationContext = createContext();
 
@@ -59,14 +60,30 @@ export const NotificationProvider = ({ children }) => {
         }
     };
 
-    // Initial fetch and polling
+    // Initial fetch and WebSocket push connection
     useEffect(() => {
         if (user) {
             fetchNotifications();
             
-            // Poll every 30 seconds
-            const intervalId = setInterval(fetchNotifications, 30000);
-            return () => clearInterval(intervalId);
+            // Connect to Socket.IO using proxied location origin
+            const socket = io(window.location.origin, {
+                path: '/socket.io/',
+                withCredentials: true
+            });
+
+            socket.on('connect', () => {
+                socket.emit('join', user.user_id);
+                console.log('⚡ Connected to Notification WebSocket Server');
+            });
+
+            socket.on('new-notification', (newAlert) => {
+                setNotifications(prev => [newAlert, ...prev]);
+                setUnreadCount(prev => prev + 1);
+            });
+
+            return () => {
+                socket.disconnect();
+            };
         } else {
             setNotifications([]);
             setUnreadCount(0);

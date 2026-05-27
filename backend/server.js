@@ -5,6 +5,7 @@ import app from './src/app.js';
 import { initAttendanceProcessor } from './src/cron/AttendanceProcessor.js';
 import { initCleanupScheduler } from './src/cron/cleanupScheduler.js';
 import { initDARReportScheduler } from './src/cron/DARReportScheduler.js';
+import EventBus from './src/utils/EventBus.js';
 
 const PORT = Number(process.env.PORT) || 5003;
 
@@ -48,9 +49,23 @@ const io = new SocketIO(server, {
 
 io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id, 'from', socket.handshake.address);
+  
+  socket.on('join', (userId) => {
+    if (userId) {
+      socket.join(`user_${userId}`);
+      console.log(`Socket ${socket.id} joined room: user_${userId}`);
+    }
+  });
+
   socket.on('disconnect', (reason) => {
     console.log('Socket disconnected', socket.id, reason);
   });
+});
+
+// Listen to the EventBus saved notifications and push real-time alerts
+EventBus.on('notification_saved', (notification) => {
+  io.to(`user_${notification.user_id}`).emit('new-notification', notification);
+  console.log(`📡 Real-time notification push sent to user_${notification.user_id} for alert #${notification.notification_id}`);
 });
 
 server.on('error', (err) => {
