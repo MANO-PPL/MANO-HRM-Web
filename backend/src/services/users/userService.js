@@ -5,6 +5,7 @@ import EventBus from '../../utils/EventBus.js';
 import { deleteFile, uploadCompressedImage } from '../s3/s3Service.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
+import { encryptText, decryptText } from '../../utils/encryption.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js
 
@@ -163,11 +164,13 @@ export const createUser = async (userData, authInfo, profileImageBuffer = null) 
     return { newUserId, profileImageUrl };
 };
 
-export const updateUser = async (userId, updatesData, authInfo, profileImageBuffer = null) => {
+export const updateUser = async (userId, updatesData, authInfo, profileImageBuffer = null, io = null) => {
     const updates = {};
     const targetUser = await attendanceDB("users").where({ user_id: userId, org_id: authInfo.orgId }).first();
 
     if (!targetUser) throw new AppError("User not found", 404);
+
+    const oldName = targetUser.user_name;
 
     if (targetUser.user_type === 'admin' && authInfo.initiatorId !== targetUser.user_id) {
         throw new AppError("Admins can only be edited by themselves", 403);
@@ -226,6 +229,96 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
             });
         } catch (uploadErr) {
             console.error('Profile image upload failed:', uploadErr);
+        }
+    }
+
+    const nameChanged = updates.user_name && updates.user_name !== oldName;
+    if (nameChanged && oldName) {
+        try {
+            const newName = updates.user_name.trim();
+            // Find all chat rooms for this org
+            const rooms = await attendanceDB('chat_rooms').where({ org_id: authInfo.orgId });
+            const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const oldMentionRegex = new RegExp('@' + escapeRegExp(oldName) + '(?![a-zA-Z0-9_])', 'gi');
+
+            for (const room of rooms) {
+                let msgs = [];
+                try {
+                    const decrypted = decryptText(room.messages);
+                    msgs = typeof decrypted === 'string' ? JSON.parse(decrypted || '[]') : (decrypted || []);
+                } catch (e) {
+                    continue;
+                }
+
+                if (!Array.isArray(msgs)) continue;
+
+                let isUpdated = false;
+                for (const msg of msgs) {
+                    if (msg.message_text && typeof msg.message_text === 'string') {
+                        // 1. Standard mention replace
+                        if (oldMentionRegex.test(msg.message_text)) {
+                            msg.message_text = msg.message_text.replace(oldMentionRegex, `@${newName}`);
+                            isUpdated = true;
+                        }
+
+                        // 2. System card payload replacement
+                        if (msg.message_text.startsWith('[SYSTEM_CARD:')) {
+                            const systemCardRegex = /^\[SYSTEM_CARD:([^:]+):([^:]+):([^\]]+)\]\s*(.*)$/;
+                            const match = msg.message_text.match(systemCardRegex);
+                            if (match) {
+                                const [_, cardType, entityId, status, payloadStr] = match;
+                                try {
+                                    const payload = JSON.parse(payloadStr);
+                                    let payloadUpdated = false;
+                                    if (payload.employee_name && payload.employee_name === oldName) {
+                                        payload.employee_name = newName;
+                                        payloadUpdated = true;
+                                    }
+                                    if (payload.reviewer_name && payload.reviewer_name === oldName) {
+                                        payload.reviewer_name = newName;
+                                        payloadUpdated = true;
+                                    }
+                                    if (payloadUpdated) {
+                                        msg.message_text = `[SYSTEM_CARD:${cardType}:${entityId}:${status}] ${JSON.stringify(payload)}`;
+                                        isUpdated = true;
+                                    }
+                                } catch (e) {
+                                    // ignore
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isUpdated) {
+                    await attendanceDB('chat_rooms')
+                        .where({ room_id: room.room_id })
+                        .update({
+                            messages: encryptText(JSON.stringify(msgs)),
+                            updated_at: attendanceDB.fn.now()
+                        });
+
+                    if (io) {
+                        try {
+                            let memberIds = [];
+                            try {
+                                memberIds = typeof room.member_ids === 'string' ? JSON.parse(room.member_ids) : room.member_ids;
+                            } catch (e) {
+                                // ignore
+                            }
+                            if (Array.isArray(memberIds)) {
+                                for (const memberId of memberIds) {
+                                    io.to(`user_${memberId}`).emit('room_updated', { room_id: room.room_id });
+                                }
+                            }
+                        } catch (emitErr) {
+                            console.error('Error emitting room_updated for name change sync:', emitErr);
+                        }
+                    }
+                }
+            }
+        } catch (syncErr) {
+            console.error('Failed to sync mentions on username change:', syncErr);
         }
     }
 

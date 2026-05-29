@@ -1,5 +1,7 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as WorkLocationService from '../../services/workLocations/workLocationsServices.js';
+import { notifyGeofenceAssigned } from '../../services/collaboration/chatAlertService.js';
+
 
 export const getLocations = catchAsync(async (req, res) => {
     const { org_id } = req.user;
@@ -44,5 +46,27 @@ export const bulkAssign = catchAsync(async (req, res) => {
     const { org_id } = req.user;
 
     await WorkLocationService.bulkAssign({ org_id, assignments });
+
+    // Trigger premium work location assigned DM cards to employees
+    const io = req.app.get('io');
+    const admin_id = req.user.id || req.user.user_id;
+
+    if (assignments && Array.isArray(assignments)) {
+        for (const item of assignments) {
+            const { work_location_id, add } = item;
+            if (work_location_id && add && Array.isArray(add)) {
+                for (const recipient_id of add) {
+                    notifyGeofenceAssigned({
+                        org_id,
+                        admin_id,
+                        recipient_id,
+                        location_id: work_location_id,
+                        io
+                    }).catch(console.error);
+                }
+            }
+        }
+    }
+
     res.json({ ok: true, message: 'Work location assignments updated successfully.' });
 });

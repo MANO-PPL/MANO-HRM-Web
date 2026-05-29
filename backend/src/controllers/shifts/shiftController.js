@@ -1,5 +1,7 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as ShiftService from '../../services/shifts/shiftService.js';
+import { notifyShiftAssigned } from '../../services/collaboration/chatAlertService.js';
+
 
 export const getShifts = catchAsync(async (req, res) => {
     const { org_id } = req.user;
@@ -93,6 +95,13 @@ export const assignUserShift = catchAsync(async (req, res) => {
 
     if (affected === 0) {
         return res.status(404).json({ ok: false, message: 'User not found or unauthorized' });
+    }
+
+    // Trigger premium shift assigned DM card to employee
+    if (shift_id) {
+        const io = req.app.get('io');
+        const admin_id = req.user.id || req.user.user_id;
+        notifyShiftAssigned({ org_id, admin_id, recipient_id: user_id, shift_id, io }).catch(console.error);
     }
 
     res.json({ ok: true, message: shift_id ? 'Shift assigned' : 'Shift unassigned' });

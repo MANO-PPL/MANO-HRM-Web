@@ -7,6 +7,8 @@ import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
 import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
 import { calculateWorkHours, deriveStatus } from "../../services/reports/reportsServices.js";
+import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
+
 
 /**
  * POST /attendance/timein
@@ -295,6 +297,10 @@ export const submitCorrectionRequest = catchAsync(async (req, res) => {
     reason
   });
 
+  // Trigger premium correction request DM alert cards to all Admins and HRs
+  const io = req.app.get('io');
+  notifyCorrectionApplied({ org_id, sender_id: user_id, acr_id: id, io }).catch(console.error);
+
   res.status(201).json({
     message: "Correction request submitted",
     acr_id: id
@@ -379,6 +385,10 @@ export const reviewCorrectionRequest = catchAsync(async (req, res) => {
       review_comments,
       adminOverrideSessions: sessions
     });
+
+    // Trigger premium correction status update card in employee's DM chat
+    const io = req.app.get('io');
+    notifyCorrectionStatusUpdated({ org_id, reviewer_id, acr_id, io }).catch(console.error);
 
     res.json({ message: `Request ${status} successfully` });
   } catch (err) {

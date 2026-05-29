@@ -93,6 +93,7 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
             .leftJoin("designations as d", "u.desg_id", "d.desg_id")
             .select("al.activity_id as id", "u.user_name as user", "d.desg_name as role", "al.description as action", "al.occurred_at as time", "u.profile_image_url")
             .where("al.org_id", org_id)
+            .whereNot("al.event_type", "API_CALL")
             .whereRaw("DATE(al.occurred_at) = ?", [today])
             .orderBy("al.occurred_at", "desc")
             .limit(20)

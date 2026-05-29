@@ -1,6 +1,8 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as NotificationService from '../../services/notifications/notificationService.js';
 import * as LeaveService from '../../services/leaves/leaveService.js';
+import { notifyLeaveApplied, notifyLeaveStatusUpdated } from '../../services/collaboration/chatAlertService.js';
+
 
 export const getMyHistory = catchAsync(async (req, res) => {
     const { user_id, org_id } = req.user;
@@ -26,6 +28,16 @@ export const submitLeaveRequest = catchAsync(async (req, res) => {
             reason,
             files: req.files
         });
+
+        // Trigger premium DM alert cards to all Admins and HRs
+        const io = req.app.get('io');
+        notifyLeaveApplied({ 
+            org_id, 
+            sender_id: user_id, 
+            leave_id: insertId, 
+            attachments: responseAttachments || [], 
+            io 
+        }).catch(console.error);
 
         res.status(201).json({
             ok: true,
@@ -98,8 +110,14 @@ export const updateLeaveStatus = catchAsync(async (req, res) => {
         });
 
         if (request) {
-            // TODO: Implement notification handling
-            // NotificationService.handleNotification({...});
+            // Trigger premium status update card in employee's DM chat
+            const io = req.app.get('io');
+            notifyLeaveStatusUpdated({
+                org_id: req.user.org_id,
+                reviewer_id: req.user.user_id,
+                leave_id: id,
+                io
+            }).catch(console.error);
         }
 
         res.json({ ok: true, message: `Request ${status}` });
