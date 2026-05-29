@@ -42,13 +42,24 @@ const MobileAttendanceMonitoring = () => {
     ];
 
     // UI State
-    const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'requests'
+    const [activeTab, setActiveTab] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('tab') || 'dashboard';
+    });
     const [activeSubTab, setActiveSubTab] = useState('overview'); // 'overview' | 'analytics' | 'timeline' | 'map'
     const [direction, setDirection] = useState(0); // -1 for left, 1 for right
     const [loading, setLoading] = useState(true);
     const [lastSynced, setLastSynced] = useState(new Date());
     const [activeTheme, setActiveTheme] = useState('voyager');
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab) {
+            setActiveTab(tab);
+        }
+    }, [window.location.search]);
 
     const MAP_THEMES = {
         dark: { name: 'Night Mode', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' },
@@ -357,7 +368,7 @@ const MobileAttendanceMonitoring = () => {
 
     return (
         <MobileDashboardLayout title="Live Attendance">
-            <div className="min-h-screen bg-slate-50 dark:bg-github-dark-bg transition-colors duration-300 pb-24">
+            <div className="min-h-screen bg-slate-50 dark:bg-github-dark-bg transition-colors duration-300 pb-24" style={{ zoom: 0.8 }}>
                 
                 {/* --- STANDARDIZED PILL TAB BAR --- */}
                 <div className="sticky top-0 z-20 bg-white dark:bg-black px-4 py-3 border-b border-slate-100 dark:border-slate-800 transition-all duration-300">

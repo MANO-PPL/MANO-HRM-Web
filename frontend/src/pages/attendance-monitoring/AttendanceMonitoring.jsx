@@ -255,10 +255,21 @@ const AttendanceMonitoring = () => {
 
 
     const { avatarTimestamp } = useAuth();
-    const [activeTab, setActiveTab] = useState('live'); // 'live' | 'requests'
+    const [activeTab, setActiveTab] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('tab') || 'live';
+    });
     const [activeView, setActiveView] = useState('cards'); // 'cards' | 'graph' | 'table' | 'map'
     const [activeTheme, setActiveTheme] = useState('voyager');
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab) {
+            setActiveTab(tab);
+        }
+    }, [window.location.search]);
 
     const MAP_THEMES = {
         dark: { name: 'Night Mode', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' },
@@ -837,11 +848,18 @@ const AttendanceMonitoring = () => {
                     color: #f0f6fc !important;
                     background: #30363d !important;
                 }
+                .no-scrollbar::-webkit-scrollbar {
+                    display: none !important;
+                }
+                .no-scrollbar {
+                    -ms-overflow-style: none !important;
+                    scrollbar-width: none !important;
+                }
                 `}
             </style>
 
-            <DashboardLayout title="Live Attendance">
-            <div className="space-y-6">
+            <DashboardLayout title="Live Attendance" noPadding={activeTab === 'requests'}>
+            <div className={activeTab === 'requests' ? "h-[calc(125vh-5rem)] overflow-hidden flex flex-col p-6 space-y-4" : "space-y-6"} style={{ zoom: 0.8 }}>
 
                 {/* Tabs */}
                 <div className="flex space-x-1 bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-xl w-fit">
@@ -1756,7 +1774,7 @@ const AttendanceMonitoring = () => {
                     </>
                 ) : (
                     // Approvals Tab Content
-                    <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-14rem)]">
+                    <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
 
                         <div className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col">
                             {/* Header and Search */}
@@ -1782,7 +1800,7 @@ const AttendanceMonitoring = () => {
                                 {/* Date Navigation */}
                                 { /* Date Navigation Removed */}
                             </div>
-                            <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-700">
+                            <div className="overflow-y-auto no-scrollbar flex-1 divide-y divide-slate-100 dark:divide-slate-700">
                                 {requestsLoading ? (
                                     <div className="p-10 text-center text-slate-400">Loading...</div>
                                 ) : filteredRequests.length === 0 ? (
@@ -1837,20 +1855,30 @@ const AttendanceMonitoring = () => {
                                                 By {selectedRequestData.user_name} ({selectedRequestData.designation})
                                             </p>
                                         </div>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => handleUpdateStatus(selectedRequestData.acr_id, 'rejected')}
-                                                className="px-4 py-2 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                                            >
-                                                <XCircle size={16} /> Reject
-                                            </button>
-                                            <button
-                                                onClick={() => handleUpdateStatus(selectedRequestData.acr_id, 'approved')}
-                                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium shadow-md transition-colors flex items-center gap-2"
-                                            >
-                                                <CheckCircle size={16} /> Approve
-                                            </button>
-                                        </div>
+                                        {selectedRequestData.status === 'pending' ? (
+                                            <div className="flex gap-3">
+                                                <button
+                                                    onClick={() => handleUpdateStatus(selectedRequestData.acr_id, 'rejected')}
+                                                    className="px-4 py-2 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                                                >
+                                                    <XCircle size={16} /> Reject
+                                                </button>
+                                                <button
+                                                    onClick={() => handleUpdateStatus(selectedRequestData.acr_id, 'approved')}
+                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium shadow-md transition-colors flex items-center gap-2"
+                                                >
+                                                    <CheckCircle size={16} /> Approve
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <span className={`text-xs font-bold uppercase px-3 py-1.5 rounded-lg border ${
+                                                selectedRequestData.status === 'approved' 
+                                                    ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/30' 
+                                                    : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/30'
+                                            }`}>
+                                                {selectedRequestData.status}
+                                            </span>
+                                        )}
 
                                     </div>
 
@@ -2186,17 +2214,28 @@ const AttendanceMonitoring = () => {
                                                                     </p>
                                                                 </div>
 
-                                                                <div>
-                                                                    <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Auditor Comments</h4>
-                                                                    <div className="bg-white dark:bg-[#13151f] p-1 rounded-xl border border-slate-200 dark:border-github-dark-border focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
-                                                                        <textarea
-                                                                            value={reviewComment}
-                                                                            onChange={(e) => setReviewComment(e.target.value)}
-                                                                            placeholder="Add a review comment or explanation..."
-                                                                            className="w-full p-3 text-sm bg-transparent border-none focus:ring-0 outline-none min-h-[100px] text-slate-800 dark:text-github-dark-text resize-none"
-                                                                        ></textarea>
+                                                                {selectedRequestData.status === 'pending' ? (
+                                                                    <div>
+                                                                        <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Auditor Comments</h4>
+                                                                        <div className="bg-white dark:bg-[#13151f] p-1 rounded-xl border border-slate-200 dark:border-github-dark-border focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
+                                                                            <textarea
+                                                                                value={reviewComment}
+                                                                                onChange={(e) => setReviewComment(e.target.value)}
+                                                                                placeholder="Add a review comment or explanation..."
+                                                                                className="w-full p-3 text-sm bg-transparent border-none focus:ring-0 outline-none min-h-[100px] text-slate-800 dark:text-github-dark-text resize-none"
+                                                                            ></textarea>
+                                                                        </div>
                                                                     </div>
-                                                                </div>
+                                                                ) : (
+                                                                    reviewComment && (
+                                                                        <div className="bg-slate-50 dark:bg-[#1e202e] p-5 rounded-xl border border-slate-200 dark:border-github-dark-border">
+                                                                            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Auditor Comments</h4>
+                                                                            <p className="text-sm text-slate-600 dark:text-github-dark-muted italic">
+                                                                                "{reviewComment}"
+                                                                            </p>
+                                                                        </div>
+                                                                    )
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </>

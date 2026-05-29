@@ -67,7 +67,7 @@ const MobileSidebar = ({ isOpen, onClose }) => {
         location.pathname === to || (to !== '/' && location.pathname.startsWith(to + '/'));
 
     const linkClass = (to) =>
-        `flex items-center px-3.5 py-1.5 text-[13px] font-medium rounded-lg transition-all duration-200 group ${isActive(to)
+        `flex items-center px-3.5 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 group ${isActive(to)
             ? 'bg-[#f6f8fa] dark:bg-github-dark-border text-[#0969da] dark:text-github-dark-accent shadow-sm border border-transparent dark:border-github-dark-border/50'
             : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-github-dark-border/50 hover:text-slate-900 dark:hover:text-github-dark-text'
         }`;
@@ -102,7 +102,7 @@ const MobileSidebar = ({ isOpen, onClose }) => {
                 </div>
 
                 {/* Nav — matches desktop exactly */}
-                <nav className="flex-1 pt-1.5 pb-4 px-3 space-y-3 overflow-y-auto" style={{paddingBottom: 'env(safe-area-inset-bottom, 16px)'}}>
+                <nav className="flex-1 pt-1.5 pb-4 px-3 space-y-1.5 overflow-y-auto" style={{paddingBottom: 'env(safe-area-inset-bottom, 16px)'}}>
                     {menuItems.map((item) => (
                         <Link
                             key={item.to}

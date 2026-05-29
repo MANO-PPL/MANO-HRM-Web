@@ -12,10 +12,12 @@ const MobileDashboardLayout = ({ children, title = "Dashboard", hideHeader = fal
     const { unreadCount } = useNotification();
     const { user, avatarTimestamp } = useAuth();
 
-    // Initialize theme from localStorage or default to 'dark' logic
+    // Initialize theme from localStorage or system preference
     const [theme, setTheme] = useState(() => {
         if (typeof window !== 'undefined') {
-            return localStorage.getItem('theme') || 'light'; // matches desktop default
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) return savedTheme;
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
         return 'light';
     });
