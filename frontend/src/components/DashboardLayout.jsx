@@ -8,7 +8,8 @@ import {
     LogOut,
     User,
     ChevronDown,
-    Settings
+    Settings,
+    MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
@@ -67,6 +68,17 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false }) =
                     </div>
 
                     <div className="flex items-center gap-4 sm:gap-6">
+
+                        {/* Chat & Collab */}
+                        {['admin', 'hr', 'employee'].includes(user?.user_type) && (
+                            <Link
+                                to="/collaboration"
+                                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-github-dark-muted hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                                title="Chat & Collab"
+                            >
+                                <MessageSquare size={20} />
+                            </Link>
+                        )}
 
                         {/* Theme Toggle */}
                         <button

@@ -6,6 +6,7 @@ import { ToastContainer } from "react-toastify";
 import ErrorBoundary from "./ErrorBoundary";
 import ResponsiveRoute from "./components/ResponsiveRoute";
 import { AuthProvider } from "./context/AuthContext";
+import { SocketProvider } from "./context/SocketContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import ProtectedRoute from "./context/protection";
 import PublicRoute from "./context/publicRoute";
@@ -34,6 +35,7 @@ import VisualScripting from "./pages/test/VisualScripting"
 import DailyActivity from "./pages/dar/DailyActivity"
 import DARAdmin from "./pages/dar/DARAdmin"
 import LeaveApplication from "./pages/holidays/LeaveApplication"
+import ChatPage from "./pages/collaboration/ChatPage";
 
 // Organization Pages Imports
 
@@ -256,9 +258,10 @@ const MobileDashboardHandler = () => {
 function App() {
   return (
     <AuthProvider>
-      <NotificationProvider>
-        <SeoManager />
-        <ScaleManager />
+      <SocketProvider>
+        <NotificationProvider>
+          <SeoManager />
+          <ScaleManager />
         <ToastContainer position="bottom-center" autoClose={3000} limit={1} hideProgressBar={true} pauseOnHover={false} pauseOnFocusLoss={false} closeOnClick={true} />
         <Routes>
 
@@ -290,6 +293,7 @@ function App() {
               <Route path="/profile" element={<ResponsiveRoute DesktopComponent={Profile} MobileComponent={MobileProfile} />} />
               <Route path="/daily-activity" element={<ResponsiveRoute DesktopComponent={DailyActivity} MobileComponent={DailyActivityMobile} />} />
               <Route path="/apply-leave" element={<ResponsiveRoute DesktopComponent={LeaveApplication} MobileComponent={MobileLeaveApplication} />} />
+              <Route path="/collaboration" element={<ChatPage />} />
 
               {/* Mobile-Only Pages fallback */}
               <Route path="/notifications" element={<MobileNotifications />} />
@@ -326,7 +330,8 @@ function App() {
 
         </Routes>
       </NotificationProvider>
-    </AuthProvider>
+    </SocketProvider>
+  </AuthProvider>
   )
 }
 
