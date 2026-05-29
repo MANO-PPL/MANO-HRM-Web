@@ -1,7 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import api, { setAccessToken } from "../services/api";
 
-const AuthContext = createContext();
+const AuthContext = createContext({
+  user: null,
+  login: async () => {},
+  superAdminLogin: async () => {},
+  logout: async () => {},
+  authChecked: false,
+  fetchUser: async () => {},
+  avatarTimestamp: Date.now()
+});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);

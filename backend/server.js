@@ -1,10 +1,12 @@
 import { createServer } from 'http';
 import { Server as SocketIO } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import './src/config/config.js';
 import app from './src/app.js';
 import { initAttendanceProcessor } from './src/cron/AttendanceProcessor.js';
 import { initCleanupScheduler } from './src/cron/cleanupScheduler.js';
 import { initDARReportScheduler } from './src/cron/DARReportScheduler.js';
+import { initChatDatabase } from './src/services/collaboration/chatDatabaseInit.js';
 import EventBus from './src/utils/EventBus.js';
 import './src/workers/reportWorker.js';
 
@@ -48,18 +50,55 @@ const io = new SocketIO(server, {
   },
 });
 
-io.on('connection', (socket) => {
-  console.log('Socket connected:', socket.id, 'from', socket.handshake.address);
-  
-  socket.on('join', (userId) => {
-    if (userId) {
-      socket.join(`user_${userId}`);
-      console.log(`Socket ${socket.id} joined room: user_${userId}`);
+app.set('io', io);
+
+// Socket.io JWT Authentication Middleware
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    if (!token) {
+      return next(new Error('Authentication error: Token missing'));
     }
+    const actualToken = token.startsWith('Bearer ') ? token.slice(7) : token;
+    
+    jwt.verify(actualToken, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return next(new Error('Authentication error: Invalid token'));
+      }
+      socket.user = decoded;
+      next();
+    });
+  } catch (err) {
+    next(new Error('Authentication error'));
+  }
+});
+
+io.on('connection', (socket) => {
+  const userId = socket.user?.user_id ?? socket.user?.id;
+  
+  if (userId) {
+    // Join personal notification channel
+    socket.join(`user_${userId}`);
+  }
+
+  socket.on('join_room', (roomId) => {
+    socket.join(`room_${roomId}`);
+  });
+
+  socket.on('leave_room', (roomId) => {
+    socket.leave(`room_${roomId}`);
+  });
+
+  socket.on('typing', ({ roomId, username }) => {
+    socket.to(`room_${roomId}`).emit('user_typing', { roomId, userId, username });
+  });
+
+  socket.on('stop_typing', ({ roomId }) => {
+    socket.to(`room_${roomId}`).emit('user_stop_typing', { roomId, userId });
   });
 
   socket.on('disconnect', (reason) => {
-    console.log('Socket disconnected', socket.id, reason);
+    // Socket disconnected
   });
 });
 
@@ -82,6 +121,9 @@ server.on('error', (err) => {
 
 server.listen(activePort, '0.0.0.0', () => {
   console.log(`Backend server listening at http://0.0.0.0:${activePort}`);
+
+  // Auto-initialize Collaboration / Chat tables if needed
+  initChatDatabase();
 
   if (!hasStartedSchedulers) {
     hasStartedSchedulers = true;
