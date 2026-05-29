@@ -1,13 +1,23 @@
 import { attendanceDB } from '../../config/database.js';
+import { cacheService } from '../cache/cacheService.js';
 
 /**
  * Get all shifts for an organization
  */
 export async function getShiftsForOrg(org_id) {
+    const cacheKey = `mano-cache:shifts:org:${org_id}`;
+    
+    // 1. Try cache read
+    const cachedData = await cacheService.get(cacheKey);
+    if (cachedData) {
+        return cachedData;
+    }
+
+    // 2. Fetch from DB on Cache Miss
     const shifts = await attendanceDB('shifts').where({ org_id });
 
     // Parse JSON rules for frontend compatibility
-    return shifts.map(s => {
+    const shiftsData = shifts.map(s => {
         const rules = typeof s.policy_rules === 'string' ? JSON.parse(s.policy_rules) : (s.policy_rules || {});
         return {
             shift_id: s.shift_id,
@@ -23,6 +33,11 @@ export async function getShiftsForOrg(org_id) {
             policy_rules: rules
         };
     });
+
+    // 3. Write cache for future hits (24 hours TTL)
+    await cacheService.set(cacheKey, shiftsData);
+
+    return shiftsData;
 }
 
 /**
@@ -54,6 +69,9 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
         policy_rules: JSON.stringify(finalRules)
     });
 
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:shifts:org:${org_id}`);
+
     return id;
 }
 
@@ -69,6 +87,9 @@ export async function updateShift({ shift_id, org_id, shift_name, policy_rules }
     const affected = await attendanceDB('shifts')
         .where({ shift_id, org_id })
         .update(updates);
+
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:shifts:org:${org_id}`);
 
     return affected;
 }
@@ -90,6 +111,9 @@ export async function deleteShift({ shift_id, org_id }) {
     const affected = await attendanceDB('shifts')
         .where({ shift_id, org_id })
         .del();
+
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:shifts:org:${org_id}`);
 
     return affected;
 }

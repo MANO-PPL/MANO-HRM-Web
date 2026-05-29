@@ -3,10 +3,19 @@ import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
+import { cacheService } from '../cache/cacheService.js';
 
 //Get All Holidays
 export const getHolidays = async (org_id) => {
+    const cacheKey = `mano-cache:holidays:org:${org_id}`;
 
+    // 1. Try cache read
+    const cachedData = await cacheService.get(cacheKey);
+    if (cachedData) {
+        return cachedData;
+    }
+
+    // 2. Fetch from DB on Cache Miss
     const holidays = await attendanceDB('holidays')
         .select(
             '*',
@@ -16,8 +25,10 @@ export const getHolidays = async (org_id) => {
         )
         .where({ org_id });
 
-    return holidays;
+    // 3. Write cache for future hits
+    await cacheService.set(cacheKey, holidays);
 
+    return holidays;
 };
 
 //Bulk or Single Insert
@@ -60,6 +71,9 @@ export const createHolidays = async (org_id, holidaysToInsert) => {
 
     });
 
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:holidays:org:${org_id}`);
+
     return prepareData.length;
 
 };
@@ -90,6 +104,8 @@ export const updateHoliday = async (id, org_id, data) => {
         })
         .update(updates);
 
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:holidays:org:${org_id}`);
 
     return count;
 
@@ -102,6 +118,9 @@ export const deleteHolidays = async (org_id, ids) => {
         .whereIn('holiday_id', ids)
         .andWhere({ org_id })
         .del();
+
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:holidays:org:${org_id}`);
 
     return count;
 
@@ -210,6 +229,8 @@ export const bulkCreateFromJson = async (org_id, holidays) => {
                 await trx('holidays').insert(prepareData);
             });
             results.success_count = prepareData.length;
+            // Invalidate Cache
+            await cacheService.del(`mano-cache:holidays:org:${org_id}`);
         } catch (error) {
             results.failure_count = prepareData.length;
             results.errors.push(error.message);
@@ -312,6 +333,8 @@ export const bulkUploadFromFile = async (org_id, file) => {
                 await trx('holidays').insert(prepareData);
             });
             results.success_count = prepareData.length;
+            // Invalidate Cache
+            await cacheService.del(`mano-cache:holidays:org:${org_id}`);
         } catch (error) {
             results.failure_count += prepareData.length;
             results.errors.push(`Batch insert failed: ${error.message}`);

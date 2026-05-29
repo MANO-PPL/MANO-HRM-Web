@@ -1,8 +1,23 @@
 import { attendanceDB } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
+import { cacheService } from '../cache/cacheService.js';
 
 export async function getAllLocations({ org_id }) {
-    return attendanceDB('work_locations').where({ org_id });
+    const cacheKey = `mano-cache:locations:org:${org_id}`;
+    
+    // 1. Try cache read
+    const cachedData = await cacheService.get(cacheKey);
+    if (cachedData) {
+        return cachedData;
+    }
+
+    // 2. Fetch from DB on Cache Miss
+    const locations = await attendanceDB('work_locations').where({ org_id });
+
+    // 3. Write cache for future hits
+    await cacheService.set(cacheKey, locations);
+
+    return locations;
 }
 
 export async function createLocation({ org_id, location_name, address, latitude, longitude, radius }) {
@@ -14,6 +29,10 @@ export async function createLocation({ org_id, location_name, address, latitude,
         longitude,
         radius: radius || 100
     });
+
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:locations:org:${org_id}`);
+
     return id;
 }
 
@@ -21,6 +40,10 @@ export async function updateLocation({ id, org_id, updates }) {
     const count = await attendanceDB('work_locations')
         .where({ location_id: id, org_id })
         .update(updates);
+
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:locations:org:${org_id}`);
+
     return count;
 }
 
@@ -28,6 +51,9 @@ export async function softDeleteLocation({ id, org_id }) {
     await attendanceDB('work_locations')
         .where({ location_id: id, org_id })
         .update({ is_active: 0 });
+
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:locations:org:${org_id}`);
 }
 
 export async function bulkAssign({ org_id, assignments }) {
@@ -79,4 +105,7 @@ export async function bulkAssign({ org_id, assignments }) {
             }
         }
     });
+
+    // Invalidate Cache
+    await cacheService.del(`mano-cache:locations:org:${org_id}`);
 }
