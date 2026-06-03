@@ -26,6 +26,7 @@
     "exceljs": "^3.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
+    "firebase-admin": "^13.10.0",
     "fuse.js": "^7.0.0",
     "groq-sdk": "^1.1.2",
     "helmet": "^8.1.0",

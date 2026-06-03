@@ -5,6 +5,120 @@ import { handleMentions } from '../../services/collaboration/mentionService.js';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import { uploadFile } from '../../services/s3/s3Service.js';
 
+// Helper to enrich a raw chat room with members info, last message, unread count, etc.
+const enrichRoomDetails = async (room, userId) => {
+    if (!room) return null;
+
+    let memberIds = [];
+    try {
+        memberIds = typeof room.member_ids === 'string' ? JSON.parse(room.member_ids) : room.member_ids;
+        if (!Array.isArray(memberIds)) memberIds = [];
+    } catch (e) {}
+
+    // Fetch details of all room members
+    const membersList = await attendanceDB('users')
+        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
+        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
+        .whereIn('users.user_id', memberIds)
+        .where('users.is_deleted', 0)
+        .select(
+            'users.user_id',
+            'users.user_name',
+            'users.profile_image_url',
+            'users.email',
+            'departments.dept_name',
+            'designations.desg_name'
+        );
+
+    const cleanMembers = membersList.map(u => ({
+        ...u,
+        user_name: u.user_name ? u.user_name.trim() : ''
+    }));
+
+    // Check if current user is removed from this room
+    let isRemoved = false;
+    let removedAt = null;
+    if (room.removed_members) {
+        try {
+            const removedMembers = typeof room.removed_members === 'string' ? JSON.parse(room.removed_members) : room.removed_members;
+            if (Array.isArray(removedMembers)) {
+                const found = removedMembers.find(rm => Number(rm.user_id) === Number(userId));
+                if (found) {
+                    isRemoved = true;
+                    removedAt = found.removed_at;
+                }
+            } else if (removedMembers && typeof removedMembers === 'object') {
+                if (removedMembers[userId]) {
+                    isRemoved = true;
+                    removedAt = removedMembers[userId].removed_at;
+                }
+            }
+        } catch (e) {}
+    }
+
+    // Get user last read timestamp
+    let lastReadAt = null;
+    try {
+        const readTimes = typeof room.last_read_times === 'string' ? JSON.parse(room.last_read_times || '{}') : (room.last_read_times || {});
+        lastReadAt = readTimes[userId] ? new Date(readTimes[userId]) : null;
+    } catch (e) {}
+
+    let msgs = [];
+    try {
+        const decryptedMessages = decryptText(room.messages);
+        msgs = typeof decryptedMessages === 'string' ? JSON.parse(decryptedMessages || '[]') : (decryptedMessages || []);
+    } catch (e) {}
+
+    // Filter messages for removed user
+    if (isRemoved && removedAt) {
+        const cutOff = new Date(removedAt);
+        msgs = msgs.filter(m => new Date(m.created_at) <= cutOff);
+    }
+
+    // Calculate unread count
+    const unreadCount = isRemoved ? 0 : msgs.filter(msg => 
+        Number(msg.sender_id) !== Number(userId) && 
+        (!lastReadAt || new Date(msg.created_at) > lastReadAt)
+    ).length;
+
+    const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+
+    let customRoomName = decryptText(room.room_name) || room.room_name;
+    let dmAvatar = null;
+
+    if (room.room_type === 'direct') {
+        const otherMember = cleanMembers.find(m => Number(m.user_id) !== Number(userId));
+        if (otherMember) {
+            customRoomName = otherMember.user_name;
+            dmAvatar = otherMember.profile_image_url;
+        }
+    }
+
+    let lastMsgSenderName = 'Unknown Colleague';
+    if (lastMsg) {
+        const sender = cleanMembers.find(m => Number(m.user_id) === Number(lastMsg.sender_id));
+        if (sender) {
+            lastMsgSenderName = sender.user_name;
+        }
+    }
+
+    return {
+        ...room,
+        room_name: customRoomName,
+        avatar_url: dmAvatar,
+        members: cleanMembers,
+        is_removed: isRemoved,
+        removed_at: removedAt,
+        last_message: lastMsg ? {
+            text: lastMsg.message_text,
+            sender_id: lastMsg.sender_id,
+            created_at: lastMsg.created_at,
+            sender_name: lastMsgSenderName
+        } : null,
+        unread_count: unreadCount
+    };
+};
+
 // GET sanitized coworkers inside same organization
 export const getOrgUsers = catchAsync(async (req, res, next) => {
     const orgId = req.user.org_id;
@@ -52,11 +166,20 @@ export const getRooms = catchAsync(async (req, res, next) => {
     const orgId = req.user.org_id;
     const isSuperAdmin = req.user.user_type === 'super_admin';
 
-    // Fetch all rooms (bypass org_id filter if super admin)
+    // Fetch rooms (bypass org_id filter if super admin)
     let query = attendanceDB('chat_rooms');
     if (!isSuperAdmin && orgId !== null && orgId !== undefined) {
         query = query.where({ org_id: orgId });
     }
+
+    // Filter at SQL database level to avoid fetching all rooms into Node memory
+    query = query.where(function() {
+        this.whereRaw("JSON_CONTAINS(member_ids, ?)", [String(userId)])
+            .orWhereRaw("JSON_CONTAINS(member_ids, ?)", [JSON.stringify(Number(userId))])
+            .orWhereRaw("JSON_CONTAINS(JSON_KEYS(COALESCE(removed_members, '{}')), ?)", [JSON.stringify(String(userId))])
+            .orWhereRaw("JSON_CONTAINS(JSON_KEYS(COALESCE(removed_members, '{}')), ?)", [JSON.stringify(Number(userId))]);
+    });
+
     const allRooms = await query;
 
     // Filter in memory for rooms containing current user in member_ids JSON array OR removed_members JSON
@@ -303,10 +426,13 @@ export const createRoom = catchAsync(async (req, res, next) => {
             } catch (e) {
                 existingDM.messages = [];
             }
+            
+            const enrichedDM = await enrichRoomDetails(existingDM, userId);
+            
             return res.json({
                 success: true,
                 message: 'DM room already exists',
-                data: existingDM
+                data: enrichedDM
             });
         }
     }
@@ -323,7 +449,7 @@ export const createRoom = catchAsync(async (req, res, next) => {
         updated_at: attendanceDB.fn.now()
     });
 
-    const newRoom = await attendanceDB('chat_rooms').where({ room_id: roomId }).first();
+    let newRoom = await attendanceDB('chat_rooms').where({ room_id: roomId }).first();
 
     if (newRoom) {
         newRoom.room_name = decryptText(newRoom.room_name);
@@ -335,16 +461,18 @@ export const createRoom = catchAsync(async (req, res, next) => {
         }
     }
 
+    const enrichedRoom = await enrichRoomDetails(newRoom, userId);
+
     const io = req.app.get('io');
     if (io) {
         allMemberIds.forEach(mId => {
-            io.to(`user_${mId}`).emit('room_created', newRoom);
+            io.to(`user_${mId}`).emit('room_created', enrichedRoom);
         });
     }
 
     res.status(201).json({
         success: true,
-        data: newRoom
+        data: enrichedRoom
     });
 });
 

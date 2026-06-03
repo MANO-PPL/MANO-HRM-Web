@@ -6,8 +6,8 @@ import app from './src/app.js';
 import { initAttendanceProcessor } from './src/cron/AttendanceProcessor.js';
 import { initCleanupScheduler } from './src/cron/cleanupScheduler.js';
 import { initDARReportScheduler } from './src/cron/DARReportScheduler.js';
-import { initChatDatabase } from './src/services/collaboration/chatDatabaseInit.js';
-import { initReportsDatabase } from './src/services/reports/reportsDatabaseInit.js';
+import { initDatabase } from './src/config/databaseInit.js';
+import { sendPushNotification } from './src/services/notifications/fcmService.js';
 import EventBus from './src/utils/EventBus.js';
 import './src/workers/reportWorker.js';
 
@@ -118,6 +118,17 @@ io.on('connection', (socket) => {
 EventBus.on('notification_saved', (notification) => {
   io.to(`user_${notification.user_id}`).emit('new-notification', notification);
   console.log(`📡 Real-time notification push sent to user_${notification.user_id} for alert #${notification.notification_id}`);
+  
+  // Trigger FCM push notification to user's registered devices
+  sendPushNotification(
+    notification.user_id,
+    notification.title,
+    notification.message,
+    {
+      notification_id: String(notification.notification_id || ''),
+      type: String(notification.type || 'INFO'),
+    }
+  );
 });
 
 server.on('error', (err) => {
@@ -134,11 +145,8 @@ server.on('error', (err) => {
 server.listen(activePort, '0.0.0.0', () => {
   console.log(`Backend server listening at http://0.0.0.0:${activePort}`);
 
-  // Auto-initialize Collaboration / Chat tables if needed
-  initChatDatabase();
-  
-  // Auto-initialize Reports database table if needed
-  initReportsDatabase();
+  // Auto-initialize database tables if needed
+  initDatabase();
 
   if (!hasStartedSchedulers) {
     hasStartedSchedulers = true;

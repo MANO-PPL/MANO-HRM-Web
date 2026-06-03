@@ -2,6 +2,7 @@ import express from 'express';
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
 import { getNotifications as getNotificationsService, markNotificationAsRead, markAllNotificationsAsRead } from '../../services/notifications/notificationService.js';
+import { registerToken, sendPushNotification } from '../../services/notifications/fcmService.js';
 
 export const getNotifications = catchAsync(async (req, res, next) => {
 
@@ -102,13 +103,40 @@ catchAsync(async (req, res, next) => {
     );
 
     res.json({
-
         ok: true,
-
-        message:
-        'All notifications marked as read',
-
+        message: 'All notifications marked as read',
         updated_count: count
+    });
+});
+
+export const registerFCMToken = catchAsync(async (req, res, next) => {
+    const user_id = req.user.user_id ?? req.user.id;
+    const { token, device_type = 'android' } = req.body;
+
+    if (!token) {
+        throw new AppError('FCM token is required', 400);
+    }
+
+    await registerToken(user_id, token, device_type);
+
+    res.json({
+        ok: true,
+        message: 'FCM token registered successfully'
+    });
+});
+
+export const testPushNotification = catchAsync(async (req, res, next) => {
+    const user_id = req.user.user_id ?? req.user.id;
+
+    await sendPushNotification(
+        user_id,
+        'FCM Connection Test',
+        'Your push notification integration is fully functional! 🚀'
+    );
+
+    res.json({
+        ok: true,
+        message: 'Test push notification request sent successfully'
     });
 });
 
