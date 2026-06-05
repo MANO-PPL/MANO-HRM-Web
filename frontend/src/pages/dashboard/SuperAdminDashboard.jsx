@@ -110,7 +110,7 @@ const SuperAdminDashboard = () => {
             loading={loading}
           />
           <StatCard
-            title="System Transactions"
+            title="PM2 Logs Console"
             value={stats.totalApiCalls}
             label="Total Monitored API Calls"
             icon={<Activity className="text-amber-500" size={24} />}
@@ -189,7 +189,7 @@ const SuperAdminDashboard = () => {
           <h3 className="text-xs font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider mb-3">Quick Management Links</h3>
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <QuickLinkCard onClick={() => navigate('/organizations')} icon={<Building size={20} />} title="Organizations" desc="Onboard & manage tenants" />
-            <QuickLinkCard onClick={() => navigate('/super-admin/logs')} icon={<FileText size={20} />} title="System Logs" desc="View transaction history" />
+            <QuickLinkCard onClick={() => navigate('/super-admin/logs')} icon={<FileText size={20} />} title="PM2 Logs Console" desc="Stream live process logs" />
             <QuickLinkCard onClick={() => navigate('/super-admin/alerts')} icon={<ShieldAlert size={20} />} title="Security Alerts" desc="Check system firewalls" />
             <QuickLinkCard onClick={() => navigate('/super-admin/feedback')} icon={<MessageSquare size={20} />} title="User Feedback" desc="Review tickets & bugs" />
           </div>
