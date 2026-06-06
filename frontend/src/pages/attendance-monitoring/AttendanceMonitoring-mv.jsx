@@ -31,8 +31,65 @@ L.Icon.Default.mergeOptions({
     shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
+// Timezone-aware date/time parser and normalizer
+const parseTimeInTimezone = (r, isOut, orgTimezone) => {
+    let utcStr = null;
+    let fallbackStr = isOut ? r.time_out : r.time_in;
+    
+    if (r.metadata) {
+        try {
+            const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata;
+            utcStr = isOut ? meta?.time_out?.timestamp_utc : meta?.time_in?.timestamp_utc;
+        } catch (e) {
+            console.error("Failed to parse metadata", e);
+        }
+    }
+    
+    // If we have a valid UTC string from metadata, we convert it to the organization's timezone.
+    if (utcStr) {
+        try {
+            const d = new Date(utcStr);
+            if (!isNaN(d.getTime())) {
+                const localStr = d.toLocaleString('en-US', { timeZone: orgTimezone || 'UTC' });
+                const parsed = new Date(localStr);
+                if (!isNaN(parsed.getTime())) return parsed;
+            }
+        } catch (err) {
+            console.error("Error parsing UTC timestamp:", err);
+        }
+    }
+    
+    // Otherwise, fallback to database time_in/time_out.
+    if (fallbackStr) {
+        try {
+            const d = new Date(fallbackStr);
+            if (!isNaN(d.getTime())) {
+                // If it represents local clock time stored as UTC, we treat fallbackStr as UTC to preserve it
+                const localStr = d.toLocaleString('en-US', { timeZone: 'UTC' });
+                const parsed = new Date(localStr);
+                if (!isNaN(parsed.getTime())) return parsed;
+            }
+        } catch (err) {
+            console.error("Error parsing fallback timestamp:", err);
+        }
+    }
+    
+    return null;
+};
+
+const getCurrentTimeInTimezone = (orgTimezone) => {
+    const d = new Date();
+    try {
+        const localStr = d.toLocaleString('en-US', { timeZone: orgTimezone || 'UTC' });
+        return new Date(localStr);
+    } catch (e) {
+        return d;
+    }
+};
+
 const MobileAttendanceMonitoring = () => {
     const { avatarTimestamp, user: currentUser } = useAuth();
+    const [orgTimezone, setOrgTimezone] = useState('UTC');
 
     const getRequestTypeStyle = (type) => {
         const typeStr = String(type).toLowerCase().replace(/_/g, ' ');
@@ -153,20 +210,25 @@ const MobileAttendanceMonitoring = () => {
 
             const staff = summaryRes.data || [];
             const requests = requestsRes.data || [];
+            const resolvedTz = summaryRes.timezone || 'UTC';
+            setOrgTimezone(resolvedTz);
 
             // Merge Data Logic (Synchronized with Web)
             const mergedData = staff.map(u => {
                 const daySessions = u.sessions || [];
                 const sessions = daySessions.map(r => {
-                    const inTime = new Date(r.time_in);
-                    const formatTime = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const inTime = parseTimeInTimezone(r, false, resolvedTz);
+                    const formatTime = (d) => {
+                        if (!d) return '-';
+                        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    };
 
                     const inStr = formatTime(inTime);
                     let outStr = '-';
                     let isActive = !r.time_out && r.status !== 'MISSED_PUNCH';
 
-                    if (r.time_out) {
-                        const outTime = new Date(r.time_out);
+                    const outTime = parseTimeInTimezone(r, true, resolvedTz);
+                    if (outTime) {
                         outStr = formatTime(outTime);
                     }
 
@@ -175,10 +237,10 @@ const MobileAttendanceMonitoring = () => {
 
                     return {
                         rawIn: inTime,
-                        rawOut: r.time_out ? new Date(r.time_out) : null,
+                        rawOut: outTime,
                         in: inStr,
                         out: outStr,
-                        date: inTime.toLocaleDateString(),
+                        date: inTime ? inTime.toLocaleDateString() : '-',
                         isActive,
                         inLocation: inLoc,
                         outLocation: outLoc,
@@ -625,6 +687,7 @@ const MobileAttendanceMonitoring = () => {
                                             loading={loading}
                                             onSelect={(emp) => setSelectedEmployee(emp)}
                                             avatarTimestamp={avatarTimestamp}
+                                            orgTimezone={orgTimezone}
                                         />
                                     )}
 
@@ -881,7 +944,7 @@ const MobileAttendanceMonitoring = () => {
 
 // --- SUB-COMPONENTS ---
 
-const TimelineView = ({ data, loading, onSelect, avatarTimestamp }) => {
+const TimelineView = ({ data, loading, onSelect, avatarTimestamp, orgTimezone }) => {
     const startHour = 0;
     const totalHours = 24;
 
@@ -948,7 +1011,7 @@ const TimelineView = ({ data, loading, onSelect, avatarTimestamp }) => {
                                         <div className="absolute inset-x-0 h-6 z-10 px-1">
                                             {item.sessions.map((session, sIdx) => {
                                                 const startPos = timeToPct(session.rawIn);
-                                                const endPos = session.isActive ? timeToPct(new Date()) : timeToPct(session.rawOut);
+                                                const endPos = session.isActive ? timeToPct(getCurrentTimeInTimezone(orgTimezone)) : timeToPct(session.rawOut);
                                                 const width = endPos - startPos;
                                                 if (startPos === null) return null;
 

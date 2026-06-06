@@ -251,9 +251,65 @@ const ClusterDrillDownPopup = ({ data, onClose }) => {
     );
 };
 
+// Timezone-aware date/time parser and normalizer
+const parseTimeInTimezone = (r, isOut, orgTimezone) => {
+    let utcStr = null;
+    let fallbackStr = isOut ? r.time_out : r.time_in;
+    
+    if (r.metadata) {
+        try {
+            const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata;
+            utcStr = isOut ? meta?.time_out?.timestamp_utc : meta?.time_in?.timestamp_utc;
+        } catch (e) {
+            console.error("Failed to parse metadata", e);
+        }
+    }
+    
+    // If we have a valid UTC string from metadata, we convert it to the organization's timezone.
+    if (utcStr) {
+        try {
+            const d = new Date(utcStr);
+            if (!isNaN(d.getTime())) {
+                const localStr = d.toLocaleString('en-US', { timeZone: orgTimezone || 'UTC' });
+                const parsed = new Date(localStr);
+                if (!isNaN(parsed.getTime())) return parsed;
+            }
+        } catch (err) {
+            console.error("Error parsing UTC timestamp:", err);
+        }
+    }
+    
+    // Otherwise, fallback to database time_in/time_out.
+    if (fallbackStr) {
+        try {
+            const d = new Date(fallbackStr);
+            if (!isNaN(d.getTime())) {
+                // If it represents local clock time stored as UTC, we treat fallbackStr as UTC to preserve it
+                const localStr = d.toLocaleString('en-US', { timeZone: 'UTC' });
+                const parsed = new Date(localStr);
+                if (!isNaN(parsed.getTime())) return parsed;
+            }
+        } catch (err) {
+            console.error("Error parsing fallback timestamp:", err);
+        }
+    }
+    
+    return null;
+};
+
+const getCurrentTimeInTimezone = (orgTimezone) => {
+    const d = new Date();
+    try {
+        const localStr = d.toLocaleString('en-US', { timeZone: orgTimezone || 'UTC' });
+        return new Date(localStr);
+    } catch (e) {
+        return d;
+    }
+};
+
 const AttendanceMonitoring = () => {
     const navigate = useNavigate();
-
+    const [orgTimezone, setOrgTimezone] = useState('UTC');
 
     const { avatarTimestamp } = useAuth();
     const [activeTab, setActiveTab] = useState(() => {
@@ -341,25 +397,31 @@ const AttendanceMonitoring = () => {
             // 1. Fetch Dynamic Daily Summary for Admin
             const res = await attendanceService.getDailySummaryAdmin(selectedDate);
             const staff = res.data || [];
+            const resolvedTz = res.timezone || 'UTC';
+            setOrgTimezone(resolvedTz);
 
             // 2. Map Data
             const mergedData = staff.map(u => {
                 const daySessions = u.sessions || [];
                 let totalMin = 0;
                 const sessions = daySessions.map(r => {
-                    const inTime = new Date(r.time_in);
-                    const formatTime = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const inTime = parseTimeInTimezone(r, false, resolvedTz);
+                    const formatTime = (d) => {
+                        if (!d) return '-';
+                        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    };
 
                     const inStr = formatTime(inTime);
                     let outStr = '-';
                     let isActive = !r.time_out && r.status !== 'MISSED_PUNCH';
 
-                    if (r.time_out) {
-                        const outTime = new Date(r.time_out);
+                    const outTime = parseTimeInTimezone(r, true, resolvedTz);
+                    if (outTime) {
                         outStr = formatTime(outTime);
-                        totalMin += Math.max(0, (outTime - inTime) / 60000);
-                    } else if (isActive) {
-                        totalMin += Math.max(0, (new Date() - inTime) / 60000);
+                        if (inTime) totalMin += Math.max(0, (outTime - inTime) / 60000);
+                    } else if (isActive && inTime) {
+                        const nowTZ = getCurrentTimeInTimezone(resolvedTz);
+                        totalMin += Math.max(0, (nowTZ - inTime) / 60000);
                     }
 
                     // Locations
@@ -368,10 +430,10 @@ const AttendanceMonitoring = () => {
 
                     return {
                         rawIn: inTime,
-                        rawOut: r.time_out ? new Date(r.time_out) : null,
+                        rawOut: outTime,
                         in: inStr,
                         out: outStr,
-                        date: inTime.toLocaleDateString(),
+                        date: inTime ? inTime.toLocaleDateString() : '-',
                         isActive,
                         inLocation: inLoc,
                         outLocation: outLoc,
@@ -1114,7 +1176,7 @@ const AttendanceMonitoring = () => {
                                                                             <div className="absolute inset-x-0 h-10 z-10 px-2">
                                                                                 {item.sessions.map((session, sIdx) => {
                                                                                     const startPos = timeToPct(session.rawIn);
-                                                                                    const endPos = session.isActive ? timeToPct(new Date()) : timeToPct(session.rawOut);
+                                                                                    const endPos = session.isActive ? timeToPct(getCurrentTimeInTimezone(orgTimezone)) : timeToPct(session.rawOut);
                                                                                     const width = endPos - startPos;
 
                                                                                     if (startPos === null) return null;
