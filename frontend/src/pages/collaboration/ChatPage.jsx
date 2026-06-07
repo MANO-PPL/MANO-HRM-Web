@@ -64,12 +64,16 @@ const formatLastMessagePreview = (messageText) => {
 const renderParsedMessageContent = (text, isSelf) => {
     if (!text) return null;
 
-    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+    // Matches http://, https://, or www. followed by domain and path/query characters,
+    // excluding trailing punctuation marks (.,!?;:()[]{}""'') so they don't break the hyperlink.
+    const urlRegex = /(https?:\/\/[^\s<>]*(?:[^\s<>.,!?;:()\[\]{}""''])|www\.[^\s<>]*(?:[^\s<>.,!?;:()\[\]{}""'']))/gi;
     const mentionRegex = /(@[a-zA-Z0-9._-]+)/g;
+    const testUrlRegex = /^(https?:\/\/[^\s]+|www\.[^\s]+)$/i;
+    const testMentionRegex = /^@[a-zA-Z0-9._-]+$/;
 
     const urlParts = text.split(urlRegex);
     return urlParts.map((urlPart, urlIdx) => {
-        if (urlPart.match(urlRegex)) {
+        if (testUrlRegex.test(urlPart)) {
             const href = urlPart.startsWith('http') ? urlPart : `https://${urlPart}`;
             return (
                 <a
@@ -79,8 +83,8 @@ const renderParsedMessageContent = (text, isSelf) => {
                     rel="noopener noreferrer"
                     className={`underline break-all font-bold ${
                         isSelf 
-                        ? 'text-indigo-850 dark:text-[#58a6ff] hover:text-indigo-950 dark:hover:text-[#79c0ff]' 
-                        : 'text-indigo-600 dark:text-[#58a6ff] hover:text-indigo-700 dark:hover:text-[#79c0ff]'
+                        ? 'text-blue-700 dark:text-[#79c0ff] hover:text-blue-900 dark:hover:text-white' 
+                        : 'text-blue-600 dark:text-[#58a6ff] hover:text-blue-800 dark:hover:text-[#79c0ff]'
                     }`}
                 >
                     {urlPart}
@@ -90,7 +94,7 @@ const renderParsedMessageContent = (text, isSelf) => {
 
         const mentionParts = urlPart.split(mentionRegex);
         return mentionParts.map((part, mentIdx) => {
-            if (part.match(mentionRegex)) {
+            if (testMentionRegex.test(part)) {
                 return (
                     <span 
                         key={`mention-${urlIdx}-${mentIdx}`} 
@@ -973,17 +977,8 @@ const ChatPage = () => {
 
                                         {/* Meta Previews */}
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between mb-0.5">
-                                                <h4 className="text-xs font-bold text-[#24292f] dark:text-[#c9d1d9] truncate">{room.room_name}</h4>
-                                                
-                                                {/* Timestamp */}
-                                                {room.last_message && (
-                                                    <span className="text-[9px] text-[#57606a] dark:text-[#8b949e] shrink-0 font-medium">
-                                                        {formatLocalTime(room.last_message.created_at)}
-                                                    </span>
-                                                )}
-                                            </div>
-
+                                            <h4 className="text-xs font-bold text-[#24292f] dark:text-[#c9d1d9] truncate mb-1">{room.room_name}</h4>
+                                            
                                             {/* Preview text */}
                                             {typingNames.length > 0 ? (
                                                 <span className="text-[10px] text-[#0550ae] dark:text-[#58a6ff] font-medium animate-pulse truncate block">
@@ -999,26 +994,64 @@ const ChatPage = () => {
                                             )}
                                         </div>
 
-                                        {/* Badges Column */}
-                                        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                                            {room.unread_count > 0 && !isSelected && (
-                                                <span className="w-4 h-4 bg-[#7dd3fc] dark:bg-[#238636] text-[#0550ae] dark:text-white rounded-full flex items-center justify-center text-[8px] font-bold">
-                                                    {room.unread_count}
+                                        {/* Right Column: Time & Status Badges */}
+                                        <div className="flex flex-col items-end justify-between self-stretch shrink-0 ml-auto pl-1">
+                                            {/* Timestamp */}
+                                            {room.last_message ? (
+                                                <span className="text-[9px] text-[#57606a] dark:text-[#8b949e] font-medium leading-none">
+                                                    {formatLocalTime(room.last_message.created_at)}
                                                 </span>
+                                            ) : (
+                                                <span className="h-3" />
                                             )}
                                             
-                                            <button
-                                                type="button"
-                                                onClick={(e) => togglePinRoom(e, room.room_id)}
-                                                className={`p-1 hover:bg-slate-200/60 dark:hover:bg-[#30363d] rounded transition-all cursor-pointer border-none bg-transparent flex items-center justify-center ${
-                                                    pinnedRoomIds.includes(room.room_id) 
-                                                    ? 'text-[#0550ae] dark:text-[#58a6ff] opacity-100' 
-                                                    : 'text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100'
-                                                }`}
-                                                title={pinnedRoomIds.includes(room.room_id) ? "Unpin Chat" : "Pin Chat"}
-                                            >
-                                                <Pin size={12} className={pinnedRoomIds.includes(room.room_id) ? "fill-current" : ""} />
-                                            </button>
+                                            {/* Badges & Actions */}
+                                            <div className="flex items-center gap-1.5 mt-auto">
+                                                {pinnedRoomIds.includes(room.room_id) ? (
+                                                    <>
+                                                        {room.unread_count > 0 && !isSelected && (
+                                                            <span className="w-5 h-5 shrink-0 bg-[#7dd3fc] dark:bg-[#238636] text-[#0550ae] dark:text-white rounded-full flex items-center justify-center text-[10px] font-extrabold leading-none text-center">
+                                                                {room.unread_count}
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => togglePinRoom(e, room.room_id)}
+                                                            className="w-5 h-5 shrink-0 hover:bg-slate-200/60 dark:hover:bg-[#30363d] rounded transition-all cursor-pointer border-none bg-transparent flex items-center justify-center text-[#0550ae] dark:text-[#58a6ff]"
+                                                            title="Unpin Chat"
+                                                        >
+                                                            <Pin size={12} className="fill-current" />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {room.unread_count > 0 && !isSelected ? (
+                                                            <>
+                                                                <span className="w-5 h-5 shrink-0 bg-[#7dd3fc] dark:bg-[#238636] text-[#0550ae] dark:text-white rounded-full flex items-center justify-center text-[10px] font-extrabold leading-none text-center group-hover:hidden">
+                                                                    {room.unread_count}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => togglePinRoom(e, room.room_id)}
+                                                                    className="w-5 h-5 shrink-0 hover:bg-slate-200/60 dark:hover:bg-[#30363d] rounded transition-all cursor-pointer border-none bg-transparent hidden group-hover:flex items-center justify-center text-slate-400 dark:text-slate-500"
+                                                                    title="Pin Chat"
+                                                                >
+                                                                    <Pin size={12} />
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => togglePinRoom(e, room.room_id)}
+                                                                className="w-5 h-5 shrink-0 hover:bg-slate-200/60 dark:hover:bg-[#30363d] rounded transition-all cursor-pointer border-none bg-transparent flex items-center justify-center text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100"
+                                                                title="Pin Chat"
+                                                            >
+                                                                <Pin size={12} />
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     </button>
                                 );

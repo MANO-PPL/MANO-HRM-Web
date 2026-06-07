@@ -76,12 +76,16 @@ const playNotificationChime = () => {
 const renderParsedMessageContent = (text, isSelf) => {
     if (!text) return null;
 
-    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+    // Matches http://, https://, or www. followed by domain and path/query characters,
+    // excluding trailing punctuation marks (.,!?;:()[]{}""'') so they don't break the hyperlink.
+    const urlRegex = /(https?:\/\/[^\s<>]*(?:[^\s<>.,!?;:()\[\]{}""''])|www\.[^\s<>]*(?:[^\s<>.,!?;:()\[\]{}""'']))/gi;
     const mentionRegex = /(@[a-zA-Z0-9._-]+)/g;
+    const testUrlRegex = /^(https?:\/\/[^\s]+|www\.[^\s]+)$/i;
+    const testMentionRegex = /^@[a-zA-Z0-9._-]+$/;
 
     const urlParts = text.split(urlRegex);
     return urlParts.map((urlPart, urlIdx) => {
-        if (urlPart.match(urlRegex)) {
+        if (testUrlRegex.test(urlPart)) {
             const href = urlPart.startsWith('http') ? urlPart : `https://${urlPart}`;
             return (
                 <a
@@ -102,7 +106,7 @@ const renderParsedMessageContent = (text, isSelf) => {
 
         const mentionParts = urlPart.split(mentionRegex);
         return mentionParts.map((part, mentIdx) => {
-            if (part.match(mentionRegex)) {
+            if (testMentionRegex.test(part)) {
                 return (
                     <span 
                         key={`mention-${urlIdx}-${mentIdx}`} 
@@ -716,16 +720,11 @@ const MobileChatPage = () => {
                                             )}
                                         </div>
 
+                                        {/* Meta Previews */}
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <h4 className="text-sm font-black text-slate-800 dark:text-white truncate">{room.room_name}</h4>
-                                                {room.last_message && (
-                                                    <span className="text-[9px] text-slate-400 font-bold shrink-0">
-                                                        {formatLocalTime(room.last_message.created_at)}
-                                                    </span>
-                                                )}
-                                            </div>
-
+                                            <h4 className="text-sm font-black text-slate-800 dark:text-white truncate mb-1">{room.room_name}</h4>
+                                            
+                                            {/* Preview text */}
                                             {typingNames.length > 0 ? (
                                                 <span className="text-[10px] text-indigo-500 font-bold animate-pulse truncate block">typing...</span>
                                             ) : room.last_message ? (
@@ -738,26 +737,64 @@ const MobileChatPage = () => {
                                             )}
                                         </div>
 
-                                        {/* Pin & Unread Row */}
-                                        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                                            {room.unread_count > 0 && !(selectedRoom?.room_id === room.room_id && showMobileChatWindow) && (
-                                                <span className="w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[9px] font-bold shadow-md shadow-indigo-600/10">
-                                                    {room.unread_count}
+                                        {/* Right Column: Time & Status Badges */}
+                                        <div className="flex flex-col items-end justify-between self-stretch shrink-0 ml-auto pl-1">
+                                            {/* Timestamp */}
+                                            {room.last_message ? (
+                                                <span className="text-[9px] text-slate-400 font-bold leading-none">
+                                                    {formatLocalTime(room.last_message.created_at)}
                                                 </span>
+                                            ) : (
+                                                <span className="h-3" />
                                             )}
                                             
-                                            <button
-                                                type="button"
-                                                onClick={(e) => togglePinRoom(e, room.room_id)}
-                                                className={`p-1.5 active:scale-95 transition-all rounded-xl border-none bg-transparent flex items-center justify-center ${
-                                                    pinnedRoomIds.includes(room.room_id) 
-                                                    ? 'text-indigo-600 dark:text-indigo-400 opacity-100 bg-indigo-50 dark:bg-indigo-500/10' 
-                                                    : 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-white/5'
-                                                }`}
-                                                title={pinnedRoomIds.includes(room.room_id) ? "Unpin Chat" : "Pin Chat"}
-                                            >
-                                                <Pin size={13} className={pinnedRoomIds.includes(room.room_id) ? "fill-current" : ""} />
-                                            </button>
+                                            {/* Badges & Actions */}
+                                            <div className="flex items-center gap-1.5 mt-auto">
+                                                {pinnedRoomIds.includes(room.room_id) ? (
+                                                    <>
+                                                        {room.unread_count > 0 && !(selectedRoom?.room_id === room.room_id && showMobileChatWindow) && (
+                                                            <span className="w-5 h-5 shrink-0 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[10px] font-extrabold leading-none text-center shadow-md shadow-indigo-600/10">
+                                                                {room.unread_count}
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => togglePinRoom(e, room.room_id)}
+                                                            className="p-1.5 active:scale-95 transition-all rounded-xl border-none bg-transparent flex items-center justify-center text-indigo-600 dark:text-indigo-400 opacity-100 bg-indigo-50 dark:bg-indigo-500/10"
+                                                            title="Unpin Chat"
+                                                        >
+                                                            <Pin size={13} className="fill-current" />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {room.unread_count > 0 && !(selectedRoom?.room_id === room.room_id && showMobileChatWindow) ? (
+                                                            <>
+                                                                <span className="w-5 h-5 shrink-0 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[10px] font-extrabold leading-none text-center shadow-md shadow-indigo-600/10 group-hover:hidden">
+                                                                    {room.unread_count}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => togglePinRoom(e, room.room_id)}
+                                                                    className="p-1.5 active:scale-95 transition-all rounded-xl border-none bg-transparent hidden group-hover:flex items-center justify-center text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-white/5"
+                                                                    title="Pin Chat"
+                                                                >
+                                                                    <Pin size={13} />
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => togglePinRoom(e, room.room_id)}
+                                                                className="p-1.5 active:scale-95 transition-all rounded-xl border-none bg-transparent flex items-center justify-center text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-white/5 opacity-0 group-hover:opacity-100"
+                                                                title="Pin Chat"
+                                                            >
+                                                                <Pin size={13} />
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     </button>
                                 );
