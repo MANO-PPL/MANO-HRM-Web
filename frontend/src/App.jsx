@@ -15,6 +15,7 @@ import TestRoute from "./context/TestRoute";
 import Login from "./pages/user-auth/Login";
 import ForgotPassword from "./pages/user-auth/ForgotPassword";
 import SuperAdminLogin from "./pages/user-auth/SuperAdminLogin";
+import Register from "./pages/user-auth/Register";
 import WordCaptchaTest from "./pages/test/WordCaptchaTest"; // only for testing
 
 import AdminDashboard from "./pages/dashboard/AdminDashboard"
@@ -49,6 +50,7 @@ import PM2LogsConsole from "./pages/super-admin/PM2LogsConsole"
 import MobileLogin from "./pages/user-auth/Login-mv";
 import MobileForgotPassword from "./pages/user-auth/ForgotPassword-mv";
 import SuperAdminLoginMobile from "./pages/user-auth/SuperAdminLogin-mv";
+import MobileRegister from "./pages/user-auth/Register-mv";
 import MobileAdminDashboard from "./pages/dashboard/AdminDashboard-mv";
 import MobileEmployeeDashboard from "./pages/dashboard/EmployeeDashboard-mv";
 import MobileAttendance from "./pages/attendance/MobileAttendancePage";
@@ -120,25 +122,30 @@ function SeoManager() {
     const path = location.pathname;
     const isPublicLanding = path === "/";
     const isLoginPage = path === "/login";
+    const isSignupPage = path === "/signup";
     const isForgotPassword = path === "/forgot-password";
 
     const title = isPublicLanding
       ? "MANO Attendance | Smart Attendance & Workforce Management"
       : isLoginPage
         ? "MANO Attendance Login | Secure Portal Access"
-        : isForgotPassword
-          ? "Forgot Password | MANO Attendance"
-          : "MANO Attendance";
+        : isSignupPage
+          ? "Self-Onboarding Signup | MANO Attendance"
+          : isForgotPassword
+            ? "Forgot Password | MANO Attendance"
+            : "MANO Attendance";
 
     const description = isPublicLanding
       ? "MANO Attendance: The ultimate smart attendance and workforce management platform with geofencing, AI insights, and payroll reports."
       : isLoginPage
         ? "Access the MANO Attendance secure login portal. Manage your workforce, track live attendance, and generate reports."
-        : "MANO Attendance workforce platform.";
+        : isSignupPage
+          ? "Register a new organization and administrator account on the MANO Attendance smart workforce platform."
+          : "MANO Attendance workforce platform.";
 
-    const canonicalPath = isPublicLanding ? "" : isLoginPage ? "login" : isForgotPassword ? "forgot-password" : "";
+    const canonicalPath = isPublicLanding ? "" : isLoginPage ? "login" : isSignupPage ? "signup" : isForgotPassword ? "forgot-password" : "";
     const canonicalUrl = `${SEO_BASE_URL}/${canonicalPath}`;
-    const robots = isPublicLanding || isLoginPage || isForgotPassword ? "index, follow" : "noindex, nofollow";
+    const robots = isPublicLanding || isLoginPage || isSignupPage || isForgotPassword ? "index, follow" : "noindex, nofollow";
 
     document.title = title;
     upsertCanonical(canonicalUrl);
@@ -267,11 +274,12 @@ function App() {
 
           {/* Website Landing (shown first when not logged in) */}
           <Route path="/" element={<RootHandler />} />
-          <Route path="/get-started" element={<Navigate to="/login" replace />} />
+          <Route path="/get-started" element={<Navigate to="/signup" replace />} />
 
-          {/* Public Route: Login */}
+          {/* Public Route: Login & Onboarding */}
           <Route element={<PublicRoute />}>
             <Route path="/login" element={<ResponsiveRoute DesktopComponent={Login} MobileComponent={MobileLogin} />} />
+            <Route path="/signup" element={<ResponsiveRoute DesktopComponent={Register} MobileComponent={MobileRegister} />} />
             <Route path="/org-login" element={<ResponsiveRoute DesktopComponent={SuperAdminLogin} MobileComponent={SuperAdminLoginMobile} />} />
             <Route path="/forgot-password" element={<ResponsiveRoute DesktopComponent={ForgotPassword} MobileComponent={MobileForgotPassword} />} />
           </Route>
