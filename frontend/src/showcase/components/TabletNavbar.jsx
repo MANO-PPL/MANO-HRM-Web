@@ -70,8 +70,11 @@ export default function TabletNavbar({ theme = "dark", toggleTheme }) {
                         >
                             {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                         </button>
-                        <Link to="/login" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-bold px-6 py-2 rounded-xl hover:shadow-blue-500/25 active:scale-95 transition-all">
+                        <Link to="/login" className="border border-white/20 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-white/5 active:scale-95 transition-all">
                             Login
+                        </Link>
+                        <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-bold px-4 py-2 rounded-xl hover:shadow-blue-500/25 active:scale-95 transition-all">
+                            Sign Up
                         </Link>
                     </div>
                 )}
@@ -91,19 +94,24 @@ export default function TabletNavbar({ theme = "dark", toggleTheme }) {
                                 {link.label}
                             </button>
                         ))}
-                        <div className="flex gap-2 mt-2">
-                            <button 
-                                onClick={() => {
-                                    toggleTheme();
-                                    setMenuOpen(false);
-                                }}
-                                className="flex-1 border border-white/10 text-white font-medium py-2.5 rounded-xl hover:bg-white/5 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
-                            >
-                                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                                <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-                            </button>
-                            <Link to="/login" onClick={() => setMenuOpen(false)} className="flex-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-center font-bold py-2.5 rounded-xl active:scale-95 transition-all text-sm">
-                                Login
+                        <div className="flex flex-col gap-2 mt-2">
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => {
+                                        toggleTheme();
+                                        setMenuOpen(false);
+                                    }}
+                                    className="flex-1 border border-white/10 text-white font-medium py-2.5 rounded-xl hover:bg-white/5 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
+                                >
+                                    {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                                    <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                                </button>
+                                <Link to="/login" onClick={() => setMenuOpen(false)} className="flex-1 border border-white/20 text-white text-center font-bold py-2.5 rounded-xl active:scale-95 transition-all text-sm flex items-center justify-center">
+                                    Login
+                                </Link>
+                            </div>
+                            <Link to="/signup" onClick={() => setMenuOpen(false)} className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white text-center font-bold py-2.5 rounded-xl active:scale-95 transition-all text-sm flex items-center justify-center">
+                                Sign Up
                             </Link>
                         </div>
                     </div>

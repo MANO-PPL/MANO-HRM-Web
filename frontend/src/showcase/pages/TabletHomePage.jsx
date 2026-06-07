@@ -69,11 +69,11 @@ export default function TabletHomePage() {
                             </motion.p>
 
                             <div className="flex flex-row gap-3">
-                                <a href="#features" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3 px-8 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-sm">
-                                    Explore Features
-                                </a>
+                                <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3 px-8 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-sm">
+                                    Get Started
+                                </Link>
                                 <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-3 px-8 rounded-2xl hover:bg-white/10 active:scale-95 transition-all text-sm">
-                                    Manager Login
+                                    Login
                                 </Link>
                             </div>
                         </div>
@@ -123,11 +123,11 @@ export default function TabletHomePage() {
                         </motion.p>
 
                         <div className="flex flex-row gap-4 mb-10">
-                            <a href="#features" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3.5 px-10 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-center">
-                                Explore Features
-                            </a>
+                            <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3.5 px-10 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-center">
+                                Get Started
+                            </Link>
                             <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-3.5 px-10 rounded-2xl hover:bg-white/10 active:scale-95 transition-all text-center">
-                                Manager Login
+                                Login
                             </Link>
                         </div>
 

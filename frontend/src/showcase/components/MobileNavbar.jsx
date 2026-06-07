@@ -21,7 +21,8 @@ export default function MobileNavbar({ theme = "dark", toggleTheme }) {
                     >
                         {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
-                    <NavLink to="/login" className="text-xs font-semibold text-white/70 hover:text-white transition px-2">Login</NavLink>
+                    <NavLink to="/login" className="text-xs font-semibold text-white/70 hover:text-white transition px-1">Login</NavLink>
+                    <NavLink to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[10px] font-bold px-2 py-1.5 rounded-lg active:scale-95 transition-transform">Sign Up</NavLink>
                     <button
                         className="bg-white/10 border border-white/20 text-white p-2 rounded-xl active:scale-95 transition-transform"
                         onClick={() => setMobileOpen(!mobileOpen)}
@@ -58,6 +59,13 @@ export default function MobileNavbar({ theme = "dark", toggleTheme }) {
                             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                             <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
                         </button>
+                        <NavLink
+                            to="/signup"
+                            onClick={() => setMobileOpen(false)}
+                            className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-center py-2 px-3 rounded-xl active:scale-95 transition-transform text-sm font-bold mt-2 flex items-center justify-center"
+                        >
+                            Sign Up
+                        </NavLink>
                     </div>
                 </div>
             </nav>
