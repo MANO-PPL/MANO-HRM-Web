@@ -45,7 +45,7 @@ export const homeData = {
     headline: "MANO Attendance: Smart Attendance & Workforce Management",
     subtext:
         "MANO-Attendance helps organizations track employee attendance, manage leave requests, enforce location-based compliance, and generate powerful workforce insights -- all in one intelligent platform.",
-    ctaPrimary: "Start Free Trial",
+    ctaPrimary: "Self Onboarding",
     ctaSecondary: "Book a Demo",
     values: [
         "Ask natural language questions to the AI-powered Assistant",

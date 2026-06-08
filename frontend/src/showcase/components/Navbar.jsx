@@ -96,6 +96,7 @@ export default function Navbar({ theme = "dark", toggleTheme }) {
                         {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                     </button>
                     <NavLink to="/login" className="btn-ghost" style={{ paddingInline: '1.5rem' }}>Login</NavLink>
+                    <NavLink to="/signup" className="btn-primary" style={{ paddingInline: '1.5rem' }}>Sign Up</NavLink>
                     <button className="mobile-toggle" onClick={() => setMobileOpen((prev) => !prev)}>
                         {mobileOpen ? <X size={22} /> : <Menu size={22} />}
                     </button>
@@ -117,19 +118,22 @@ export default function Navbar({ theme = "dark", toggleTheme }) {
                             </a>
                         );
                     })}
-                    <div className="mobile-actions" style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
-                        <button 
-                            onClick={() => {
-                                toggleTheme();
-                                setMobileOpen(false);
-                            }}
-                            className="btn-ghost"
-                            style={{ flex: 1, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}
-                        >
-                            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-                        </button>
-                        <NavLink onClick={() => setMobileOpen(false)} to="/login" className="btn-ghost" style={{ flex: 1 }}>Login</NavLink>
+                    <div className="mobile-actions" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+                            <button 
+                                onClick={() => {
+                                    toggleTheme();
+                                    setMobileOpen(false);
+                                }}
+                                className="btn-ghost"
+                                style={{ flex: 1, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                                <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                            </button>
+                            <NavLink onClick={() => setMobileOpen(false)} to="/login" className="btn-ghost" style={{ flex: 1 }}>Login</NavLink>
+                        </div>
+                        <NavLink onClick={() => setMobileOpen(false)} to="/signup" className="btn-primary" style={{ width: '100%', textAlign: 'center' }}>Sign Up</NavLink>
                     </div>
                 </div>
             </div>

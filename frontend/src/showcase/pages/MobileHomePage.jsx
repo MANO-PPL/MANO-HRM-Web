@@ -45,11 +45,11 @@ export default function MobileHomePage() {
                 </p>
 
                 <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3 px-4">
-                    <a href="#features" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-4 sm:px-10 rounded-2xl shadow-xl active:scale-95 transition-all text-center">
-                        Explore Features
-                    </a>
+                    <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-4 sm:px-10 rounded-2xl shadow-xl active:scale-95 transition-all text-center">
+                        Get Started
+                    </Link>
                     <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-4 sm:px-10 rounded-2xl active:bg-white/10 transition-all text-center">
-                        Manager Login
+                        Login
                     </Link>
                 </div>
             </section>

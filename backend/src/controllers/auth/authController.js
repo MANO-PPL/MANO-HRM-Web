@@ -1,6 +1,8 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as authService from '../../services/auth/authService.js';
 import AppError from '../../utils/AppError.js';
+import { attendanceDB } from '../../config/database.js';
+import bcrypt from 'bcrypt';
 
 const REFRESH_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 Days
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -133,4 +135,99 @@ export const logout = catchAsync(async (req, res, next) => {
 
     res.clearCookie("refreshToken", { path: '/' });
     res.json({ message: "Logged out successfully" });
+});
+
+export const onboardOrganization = catchAsync(async (req, res, next) => {
+    const {
+        org_name, org_code, contact_name, contact_email, contact_phone,
+        admin_name, admin_email, admin_phone, admin_password,
+        address, industry, tax_identity, tax_code, max_users
+    } = req.body;
+
+    if (!org_name || !org_code) {
+        throw new AppError("Organization name and code are required.", 400);
+    }
+
+    const cleanOrgCode = org_code.trim().toUpperCase();
+    if (cleanOrgCode.length < 3 || cleanOrgCode.length > 10 || !/^[A-Z0-9]+$/.test(cleanOrgCode)) {
+        throw new AppError("Organization code must be 3-10 alphanumeric characters with no spaces.", 400);
+    }
+
+    if (!contact_name || !contact_email || !contact_phone) {
+        throw new AppError("Primary contact details (name, email, phone) are required.", 400);
+    }
+
+    const finalAdminEmail = admin_email || contact_email;
+    const finalAdminPassword = admin_password;
+    if (!finalAdminEmail || !finalAdminPassword) {
+        throw new AppError("Admin email and password are required.", 400);
+    }
+    if (finalAdminPassword.length < 6) {
+        throw new AppError("Admin password must be at least 6 characters.", 400);
+    }
+
+    // Check uniqueness
+    const existingOrg = await attendanceDB('organizations').where('org_code', cleanOrgCode).first();
+    if (existingOrg) {
+        throw new AppError("Organization code is already registered.", 400);
+    }
+
+    const existingUser = await attendanceDB('users').where('email', finalAdminEmail).first();
+    if (existingUser) {
+        throw new AppError("Administrator email is already registered.", 400);
+    }
+
+    const subscription_expiry = new Date();
+    subscription_expiry.setDate(subscription_expiry.getDate() + 30); // 30-day trial
+
+    const notesObj = {
+        address: address || null,
+        industry: industry || null,
+        tax_identity: tax_identity || null,
+        tax_code: tax_code || null,
+        onboarded_via: 'showcase_self_onboarding',
+        onboarded_at: new Date().toISOString()
+    };
+
+    const insertedId = await attendanceDB.transaction(async (trx) => {
+        const [orgId] = await trx('organizations').insert({
+            org_name: org_name.trim(),
+            org_code: cleanOrgCode,
+            contact_name: contact_name.trim(),
+            contact_email: contact_email.trim().toLowerCase(),
+            contact_phone: contact_phone.trim(),
+            subscription_plan: 'Trial',
+            subscription_expiry,
+            is_trial: 1,
+            status: 'active',
+            max_users: max_users || 50,
+            last_user_number: 1,
+            notes: JSON.stringify(notesObj)
+        });
+
+        const hashedPassword = await bcrypt.hash(finalAdminPassword, 10);
+        const userCode = `${cleanOrgCode}001`;
+
+        await trx('users').insert({
+            org_id: orgId,
+            user_code: userCode,
+            user_name: (admin_name || contact_name).trim(),
+            email: finalAdminEmail.trim().toLowerCase(),
+            phone_no: admin_phone || contact_phone || null,
+            user_password: hashedPassword,
+            user_type: 'admin',
+            is_active: true,
+            is_deleted: false
+        });
+
+        return orgId;
+    });
+
+    res.status(201).json({
+        success: true,
+        message: "Organization self-onboarded successfully.",
+        org_id: insertedId,
+        user_code: `${cleanOrgCode}001`,
+        email: finalAdminEmail.trim().toLowerCase()
+    });
 });

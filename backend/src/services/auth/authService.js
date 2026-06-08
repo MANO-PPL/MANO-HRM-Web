@@ -27,9 +27,14 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
 
     if (!user) throw new AppError('User not found', 401);
 
-    // Check Organization Status (Bypass for admin users so they can renew subs)
-    if (user.org_id && user.org_status !== 'active' && user.user_type !== 'admin') {
-        throw new AppError(`Login blocked: Your organization account is currently ${user.org_status}. Please contact support.`, 403);
+    // Check Organization Status (Bypass for admin users so they can renew subs, unless pending_deletion/deleted)
+    if (user.org_id) {
+        if (!user.org_status || user.org_status === 'pending_deletion') {
+            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403);
+        }
+        if (user.org_status !== 'active' && user.user_type !== 'admin') {
+            throw new AppError(`Login blocked: Your organization account is currently ${user.org_status}. Please contact support.`, 403);
+        }
     }
 
     if (user.is_deleted) throw new AppError('Your account has been deleted. Please contact support.', 403);
@@ -163,6 +168,16 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
     if (result.error) throw new AppError("Security Alert: Token reuse detected. Re-login required.", 403);
 
     const { user, gracePeriodActive, activeRefreshToken, refreshTokenRecord } = result;
+
+    if (user.org_id) {
+        const org = await attendanceDB('organizations').where('org_id', user.org_id).first();
+        if (!org || org.status === 'pending_deletion') {
+            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403);
+        }
+        if (org.status !== 'active' && user.user_type !== 'admin') {
+            throw new AppError(`Access Denied: Your organization account is currently ${org.status}.`, 403);
+        }
+    }
 
     let newRefreshToken;
 

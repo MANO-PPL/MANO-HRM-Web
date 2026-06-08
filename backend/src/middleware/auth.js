@@ -54,9 +54,14 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         }
 
         // STRICT SECURITY CHECK: Block Inactive/Suspended Orgs and Inactive Users
-        // NOTE: 'admin' user_type is allowed through so they can access subscription/billing features
-        if (user.org_id && user.org_status !== 'active' && user.user_type !== 'admin') {
-            return res.status(403).json({ message: `Access Denied: Your organization account is ${user.org_status}.` });
+        // NOTE: 'admin' user_type is allowed through so they can access subscription/billing features, unless org is deleted or pending deletion
+        if (user.org_id) {
+            if (!user.org_status || user.org_status === 'pending_deletion') {
+                return res.status(403).json({ message: "Access Denied: Your organization has been deleted or is scheduled for deletion." });
+            }
+            if (user.org_status !== 'active' && user.user_type !== 'admin') {
+                return res.status(403).json({ message: `Access Denied: Your organization account is ${user.org_status}.` });
+            }
         }
 
         if (!user.is_active) {
@@ -89,8 +94,14 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
 // Require Active Org Middleware
 export const requireActiveOrg = catchAsync(async (req, res, next) => {
     // If the user belongs to an org, and it is NOT active, block them from using platform features
-    if (req.user && req.user.org_id && req.user.org_status && req.user.org_status !== 'active') {
-        return res.status(403).json({ message: `Action Denied: Your organization account is currently ${req.user.org_status}. Please renew your subscription to restore access.` });
+    if (req.user && req.user.org_id) {
+        const org = await attendanceDB('organizations').where({ org_id: req.user.org_id }).select('status').first();
+        if (!org || org.status === 'pending_deletion') {
+            return res.status(403).json({ message: "Action Denied: Your organization has been deleted or is scheduled for deletion." });
+        }
+        if (org.status !== 'active' && req.user.user_type !== 'admin') {
+            return res.status(403).json({ message: `Action Denied: Your organization account is currently ${org.status}. Please renew your subscription to restore access.` });
+        }
     }
     next();
 });

@@ -27,8 +27,8 @@ export default function HomePage() {
                         <p className="lead-copy">{homeData.subtext}</p>
 
                         <div className="hero-actions">
-                            <Link to="/login" className="btn-primary">{homeData.ctaPrimary}</Link>
-                            <a href="#contact" className="btn-ghost">{homeData.ctaSecondary}</a>
+                            <Link to="/signup" className="btn-primary">{homeData.ctaPrimary}</Link>
+                            <Link to="/login" className="btn-ghost">Login</Link>
                         </div>
 
                         <ul className="check-list">

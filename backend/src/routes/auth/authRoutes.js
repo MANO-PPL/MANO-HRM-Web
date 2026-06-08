@@ -15,6 +15,7 @@ router.post('/super-admin/login', loginIpLimiter, authLimiter, authController.su
 router.post('/forgot-password', authLimiter, authController.requestPasswordReset);
 router.post('/verify-otp', authLimiter, authController.verifyOtp);
 router.post('/reset-password', authLimiter, authController.resetPassword);
+router.post('/onboard', authLimiter, authController.onboardOrganization);
 
 // Token / Session
 router.post('/refresh', authController.refreshToken);
