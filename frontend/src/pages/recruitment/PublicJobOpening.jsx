@@ -61,6 +61,7 @@ const PublicJobOpening = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
 
   // Initialize theme from localStorage or default to browser system setting
   const [theme, setTheme] = useState(() => {
@@ -100,8 +101,23 @@ const PublicJobOpening = () => {
       localStorage.setItem('mano_recruitment_openings', JSON.stringify(DEFAULT_OPENINGS));
     }
 
-    const foundJob = openings.find(j => j.slug === slug && j.status === 'active');
-    setJob(foundJob);
+    const foundJob = openings.find(j => j.slug === slug);
+    if (foundJob) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (foundJob.status !== 'active') {
+        setJob(null);
+        setIsExpired(false);
+      } else if (foundJob.deadline && foundJob.deadline < todayStr) {
+        setJob(null);
+        setIsExpired(true);
+      } else {
+        setJob(foundJob);
+        setIsExpired(false);
+      }
+    } else {
+      setJob(null);
+      setIsExpired(false);
+    }
   }, [slug]);
 
   const handleInputChange = (e) => {
@@ -193,6 +209,23 @@ const PublicJobOpening = () => {
         weaknesses.push("None identified from brief resume scanning");
       }
 
+      let initialStage = 'Applied';
+      const storedStages = localStorage.getItem('mano_pipeline_stages');
+      if (storedStages) {
+        try {
+          const parsed = JSON.parse(storedStages);
+          if (parsed && parsed.length > 0) {
+            if (typeof parsed[0] === 'object' && parsed[0].name) {
+              initialStage = parsed[0].name;
+            } else if (typeof parsed[0] === 'string') {
+              initialStage = parsed[0];
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
       const newCandidate = {
         id: Date.now(),
         job_id: job.id,
@@ -208,7 +241,7 @@ const PublicJobOpening = () => {
         notice_period: formData.notice_period,
         resume_name: resumeFile.name,
         cover_letter: formData.cover_letter,
-        stage: 'Applied',
+        stage: initialStage,
         created_at: new Date().toISOString().split('T')[0],
         ai_score: overallScore,
         skill_match_score: skillMatch,
@@ -251,9 +284,13 @@ const PublicJobOpening = () => {
       <div className="min-h-screen bg-slate-50 dark:bg-github-dark-bg flex flex-col justify-center items-center p-6 text-center">
         <div className="max-w-md bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] p-8 rounded-2xl shadow-lg">
           <Briefcase size={48} className="mx-auto text-slate-400 mb-4" />
-          <h2 className="text-xl font-bold text-slate-800 dark:text-[#f0f6fc] mb-2">Job Opening Not Found</h2>
+          <h2 className="text-xl font-bold text-slate-800 dark:text-[#f0f6fc] mb-2">
+            {isExpired ? 'Application Deadline Passed' : 'Job Opening Closed'}
+          </h2>
           <p className="text-slate-500 dark:text-github-dark-muted text-sm mb-6">
-            This opening may have been closed or is no longer active. Please check the URL and try again.
+            {isExpired 
+              ? 'The deadline for submitting applications to this role has passed, and we are no longer accepting submissions.'
+              : 'This opening has been deactivated by the administrator or is no longer accepting applications.'}
           </p>
           <Link to="/login" className="px-5 py-2 bg-[#0969da] hover:bg-[#0969da]/90 text-white rounded-lg text-sm font-medium transition-all">
             Go to Portal Login
