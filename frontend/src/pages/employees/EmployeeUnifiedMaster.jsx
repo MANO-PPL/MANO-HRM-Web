@@ -18,77 +18,150 @@ import EmployeeFormContent from '../../components/employees/EmployeeFormContent'
 import ConfirmationModal from '../../components/modals/ConfirmationModal';
 import { KpiGoalSheets, ReviewsAndRatings, AiPerformanceAnalyzer } from '../performance/PerformanceViews';
 
-// Document categories from original EmployeeMaster.jsx
-const DOCUMENT_CATEGORIES = [
+// Document categories and checklist items redefined as templates
+const DEFAULT_CHECKLIST_TEMPLATES = [
     {
-        id: 'identity',
-        name: 'Identity Documents',
+        id: 'dev_onboarding',
+        name: 'Developer Onboarding',
         items: [
-            { key: 'aadhaar', name: 'Aadhaar Card', required: true },
-            { key: 'pan', name: 'PAN Card', required: true },
-            { key: 'passport', name: 'Passport', required: false },
-            { key: 'license', name: 'Driving License', required: false }
+            { key: 'personal_info', label: 'Personal Info Submission' },
+            { key: 'laptop_assigned', label: 'Laptop Assignment' },
+            { key: 'github_access', label: 'GitHub Repository Access' },
+            { key: 'slack_aws_invites', label: 'Slack/AWS Invites' },
+            { key: 'codebase_walkthrough', label: 'Codebase Walkthrough' },
+            { key: 'dev_setup', label: 'Dev Environment Setup' }
         ]
     },
     {
-        id: 'educational',
-        name: 'Educational Documents',
+        id: 'mgmt_onboarding',
+        name: 'Management Onboarding',
         items: [
-            { key: 'ssc', name: 'SSC (10th Marksheet)', required: true },
-            { key: 'hsc', name: 'HSC (12th Marksheet)', required: true },
-            { key: 'diploma', name: 'Diploma Certificate', required: false },
-            { key: 'degree', name: 'Degree Certificate', required: true },
-            { key: 'consolidated', name: 'Consolidated Marksheet', required: true }
+            { key: 'personal_info', label: 'Personal Info Submission' },
+            { key: 'hr_policy', label: 'HR Policy Briefing' },
+            { key: 'team_intro', label: 'Team Introductions' },
+            { key: 'okr_alignment', label: 'OKR Alignment' },
+            { key: 'dashboard_training', label: 'Dashboard Training' }
         ]
     },
     {
-        id: 'employment',
-        name: 'Employment Documents',
+        id: 'support_onboarding',
+        name: 'General Support',
         items: [
-            { key: 'offer_letter', name: 'Previous Offer Letter', required: true },
-            { key: 'experience_letter', name: 'Experience Letter', required: true },
-            { key: 'relieving_letter', name: 'Relieving Letter', required: true },
-            { key: 'salary_slips', name: 'Salary Slips (Last 3 Months)', required: true }
-        ]
-    },
-    {
-        id: 'banking',
-        name: 'Banking Documents',
-        items: [
-            { key: 'cheque', name: 'Cancelled Cheque', required: true },
-            { key: 'passbook', name: 'Passbook Copy', required: true },
-            { key: 'bank_statement', name: 'Bank Statement', required: true }
-        ]
-    },
-    {
-        id: 'compliance',
-        name: 'Compliance Documents',
-        items: [
-            { key: 'pf', name: 'PF Details', required: false },
-            { key: 'uan', name: 'UAN Number', required: true },
-            { key: 'esic', name: 'ESIC Details', required: false }
-        ]
-    },
-    {
-        id: 'other',
-        name: 'Other Documents',
-        items: [
-            { key: 'photo', name: 'Passport Photo', required: true },
-            { key: 'signature', name: 'Signature Specimen', required: true },
-            { key: 'emergency_contact', name: 'Emergency Contact Detail', required: true },
-            { key: 'medical_dec', name: 'Medical Declaration', required: true }
+            { key: 'office_tour', label: 'Office Tour' },
+            { key: 'id_card', label: 'ID Card Collection' },
+            { key: 'uniform_handover', label: 'Uniform Handover' },
+            { key: 'health_safety', label: 'Health & Safety Briefing' }
         ]
     }
 ];
 
-const CHECKLIST_ITEMS = [
-    { key: 'docs_submitted', label: 'Documents Submitted' },
-    { key: 'offer_accepted', label: 'Offer Accepted' },
-    { key: 'contract_signed', label: 'Contract Signed' },
-    { key: 'laptop_assigned', label: 'Laptop Assigned' },
-    { key: 'email_created', label: 'Email Created' },
-    { key: 'training_assigned', label: 'Training Assigned' },
-    { key: 'manager_assigned', label: 'Manager Assigned' }
+const DEFAULT_DOCUMENT_TEMPLATES = [
+    {
+        id: 'dev_docs',
+        name: 'Developer Profile Documents',
+        categories: [
+            {
+                id: 'identity',
+                name: 'Identity Documents',
+                items: [
+                    { key: 'aadhaar', name: 'Aadhaar Card', required: true },
+                    { key: 'pan', name: 'PAN Card', required: true },
+                    { key: 'passport', name: 'Passport', required: false }
+                ]
+            },
+            {
+                id: 'educational',
+                name: 'Educational Documents',
+                items: [
+                    { key: 'ssc', name: 'SSC (10th Marksheet)', required: true },
+                    { key: 'hsc', name: 'HSC (12th Marksheet)', required: true },
+                    { key: 'degree', name: 'Degree Certificate', required: true },
+                    { key: 'consolidated', name: 'Consolidated Marksheet', required: true }
+                ]
+            },
+            {
+                id: 'employment',
+                name: 'Employment Documents',
+                items: [
+                    { key: 'experience_letter', name: 'Experience Letter', required: true },
+                    { key: 'relieving_letter', name: 'Relieving Letter', required: true },
+                    { key: 'salary_slips', name: 'Salary Slips (Last 3 Months)', required: true }
+                ]
+            },
+            {
+                id: 'banking',
+                name: 'Banking Documents',
+                items: [
+                    { key: 'cheque', name: 'Cancelled Cheque', required: true },
+                    { key: 'passbook', name: 'Passbook Copy', required: true }
+                ]
+            }
+        ]
+    },
+    {
+        id: 'mgmt_docs',
+        name: 'Management Profile Documents',
+        categories: [
+            {
+                id: 'identity',
+                name: 'Identity Documents',
+                items: [
+                    { key: 'aadhaar', name: 'Aadhaar Card', required: true },
+                    { key: 'pan', name: 'PAN Card', required: true }
+                ]
+            },
+            {
+                id: 'educational',
+                name: 'Educational Documents',
+                items: [
+                    { key: 'mba_degree', name: 'MBA Degree Certificate', required: true },
+                    { key: 'grad_degree', name: 'Graduation Degree', required: true }
+                ]
+            },
+            {
+                id: 'employment',
+                name: 'Employment Documents',
+                items: [
+                    { key: 'relieving_letter', name: 'Relieving Letter', required: true },
+                    { key: 'ref_contact', name: 'Reference Contact Letter', required: false }
+                ]
+            },
+            {
+                id: 'banking',
+                name: 'Banking Documents',
+                items: [
+                    { key: 'cheque', name: 'Cancelled Cheque', required: true }
+                ]
+            }
+        ]
+    },
+    {
+        id: 'support_docs',
+        name: 'Support Profile Documents',
+        categories: [
+            {
+                id: 'identity',
+                name: 'Identity Documents',
+                items: [
+                    { key: 'aadhaar', name: 'Aadhaar Card', required: true }
+                ]
+            },
+            {
+                id: 'banking',
+                name: 'Banking Documents',
+                items: [
+                    { key: 'passbook', name: 'Passbook Copy', required: true }
+                ]
+            },
+            {
+                id: 'compliance',
+                name: 'Compliance Documents',
+                items: [
+                    { key: 'pf', name: 'PF Details', required: false }
+                ]
+            }
+        ]
+    }
 ];
 
 const DEFAULT_CYCLES = [
@@ -128,6 +201,11 @@ const EmployeeUnifiedMaster = () => {
     // Performance Appraisals Cycle state
     const [selectedCycleId, setSelectedCycleId] = useState('cycle-2');
     const [cycles, setCycles] = useState(DEFAULT_CYCLES);
+
+    // AI Document Auditor states
+    const [activeOcrDoc, setActiveOcrDoc] = useState('');
+    const [overrideReasonText, setOverrideReasonText] = useState('');
+    const [overridingDiscrepancyId, setOverridingDiscrepancyId] = useState(null);
 
     const DEFAULT_COLUMNS = {
         employee: true,           // profile, name, email
@@ -197,7 +275,6 @@ const EmployeeUnifiedMaster = () => {
     });
     const [isVerifying, setIsVerifying] = useState(false);
 
-    // Confirmation Modal State
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
         title: '',
@@ -207,6 +284,334 @@ const EmployeeUnifiedMaster = () => {
         confirmText: 'Confirm'
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Template States
+    const [checklistTemplates, setChecklistTemplates] = useState(() => {
+        const stored = localStorage.getItem('mano_checklist_templates');
+        if (stored) {
+            try {
+                return JSON.parse(stored);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        localStorage.setItem('mano_checklist_templates', JSON.stringify(DEFAULT_CHECKLIST_TEMPLATES));
+        return DEFAULT_CHECKLIST_TEMPLATES;
+    });
+
+    const [documentTemplates, setDocumentTemplates] = useState(() => {
+        const stored = localStorage.getItem('mano_document_templates');
+        if (stored) {
+            try {
+                return JSON.parse(stored);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        localStorage.setItem('mano_document_templates', JSON.stringify(DEFAULT_DOCUMENT_TEMPLATES));
+        return DEFAULT_DOCUMENT_TEMPLATES;
+    });
+
+    // Template Modals & Forms States
+    const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+    const [templatesModalTab, setTemplatesModalTab] = useState('checklist'); // 'checklist' | 'document'
+    const [selectedChecklistTemplateId, setSelectedChecklistTemplateId] = useState('');
+    const [selectedDocTemplateId, setSelectedDocTemplateId] = useState('');
+
+    const [newChecklistItemText, setNewChecklistItemText] = useState('');
+    const [newDocCatText, setNewDocCatText] = useState('');
+    const [newDocItemNames, setNewDocItemNames] = useState({}); // catId -> text
+    const [newDocItemRequired, setNewDocItemRequired] = useState({}); // catId -> bool
+
+    useEffect(() => {
+        if (checklistTemplates.length > 0 && !selectedChecklistTemplateId) {
+            setSelectedChecklistTemplateId(checklistTemplates[0].id);
+        }
+    }, [checklistTemplates, selectedChecklistTemplateId]);
+
+    useEffect(() => {
+        if (documentTemplates.length > 0 && !selectedDocTemplateId) {
+            setSelectedDocTemplateId(documentTemplates[0].id);
+        }
+    }, [documentTemplates, selectedDocTemplateId]);
+
+    // Checklist Template Handler functions
+    const handleAddChecklistTemplate = () => {
+        const newId = `checklist_template_${Date.now()}`;
+        const newTemplate = {
+            id: newId,
+            name: 'New Checklist Template',
+            items: [
+                { key: 'personal_info', label: 'Personal Info Submission' }
+            ]
+        };
+        const updated = [...checklistTemplates, newTemplate];
+        setChecklistTemplates(updated);
+        localStorage.setItem('mano_checklist_templates', JSON.stringify(updated));
+        setSelectedChecklistTemplateId(newId);
+        toast.success('New checklist template created');
+    };
+
+    const handleUpdateChecklistTemplateName = (id, newName) => {
+        const updated = checklistTemplates.map(t => {
+            if (t.id === id) {
+                return { ...t, name: newName };
+            }
+            return t;
+        });
+        setChecklistTemplates(updated);
+        localStorage.setItem('mano_checklist_templates', JSON.stringify(updated));
+    };
+
+    const handleAddChecklistTemplateItem = (id, label) => {
+        if (!label.trim()) return;
+        const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_+|_+$)/g, '');
+        const updated = checklistTemplates.map(t => {
+            if (t.id === id) {
+                let uniqueKey = key;
+                let counter = 1;
+                while (t.items.some(item => item.key === uniqueKey)) {
+                    uniqueKey = `${key}_${counter}`;
+                    counter++;
+                }
+                return {
+                    ...t,
+                    items: [...t.items, { key: uniqueKey, label: label.trim() }]
+                };
+            }
+            return t;
+        });
+        setChecklistTemplates(updated);
+        localStorage.setItem('mano_checklist_templates', JSON.stringify(updated));
+        setNewChecklistItemText('');
+        toast.success('Item added to template');
+    };
+
+    const handleDeleteChecklistTemplateItem = (templateId, itemKey) => {
+        const updated = checklistTemplates.map(t => {
+            if (t.id === templateId) {
+                return {
+                    ...t,
+                    items: t.items.filter(item => item.key !== itemKey)
+                };
+            }
+            return t;
+        });
+        setChecklistTemplates(updated);
+        localStorage.setItem('mano_checklist_templates', JSON.stringify(updated));
+        toast.success('Item removed from template');
+    };
+
+    const handleDeleteChecklistTemplate = (id) => {
+        if (checklistTemplates.length <= 1) {
+            toast.error('Cannot delete the last remaining template');
+            return;
+        }
+        const updated = checklistTemplates.filter(t => t.id !== id);
+        setChecklistTemplates(updated);
+        localStorage.setItem('mano_checklist_templates', JSON.stringify(updated));
+        setSelectedChecklistTemplateId(updated[0].id);
+        toast.success('Checklist template deleted');
+    };
+
+    // Document Template Handler functions
+    const handleAddDocTemplate = () => {
+        const newId = `doc_template_${Date.now()}`;
+        const newTemplate = {
+            id: newId,
+            name: 'New Document Template',
+            categories: [
+                {
+                    id: 'identity',
+                    name: 'Identity Documents',
+                    items: [
+                        { key: 'aadhaar', name: 'Aadhaar Card', required: true }
+                    ]
+                }
+            ]
+        };
+        const updated = [...documentTemplates, newTemplate];
+        setDocumentTemplates(updated);
+        localStorage.setItem('mano_document_templates', JSON.stringify(updated));
+        setSelectedDocTemplateId(newId);
+        toast.success('New document template created');
+    };
+
+    const handleUpdateDocTemplateName = (id, newName) => {
+        const updated = documentTemplates.map(t => {
+            if (t.id === id) {
+                return { ...t, name: newName };
+            }
+            return t;
+        });
+        setDocumentTemplates(updated);
+        localStorage.setItem('mano_document_templates', JSON.stringify(updated));
+    };
+
+    const handleAddDocTemplateCategory = (templateId, categoryName) => {
+        if (!categoryName.trim()) return;
+        const categoryId = categoryName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_+|_+$)/g, '');
+        const updated = documentTemplates.map(t => {
+            if (t.id === templateId) {
+                let uniqueId = categoryId;
+                let counter = 1;
+                while (t.categories.some(cat => cat.id === uniqueId)) {
+                    uniqueId = `${categoryId}_${counter}`;
+                    counter++;
+                }
+                return {
+                    ...t,
+                    categories: [...t.categories, { id: uniqueId, name: categoryName.trim(), items: [] }]
+                };
+            }
+            return t;
+        });
+        setDocumentTemplates(updated);
+        localStorage.setItem('mano_document_templates', JSON.stringify(updated));
+        setNewDocCatText('');
+        toast.success('Category added to template');
+    };
+
+    const handleDeleteDocTemplateCategory = (templateId, categoryId) => {
+        const updated = documentTemplates.map(t => {
+            if (t.id === templateId) {
+                return {
+                    ...t,
+                    categories: t.categories.filter(cat => cat.id !== categoryId)
+                };
+            }
+            return t;
+        });
+        setDocumentTemplates(updated);
+        localStorage.setItem('mano_document_templates', JSON.stringify(updated));
+        toast.success('Category deleted');
+    };
+
+    const handleAddDocTemplateItem = (templateId, categoryId, itemName, isRequired) => {
+        if (!itemName.trim()) return;
+        const itemKey = itemName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_+|_+$)/g, '');
+        const updated = documentTemplates.map(t => {
+            if (t.id === templateId) {
+                return {
+                    ...t,
+                    categories: t.categories.map(cat => {
+                        if (cat.id === categoryId) {
+                            let uniqueKey = itemKey;
+                            let counter = 1;
+                            const allItems = t.categories.flatMap(c => c.items);
+                            while (allItems.some(item => item.key === uniqueKey) || cat.items.some(item => item.key === uniqueKey)) {
+                                uniqueKey = `${itemKey}_${counter}`;
+                                counter++;
+                            }
+                            return {
+                                ...cat,
+                                items: [...cat.items, { key: uniqueKey, name: itemName.trim(), required: isRequired }]
+                            };
+                        }
+                        return cat;
+                    })
+                };
+            }
+            return t;
+        });
+        setDocumentTemplates(updated);
+        localStorage.setItem('mano_document_templates', JSON.stringify(updated));
+        setNewDocItemNames(prev => ({ ...prev, [categoryId]: '' }));
+        toast.success('Document item added');
+    };
+
+    const handleDeleteDocTemplateItem = (templateId, categoryId, itemKey) => {
+        const updated = documentTemplates.map(t => {
+            if (t.id === templateId) {
+                return {
+                    ...t,
+                    categories: t.categories.map(cat => {
+                        if (cat.id === categoryId) {
+                            return {
+                                ...cat,
+                                items: cat.items.filter(item => item.key !== itemKey)
+                            };
+                        }
+                        return cat;
+                    })
+                };
+            }
+            return t;
+        });
+        setDocumentTemplates(updated);
+        localStorage.setItem('mano_document_templates', JSON.stringify(updated));
+        toast.success('Document item removed');
+    };
+
+    const handleDeleteDocTemplate = (id) => {
+        if (documentTemplates.length <= 1) {
+            toast.error('Cannot delete the last remaining template');
+            return;
+        }
+        const updated = documentTemplates.filter(t => t.id !== id);
+        setDocumentTemplates(updated);
+        localStorage.setItem('mano_document_templates', JSON.stringify(updated));
+        setSelectedDocTemplateId(updated[0].id);
+        toast.success('Document template deleted');
+    };
+
+    // Assigned Template Handlers
+    const handleChecklistTemplateChange = (templateId) => {
+        const updatedProfile = {
+            ...selectedEmployee.profile,
+            checklist_template_id: templateId
+        };
+        saveEmployeeProfile(selectedEmployee.id, updatedProfile);
+    };
+
+    const handleDocumentTemplateChange = (templateId) => {
+        const updatedProfile = {
+            ...selectedEmployee.profile,
+            document_template_id: templateId
+        };
+        saveEmployeeProfile(selectedEmployee.id, updatedProfile);
+    };
+
+    // Employee-specific Exclusions Handlers
+    const handleExcludeChecklistItem = (itemKey) => {
+        const currentExclusions = selectedEmployee.profile.checklist_exclusions || [];
+        const updatedExclusions = [...currentExclusions, itemKey];
+        const updatedProfile = {
+            ...selectedEmployee.profile,
+            checklist_exclusions: updatedExclusions
+        };
+        saveEmployeeProfile(selectedEmployee.id, updatedProfile);
+        toast.info("Checklist task excluded for this employee");
+    };
+
+    const handleRestoreChecklistExclusions = () => {
+        const updatedProfile = {
+            ...selectedEmployee.profile,
+            checklist_exclusions: []
+        };
+        saveEmployeeProfile(selectedEmployee.id, updatedProfile);
+        toast.success("All excluded checklist tasks restored");
+    };
+
+    const handleExcludeDocItem = (itemKey) => {
+        const currentExclusions = selectedEmployee.profile.document_exclusions || [];
+        const updatedExclusions = [...currentExclusions, itemKey];
+        const updatedProfile = {
+            ...selectedEmployee.profile,
+            document_exclusions: updatedExclusions
+        };
+        saveEmployeeProfile(selectedEmployee.id, updatedProfile);
+        toast.info("Document field excluded for this employee");
+    };
+
+    const handleRestoreDocExclusions = () => {
+        const updatedProfile = {
+            ...selectedEmployee.profile,
+            document_exclusions: []
+        };
+        saveEmployeeProfile(selectedEmployee.id, updatedProfile);
+        toast.success("All excluded document fields restored");
+    };
 
     // Load columns toggle preference
     const saveColumnPreference = async (updatedPrefs) => {
@@ -258,6 +663,8 @@ const EmployeeUnifiedMaster = () => {
         if (variant === 0) {
             // Case 0: Onboarding Completed (100%)
             defaultProfile = {
+                checklist_template_id: 'dev_onboarding',
+                document_template_id: 'dev_docs',
                 dob: '1992-04-12',
                 gender: 'Female',
                 address: 'Flat 402, Sunshine Apartments, Indiranagar, Bangalore, Karnataka',
@@ -272,38 +679,75 @@ const EmployeeUnifiedMaster = () => {
                     hsc: { uploaded: true, fileName: 'HSC_Marksheet.pdf', uploadedAt: '2024-05-03', nameOnDoc: empName, status: 'Verified' },
                     degree: { uploaded: true, fileName: 'Degree_Certificate.pdf', uploadedAt: '2024-05-03', nameOnDoc: empName, status: 'Verified' },
                     consolidated: { uploaded: true, fileName: 'Consolidated_Transcript.pdf', uploadedAt: '2024-05-03', nameOnDoc: empName, status: 'Verified' },
-                    offer_letter: { uploaded: true, fileName: 'Previous_Offer_Letter.pdf', uploadedAt: '2024-05-04', nameOnDoc: empName, status: 'Verified' },
                     experience_letter: { uploaded: true, fileName: 'Experience_Certificate.pdf', uploadedAt: '2024-05-04', nameOnDoc: empName, status: 'Verified' },
                     relieving_letter: { uploaded: true, fileName: 'Relieving_Letter.pdf', uploadedAt: '2024-05-04', nameOnDoc: empName, status: 'Verified' },
                     salary_slips: { uploaded: true, fileName: 'Last_3_Months_PaySlips.pdf', uploadedAt: '2024-05-04', nameOnDoc: empName, status: 'Verified' },
                     cheque: { uploaded: true, fileName: 'Cancelled_Cheque.pdf', uploadedAt: '2024-05-05', nameOnDoc: empName, status: 'Verified' },
-                    passbook: { uploaded: true, fileName: 'Bank_Passbook_Copy.pdf', uploadedAt: '2024-05-05', nameOnDoc: empName, status: 'Verified' },
-                    bank_statement: { uploaded: true, fileName: 'Bank_Statement_6Months.pdf', uploadedAt: '2024-05-05', nameOnDoc: empName, status: 'Verified' },
-                    uan: { uploaded: true, fileName: 'UAN_Card.pdf', uploadedAt: '2024-05-06', nameOnDoc: empName, status: 'Verified' },
-                    photo: { uploaded: true, fileName: 'Passport_Photo.jpg', uploadedAt: '2024-05-01', nameOnDoc: empName, status: 'Verified' },
-                    signature: { uploaded: true, fileName: 'Signature_Specimen.png', uploadedAt: '2024-05-01', nameOnDoc: empName, status: 'Verified' },
-                    emergency_contact: { uploaded: true, fileName: 'Emergency_Declaration.pdf', uploadedAt: '2024-05-01', nameOnDoc: empName, status: 'Verified' },
-                    medical_dec: { uploaded: true, fileName: 'Medical_Fitness_Form.pdf', uploadedAt: '2024-05-01', nameOnDoc: empName, status: 'Verified' }
+                    passbook: { uploaded: true, fileName: 'Bank_Passbook_Copy.pdf', uploadedAt: '2024-05-05', nameOnDoc: empName, status: 'Verified' }
                 },
                 onboarding_checklist: {
-                    docs_submitted: true,
-                    offer_accepted: true,
-                    contract_signed: true,
+                    personal_info: true,
                     laptop_assigned: true,
-                    email_created: true,
-                    training_assigned: true,
-                    manager_assigned: true
+                    github_access: true,
+                    slack_aws_invites: true,
+                    codebase_walkthrough: true,
+                    dev_setup: true
                 },
                 ai_verification_results: {
                     missing_documents: [],
                     expired_documents: [],
                     mismatched_information: [],
-                    lastChecked: '2026-06-05 10:00:00'
+                    auditScore: 85,
+                    lastChecked: '2026-06-10 14:35:45',
+                    extractedMetadata: {
+                        aadhaar: [
+                            { field: 'Extracted Name', value: empName, confidence: 99 },
+                            { field: 'Aadhaar Number', value: 'XXXX-XXXX-8901', confidence: 99 },
+                            { field: 'Date of Birth', value: '1992-04-12', confidence: 98 },
+                            { field: 'Gender', value: 'Female', confidence: 99 },
+                            { field: 'Address', value: 'Flat 402, Sunshine Apartments, Indiranagar, Bangalore...', confidence: 92 }
+                        ],
+                        pan: [
+                            { field: 'Extracted Name', value: empName.toUpperCase(), confidence: 97 },
+                            { field: 'PAN Number', value: 'ABCDE1234F', confidence: 99 },
+                            { field: 'Date of Birth', value: '1992-04-12', confidence: 98 },
+                            { field: 'Father\'s Name', value: 'K. Suresh', confidence: 90 }
+                        ],
+                        degree: [
+                            { field: 'Extracted Name', value: empName.split(' ')[0] + ' V.', confidence: 94 },
+                            { field: 'Degree Type', value: 'Bachelor of Technology', confidence: 98 },
+                            { field: 'Major/Branch', value: 'Computer Science', confidence: 97 },
+                            { field: 'University', value: 'Anna University', confidence: 95 },
+                            { field: 'Passing Year', value: '2014', confidence: 99 }
+                        ]
+                    },
+                    securityChecks: {
+                        aadhaar: { hologram: 'Passed', blur: 0.08, metadata: 'Passed', editing: 'Passed' },
+                        pan: { hologram: 'Passed', blur: 0.11, metadata: 'Passed', editing: 'Passed' },
+                        degree: { hologram: 'N/A', blur: 0.14, metadata: 'Passed', editing: 'Flagged' }
+                    },
+                    discrepancies: [
+                        {
+                            id: 'name_degree_mismatch',
+                            field: 'Name',
+                            sourceA: 'HR Profile',
+                            valueA: empName,
+                            sourceB: 'Degree Certificate',
+                            valueB: empName.split(' ')[0] + ' V.',
+                            severity: 'High',
+                            isOverridden: false,
+                            overrideReason: '',
+                            overriddenBy: '',
+                            overriddenAt: ''
+                        }
+                    ]
                 }
             };
         } else if (variant === 1) {
-            // Case 1: In Progress Onboarding (~80% completed with warning flags)
+            // Case 1: In Progress Onboarding (~60% completed with warning flags)
             defaultProfile = {
+                checklist_template_id: 'mgmt_onboarding',
+                document_template_id: 'mgmt_docs',
                 dob: '1998-11-23',
                 gender: 'Male',
                 address: 'H-90, Sector 15, HSR Layout, Bangalore, Karnataka',
@@ -314,31 +758,46 @@ const EmployeeUnifiedMaster = () => {
                 documents: {
                     aadhaar: { uploaded: true, fileName: `Aadhaar_${empName.replace(/\s+/g, '_')}.pdf`, uploadedAt: '2026-05-02', nameOnDoc: empName, status: 'Verified' },
                     pan: { uploaded: true, fileName: `PAN_${empName.replace(/\s+/g, '_')}.pdf`, uploadedAt: '2026-05-02', nameOnDoc: empName, status: 'Verified' },
-                    passport: { uploaded: true, fileName: 'Passport_Scan.pdf', uploadedAt: '2026-05-03', expiryDate: '2025-12-15', nameOnDoc: empName, status: 'Expired', isExpiredSim: true },
-                    ssc: { uploaded: true, fileName: 'SSC_Marksheet.pdf', uploadedAt: '2026-05-03', nameOnDoc: empName, status: 'Verified' },
-                    hsc: { uploaded: true, fileName: 'HSC_Marksheet.pdf', uploadedAt: '2026-05-03', nameOnDoc: empName, status: 'Verified' },
-                    salary_slips: { uploaded: true, fileName: 'Previous_PaySlips.pdf', uploadedAt: '2026-05-04', nameOnDoc: `${empName.split(' ')[0]} V.`, status: 'Mismatched', isMismatchSim: true },
-                    photo: { uploaded: true, fileName: 'Profile_Pic.jpg', uploadedAt: '2026-05-01', nameOnDoc: empName, status: 'Verified' }
+                    grad_degree: { uploaded: true, fileName: 'Degree_Certificate.pdf', uploadedAt: '2026-05-03', nameOnDoc: empName, status: 'Verified' }
                 },
                 onboarding_checklist: {
-                    docs_submitted: true,
-                    offer_accepted: true,
-                    contract_signed: true,
-                    laptop_assigned: true,
-                    email_created: false,
-                    training_assigned: false,
-                    manager_assigned: true
+                    personal_info: true,
+                    hr_policy: true,
+                    team_intro: true,
+                    okr_alignment: false,
+                    dashboard_training: false
                 },
                 ai_verification_results: {
-                    missing_documents: ['Degree Certificate', 'Consolidated Marksheet', 'Previous Offer Letter', 'Experience Letter', 'Relieving Letter', 'Cancelled Cheque', 'Passbook Copy', 'Bank Statement', 'UAN Number', 'Signature Specimen', 'Emergency Contact Detail', 'Medical Declaration'],
-                    expired_documents: ['Passport (Expired on 2025-12-15)'],
-                    mismatched_information: [`Salary Slips lists name "${empName.split(' ')[0]} V." instead of "${empName}"`],
-                    lastChecked: '2026-06-05 14:30:00'
+                    missing_documents: ['MBA Degree Certificate', 'Relieving Letter', 'Reference Contact Letter', 'Cancelled Cheque'],
+                    expired_documents: [],
+                    mismatched_information: [],
+                    auditScore: 70,
+                    lastChecked: '2026-06-10 11:20:10',
+                    extractedMetadata: {
+                        aadhaar: [
+                            { field: 'Extracted Name', value: empName, confidence: 99 },
+                            { field: 'Aadhaar Number', value: 'XXXX-XXXX-1234', confidence: 98 },
+                            { field: 'Date of Birth', value: '1998-11-23', confidence: 98 },
+                            { field: 'Gender', value: 'Male', confidence: 99 }
+                        ],
+                        pan: [
+                            { field: 'Extracted Name', value: empName.toUpperCase(), confidence: 97 },
+                            { field: 'PAN Number', value: 'XYZPQ5678R', confidence: 99 },
+                            { field: 'Date of Birth', value: '1998-11-23', confidence: 98 }
+                        ]
+                    },
+                    securityChecks: {
+                        aadhaar: { hologram: 'Passed', blur: 0.09, metadata: 'Passed', editing: 'Passed' },
+                        pan: { hologram: 'Passed', blur: 0.13, metadata: 'Passed', editing: 'Passed' }
+                    },
+                    discrepancies: []
                 }
             };
         } else {
             // Case 2: Onboarding Pending / Fresh (0% - 20%)
             defaultProfile = {
+                checklist_template_id: 'support_onboarding',
+                document_template_id: 'support_docs',
                 dob: '2001-01-15',
                 gender: 'Male',
                 address: '32, MG Road, Trinity Junction, Bangalore, Karnataka',
@@ -346,23 +805,22 @@ const EmployeeUnifiedMaster = () => {
                 employment_type: 'Intern',
                 work_location: 'Headquarters',
                 reporting_manager: 'Rohan Mehra (Tech Lead)',
-                documents: {
-                    photo: { uploaded: true, fileName: 'Intern_Photo.jpg', uploadedAt: '2026-06-01', nameOnDoc: empName, status: 'Verified' }
-                },
+                documents: {},
                 onboarding_checklist: {
-                    docs_submitted: false,
-                    offer_accepted: true,
-                    contract_signed: false,
-                    laptop_assigned: false,
-                    email_created: false,
-                    training_assigned: false,
-                    manager_assigned: false
+                    office_tour: false,
+                    id_card: false,
+                    uniform_handover: false,
+                    health_safety: false
                 },
                 ai_verification_results: {
-                    missing_documents: ['Aadhaar Card', 'PAN Card', 'SSC (10th Marksheet)', 'HSC (12th Marksheet)', 'Degree Certificate', 'Consolidated Marksheet', 'Previous Offer Letter', 'Experience Letter', 'Relieving Letter', 'Salary Slips (Last 3 Months)', 'Cancelled Cheque', 'Passbook Copy', 'Bank Statement', 'UAN Number', 'Signature Specimen', 'Emergency Contact Detail', 'Medical Declaration'],
+                    missing_documents: ['Aadhaar Card', 'Passbook Copy', 'PF Details'],
                     expired_documents: [],
                     mismatched_information: [],
-                    lastChecked: '2026-06-05 17:15:00'
+                    auditScore: 0,
+                    lastChecked: 'Never',
+                    extractedMetadata: {},
+                    securityChecks: {},
+                    discrepancies: []
                 }
             };
         }
@@ -371,6 +829,8 @@ const EmployeeUnifiedMaster = () => {
             try {
                 const parsed = JSON.parse(stored);
                 return {
+                    checklist_template_id: defaultProfile.checklist_template_id,
+                    document_template_id: defaultProfile.document_template_id,
                     ...defaultProfile,
                     ...parsed,
                     documents: { ...defaultProfile.documents, ...parsed.documents },
@@ -396,10 +856,29 @@ const EmployeeUnifiedMaster = () => {
         }
     };
 
-    const getOnboardingProgress = (checklist) => {
-        if (!checklist) return 0;
-        const total = CHECKLIST_ITEMS.length;
-        const checked = CHECKLIST_ITEMS.filter(item => checklist[item.key]).length;
+    const getOnboardingProgress = (profileOrChecklist, templateId) => {
+        if (!profileOrChecklist) return 0;
+        
+        let checklist = {};
+        let exclusions = [];
+        
+        if (profileOrChecklist.onboarding_checklist) {
+            checklist = profileOrChecklist.onboarding_checklist;
+            exclusions = profileOrChecklist.checklist_exclusions || [];
+        } else {
+            checklist = profileOrChecklist;
+        }
+
+        const currentTemplates = checklistTemplates || DEFAULT_CHECKLIST_TEMPLATES;
+        const activeId = templateId || (currentTemplates[0]?.id);
+        const template = currentTemplates.find(t => t.id === activeId) || currentTemplates[0];
+        if (!template || !template.items || template.items.length === 0) return 0;
+        
+        const activeItems = template.items.filter(item => !exclusions.includes(item.key));
+        if (activeItems.length === 0) return 0;
+        
+        const total = activeItems.length;
+        const checked = activeItems.filter(item => checklist[item.key]).length;
         return Math.round((checked / total) * 100);
     };
 
@@ -486,7 +965,7 @@ const EmployeeUnifiedMaster = () => {
         
         // Cards 2 & 3 Onboarding progress filter
         const profile = getEmployeeProfile(emp.id, emp.name);
-        const progress = getOnboardingProgress(profile.onboarding_checklist);
+        const progress = getOnboardingProgress(profile.onboarding_checklist, profile.checklist_template_id);
         let matchesOnboarding = true;
         
         if (onboardingFilter === 'Completed') {
@@ -699,8 +1178,16 @@ const EmployeeUnifiedMaster = () => {
             const expired = [];
             const mismatched = [];
 
-            DOCUMENT_CATEGORIES.forEach(category => {
-                category.items.forEach(item => {
+            const activeDocTemplateId = selectedEmployee.profile.document_template_id || (documentTemplates[0]?.id || '');
+            const activeDocTemplate = documentTemplates.find(t => t.id === activeDocTemplateId) || documentTemplates[0];
+            const categories = activeDocTemplate?.categories || [];
+            
+            const docExclusions = selectedEmployee.profile.document_exclusions || [];
+
+            categories.forEach(category => {
+                category.items?.forEach(item => {
+                    if (docExclusions.includes(item.key)) return; // Skip excluded document fields
+
                     const doc = selectedEmployee.profile.documents[item.key];
                     if (item.required && (!doc || !doc.uploaded)) {
                         missing.push(item.name);
@@ -723,12 +1210,121 @@ const EmployeeUnifiedMaster = () => {
                 });
             });
 
+            // OCR extracted metadata
+            const extractedMetadata = {};
+            const securityChecks = {};
+            const discrepancies = [];
+
+            const hrName = selectedEmployee.name;
+            const hrDob = selectedEmployee.profile.dob || '1995-12-10';
+            const hrGender = selectedEmployee.profile.gender || 'Male';
+            const hrAddress = selectedEmployee.profile.address || 'Flat 402, Sunshine Apartments, Bangalore';
+
+            // Loop through categories to populate OCR and Security logs for any uploaded document
+            categories.forEach(category => {
+                category.items?.forEach(item => {
+                    if (docExclusions.includes(item.key)) return;
+                    const doc = selectedEmployee.profile.documents[item.key];
+                    if (doc && doc.uploaded) {
+                        if (item.key === 'aadhaar') {
+                            extractedMetadata.aadhaar = [
+                                { field: 'Extracted Name', value: doc.nameOnDoc || hrName, confidence: 99 },
+                                { field: 'Aadhaar Number', value: 'XXXX-XXXX-8901', confidence: 99 },
+                                { field: 'Date of Birth', value: hrDob, confidence: 98 },
+                                { field: 'Gender', value: hrGender, confidence: 99 },
+                                { field: 'Address', value: hrAddress.substring(0, 30) + '...', confidence: 92 }
+                            ];
+                            securityChecks.aadhaar = { hologram: 'Passed', blur: 0.08, metadata: 'Passed', editing: 'Passed' };
+                        } else if (item.key === 'pan') {
+                            extractedMetadata.pan = [
+                                { field: 'Extracted Name', value: (doc.nameOnDoc || hrName).toUpperCase(), confidence: 97 },
+                                { field: 'PAN Number', value: 'ABCDE1234F', confidence: 99 },
+                                { field: 'Date of Birth', value: hrDob, confidence: 98 },
+                                { field: 'Father\'s Name', value: 'K. Suresh', confidence: 90 }
+                            ];
+                            securityChecks.pan = { hologram: 'Passed', blur: 0.11, metadata: 'Passed', editing: 'Passed' };
+                        } else if (item.key === 'grad_degree' || item.key === 'degree') {
+                            const degreeName = doc.nameOnDoc || (hrName.split(' ')[0] + ' V.');
+                            extractedMetadata[item.key] = [
+                                { field: 'Extracted Name', value: degreeName, confidence: 94 },
+                                { field: 'Degree Type', value: 'Bachelor of Technology', confidence: 98 },
+                                { field: 'Major/Branch', value: 'Computer Science', confidence: 97 },
+                                { field: 'University', value: 'Anna University', confidence: 95 },
+                                { field: 'Passing Year', value: '2014', confidence: 99 }
+                            ];
+                            securityChecks[item.key] = { hologram: 'N/A', blur: 0.14, metadata: 'Passed', editing: 'Flagged' };
+
+                            const prevDiscrepancies = selectedEmployee.profile.ai_verification_results?.discrepancies || [];
+                            const prevOverride = prevDiscrepancies.find(d => d.id === 'name_degree_mismatch');
+
+                            discrepancies.push({
+                                id: 'name_degree_mismatch',
+                                field: 'Name',
+                                sourceA: 'HR Profile',
+                                valueA: hrName,
+                                sourceB: 'Degree Certificate',
+                                valueB: degreeName,
+                                severity: 'High',
+                                isOverridden: prevOverride ? prevOverride.isOverridden : false,
+                                overrideReason: prevOverride ? prevOverride.overrideReason : '',
+                                overriddenBy: prevOverride ? prevOverride.overriddenBy : '',
+                                overriddenAt: prevOverride ? prevOverride.overriddenAt : ''
+                            });
+                        } else if (item.key === 'passport') {
+                            extractedMetadata.passport = [
+                                { field: 'Extracted Name', value: doc.nameOnDoc || hrName, confidence: 99 },
+                                { field: 'Passport Number', value: 'Z9876543', confidence: 99 },
+                                { field: 'Expiry Date', value: doc.expiryDate || '2030-05-15', confidence: 99 },
+                                { field: 'Nationality', value: 'Indian', confidence: 99 }
+                            ];
+                            securityChecks.passport = { hologram: 'Passed', blur: 0.05, metadata: 'Passed', editing: 'Passed' };
+                        } else if (item.key === 'experience_letter') {
+                            extractedMetadata.experience_letter = [
+                                { field: 'Extracted Name', value: doc.nameOnDoc || hrName, confidence: 96 },
+                                { field: 'Employer Name', value: 'PPL Solutions Pvt Ltd', confidence: 98 },
+                                { field: 'Designation', value: 'Software Engineer', confidence: 95 },
+                                { field: 'Tenure', value: '2 Years (2022 - 2024)', confidence: 92 }
+                            ];
+                            securityChecks.experience_letter = { hologram: 'N/A', blur: 0.12, metadata: 'Passed', editing: 'Passed' };
+                        } else {
+                            extractedMetadata[item.key] = [
+                                { field: 'Extracted Name', value: doc.nameOnDoc || hrName, confidence: 95 },
+                                { field: 'Document Status', value: 'Uploaded & Parsed', confidence: 90 }
+                            ];
+                            securityChecks[item.key] = { hologram: 'N/A', blur: 0.10, metadata: 'Passed', editing: 'Passed' };
+                        }
+                    }
+                });
+            });
+
+            // Calculate overall compliance score:
+            let score = 100;
+            score -= (missing.length * 10);
+            score -= (expired.length * 15);
+            
+            discrepancies.forEach(d => {
+                if (!d.isOverridden) {
+                    score -= 15;
+                }
+            });
+
+            Object.values(securityChecks).forEach(checks => {
+                if (checks.editing === 'Flagged') score -= 10;
+                if (checks.hologram === 'Failed') score -= 10;
+            });
+
+            score = Math.max(0, Math.min(100, score));
+
             const updatedProfile = {
                 ...selectedEmployee.profile,
                 ai_verification_results: {
                     missing_documents: missing,
                     expired_documents: expired,
                     mismatched_information: mismatched,
+                    extractedMetadata,
+                    securityChecks,
+                    discrepancies,
+                    auditScore: score,
                     lastChecked: new Date().toLocaleString()
                 }
             };
@@ -737,6 +1333,111 @@ const EmployeeUnifiedMaster = () => {
             setIsVerifying(false);
             toast.success("AI Document Audit complete!");
         }, 2000);
+    };
+
+    const handleOverrideDiscrepancy = (id, reason) => {
+        if (!reason.trim()) {
+            toast.warn("Please provide an override reason.");
+            return;
+        }
+
+        const currentResults = selectedEmployee.profile.ai_verification_results || {};
+        const discrepancies = currentResults.discrepancies || [];
+        
+        const updatedDiscrepancies = discrepancies.map(d => {
+            if (d.id === id) {
+                return {
+                    ...d,
+                    isOverridden: true,
+                    overrideReason: reason,
+                    overriddenBy: 'Admin (System)',
+                    overriddenAt: new Date().toLocaleString()
+                };
+            }
+            return d;
+        });
+
+        // Recalculate score
+        let score = 100;
+        score -= ((currentResults.missing_documents || []).length * 10);
+        score -= ((currentResults.expired_documents || []).length * 15);
+        
+        updatedDiscrepancies.forEach(d => {
+            if (!d.isOverridden) {
+                score -= 15;
+            }
+        });
+
+        const securityChecks = currentResults.securityChecks || {};
+        Object.values(securityChecks).forEach(checks => {
+            if (checks.editing === 'Flagged') score -= 10;
+            if (checks.hologram === 'Failed') score -= 10;
+        });
+
+        score = Math.max(0, Math.min(100, score));
+
+        const updatedProfile = {
+            ...selectedEmployee.profile,
+            ai_verification_results: {
+                ...currentResults,
+                discrepancies: updatedDiscrepancies,
+                auditScore: score
+            }
+        };
+
+        saveEmployeeProfile(selectedEmployee.id, updatedProfile);
+        setOverridingDiscrepancyId(null);
+        setOverrideReasonText('');
+        toast.success("Discrepancy override saved successfully!");
+    };
+
+    const handleRevokeOverride = (id) => {
+        const currentResults = selectedEmployee.profile.ai_verification_results || {};
+        const discrepancies = currentResults.discrepancies || [];
+        
+        const updatedDiscrepancies = discrepancies.map(d => {
+            if (d.id === id) {
+                return {
+                    ...d,
+                    isOverridden: false,
+                    overrideReason: '',
+                    overriddenBy: '',
+                    overriddenAt: ''
+                };
+            }
+            return d;
+        });
+
+        // Recalculate score
+        let score = 100;
+        score -= ((currentResults.missing_documents || []).length * 10);
+        score -= ((currentResults.expired_documents || []).length * 15);
+        
+        updatedDiscrepancies.forEach(d => {
+            if (!d.isOverridden) {
+                score -= 15;
+            }
+        });
+
+        const securityChecks = currentResults.securityChecks || {};
+        Object.values(securityChecks).forEach(checks => {
+            if (checks.editing === 'Flagged') score -= 10;
+            if (checks.hologram === 'Failed') score -= 10;
+        });
+
+        score = Math.max(0, Math.min(100, score));
+
+        const updatedProfile = {
+            ...selectedEmployee.profile,
+            ai_verification_results: {
+                ...currentResults,
+                discrepancies: updatedDiscrepancies,
+                auditScore: score
+            }
+        };
+
+        saveEmployeeProfile(selectedEmployee.id, updatedProfile);
+        toast.info("Override revoked.");
     };
 
     const handleFormSuccess = () => {
@@ -787,7 +1488,7 @@ const EmployeeUnifiedMaster = () => {
                                 {employees.filter(e => {
                                     if (e.status !== statusFilter) return false;
                                     const profile = getEmployeeProfile(e.id, e.name);
-                                    return getOnboardingProgress(profile.onboarding_checklist) === 100;
+                                    return getOnboardingProgress(profile.onboarding_checklist, profile.checklist_template_id) === 100;
                                 }).length}
                             </p>
                         </div>
@@ -811,7 +1512,7 @@ const EmployeeUnifiedMaster = () => {
                                 {employees.filter(e => {
                                     if (e.status !== statusFilter) return false;
                                     const profile = getEmployeeProfile(e.id, e.name);
-                                    const progress = getOnboardingProgress(profile.onboarding_checklist);
+                                    const progress = getOnboardingProgress(profile.onboarding_checklist, profile.checklist_template_id);
                                     return progress > 0 && progress < 100;
                                 }).length}
                             </p>
@@ -960,6 +1661,13 @@ const EmployeeUnifiedMaster = () => {
 
                     {/* Operational Buttons */}
                     <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                        <button 
+                            onClick={() => setShowTemplatesModal(true)}
+                            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-github-dark-text bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
+                        >
+                            <Sliders size={14} className="text-indigo-600 dark:text-indigo-400" />
+                            <span>Manage Templates</span>
+                        </button>
                         <Link 
                             to="/employees/bulk" 
                             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-github-dark-text bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
@@ -1007,7 +1715,7 @@ const EmployeeUnifiedMaster = () => {
                                 ) : filteredEmployees.length > 0 ? (
                                     filteredEmployees.map((emp) => {
                                         const profile = getEmployeeProfile(emp.id, emp.name);
-                                        const progress = getOnboardingProgress(profile.onboarding_checklist);
+                                        const progress = getOnboardingProgress(profile.onboarding_checklist, profile.checklist_template_id);
                                         
                                         return (
                                             <tr
@@ -1398,6 +2106,33 @@ const EmployeeUnifiedMaster = () => {
                                                         <span className="block text-[9px] uppercase font-black text-slate-400 tracking-wider mb-1">Residential Address</span>
                                                         <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{selectedEmployee.profile.address}</span>
                                                     </div>
+
+                                                    <div className="pt-3 border-t border-slate-100 dark:border-github-dark-border grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <span className="block text-[9px] uppercase font-black text-slate-450 tracking-wider mb-1.5">Checklist Template</span>
+                                                            <select
+                                                                value={selectedEmployee.profile.checklist_template_id || (checklistTemplates[0]?.id || '')}
+                                                                onChange={(e) => handleChecklistTemplateChange(e.target.value)}
+                                                                className="w-full bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                                                            >
+                                                                {checklistTemplates.map(t => (
+                                                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <span className="block text-[9px] uppercase font-black text-slate-450 tracking-wider mb-1.5">Document Template</span>
+                                                            <select
+                                                                value={selectedEmployee.profile.document_template_id || (documentTemplates[0]?.id || '')}
+                                                                onChange={(e) => handleDocumentTemplateChange(e.target.value)}
+                                                                className="w-full bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                                                            >
+                                                                {documentTemplates.map(t => (
+                                                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -1405,101 +2140,208 @@ const EmployeeUnifiedMaster = () => {
                                 )}
 
                                 {/* 2. Onboarding Checklist Tab */}
-                                {drawerTab === 'checklist' && (
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">
-                                                Onboarding Checklist Completion ({getOnboardingProgress(selectedEmployee.profile.onboarding_checklist)}%)
-                                            </h4>
-                                        </div>
-
-                                        <div className="space-y-2.5">
-                                            {CHECKLIST_ITEMS.map((item) => {
-                                                const isDone = !!selectedEmployee.profile.onboarding_checklist[item.key];
-                                                return (
-                                                    <div 
-                                                        key={item.key} 
-                                                        onClick={() => handleChecklistToggle(item.key)}
-                                                        className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-github-dark-subtle/10 border border-slate-100 dark:border-github-dark-border rounded-xl cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/20 transition-all select-none"
+                                {drawerTab === 'checklist' && (() => {
+                                    const activeTemplateId = selectedEmployee.profile.checklist_template_id || (checklistTemplates[0]?.id || '');
+                                    const activeTemplate = checklistTemplates.find(t => t.id === activeTemplateId) || checklistTemplates[0];
+                                    const rawItems = activeTemplate?.items || [];
+                                    const exclusions = selectedEmployee.profile.checklist_exclusions || [];
+                                    const items = rawItems.filter(item => !exclusions.includes(item.key));
+                                    
+                                    return (
+                                        <div className="space-y-4">
+                                            {/* Template assignment & header */}
+                                            <div className="bg-slate-50 dark:bg-github-dark-subtle/25 border border-slate-200 dark:border-github-dark-border p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                                <div>
+                                                    <span className="block text-[9px] uppercase font-black tracking-wider text-slate-400 dark:text-github-dark-muted mb-1">Checklist Template</span>
+                                                    <select
+                                                        value={activeTemplateId}
+                                                        onChange={(e) => handleChecklistTemplateChange(e.target.value)}
+                                                        className="bg-transparent border-none p-0 text-xs font-bold text-indigo-600 dark:text-indigo-400 focus:outline-none cursor-pointer hover:underline"
                                                     >
-                                                        <CheckCircle2 size={18} className={isDone ? "text-emerald-500" : "text-slate-300 dark:text-slate-750"} />
-                                                        <span className={`font-semibold text-xs ${isDone ? 'text-slate-400 line-through opacity-70' : 'text-slate-800 dark:text-github-dark-text'}`}>
-                                                            {item.label}
-                                                        </span>
+                                                        {checklistTemplates.map(t => (
+                                                            <option key={t.id} value={t.id} className="bg-white dark:bg-dark-card text-slate-800 dark:text-github-dark-text">{t.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="sm:text-right flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto">
+                                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-github-dark-muted block">Completion Rate</span>
+                                                    <span className="text-xs font-extrabold text-slate-800 dark:text-github-dark-text mt-0.5">
+                                                        {getOnboardingProgress(selectedEmployee.profile, activeTemplateId)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {exclusions.length > 0 && (
+                                                <div className="flex justify-between items-center bg-amber-500/10 border border-amber-500/20 px-3.5 py-2 rounded-xl text-[10px] text-amber-600 dark:text-amber-400">
+                                                    <span>{exclusions.length} task(s) excluded for this employee.</span>
+                                                    <button 
+                                                        onClick={handleRestoreChecklistExclusions}
+                                                        className="font-bold underline uppercase hover:text-amber-700"
+                                                    >
+                                                        Restore All
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-2.5">
+                                                {items.length === 0 ? (
+                                                    <div className="text-center py-8 text-slate-400 italic bg-slate-50/20 dark:bg-[#161b22]/10 border border-slate-100 dark:border-github-dark-border rounded-xl">
+                                                        {rawItems.length === 0 ? "No checklist items configured for this template." : "All checklist tasks excluded for this employee."}
                                                     </div>
-                                                );
-                                            })}
+                                                ) : (
+                                                    items.map((item) => {
+                                                        const isDone = !!selectedEmployee.profile.onboarding_checklist[item.key];
+                                                        return (
+                                                            <div 
+                                                                key={item.key} 
+                                                                onClick={() => handleChecklistToggle(item.key)}
+                                                                className="flex items-center justify-between p-3 bg-slate-50 dark:bg-github-dark-subtle/10 border border-slate-100 dark:border-github-dark-border rounded-xl cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/20 transition-all select-none group/row"
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    <CheckCircle2 size={18} className={isDone ? "text-emerald-500" : "text-slate-300 dark:text-slate-750"} />
+                                                                    <span className={`font-semibold text-xs ${isDone ? 'text-slate-400 line-through opacity-70' : 'text-slate-800 dark:text-github-dark-text'}`}>
+                                                                        {item.label}
+                                                                    </span>
+                                                                </div>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleExcludeChecklistItem(item.key);
+                                                                    }}
+                                                                    className="opacity-0 group-hover/row:opacity-100 p-1 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-red-500 rounded transition-all"
+                                                                    title="Exclude task for this employee"
+                                                                >
+                                                                    <X size={13} />
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 {/* 3. Document Files Tab */}
-                                {drawerTab === 'documents' && (
-                                    <div className="space-y-6">
-                                        <div className="flex justify-between items-center">
-                                            <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Verified Document Vault</h4>
-                                        </div>
-
+                                {drawerTab === 'documents' && (() => {
+                                    const activeDocTemplateId = selectedEmployee.profile.document_template_id || (documentTemplates[0]?.id || '');
+                                    const activeDocTemplate = documentTemplates.find(t => t.id === activeDocTemplateId) || documentTemplates[0];
+                                    const categories = activeDocTemplate?.categories || [];
+                                    const exclusions = selectedEmployee.profile.document_exclusions || [];
+                                    
+                                    return (
                                         <div className="space-y-6">
-                                            {DOCUMENT_CATEGORIES.map((cat) => (
-                                                <div key={cat.id} className="space-y-2 bg-slate-50/50 dark:bg-[#161b22]/10 border border-slate-150/40 dark:border-github-dark-border p-4 rounded-xl">
-                                                    <h5 className="font-bold text-[10px] uppercase text-indigo-500 tracking-wider mb-2">{cat.name}</h5>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                        {cat.items.map((item) => {
-                                                            const doc = selectedEmployee.profile.documents[item.key];
-                                                            const isUploaded = !!doc?.uploaded;
-                                                            
-                                                            return (
-                                                                <div key={item.key} className="flex justify-between items-center p-3 bg-white dark:bg-[#161b22]/30 border border-slate-200/60 dark:border-github-dark-border rounded-lg shadow-sm">
-                                                                    <div className="flex items-center gap-2.5 overflow-hidden">
-                                                                        <FileText size={16} className={isUploaded ? "text-indigo-500" : "text-slate-300 dark:text-slate-700"} />
-                                                                        <div className="truncate">
-                                                                            <p className="font-bold text-slate-800 dark:text-github-dark-text truncate">
-                                                                                {item.name} {item.required && <span className="text-red-500">*</span>}
-                                                                            </p>
-                                                                            {isUploaded ? (
-                                                                                <p className="text-[9px] text-slate-400 font-medium font-mono truncate">{doc.fileName}</p>
-                                                                            ) : (
-                                                                                <p className="text-[9px] text-slate-400 italic">Not submitted</p>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-2">
-                                                                        {isUploaded ? (
-                                                                            <>
-                                                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${
-                                                                                    doc.status === 'Verified' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20' : 'bg-red-50 text-red-650 dark:bg-red-950/20'
-                                                                                }`}>
-                                                                                    {doc.status}
-                                                                                </span>
-                                                                                <button 
-                                                                                    onClick={() => handleDeleteDocument(item.key, item.name)}
-                                                                                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-red-500 rounded"
-                                                                                >
-                                                                                    <Trash2 size={13} />
-                                                                                </button>
-                                                                            </>
-                                                                        ) : (
-                                                                            <button 
-                                                                                onClick={() => openUploadModal(item.key, item.name, cat.id)}
-                                                                                className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1 bg-slate-50 dark:bg-github-dark-subtle/50 rounded border border-slate-200 dark:border-github-dark-border"
-                                                                            >
-                                                                                <Upload size={10} />
-                                                                                <span>Upload</span>
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
+                                            {/* Template assignment & header */}
+                                            <div className="bg-slate-50 dark:bg-github-dark-subtle/25 border border-slate-200 dark:border-github-dark-border p-4 rounded-xl flex justify-between items-center gap-3">
+                                                <div>
+                                                    <span className="block text-[9px] uppercase font-black tracking-wider text-slate-400 dark:text-github-dark-muted mb-1">Document Template</span>
+                                                    <select
+                                                        value={activeDocTemplateId}
+                                                        onChange={(e) => handleDocumentTemplateChange(e.target.value)}
+                                                        className="bg-transparent border-none p-0 text-xs font-bold text-indigo-600 dark:text-indigo-400 focus:outline-none cursor-pointer hover:underline"
+                                                    >
+                                                        {documentTemplates.map(t => (
+                                                            <option key={t.id} value={t.id} className="bg-white dark:bg-dark-card text-slate-800 dark:text-github-dark-text">{t.name}</option>
+                                                        ))}
+                                                    </select>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
+                                                {exclusions.length > 0 && (
+                                                    <div className="text-right flex items-center gap-2">
+                                                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">{exclusions.length} excluded</span>
+                                                        <button 
+                                                            onClick={handleRestoreDocExclusions}
+                                                            className="text-[9px] font-bold underline uppercase text-amber-600 dark:text-amber-400 hover:text-amber-700"
+                                                        >
+                                                            Restore All
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
 
+                                            <div className="space-y-6">
+                                                {categories.length === 0 ? (
+                                                    <div className="text-center py-6 text-slate-400 italic">
+                                                        No document categories configured for this template.
+                                                    </div>
+                                                ) : (
+                                                    categories.map((cat) => {
+                                                        const activeItems = cat.items?.filter(item => !exclusions.includes(item.key)) || [];
+                                                        if (activeItems.length === 0 && (cat.items || []).length > 0) return null; // skip category if all items are excluded
+                                                        return (
+                                                            <div key={cat.id} className="space-y-2 bg-slate-50/50 dark:bg-[#161b22]/10 border border-slate-155/40 dark:border-github-dark-border p-4 rounded-xl">
+                                                                <h5 className="font-bold text-[10px] uppercase text-indigo-500 tracking-wider mb-2">{cat.name}</h5>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                    {activeItems.length === 0 ? (
+                                                                        <div className="text-slate-405 italic text-xs py-2 col-span-2">No files configured in this category.</div>
+                                                                    ) : (
+                                                                        activeItems.map((item) => {
+                                                                            const doc = selectedEmployee.profile.documents[item.key];
+                                                                            const isUploaded = !!doc?.uploaded;
+                                                                            
+                                                                            return (
+                                                                                <div key={item.key} className="flex justify-between items-center p-3 bg-white dark:bg-[#161b22]/30 border border-slate-200/60 dark:border-github-dark-border rounded-lg shadow-sm group/docrow">
+                                                                                    <div className="flex items-center gap-2.5 overflow-hidden">
+                                                                                        <FileText size={16} className={isUploaded ? "text-indigo-500" : "text-slate-300 dark:text-slate-700"} />
+                                                                                        <div className="truncate">
+                                                                                            <p className="font-bold text-slate-800 dark:text-github-dark-text truncate">
+                                                                                                {item.name} {item.required && <span className="text-red-500">*</span>}
+                                                                                            </p>
+                                                                                            {isUploaded ? (
+                                                                                                <p className="text-[9px] text-slate-400 font-medium font-mono truncate">{doc.fileName}</p>
+                                                                                            ) : (
+                                                                                                <p className="text-[9px] text-slate-400 italic">Not submitted</p>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                                                        {isUploaded ? (
+                                                                                            <>
+                                                                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${
+                                                                                                    doc.status === 'Verified' ? 'bg-emerald-50 text-emerald-650 dark:bg-emerald-950/20' : 'bg-red-50 text-red-650 dark:bg-red-950/20'
+                                                                                                }`}>
+                                                                                                    {doc.status}
+                                                                                                </span>
+                                                                                                <button 
+                                                                                                    onClick={() => handleDeleteDocument(item.key, item.name)}
+                                                                                                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-red-500 rounded"
+                                                                                                    title="Delete uploaded file"
+                                                                                                >
+                                                                                                    <Trash2 size={13} />
+                                                                                                </button>
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <button 
+                                                                                                onClick={() => openUploadModal(item.key, item.name, cat.id)}
+                                                                                                className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1 bg-slate-50 dark:bg-github-dark-subtle/50 rounded border border-slate-200 dark:border-github-dark-border"
+                                                                                            >
+                                                                                                <Upload size={10} />
+                                                                                                <span>Upload</span>
+                                                                                            </button>
+                                                                                        )}
+                                                                                        
+                                                                                        {/* Exclude file field button */}
+                                                                                        <button 
+                                                                                            onClick={() => handleExcludeDocItem(item.key)}
+                                                                                            className="opacity-0 group-hover/docrow:opacity-100 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-red-550 rounded"
+                                                                                            title="Exclude document field for this employee"
+                                                                                        >
+                                                                                            <X size={13} />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                                 {/* 4. AI Auditor Tab */}
                                 {drawerTab === 'ai_verify' && (
                                     <div className="space-y-6">
@@ -1741,6 +2583,350 @@ const EmployeeUnifiedMaster = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* TEMPLATES CONFIGURATION MODAL */}
+            {showTemplatesModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/10">
+                            <div>
+                                <h4 className="font-black text-sm text-slate-800 dark:text-github-dark-text flex items-center gap-2">
+                                    <Sliders size={16} className="text-indigo-650 dark:text-indigo-400" />
+                                    Global Templates Configurations Manager
+                                </h4>
+                                <p className="text-slate-450 dark:text-github-dark-muted text-[10px] mt-0.5">Configure onboarding and document lists assigned dynamically to employees.</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowTemplatesModal(false)} 
+                                className="p-1 text-slate-400 hover:text-slate-650 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Segment Tab Toggle */}
+                        <div className="flex border-b border-slate-100 dark:border-github-dark-border text-xs bg-slate-50 dark:bg-github-dark-subtle/20 px-4">
+                            <button
+                                onClick={() => setTemplatesModalTab('checklist')}
+                                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-bold transition-all ${
+                                    templatesModalTab === 'checklist'
+                                        ? 'border-indigo-600 text-indigo-650 dark:border-indigo-400 dark:text-[#f0f6fc]'
+                                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-github-dark-muted dark:hover:text-slate-200'
+                                }`}
+                            >
+                                <CheckCircle2 size={14} />
+                                <span>Onboarding Checklist Templates</span>
+                            </button>
+                            <button
+                                onClick={() => setTemplatesModalTab('document')}
+                                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-bold transition-all ${
+                                    templatesModalTab === 'document'
+                                        ? 'border-indigo-600 text-indigo-650 dark:border-indigo-400 dark:text-[#f0f6fc]'
+                                        : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-github-dark-muted dark:hover:text-slate-200'
+                                }`}
+                            >
+                                <FileText size={14} />
+                                <span>Required Documents Templates</span>
+                            </button>
+                        </div>
+
+                        {/* Main Layout: Split Screen */}
+                        <div className="flex-1 flex overflow-hidden text-xs">
+                            
+                            {/* Left Pane: Templates List Sidebar */}
+                            <div className="w-1/3 border-r border-slate-205 dark:border-github-dark-border bg-slate-50/50 dark:bg-[#161b22]/10 p-4 flex flex-col justify-between overflow-y-auto">
+                                <div className="space-y-2">
+                                    <span className="block text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-github-dark-muted mb-2">Available Templates</span>
+                                    {templatesModalTab === 'checklist' ? (
+                                        checklistTemplates.map(t => (
+                                            <button
+                                                key={t.id}
+                                                onClick={() => setSelectedChecklistTemplateId(t.id)}
+                                                className={`w-full text-left p-3 rounded-xl border font-bold transition-all flex items-center justify-between ${
+                                                    selectedChecklistTemplateId === t.id
+                                                        ? 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-500 text-indigo-650 dark:text-indigo-400'
+                                                        : 'bg-white dark:bg-github-dark-subtle/35 border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-850/20'
+                                                }`}
+                                            >
+                                                <span>{t.name}</span>
+                                                <ArrowRight size={14} className={selectedChecklistTemplateId === t.id ? "opacity-100 text-indigo-600" : "opacity-0"} />
+                                            </button>
+                                        ))
+                                    ) : (
+                                        documentTemplates.map(t => (
+                                            <button
+                                                key={t.id}
+                                                onClick={() => setSelectedDocTemplateId(t.id)}
+                                                className={`w-full text-left p-3 rounded-xl border font-bold transition-all flex items-center justify-between ${
+                                                    selectedDocTemplateId === t.id
+                                                        ? 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-500 text-indigo-650 dark:text-indigo-400'
+                                                        : 'bg-white dark:bg-github-dark-subtle/35 border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-850/20'
+                                                }`}
+                                            >
+                                                <span>{t.name}</span>
+                                                <ArrowRight size={14} className={selectedDocTemplateId === t.id ? "opacity-100 text-indigo-600" : "opacity-0"} />
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+
+                                <button
+                                    onClick={templatesModalTab === 'checklist' ? handleAddChecklistTemplate : handleAddDocTemplate}
+                                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-605 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-sm mt-4 shrink-0"
+                                >
+                                    <Plus size={14} />
+                                    <span>Create New Template</span>
+                                </button>
+                            </div>
+
+                            {/* Right Pane: Template Details Editor */}
+                            <div className="flex-1 p-5 overflow-y-auto flex flex-col justify-between">
+                                
+                                {templatesModalTab === 'checklist' ? (() => {
+                                    const template = checklistTemplates.find(t => t.id === selectedChecklistTemplateId) || checklistTemplates[0];
+                                    if (!template) return <div className="text-slate-400 italic p-6">No template selected</div>;
+                                    return (
+                                        <div className="space-y-6 flex-1 flex flex-col justify-between">
+                                            <div className="space-y-5">
+                                                {/* Template Header */}
+                                                <div>
+                                                    <label className="block text-[10px] uppercase font-black text-slate-400 dark:text-github-dark-muted mb-1.5">Template Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={template.name}
+                                                        onChange={(e) => handleUpdateChecklistTemplateName(template.id, e.target.value)}
+                                                        className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    />
+                                                </div>
+
+                                                {/* Add Task Input */}
+                                                <div className="pt-2">
+                                                    <span className="block text-[10px] uppercase font-black text-slate-400 dark:text-github-dark-muted mb-1.5 font-bold">Add Onboarding Task</span>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="e.g. Set up payroll dashboard, Assign company email"
+                                                            value={newChecklistItemText}
+                                                            onChange={(e) => setNewChecklistItemText(e.target.value)}
+                                                            className="flex-1 bg-white dark:bg-github-dark-subtle/20 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold"
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    handleAddChecklistTemplateItem(template.id, newChecklistItemText);
+                                                                }
+                                                            }}
+                                                        />
+                                                        <button
+                                                            onClick={() => handleAddChecklistTemplateItem(template.id, newChecklistItemText)}
+                                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border border-slate-250 dark:border-github-dark-border font-bold rounded-xl flex items-center gap-1 shrink-0"
+                                                        >
+                                                            <Plus size={14} />
+                                                            <span>Add Task</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Items List */}
+                                                <div className="space-y-2">
+                                                    <span className="block text-[10px] uppercase font-black text-slate-450 tracking-wider font-bold">Checklist Tasks ({template.items?.length || 0})</span>
+                                                    <div className="space-y-1.5 max-h-[30vh] overflow-y-auto pr-1">
+                                                        {template.items && template.items.length === 0 ? (
+                                                            <div className="text-slate-400 italic py-4">No tasks in this template yet.</div>
+                                                        ) : (
+                                                            template.items?.map((item) => (
+                                                                <div key={item.key} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-[#161b22]/30 border border-slate-100 dark:border-github-dark-border rounded-xl">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <CheckCircle size={15} className="text-slate-400" />
+                                                                        <span className="font-semibold text-slate-700 dark:text-slate-350">{item.label}</span>
+                                                                        <span className="text-[9px] font-mono text-slate-400 opacity-60">({item.key})</span>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => handleDeleteChecklistTemplateItem(template.id, item.key)}
+                                                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                                                    >
+                                                                        <Trash size={13} />
+                                                                    </button>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Delete Template */}
+                                            <div className="pt-5 border-t border-slate-100 dark:border-github-dark-border flex justify-end">
+                                                <button
+                                                    onClick={() => {
+                                                        if (confirm(`Are you sure you want to delete template "${template.name}"?`)) {
+                                                            handleDeleteChecklistTemplate(template.id);
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 text-red-500 hover:text-red-600 border border-red-200 dark:border-red-950/40 hover:bg-red-50 dark:hover:bg-red-950/10 font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                                                >
+                                                    <Trash2 size={13} />
+                                                    <span>Delete Checklist Template</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })() : (() => {
+                                    const template = documentTemplates.find(t => t.id === selectedDocTemplateId) || documentTemplates[0];
+                                    if (!template) return <div className="text-slate-400 italic p-6">No template selected</div>;
+                                    return (
+                                        <div className="space-y-6 flex-1 flex flex-col justify-between">
+                                            <div className="space-y-5">
+                                                {/* Template Header */}
+                                                <div>
+                                                    <label className="block text-[10px] uppercase font-black text-slate-400 dark:text-github-dark-muted mb-1.5">Template Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={template.name}
+                                                        onChange={(e) => handleUpdateDocTemplateName(template.id, e.target.value)}
+                                                        className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    />
+                                                </div>
+
+                                                {/* Add Category Section */}
+                                                <div className="pt-2">
+                                                    <span className="block text-[10px] uppercase font-black text-slate-400 dark:text-github-dark-muted mb-1.5 font-bold">Add Document Category</span>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="e.g. Legal Documents, Experience Letters"
+                                                            value={newDocCatText}
+                                                            onChange={(e) => setNewDocCatText(e.target.value)}
+                                                            className="flex-1 bg-white dark:bg-github-dark-subtle/20 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl focus:outline-none focus:border-indigo-500 text-xs font-semibold"
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    handleAddDocTemplateCategory(template.id, newDocCatText);
+                                                                }
+                                                            }}
+                                                        />
+                                                        <button
+                                                            onClick={() => handleAddDocTemplateCategory(template.id, newDocCatText)}
+                                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border border-slate-250 dark:border-github-dark-border font-bold rounded-xl flex items-center gap-1 shrink-0"
+                                                        >
+                                                            <Plus size={14} />
+                                                            <span>Add Category</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Categories & Items Listing */}
+                                                <div className="space-y-4 max-h-[35vh] overflow-y-auto pr-1">
+                                                    <span className="block text-[10px] uppercase font-black text-slate-450 tracking-wider font-bold">Configured Categories ({template.categories?.length || 0})</span>
+                                                    {template.categories && template.categories.length === 0 ? (
+                                                        <div className="text-slate-400 italic py-4">No categories configured yet.</div>
+                                                    ) : (
+                                                        template.categories?.map((cat) => (
+                                                            <div key={cat.id} className="border border-slate-200 dark:border-github-dark-border p-4 rounded-xl space-y-3 bg-slate-50/20 dark:bg-[#161b22]/10">
+                                                                <div className="flex justify-between items-center pb-2 border-b border-slate-150/60 dark:border-github-dark-border">
+                                                                    <span className="font-bold text-indigo-650 dark:text-indigo-400 uppercase text-[10px] tracking-wider">{cat.name}</span>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (confirm(`Delete category "${cat.name}"? This removes all file fields inside it.`)) {
+                                                                                handleDeleteDocTemplateCategory(template.id, cat.id);
+                                                                            }
+                                                                        }}
+                                                                        className="p-1 text-slate-400 hover:text-red-500 rounded"
+                                                                        title="Delete Category"
+                                                                    >
+                                                                        <Trash size={12} />
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* Category Items List */}
+                                                                <div className="space-y-1">
+                                                                    {cat.items && cat.items.length === 0 ? (
+                                                                        <p className="text-[10px] text-slate-400 italic">No document fields in this category.</p>
+                                                                    ) : (
+                                                                        cat.items?.map((item) => (
+                                                                            <div key={item.key} className="flex justify-between items-center py-1.5 px-2.5 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border/60 rounded-lg">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <FileText size={12} className="text-slate-400" />
+                                                                                    <span className="font-semibold">{item.name}</span>
+                                                                                    {item.required && <span className="text-red-500 font-bold">* Required</span>}
+                                                                                </div>
+                                                                                <button
+                                                                                    onClick={() => handleDeleteDocTemplateItem(template.id, cat.id, item.key)}
+                                                                                    className="p-1 text-slate-400 hover:text-red-500 rounded"
+                                                                                >
+                                                                                    <X size={12} />
+                                                                                </button>
+                                                                            </div>
+                                                                        ))
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Add Item Form inside Category */}
+                                                                <div className="pt-2 border-t border-slate-100 dark:border-github-dark-border/40 grid grid-cols-12 gap-2 items-center">
+                                                                    <div className="col-span-6">
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="New field name (e.g. Passport Scan)"
+                                                                            value={newDocItemNames[cat.id] || ''}
+                                                                            onChange={(e) => setNewDocItemNames({ ...newDocItemNames, [cat.id]: e.target.value })}
+                                                                            className="w-full bg-white dark:bg-github-dark-subtle/30 border border-slate-200 dark:border-github-dark-border px-2.5 py-1.5 rounded-lg text-xs"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="col-span-3 flex items-center justify-center gap-1 bg-white dark:bg-github-dark-subtle/30 px-2 py-1.5 border border-slate-200 dark:border-github-dark-border rounded-lg">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            id={`req_${cat.id}`}
+                                                                            checked={!!newDocItemRequired[cat.id]}
+                                                                            onChange={(e) => setNewDocItemRequired({ ...newDocItemRequired, [cat.id]: e.target.checked })}
+                                                                            className="rounded text-indigo-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                                                                        />
+                                                                        <label htmlFor={`req_${cat.id}`} className="text-[10px] font-bold text-slate-500 select-none cursor-pointer">Required</label>
+                                                                    </div>
+                                                                    <div className="col-span-3">
+                                                                        <button
+                                                                            onClick={() => handleAddDocTemplateItem(template.id, cat.id, newDocItemNames[cat.id] || '', !!newDocItemRequired[cat.id])}
+                                                                            className="w-full px-2 py-1.5 bg-indigo-600 hover:bg-indigo-750 text-white font-bold rounded-lg text-center"
+                                                                        >
+                                                                            Add Field
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Delete Template */}
+                                            <div className="pt-5 border-t border-slate-100 dark:border-github-dark-border flex justify-end">
+                                                <button
+                                                    onClick={() => {
+                                                        if (confirm(`Are you sure you want to delete template "${template.name}"?`)) {
+                                                            handleDeleteDocTemplate(template.id);
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 text-red-500 hover:text-red-600 border border-red-200 dark:border-red-950/40 hover:bg-red-50 dark:hover:bg-red-950/10 font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                                                >
+                                                    <Trash2 size={13} />
+                                                    <span>Delete Document Template</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-slate-205 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/10 flex justify-end">
+                            <button
+                                onClick={() => setShowTemplatesModal(false)}
+                                className="px-5 py-2.5 bg-slate-150 hover:bg-slate-250 dark:bg-slate-800 hover:dark:bg-slate-750 text-slate-705 dark:text-slate-200 font-bold rounded-xl transition-all"
+                            >
+                                Close Settings
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
