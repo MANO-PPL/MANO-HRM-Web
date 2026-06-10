@@ -2837,7 +2837,7 @@ const EmployeeUnifiedMaster = () => {
                                                 ))}
                                             </select>
                                         </div>
-                                        <AiPerformanceAnalyzer employeeId={selectedEmployee.id} cycleId={selectedCycleId} employeeName={selectedEmployee.name} />
+                                        <AiPerformanceAnalyzer employee={selectedEmployee} selectedCycleId={selectedCycleId} />
                                     </div>
                                 )}
 
