@@ -29,7 +29,8 @@ export const getAllUsers = async (orgId, includeWorkLocation = false) => {
             'u.user_id', 'u.user_name', 'u.email', 'u.phone_no', 'u.user_type',
             'd.desg_name', 'd.desg_id', 'dep.dept_name', 'dep.dept_id',
             's.shift_name', 's.shift_id', 'u.profile_image_url',
-            'u.is_active', 'u.is_deleted', 'u.deleted_at'
+            'u.is_active', 'u.is_deleted', 'u.deleted_at',
+            'u.checklist_template_id', 'u.document_template_id'
         )
         .where('u.org_id', orgId);
 
@@ -62,7 +63,8 @@ export const getUserById = async (userId, orgId) => {
         .select(
             'u.user_id', 'u.user_name', 'u.email', 'u.phone_no', 'u.user_type', 'u.desg_id', 'u.dept_id', 'u.shift_id', 'u.org_id',
             'u.profile_image_url', 'u.is_active', 'u.is_deleted', 'u.deleted_at',
-            'd.desg_name', 'dep.dept_name', 's.shift_name'
+            'd.desg_name', 'dep.dept_name', 's.shift_name',
+            'u.checklist_template_id', 'u.document_template_id'
         )
         .where('u.user_id', userId)
         .andWhere('u.org_id', orgId)

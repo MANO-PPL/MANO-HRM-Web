@@ -24,11 +24,23 @@ import chatbotRoutes from './chatbot/chatbotRoutes.js';
 import chatRoutes from './collaboration/chatRoutes.js';
 import recruitmentRoutes from './recruitment/recruitmentRoutes.js';
 
+import checklistRoutes from './admin/checklistRoutes.js';
+import documentTemplateRoutes from './admin/documentTemplateRoutes.js';
+import performanceCycleRoutes from './admin/performanceCycleRoutes.js';
+import employeeOnboardingRoutes from './employees/employeeOnboardingRoutes.js';
+import performanceGoalRoutes from './admin/performanceGoalRoutes.js';
+
 import { requireActiveOrg } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Mount feature-specific routes
+router.use('/admin/checklist-templates', checklistRoutes);
+router.use('/admin/document-templates', documentTemplateRoutes);
+router.use('/admin/performance-cycles', performanceCycleRoutes);
+router.use('/employee/onboarding', employeeOnboardingRoutes);
+router.use('/performance', performanceGoalRoutes);
+
 router.use('/admin', adminRoutes);
 router.use('/employee', employeeRoutes);
 router.use('/auth', authRoutes);
