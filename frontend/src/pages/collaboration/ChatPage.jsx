@@ -448,12 +448,20 @@ const ChatPage = () => {
 
         socket.on('connect', handleConnect);
 
+        // Periodically send a heartbeat to refresh online presence state in Redis
+        const heartbeatInterval = setInterval(() => {
+            if (socket.connected) {
+                socket.emit('heartbeat');
+            }
+        }, 30000);
+
         // If already connected when this effect runs, join the room immediately
         if (socket.connected && selectedRoomRef.current) {
             socket.emit('join_room', selectedRoomRef.current.room_id);
         }
 
         return () => {
+            clearInterval(heartbeatInterval);
             socket.off('message_received', handleIncomingMessage);
             socket.off('user_typing', handleUserTyping);
             socket.off('user_stop_typing', handleUserStopTyping);

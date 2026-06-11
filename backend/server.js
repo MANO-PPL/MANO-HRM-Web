@@ -12,6 +12,7 @@ import EventBus from './src/utils/EventBus.js';
 import './src/workers/reportWorker.js';
 import fs from 'fs';
 import { getLogPaths, parseLogLine } from './src/services/superAdmin/pm2Service.js';
+import { cacheService } from './src/services/cache/cacheService.js';
 
 const PORT = Number(process.env.PORT) || 5003;
 
@@ -89,25 +90,42 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   const userId = socket.user?.user_id ?? socket.user?.id;
+  const orgId = socket.user?.org_id || 1;
   
   if (userId) {
     // Join personal notification channel
     socket.join(`user_${userId}`);
+    
+    // Presence tracking: Set presence key in Redis with 60s TTL
+    if (cacheService) {
+      cacheService.set(`org:${orgId}:user:presence:${userId}`, 'online', 60);
+    }
   }
 
+  socket.on('heartbeat', () => {
+    if (userId && cacheService) {
+      cacheService.set(`org:${orgId}:user:presence:${userId}`, 'online', 60);
+    }
+  });
+
   socket.on('join_room', (roomId) => {
+    // Join legacy room name and the new strictly namespaced format for transition safety
     socket.join(`room_${roomId}`);
+    socket.join(`org_${orgId}:conversation_${roomId}`);
   });
 
   socket.on('leave_room', (roomId) => {
     socket.leave(`room_${roomId}`);
+    socket.leave(`org_${orgId}:conversation_${roomId}`);
   });
 
   socket.on('typing', ({ roomId, username }) => {
+    socket.to(`org_${orgId}:conversation_${roomId}`).emit('user_typing', { roomId, userId, username });
     socket.to(`room_${roomId}`).emit('user_typing', { roomId, userId, username });
   });
 
   socket.on('stop_typing', ({ roomId }) => {
+    socket.to(`org_${orgId}:conversation_${roomId}`).emit('user_stop_typing', { roomId, userId });
     socket.to(`room_${roomId}`).emit('user_stop_typing', { roomId, userId });
   });
 
@@ -124,7 +142,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', (reason) => {
-    // Socket disconnected
+    if (userId && cacheService) {
+      cacheService.del(`org:${orgId}:user:presence:${userId}`);
+    }
   });
 });
 
