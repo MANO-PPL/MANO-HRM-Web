@@ -73,12 +73,17 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
         shift_id: '',
         user_type: 'employee',
         status: true,
-        profile_image: null
+        profile_image: null,
+        joining_date: '',
+        reporting_manager: '',
+        work_location: ''
     });
 
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
     const [shifts, setShifts] = useState([]);
+    const [availableLocations, setAvailableLocations] = useState([]);
+    const [orgUsers, setOrgUsers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [activePopover, setActivePopover] = useState(null);
@@ -98,15 +103,19 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [deptRes, desgRes, shiftRes] = await Promise.all([
+                const [deptRes, desgRes, shiftRes, locRes, usersRes] = await Promise.all([
                     adminService.getDepartments(),
                     adminService.getDesignations(),
-                    adminService.getShifts()
+                    adminService.getShifts(),
+                    adminService.getWorkLocations(),
+                    adminService.getAllUsers()
                 ]);
 
                 if (deptRes.success) setDepartments(deptRes.departments);
                 if (desgRes.success) setDesignations(desgRes.designations);
                 if (shiftRes.success) setShifts(shiftRes.shifts);
+                if (locRes.ok) setAvailableLocations(locRes.locations || []);
+                if (usersRes.success) setOrgUsers(usersRes.users || []);
 
                 if (isEditMode) {
                     const userRes = await adminService.getUserById(userId);
@@ -122,7 +131,10 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                             shift_id: u.shift_id || '',
                             user_type: u.user_type,
                             status: true,
-                            profile_image: u.profile_image_url || null
+                            profile_image: u.profile_image_url || null,
+                            joining_date: u.joining_date ? u.joining_date.substring(0, 10) : '',
+                            reporting_manager: u.reporting_manager || '',
+                            work_location: u.work_location || ''
                         });
                     }
                 }
@@ -166,6 +178,7 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                 return;
             }
 
+            const selectedLoc = availableLocations.find(l => l.location_name === formData.work_location);
             const payload = {
                 user_name: formData.user_name,
                 email: formData.email,
@@ -173,7 +186,11 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                 desg_id: formData.desg_id,
                 dept_id: formData.dept_id,
                 shift_id: formData.shift_id,
-                user_type: formData.user_type
+                user_type: formData.user_type,
+                joining_date: formData.joining_date || null,
+                reporting_manager: formData.reporting_manager || null,
+                work_location: formData.work_location || null,
+                work_locations: selectedLoc ? [selectedLoc.location_id] : []
             };
 
             if (formData.user_password) {
@@ -236,7 +253,7 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
             }`}
         >
             {/* Header Actions */}
-            <div className={`flex items-center justify-between ${isSidebarMode ? 'p-5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 sticky top-0 z-10' : 'mb-8 pb-4 border-b border-slate-200 dark:border-github-dark-border'}`}>
+            <div className={`flex items-center justify-between ${isSidebarMode ? 'p-5 border-b border-slate-100 dark:border-github-dark-border bg-white dark:bg-dark-card sticky top-0 z-10' : 'mb-8 pb-4 border-b border-slate-200 dark:border-github-dark-border'}`}>
                 <button type="button" onClick={onCancel} className="flex items-center gap-2 text-slate-500 hover:text-slate-700 dark:text-github-dark-muted dark:hover:text-slate-300 transition-colors">
                     <X size={18} />
                     <span className="text-sm font-bold uppercase tracking-wider">Cancel</span>
@@ -399,16 +416,48 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Shift Time</label>
+                                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Joining Date</label>
+                                    <input
+                                        type="date"
+                                        name="joining_date"
+                                        value={formData.joining_date}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-slate-800 dark:text-github-dark-text"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Reporting Manager</label>
                                     <div className="relative">
                                         <select
-                                            name="shift_id"
-                                            value={formData.shift_id}
+                                            name="reporting_manager"
+                                            value={formData.reporting_manager}
                                             onChange={handleChange}
                                             className="w-full pl-4 pr-10 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none appearance-none cursor-pointer text-slate-800 dark:text-github-dark-text"
                                         >
-                                            <option value="">Select Shift</option>
-                                            {shifts.map(s => <option key={s.shift_id} value={s.shift_id}>{s.shift_name}</option>)}
+                                            <option value="">Select Manager</option>
+                                            {orgUsers.filter(u => u.user_id !== userId).map(u => {
+                                                const displayStr = u.desg_name ? `${u.user_name} (${u.desg_name})` : u.user_name;
+                                                return <option key={u.user_id} value={displayStr}>{displayStr}</option>;
+                                            })}
+                                        </select>
+                                        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Work Location</label>
+                                    <div className="relative">
+                                        <select
+                                            name="work_location"
+                                            value={formData.work_location}
+                                            onChange={handleChange}
+                                            className="w-full pl-4 pr-10 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none appearance-none cursor-pointer text-slate-800 dark:text-github-dark-text"
+                                        >
+                                            <option value="">Select Work Location</option>
+                                            {availableLocations.map(loc => (
+                                                <option key={loc.location_id} value={loc.location_name}>{loc.location_name}</option>
+                                            ))}
                                         </select>
                                         <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                     </div>
