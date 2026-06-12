@@ -9,6 +9,37 @@ import { encryptText, decryptText } from '../../utils/encryption.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js
 
+function parseImportDate(val) {
+    if (!val) return null;
+    if (val instanceof Date) {
+        return val.toISOString().substring(0, 10);
+    }
+    // Check if it is an Excel serial number
+    if (typeof val === 'number' || !isNaN(val)) {
+        const num = Number(val);
+        if (num > 20000 && num < 100000) { // realistic range for excel dates
+            const date = new Date((num - 25569) * 86400 * 1000);
+            return date.toISOString().substring(0, 10);
+        }
+    }
+    const cleanStr = val.toString().trim();
+    if (!cleanStr) return null;
+    
+    // Handle DD-MM-YYYY or DD/MM/YYYY formats explicitly
+    const dmyMatch = cleanStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dmyMatch) {
+        const [_, d, m, y] = dmyMatch;
+        return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    
+    // Attempt standard parsing
+    const parsed = Date.parse(cleanStr);
+    if (!isNaN(parsed)) {
+        return new Date(parsed).toISOString().substring(0, 10);
+    }
+    return null;
+}
+
 const ALLOWED_UPDATE_FIELDS = new Set([
     "user_name",
     "user_password",
@@ -644,6 +675,8 @@ export const bulkCreateUsers = async (file, authInfo) => {
         const allShifts = await trx("shifts").where({ org_id: authInfo.orgId }).select("shift_id", "shift_name");
         for (const sh of allShifts) shiftMap[sh.shift_name.toLowerCase()] = sh.shift_id;
 
+        const insertedUsers = [];
+
         for (const { row, rowNumber } of rowsData) {
             results.total_processed++;
             const name = getVal(row, "name") || getVal(row, "user_name");
@@ -677,20 +710,85 @@ export const bulkCreateUsers = async (file, authInfo) => {
                 results.failure_count++; results.errors.push(`Row ${rowNumber}: Organization user limit reached (${org.max_users})`); continue;
             }
 
+            const joiningDateRaw = getVal(row, "joining_date") || getVal(row, "date_of_joining") || getVal(row, "date of joining") || getVal(row, "joining date");
+            const joiningDate = parseImportDate(joiningDateRaw);
+            const rawManager = getVal(row, "reporting_manager") || getVal(row, "reporting manager") || getVal(row, "manager");
+
             const hashedPassword = await bcrypt.hash(password, 10);
             nextUserNumber++;
             const userCode = `${org.org_code || org.org_name}-${String(nextUserNumber).padStart(3, "0")}`;
 
-            await trx("users").insert({
-                org_id: authInfo.orgId, user_name: name, user_code: userCode, email, phone_no: phone || "",
-                user_password: hashedPassword, user_type: type,
-                dept_id: deptMap[(getVal(row, "department") || getVal(row, "dept"))?.toLowerCase()],
-                desg_id: desgMap[(getVal(row, "designation") || getVal(row, "role"))?.toLowerCase()],
-                shift_id: shiftMap[getVal(row, "shift")?.toLowerCase()]
+            const deptId = deptMap[(getVal(row, "department") || getVal(row, "dept"))?.toLowerCase()] || null;
+            const desgId = desgMap[(getVal(row, "designation") || getVal(row, "role"))?.toLowerCase()] || null;
+            const shiftId = shiftMap[getVal(row, "shift")?.toLowerCase()] || null;
+
+            const [newUserId] = await trx("users").insert({
+                org_id: authInfo.orgId,
+                user_name: name,
+                user_code: userCode,
+                email,
+                phone_no: phone || "",
+                user_password: hashedPassword,
+                user_type: type,
+                dept_id: deptId,
+                desg_id: desgId,
+                shift_id: shiftId,
+                joining_date: joiningDate,
+                reporting_manager: rawManager || null
+            });
+
+            insertedUsers.push({
+                user_id: newUserId,
+                user_name: name,
+                email: email,
+                user_code: userCode,
+                desg_name: getVal(row, "designation") || getVal(row, "role") || "",
+                raw_manager: rawManager,
+                rowNumber: rowNumber
             });
 
             currentCount++;
             results.success_count++;
+        }
+
+        // Pass 2: Resolve Reporting Managers
+        for (const u of insertedUsers) {
+            if (!u.raw_manager) continue;
+
+            const rawManagerLower = u.raw_manager.toLowerCase().trim();
+
+            // 1. Look up in the batch
+            let matchedManager = insertedUsers.find(
+                item => item.user_name.toLowerCase().trim() === rawManagerLower ||
+                        item.email?.toLowerCase().trim() === rawManagerLower ||
+                        item.user_code.toLowerCase().trim() === rawManagerLower
+            );
+
+            // 2. Look up in the DB
+            if (!matchedManager) {
+                matchedManager = await trx("users as usr")
+                    .leftJoin("designations as d", "usr.desg_id", "d.desg_id")
+                    .where("usr.org_id", authInfo.orgId)
+                    .andWhere(function() {
+                        this.where(trx.raw("LOWER(usr.user_name)"), rawManagerLower)
+                            .orWhere(trx.raw("LOWER(usr.email)"), rawManagerLower)
+                            .orWhere(trx.raw("LOWER(usr.user_code)"), rawManagerLower);
+                    })
+                    .select("usr.user_name", "d.desg_name")
+                    .first();
+            }
+
+            if (matchedManager) {
+                const displayStr = matchedManager.desg_name 
+                    ? `${matchedManager.user_name} (${matchedManager.desg_name})`
+                    : matchedManager.user_name;
+
+                await trx("users")
+                    .where({ user_id: u.user_id })
+                    .update({ reporting_manager: displayStr });
+            } else {
+                results.errors.push(`Row ${u.rowNumber}: Warning - Reporting manager '${u.raw_manager}' not found in database. Saved as raw text.`);
+            }
         }
 
         await trx("organizations").where({ org_id: authInfo.orgId }).update({ last_user_number: nextUserNumber });
@@ -882,6 +980,7 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
 
         let nextUserNumber = org.last_user_number;
         let rowNumber = 0;
+        const insertedUsers = [];
 
         for (const row of users) {
             rowNumber++;
@@ -925,6 +1024,10 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
                     continue;
                 }
 
+                const joiningDateRaw = row['Joining Date'] || row['joining_date'] || row['date_of_joining'] || row['date of joining'] || row['joining date'];
+                const joiningDate = parseImportDate(joiningDateRaw);
+                const rawManager = row['Reporting Manager'] || row['reporting_manager'] || row['reporting manager'] || row['manager'];
+
                 const hashedPassword = await bcrypt.hash(password, 10);
                 const deptId = deptName ? deptMap[deptName.toLowerCase()] : null;
                 const desgId = desgName ? desgMap[desgName.toLowerCase()] : null;
@@ -933,7 +1036,7 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
                 nextUserNumber++;
                 const userCode = `${org.org_code}-${String(nextUserNumber).padStart(3, "0")}`;
 
-                await trx("users").insert({
+                const [newUserId] = await trx("users").insert({
                     org_id: orgId,
                     user_name: name,
                     user_code: userCode,
@@ -943,7 +1046,19 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
                     user_type: 'employee',
                     dept_id: deptId,
                     desg_id: desgId,
-                    shift_id: shiftId
+                    shift_id: shiftId,
+                    joining_date: joiningDate,
+                    reporting_manager: rawManager || null
+                });
+
+                insertedUsers.push({
+                    user_id: newUserId,
+                    user_name: name,
+                    email: email,
+                    user_code: userCode,
+                    desg_name: desgName || "",
+                    raw_manager: rawManager,
+                    rowNumber: rowNumber
                 });
 
                 currentCount++;
@@ -951,6 +1066,46 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
             } catch (err) {
                 results.failure_count++;
                 results.errors.push(`Row ${rowNumber}: ${err.message}`);
+            }
+        }
+
+        // Pass 2: Resolve Reporting Managers
+        for (const u of insertedUsers) {
+            if (!u.raw_manager) continue;
+
+            const rawManagerLower = u.raw_manager.toLowerCase().trim();
+
+            // 1. Look up in the batch
+            let matchedManager = insertedUsers.find(
+                item => item.user_name.toLowerCase().trim() === rawManagerLower ||
+                        item.email?.toLowerCase().trim() === rawManagerLower ||
+                        item.user_code.toLowerCase().trim() === rawManagerLower
+            );
+
+            // 2. Look up in the DB
+            if (!matchedManager) {
+                matchedManager = await trx("users as usr")
+                    .leftJoin("designations as d", "usr.desg_id", "d.desg_id")
+                    .where("usr.org_id", orgId)
+                    .andWhere(function() {
+                        this.where(trx.raw("LOWER(usr.user_name)"), rawManagerLower)
+                            .orWhere(trx.raw("LOWER(usr.email)"), rawManagerLower)
+                            .orWhere(trx.raw("LOWER(usr.user_code)"), rawManagerLower);
+                    })
+                    .select("usr.user_name", "d.desg_name")
+                    .first();
+            }
+
+            if (matchedManager) {
+                const displayStr = matchedManager.desg_name 
+                    ? `${matchedManager.user_name} (${matchedManager.desg_name})`
+                    : matchedManager.user_name;
+
+                await trx("users")
+                    .where({ user_id: u.user_id })
+                    .update({ reporting_manager: displayStr });
+            } else {
+                results.errors.push(`Row ${u.rowNumber}: Warning - Reporting manager '${u.raw_manager}' not found in database. Saved as raw text.`);
             }
         }
 

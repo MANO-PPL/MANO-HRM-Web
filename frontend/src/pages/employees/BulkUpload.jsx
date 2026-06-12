@@ -197,7 +197,7 @@ const BulkUpload = () => {
     };
 
     const downloadSample = () => {
-        const csvContent = "Name,Email,Phone,Department,Designation,Password \n John Doe,john@example.com,9876543210,Sales,Sales Exec,Pass@123";
+        const csvContent = "Name,Email,Phone,Department,Designation,Password,Joining Date,Reporting Manager\nJohn Doe,john@example.com,9876543210,Sales,Sales Exec,Pass@123,2026-06-01,Sourabh Sutar";
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
