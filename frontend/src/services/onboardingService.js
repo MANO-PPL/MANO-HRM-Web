@@ -93,6 +93,12 @@ export const onboardingService = {
         const res = await api.get(`/employee/onboarding/document-url/${docId}`);
         return res.data;
     },
+    async getDocumentContent(docId) {
+        const res = await api.get(`/employee/onboarding/document-content/${docId}`, {
+            responseType: 'blob'
+        });
+        return res.data;
+    },
     async deleteDocument(docId) {
         const res = await api.delete(`/employee/onboarding/document/${docId}`);
         return res.data;

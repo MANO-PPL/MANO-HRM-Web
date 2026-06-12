@@ -180,6 +180,12 @@ const EmployeeUnifiedMaster = () => {
     const [tempDocId, setTempDocId] = useState('');
     const [tempCycleName, setTempCycleName] = useState('');
     const [tempCycleId, setTempCycleId] = useState('');
+    const [tempStartDate, setTempStartDate] = useState('');
+    const [tempStartDateId, setTempStartDateId] = useState('');
+    const [tempEndDate, setTempEndDate] = useState('');
+    const [tempEndDateId, setTempEndDateId] = useState('');
+    const [bulkSelectMode, setBulkSelectMode] = useState(false);
+    const [selectedDocIdsForZip, setSelectedDocIdsForZip] = useState([]);
 
     useEffect(() => {
         if (checklistTemplates.length > 0 && !selectedChecklistTemplateId) {
@@ -199,6 +205,12 @@ const EmployeeUnifiedMaster = () => {
         }
     }, [cycles, selectedCyclesManagerId]);
 
+    const getLocalDateString = (date = new Date()) => {
+        const offset = date.getTimezoneOffset();
+        const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+        return localDate.toISOString().split('T')[0];
+    };
+
     const handleCreateNewCycleInManager = async () => {
         const newId = `cycle-${Date.now()}`;
         const newCycle = {
@@ -206,8 +218,8 @@ const EmployeeUnifiedMaster = () => {
             name: 'New Appraisal Cycle',
             type: 'Quarterly',
             status: 'Active',
-            startDate: new Date().toISOString().split('T')[0],
-            endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            startDate: getLocalDateString(),
+            endDate: getLocalDateString(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)),
             targetEmployeeType: 'All'
         };
 
@@ -1524,6 +1536,61 @@ const EmployeeUnifiedMaster = () => {
         }
     };
 
+    const loadJSZip = async () => {
+        if (window.JSZip) return window.JSZip;
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+            script.onload = () => resolve(window.JSZip);
+            script.onerror = (e) => reject(new Error('Failed to load JSZip from CDN'));
+            document.head.appendChild(script);
+        });
+    };
+
+    const handleDownloadZip = async () => {
+        if (selectedDocIdsForZip.length === 0) {
+            toast.info("Please select at least one document to download.");
+            return;
+        }
+        
+        const toastId = toast.loading("Generating ZIP archive...");
+        
+        try {
+            const JSZip = await loadJSZip();
+            const zip = new JSZip();
+            
+            for (const docId of selectedDocIdsForZip) {
+                const doc = onboardingData.uploaded_documents.find(d => d.id === docId);
+                if (!doc) continue;
+                
+                try {
+                    const data = await onboardingService.getDocumentContent(docId);
+                    zip.file(doc.file_name, data);
+                } catch (fetchErr) {
+                    console.error(`Error downloading ${doc.file_name}:`, fetchErr);
+                    throw new Error(`Failed to fetch file ${doc.file_name}`);
+                }
+            }
+            
+            const content = await zip.generateAsync({ type: 'blob' });
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `${selectedEmployee.name.replace(/\s+/g, '_')}_onboarding_documents.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            
+            toast.update(toastId, { render: "ZIP file downloaded successfully!", type: "success", isLoading: false, autoClose: 3000 });
+            setSelectedDocIdsForZip([]);
+            setBulkSelectMode(false);
+        } catch (err) {
+            console.error(err);
+            toast.update(toastId, { render: "Failed to generate ZIP archive: " + err.message, type: "error", isLoading: false, autoClose: 4000 });
+        }
+    };
+
     const handleVerifyDocument = async (docId, status, comments = '') => {
         try {
             await onboardingService.verifyDocument(docId, status, comments);
@@ -2655,18 +2722,65 @@ const EmployeeUnifiedMaster = () => {
                                                         ))}
                                                     </select>
                                                 </div>
-                                                {exclusions.length > 0 && (
-                                                    <div className="text-right flex items-center gap-2">
-                                                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">{exclusions.length} excluded</span>
-                                                        <button 
-                                                            onClick={handleRestoreDocExclusions}
-                                                            className="text-[9px] font-bold underline uppercase text-amber-600 dark:text-amber-400 hover:text-amber-700"
+                                                <div className="flex items-center gap-2.5">
+                                                    {onboardingData.uploaded_documents?.length > 0 && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setBulkSelectMode(!bulkSelectMode);
+                                                                setSelectedDocIdsForZip([]);
+                                                            }}
+                                                            className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                                                                bulkSelectMode 
+                                                                    ? "bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-950/20 dark:border-indigo-900" 
+                                                                    : "bg-white border-slate-200 text-slate-650 hover:bg-slate-50 dark:bg-github-dark-subtle dark:border-github-dark-border dark:text-slate-350"
+                                                            }`}
                                                         >
-                                                            Restore All
+                                                            <span>{bulkSelectMode ? "Exit Select" : "Select & Download"}</span>
                                                         </button>
-                                                    </div>
-                                                )}
+                                                    )}
+                                                    {exclusions.length > 0 && (
+                                                        <div className="text-right flex items-center gap-2 border-l border-slate-200 dark:border-github-dark-border pl-2.5">
+                                                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">{exclusions.length} excluded</span>
+                                                            <button 
+                                                                onClick={handleRestoreDocExclusions}
+                                                                className="text-[9px] font-bold underline uppercase text-amber-600 dark:text-amber-400 hover:text-amber-700"
+                                                            >
+                                                                Restore All
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
+
+                                            {bulkSelectMode && (
+                                                <div className="bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-950/30 p-3.5 rounded-xl flex justify-between items-center gap-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={selectedDocIdsForZip.length === onboardingData.uploaded_documents.length && onboardingData.uploaded_documents.length > 0}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setSelectedDocIdsForZip(onboardingData.uploaded_documents.map(d => d.id));
+                                                                } else {
+                                                                    setSelectedDocIdsForZip([]);
+                                                                }
+                                                            }}
+                                                            className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 dark:border-github-dark-border focus:ring-indigo-500"
+                                                        />
+                                                        <span className="text-[11px] font-bold text-slate-700 dark:text-github-dark-text">
+                                                            {selectedDocIdsForZip.length} of {onboardingData.uploaded_documents.length} selected
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        onClick={handleDownloadZip}
+                                                        disabled={selectedDocIdsForZip.length === 0}
+                                                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[10px] font-black uppercase rounded-lg shadow-sm flex items-center gap-1.5 transition-all"
+                                                    >
+                                                        <Download size={12} />
+                                                        <span>Download ZIP</span>
+                                                    </button>
+                                                </div>
+                                            )}
 
                                             <div className="space-y-6">
                                                 {categories.length === 0 ? (
@@ -2691,7 +2805,22 @@ const EmployeeUnifiedMaster = () => {
                                                                             return (
                                                                                 <div key={item.key} className="flex justify-between items-center p-3 bg-white dark:bg-[#161b22]/30 border border-slate-200/60 dark:border-github-dark-border rounded-lg shadow-sm group/docrow">
                                                                                     <div className="flex items-center gap-2.5 overflow-hidden">
-                                                                                        <FileText size={16} className={isUploaded ? "text-indigo-500" : "text-slate-300 dark:text-slate-700"} />
+                                                                                        {bulkSelectMode && isUploaded ? (
+                                                                                            <input 
+                                                                                                type="checkbox"
+                                                                                                checked={selectedDocIdsForZip.includes(doc.id)}
+                                                                                                onChange={(e) => {
+                                                                                                    if (e.target.checked) {
+                                                                                                        setSelectedDocIdsForZip(prev => [...prev, doc.id]);
+                                                                                                    } else {
+                                                                                                        setSelectedDocIdsForZip(prev => prev.filter(id => id !== doc.id));
+                                                                                                    }
+                                                                                                }}
+                                                                                                className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 dark:border-github-dark-border focus:ring-indigo-500 mr-1 shrink-0"
+                                                                                            />
+                                                                                        ) : (
+                                                                                            <FileText size={16} className={isUploaded ? "text-indigo-500" : "text-slate-300 dark:text-slate-700"} />
+                                                                                        )}
                                                                                         <div className="truncate">
                                                                                             <p className="font-bold text-slate-800 dark:text-github-dark-text truncate">
                                                                                                 {item.name} {item.required && <span className="text-red-500">*</span>}
@@ -2729,7 +2858,7 @@ const EmployeeUnifiedMaster = () => {
                                                                                                 {isAdminOrHr && doc.verified_status !== 'Verified' && (
                                                                                                     <button 
                                                                                                         onClick={() => handleVerifyDocument(doc.id, 'Verified')}
-                                                                                                        className="p-1 hover:bg-emerald-50 text-emerald-600 rounded"
+                                                                                                        className="p-1 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 rounded transition-colors"
                                                                                                         title="Verify/Approve Document"
                                                                                                     >
                                                                                                         <Check size={13} />
@@ -2743,7 +2872,7 @@ const EmployeeUnifiedMaster = () => {
                                                                                                                 handleVerifyDocument(doc.id, 'Rejected', reason);
                                                                                                             }
                                                                                                         }}
-                                                                                                        className="p-1 hover:bg-red-50 text-red-600 rounded"
+                                                                                                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded transition-colors"
                                                                                                         title="Reject Document"
                                                                                                     >
                                                                                                         <X size={13} />
@@ -3665,6 +3794,8 @@ const EmployeeUnifiedMaster = () => {
                                                              if (tempCycleId === cycle.id && tempCycleName.trim() !== '' && tempCycleName !== cycle.name) {
                                                                  handleUpdateCycleField(cycle.id, 'name', tempCycleName.trim());
                                                              }
+                                                             setTempCycleId('');
+                                                             setTempCycleName('');
                                                          }}
                                                          className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                                      />
@@ -3677,7 +3808,7 @@ const EmployeeUnifiedMaster = () => {
                                                          <select
                                                              value={cycle.type}
                                                              onChange={(e) => handleUpdateCycleField(cycle.id, 'type', e.target.value)}
-                                                             className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-850 dark:text-slate-200 focus:outline-none"
+                                                             className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-855 dark:text-slate-200 focus:outline-none"
                                                          >
                                                              <option value="Quarterly">Quarterly</option>
                                                              <option value="Half Yearly">Half Yearly</option>
@@ -3690,7 +3821,7 @@ const EmployeeUnifiedMaster = () => {
                                                          <select
                                                              value={cycle.status}
                                                              onChange={(e) => handleUpdateCycleField(cycle.id, 'status', e.target.value)}
-                                                             className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-850 dark:text-slate-200 focus:outline-none"
+                                                             className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-855 dark:text-slate-200 focus:outline-none"
                                                          >
                                                              <option value="Active">Active</option>
                                                              <option value="Evaluating">Evaluating</option>
@@ -3700,20 +3831,20 @@ const EmployeeUnifiedMaster = () => {
                                                      </div>
                                                  </div>
 
-                                                 {/* Target Employee Group */}
+                                                 {/* Target Employee Type */}
                                                  <div>
                                                      <label className="block text-[10px] uppercase font-black text-slate-400 dark:text-github-dark-muted mb-1.5">Target Employee Group</label>
                                                      <select
-                                                         value={cycle.targetEmployeeType || 'All'}
+                                                         value={cycle.targetEmployeeType}
                                                          onChange={(e) => handleUpdateCycleField(cycle.id, 'targetEmployeeType', e.target.value)}
-                                                         className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-850 dark:text-slate-200 focus:outline-none"
+                                                         className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-855 dark:text-slate-200 focus:outline-none"
                                                      >
                                                          <option value="All">All Staff (General)</option>
                                                          <option value="Intern">Interns Only</option>
                                                          <option value="Full-time">Permanent / Full-Time</option>
                                                          <option value="Management">Management / Leads</option>
                                                      </select>
-                                                     <p className="text-[10px] text-slate-450 dark:text-github-dark-muted mt-1">
+                                                     <p className="text-[10px] text-slate-455 dark:text-github-dark-muted mt-1">
                                                          This cycle will only filter/appear for employees matching this employment type.
                                                      </p>
                                                  </div>
@@ -3724,8 +3855,18 @@ const EmployeeUnifiedMaster = () => {
                                                          <label className="block text-[10px] uppercase font-black text-slate-400 dark:text-github-dark-muted mb-1.5">Start Date</label>
                                                          <input
                                                              type="date"
-                                                             value={cycle.startDate}
-                                                             onChange={(e) => handleUpdateCycleField(cycle.id, 'startDate', e.target.value)}
+                                                             value={tempStartDateId === cycle.id ? tempStartDate : (cycle.startDate || '')}
+                                                             onChange={(e) => {
+                                                                 setTempStartDateId(cycle.id);
+                                                                 setTempStartDate(e.target.value);
+                                                             }}
+                                                             onBlur={() => {
+                                                                 if (tempStartDateId === cycle.id && tempStartDate !== cycle.startDate) {
+                                                                     handleUpdateCycleField(cycle.id, 'startDate', tempStartDate);
+                                                                 }
+                                                                 setTempStartDateId('');
+                                                                 setTempStartDate('');
+                                                             }}
                                                              className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none"
                                                          />
                                                      </div>
@@ -3733,8 +3874,18 @@ const EmployeeUnifiedMaster = () => {
                                                          <label className="block text-[10px] uppercase font-black text-slate-400 dark:text-github-dark-muted mb-1.5">End Date</label>
                                                          <input
                                                              type="date"
-                                                             value={cycle.endDate}
-                                                             onChange={(e) => handleUpdateCycleField(cycle.id, 'endDate', e.target.value)}
+                                                             value={tempEndDateId === cycle.id ? tempEndDate : (cycle.endDate || '')}
+                                                             onChange={(e) => {
+                                                                 setTempEndDateId(cycle.id);
+                                                                 setTempEndDate(e.target.value);
+                                                             }}
+                                                             onBlur={() => {
+                                                                 if (tempEndDateId === cycle.id && tempEndDate !== cycle.endDate) {
+                                                                     handleUpdateCycleField(cycle.id, 'endDate', tempEndDate);
+                                                                 }
+                                                                 setTempEndDateId('');
+                                                                 setTempEndDate('');
+                                                             }}
                                                              className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3.5 py-2 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none"
                                                          />
                                                      </div>
