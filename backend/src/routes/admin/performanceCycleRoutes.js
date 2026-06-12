@@ -7,6 +7,29 @@ const router = express.Router();
 
 router.use(authenticateJWT, requireActiveOrg, ensureAdmin);
 
+const formatDate = (dateVal) => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date) {
+        const year = dateVal.getFullYear();
+        const month = String(dateVal.getMonth() + 1).padStart(2, '0');
+        const day = String(dateVal.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    if (typeof dateVal === 'string') {
+        return dateVal.split('T')[0];
+    }
+    return dateVal;
+};
+
+const formatCycle = (cycle) => {
+    if (!cycle) return cycle;
+    return {
+        ...cycle,
+        start_date: formatDate(cycle.start_date),
+        end_date: formatDate(cycle.end_date)
+    };
+};
+
 // GET /api/admin/performance-cycles
 router.get('/', async (req, res) => {
     try {
@@ -14,7 +37,7 @@ router.get('/', async (req, res) => {
             .where({ org_id: req.user.org_id })
             .orderBy('created_at', 'desc');
 
-        res.json({ success: true, data: cycles });
+        res.json({ success: true, data: cycles.map(formatCycle) });
     } catch (error) {
         console.error("Error fetching performance cycles:", error);
         res.status(500).json({ success: false, message: error.message });
@@ -43,7 +66,7 @@ router.post('/', async (req, res) => {
         });
 
         const createdCycle = await attendanceDB('performance_cycles').where({ id: cycleId }).first();
-        res.status(201).json({ success: true, data: createdCycle });
+        res.status(201).json({ success: true, data: formatCycle(createdCycle) });
     } catch (error) {
         console.error("Error creating performance cycle:", error);
         res.status(500).json({ success: false, message: error.message });
@@ -77,7 +100,7 @@ router.put('/:id', async (req, res) => {
             });
 
         const updatedCycle = await attendanceDB('performance_cycles').where({ id }).first();
-        res.json({ success: true, data: updatedCycle });
+        res.json({ success: true, data: formatCycle(updatedCycle) });
     } catch (error) {
         console.error("Error updating performance cycle:", error);
         res.status(500).json({ success: false, message: error.message });

@@ -6,6 +6,28 @@ const router = express.Router();
 
 router.use(authenticateJWT, requireActiveOrg);
 
+const formatDate = (dateVal) => {
+    if (!dateVal) return '';
+    if (dateVal instanceof Date) {
+        const year = dateVal.getFullYear();
+        const month = String(dateVal.getMonth() + 1).padStart(2, '0');
+        const day = String(dateVal.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    if (typeof dateVal === 'string') {
+        return dateVal.split('T')[0];
+    }
+    return dateVal;
+};
+
+const formatGoal = (goal) => {
+    if (!goal) return goal;
+    return {
+        ...goal,
+        deadline: formatDate(goal.deadline)
+    };
+};
+
 // GET /api/performance/goals/:employee_id/:cycle_id
 router.get('/goals/:employee_id/:cycle_id', async (req, res) => {
     const { employee_id, cycle_id } = req.params;
@@ -15,7 +37,7 @@ router.get('/goals/:employee_id/:cycle_id', async (req, res) => {
             .where({ employee_id, cycle_id })
             .orderBy('created_at', 'asc');
 
-        res.json({ success: true, data: goals });
+        res.json({ success: true, data: goals.map(formatGoal) });
     } catch (error) {
         console.error("Error fetching employee goals:", error);
         res.status(500).json({ success: false, message: error.message });
@@ -49,15 +71,15 @@ router.post('/goals', async (req, res) => {
         }
 
         // 2. Validate deadline bounds
-        if (cycle.start_date && cycle.end_date) {
-            const dlDate = new Date(deadline);
-            const startDate = new Date(cycle.start_date);
-            const endDate = new Date(cycle.end_date);
+        const startStr = formatDate(cycle.start_date);
+        const endStr = formatDate(cycle.end_date);
+        const dlStr = typeof deadline === 'string' ? deadline.split('T')[0] : formatDate(deadline);
 
-            if (dlDate < startDate || dlDate > endDate) {
+        if (startStr && endStr) {
+            if (dlStr < startStr || dlStr > endStr) {
                 return res.status(400).json({
                     success: false,
-                    message: `Goal deadline must fall within the cycle period: ${cycle.start_date} to ${cycle.end_date}`
+                    message: `Goal deadline must fall within the cycle period: ${startStr} to ${endStr}`
                 });
             }
         }
@@ -71,7 +93,7 @@ router.post('/goals', async (req, res) => {
         });
 
         const createdGoal = await attendanceDB('employee_performance_goals').where({ id: newId }).first();
-        res.status(201).json({ success: true, data: createdGoal });
+        res.status(201).json({ success: true, data: formatGoal(createdGoal) });
     } catch (error) {
         console.error("Error creating performance goal:", error);
         res.status(500).json({ success: false, message: error.message });
@@ -124,16 +146,18 @@ router.put('/goals/:id', async (req, res) => {
         }
 
         // 4. Validate deadline bounds if it is changing
-        if (deadline && cycle.start_date && cycle.end_date) {
-            const dlDate = new Date(deadline);
-            const startDate = new Date(cycle.start_date);
-            const endDate = new Date(cycle.end_date);
+        if (deadline) {
+            const startStr = formatDate(cycle.start_date);
+            const endStr = formatDate(cycle.end_date);
+            const dlStr = typeof deadline === 'string' ? deadline.split('T')[0] : formatDate(deadline);
 
-            if (dlDate < startDate || dlDate > endDate) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Goal deadline must fall within the cycle period: ${cycle.start_date} to ${cycle.end_date}`
-                });
+            if (startStr && endStr) {
+                if (dlStr < startStr || dlStr > endStr) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Goal deadline must fall within the cycle period: ${startStr} to ${endStr}`
+                    });
+                }
             }
         }
 
@@ -149,7 +173,7 @@ router.put('/goals/:id', async (req, res) => {
             .update(updates);
 
         const updatedGoal = await attendanceDB('employee_performance_goals').where({ id }).first();
-        res.json({ success: true, data: updatedGoal });
+        res.json({ success: true, data: formatGoal(updatedGoal) });
     } catch (error) {
         console.error("Error updating performance goal:", error);
         res.status(500).json({ success: false, message: error.message });
