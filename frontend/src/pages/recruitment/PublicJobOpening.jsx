@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   Briefcase, MapPin, Calendar, Clock, DollarSign, 
-  Upload, FileText, Send, CheckCircle,
+  Upload, FileText, Send, CheckCircle, X,
   Linkedin, Globe, Sparkles, Award, Sun, Moon, ArrowRight
 } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -15,6 +15,30 @@ const getDefaultFields = () => [
   { id: 'def_4', type: 'textarea', label: 'Short Cover Letter / Cover Note', placeholder: "Brief note on why you're a great fit...", required: false, options: [], width: 'full' },
   { id: 'def_5', type: 'file', label: 'Resume File (PDF Only)', placeholder: '', required: true, options: [], width: 'full' },
 ];
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const dateOnlyStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const parts = dateOnlyStr.split('-');
+  if (parts.length !== 3) {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString();
+  }
+  const year = parseInt(parts[0], 10);
+  const monthIdx = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const month = monthNames[monthIdx];
+  
+  let suffix = 'th';
+  if (day === 1 || day === 21 || day === 31) suffix = 'st';
+  else if (day === 2 || day === 22) suffix = 'nd';
+  else if (day === 3 || day === 23) suffix = 'rd';
+  
+  return `${day}${suffix} ${month} ${year}`;
+};
 
 const PublicJobOpening = () => {
   const { slug } = useParams();
@@ -125,7 +149,7 @@ const PublicJobOpening = () => {
         );
       case 'select':
         return (
-          <div key={field.id} className={field.width === 'half' ? 'col-span-1' : 'col-span-2'}>
+          <div key={field.id} className={field.width === 'half' ? 'col-span-2 sm:col-span-1' : 'col-span-2'}>
             <label className="text-xs font-semibold text-slate-500 dark:text-github-dark-muted mb-1 block">
               {field.label} {field.required && ' *'}
             </label>
@@ -202,22 +226,41 @@ const PublicJobOpening = () => {
               {field.label} {field.required && ' *'}
             </label>
             <div className="relative border-2 border-dashed border-slate-200 dark:border-[#30363d] rounded-xl p-4 text-center hover:bg-slate-50 dark:hover:bg-[#161b22] transition-colors cursor-pointer">
-              <input
-                type="file"
-                accept=".pdf"
-                required={field.required}
-                onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
+              {!resumeFile && (
+                <input
+                  type="file"
+                  accept=".pdf"
+                  required={field.required}
+                  onChange={handleFileChange}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                />
+              )}
               <div className="flex flex-col items-center justify-center gap-1.5">
-                <Upload size={20} className="text-slate-400" />
                 {resumeFile ? (
-                  <span className="text-xs font-bold text-slate-700 dark:text-[#c9d1d9] flex items-center gap-1">
-                    <FileText size={12} className="text-indigo-500" />
-                    {resumeFile.name}
-                  </span>
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <span className="text-xs font-bold text-slate-700 dark:text-[#c9d1d9] flex items-center gap-1">
+                      <FileText size={12} className="text-indigo-500" />
+                      {resumeFile.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setResumeFile(null);
+                        // Reset file input value so candidate can upload the same file again if desired
+                        const fileInput = document.querySelector('input[type="file"]');
+                        if (fileInput) fileInput.value = '';
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 rounded-lg text-[10px] font-bold transition-all z-20"
+                    >
+                      <X size={12} />
+                      Remove File
+                    </button>
+                  </div>
                 ) : (
                   <>
+                    <Upload size={20} className="text-slate-400" />
                     <span className="text-xs font-semibold text-slate-600 dark:text-[#c9d1d9]">Click to Upload Resume</span>
                     <span className="text-[10px] text-slate-400">PDF up to 5MB</span>
                   </>
@@ -228,7 +271,7 @@ const PublicJobOpening = () => {
         );
       default:
         return (
-          <div key={field.id} className={field.width === 'half' ? 'col-span-1' : 'col-span-2'}>
+          <div key={field.id} className={field.width === 'half' ? 'col-span-2 sm:col-span-1' : 'col-span-2'}>
             <label className="text-xs font-semibold text-slate-500 dark:text-github-dark-muted mb-1 block">
               {field.label} {field.required && ' *'}
             </label>
@@ -295,14 +338,11 @@ const PublicJobOpening = () => {
           <h2 className="text-xl font-bold text-slate-800 dark:text-[#f0f6fc] mb-2">
             {isExpired ? 'Application Deadline Passed' : 'Job Opening Closed'}
           </h2>
-          <p className="text-slate-500 dark:text-github-dark-muted text-sm mb-6">
+          <p className="text-slate-500 dark:text-github-dark-muted text-sm mb-2">
             {isExpired 
               ? 'The deadline for submitting applications to this role has passed, and we are no longer accepting submissions.'
               : 'This opening has been deactivated by the administrator or is no longer accepting applications.'}
           </p>
-          <Link to="/login" className="px-5 py-2 bg-[#0969da] hover:bg-[#0969da]/90 text-white rounded-lg text-sm font-medium transition-all">
-            Go to Portal Login
-          </Link>
         </div>
       </div>
     );
@@ -333,7 +373,7 @@ const PublicJobOpening = () => {
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} className="text-amber-400" />}
             </button>
 
-            <span className="text-xs bg-slate-100 dark:bg-[#21262d] text-slate-600 dark:text-[#c9d1d9] px-3 py-1 rounded-full font-mono border border-transparent dark:border-[#30363d]">
+            <span className="hidden sm:inline-block text-xs bg-slate-100 dark:bg-[#21262d] text-slate-600 dark:text-[#c9d1d9] px-3 py-1 rounded-full font-mono border border-transparent dark:border-[#30363d]">
               Applicant Portal
             </span>
           </div>
@@ -363,7 +403,7 @@ const PublicJobOpening = () => {
           </div>
         ) : (
           /* Grid updated to col-12 to scale layouts wider */
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
             
             {/* Job Details Section (8 Columns out of 12 for spacious horizontal presentation) */}
             <div className="lg:col-span-7 xl:col-span-8 space-y-6">
@@ -398,7 +438,7 @@ const PublicJobOpening = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={16} className="text-[#0969da] dark:text-github-dark-accent" />
-                    <span>Apply before {job.deadline}</span>
+                    <span>Apply before {formatDate(job.deadline)}</span>
                   </div>
                 </div>
 
@@ -434,9 +474,39 @@ const PublicJobOpening = () => {
                     </p>
                   </div>
 
+                  {job.other_details && (
+                    <div>
+                      <h3 className="text-base font-bold text-slate-800 dark:text-[#f0f6fc] mb-2.5 border-l-4 border-[#0969da] pl-3">
+                        Additional Information
+                      </h3>
+                      <p className="whitespace-pre-line pl-4 text-slate-600 dark:text-[#c9d1d9]">
+                        {job.other_details}
+                      </p>
+                    </div>
+                  )}
+
+                  {job.attachment_name && (
+                    <div className="p-4 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <FileText size={20} className="text-[#0969da] dark:text-github-dark-accent" />
+                        <div>
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 block leading-tight">Attachment / Additional Resources:</span>
+                          <span className="font-bold text-slate-700 dark:text-[#c9d1d9] text-xs mt-0.5">{job.attachment_name}</span>
+                        </div>
+                      </div>
+                      <a
+                        href={`/api/recruitment/openings-attachments/${job.attachment_url.split('/').pop()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-[#0969da] hover:bg-[#0969da]/90 text-white rounded-lg text-xs font-bold transition-all"
+                      >
+                        View
+                      </a>
+                    </div>
+                  )}
+
                   {job.salary_range && (
-                    <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl flex items-center gap-3">
-                      <DollarSign size={20} className="text-indigo-600 dark:text-indigo-400" />
+                    <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl">
                       <div>
                         <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Offered Salary Package Range:</span>
                         <p className="font-bold text-indigo-700 dark:text-indigo-400 text-sm mt-0.5">{job.salary_range}</p>
