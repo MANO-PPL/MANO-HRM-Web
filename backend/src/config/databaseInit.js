@@ -114,6 +114,9 @@ export const initDatabase = async () => {
                 table.text('form_config', 'longtext').nullable(); // JSON configuration for dynamic forms
                 table.string('template_id', 100).nullable();
                 table.enum('template_source', ['predefined', 'custom', 'scratch']).defaultTo('scratch');
+                table.string('attachment_name', 255).nullable();
+                table.text('attachment_url').nullable();
+                table.text('other_details').nullable();
                 table.integer('created_by').unsigned().nullable();
                 table.timestamp('created_at').defaultTo(db.fn.now());
                 table.timestamp('updated_at').defaultTo(db.fn.now());
@@ -122,6 +125,18 @@ export const initDatabase = async () => {
                 table.index(['slug']);
             });
             console.log('✅ "recruitment_openings" table initialized.');
+        } else {
+            const hasAttachmentName = await db.schema.hasColumn('recruitment_openings', 'attachment_name');
+            const hasAttachmentUrl = await db.schema.hasColumn('recruitment_openings', 'attachment_url');
+            const hasOtherDetails = await db.schema.hasColumn('recruitment_openings', 'other_details');
+            if (!hasAttachmentName || !hasAttachmentUrl || !hasOtherDetails) {
+                await db.schema.table('recruitment_openings', (table) => {
+                    if (!hasAttachmentName) table.string('attachment_name', 255).nullable();
+                    if (!hasAttachmentUrl) table.text('attachment_url').nullable();
+                    if (!hasOtherDetails) table.text('other_details').nullable();
+                });
+                console.log('✅ Added columns to "recruitment_openings" table.');
+            }
         }
 
         // 5. Initialize recruitment_pipeline_stages

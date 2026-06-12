@@ -3,6 +3,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import requestIp from 'request-ip';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import { generalLimiter } from './middleware/rateLimiter.js';
 import errorHandler from './middleware/errorHandler.js';
@@ -11,6 +13,9 @@ import { apiMonitor } from './middleware/apiMonitor.js';
 
 // Import route definitions
 import routes from './routes/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -55,6 +60,8 @@ app.use(requestIp.mw());
 app.use(generalLimiter);
 app.use(express.json());
 app.use(apiMonitor);
+
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Main API Router
 app.use('/', routes);

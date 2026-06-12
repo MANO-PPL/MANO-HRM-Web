@@ -1,5 +1,12 @@
-
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { spawnSync } from 'child_process';
 import { attendanceDB } from '../config/database.js';
+import { uploadFile } from '../services/s3/s3Service.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper to safely parse JSON strings from database
 const safeParseJSON = (data, fallback = []) => {
@@ -59,7 +66,8 @@ export const createOpening = async (req, res) => {
       deadline,
       form_config,
       template_id,
-      template_source
+      template_source,
+      other_details
     } = req.body;
 
     if (!job_title || !department || !location || !deadline) {
@@ -70,6 +78,25 @@ export const createOpening = async (req, res) => {
     const cleanTitle = job_title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const code = Math.floor(100 + Math.random() * 900);
     const slug = `${cleanTitle}-${code}`;
+
+    let attachmentName = null;
+    let attachmentUrl = null;
+
+    if (req.file) {
+      attachmentName = req.file.originalname;
+      const uniqueName = `${Date.now()}_${attachmentName}`;
+      try {
+        const s3Upload = await uploadFile({
+          fileBuffer: req.file.buffer,
+          key: uniqueName,
+          directory: `recruitment/openings/${orgId}`,
+          contentType: req.file.mimetype || 'application/octet-stream'
+        });
+        attachmentUrl = s3Upload.url;
+      } catch (s3Err) {
+        console.error('Failed to upload opening attachment to S3:', s3Err);
+      }
+    }
 
     const [insertedId] = await attendanceDB('recruitment_openings').insert({
       org_id: orgId,
@@ -88,6 +115,9 @@ export const createOpening = async (req, res) => {
       form_config: safeStringifyJSON(form_config),
       template_id,
       template_source: template_source || 'scratch',
+      attachment_name: attachmentName,
+      attachment_url: attachmentUrl,
+      other_details: other_details || null,
       created_by: createdBy
     });
 
@@ -331,6 +361,7 @@ export const getCandidatesForJob = async (req, res) => {
         email: resp.email || resp['Email Address'] || 'N/A',
         mobile: resp.mobile || resp['Mobile Number'] || 'N/A',
         resume_name: resp.resume_name || resp['Resume File'] || 'resume.pdf',
+        resume_path: resp.resume_url ? resp.resume_url.replace('/uploads/resumes/', '') : null,
         notice_period: resp.notice_period || resp['Notice Period'] || 'N/A',
         current_ctc: resp.current_ctc || resp['Current CTC'] || 'N/A',
         current_company: resp.current_company || resp['Current Company'] || 'N/A',
@@ -392,7 +423,34 @@ export const applyForJob = async (req, res) => {
 
     // Capture uploaded resume from Multer
     const resumeName = req.file ? req.file.originalname : null;
-    const resumeUrl = req.file ? `/uploads/resumes/${Date.now()}_${resumeName}` : null;
+    let resumeUrl = null;
+    let uniqueName = null;
+    let tempPath = null;
+
+    if (req.file) {
+      uniqueName = `${Date.now()}_${resumeName}`;
+      resumeUrl = `/uploads/resumes/${uniqueName}`;
+      
+      // Save locally temporarily for the Python script
+      const dirPath = path.join(__dirname, '../../uploads/resumes');
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      tempPath = path.join(dirPath, uniqueName);
+      fs.writeFileSync(tempPath, req.file.buffer);
+
+      // Upload to S3
+      try {
+        await uploadFile({
+          fileBuffer: req.file.buffer,
+          key: uniqueName,
+          directory: 'recruitment/resumes',
+          contentType: req.file.mimetype || 'application/pdf'
+        });
+      } catch (s3Err) {
+        console.error('Failed to upload resume to S3:', s3Err);
+      }
+    }
 
     // Inject file details into the dynamic form response values
     const fullFormResponses = {
@@ -407,10 +465,69 @@ export const applyForJob = async (req, res) => {
       fullFormResponses[fileField.label] = resumeName;
     }
 
-    // Calculate AI matches and scores on the backend
-    const fullName = parsedResponses.full_name || parsedResponses['Full Name'] || 'Candidate';
-    const email = parsedResponses.email || parsedResponses['Email Address'] || 'N/A';
-    const aiResults = calculateCandidateScores(fullName, email, fullFormResponses, resumeName);
+    // Calculate AI matches and scores on the backend using Python & Groq (with static simulation fallback)
+    let aiResults;
+    try {
+      const scriptPath = path.join(__dirname, '../services/recruitment/generate_ai_report.py');
+      const resumeFilepath = tempPath || '';
+      
+      const args = [
+        scriptPath,
+        '--job-title', opening.job_title,
+        '--job-skills', opening.skills_required || '',
+        '--job-experience', opening.experience_required || '',
+        '--form-responses', JSON.stringify(fullFormResponses)
+      ];
+      if (resumeFilepath && fs.existsSync(resumeFilepath)) {
+        args.push('--resume-path', resumeFilepath);
+      }
+
+      const pythonProcess = spawnSync('python', args, {
+        encoding: 'utf-8',
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+      });
+
+      if (pythonProcess.status === 0 && pythonProcess.stdout) {
+        const output = JSON.parse(pythonProcess.stdout.trim());
+        if (output.error) {
+          throw new Error(output.error);
+        }
+        aiResults = {
+          ai_score: output.ai_score,
+          skill_match_score: output.skill_match_score,
+          experience_match_score: output.experience_match_score,
+          education_match_score: output.education_match_score,
+          culture_fit_score: output.culture_fit_score,
+          ai_strengths: output.ai_strengths,
+          ai_weaknesses: output.ai_weaknesses,
+          ai_recommendation: output.ai_recommendation,
+          extracted_skills: output.extracted_skills,
+          total_experience: output.total_experience,
+          relevant_experience: output.relevant_experience,
+          education: output.education,
+          certifications: output.certifications || '',
+          projects: output.projects || '',
+          achievements: output.achievements || ''
+        };
+      } else {
+        const errorMsg = pythonProcess.stderr ? pythonProcess.stderr.trim() : 'Python process exited with non-zero status code.';
+        throw new Error(errorMsg);
+      }
+    } catch (err) {
+      console.warn('Real AI report generation failed, falling back to static calculation:', err.message);
+      const fullName = parsedResponses.full_name || parsedResponses['Full Name'] || 'Candidate';
+      const email = parsedResponses.email || parsedResponses['Email Address'] || 'N/A';
+      aiResults = calculateCandidateScores(fullName, email, fullFormResponses, resumeName);
+    } finally {
+      // Clean up temporary local PDF resume file
+      if (tempPath && fs.existsSync(tempPath)) {
+        try {
+          fs.unlinkSync(tempPath);
+        } catch (unlinkErr) {
+          console.error('Failed to unlink temporary resume file:', unlinkErr);
+        }
+      }
+    }
 
     // Fetch dynamic pipeline stages to assign candidate to the first stage
     const pipelineStages = await attendanceDB('recruitment_pipeline_stages')
@@ -468,8 +585,30 @@ export const updateOpening = async (req, res) => {
       status,
       form_config,
       template_id,
-      template_source
+      template_source,
+      other_details,
+      attachment_name,
+      attachment_url
     } = req.body;
+
+    let finalAttachmentName = attachment_name || null;
+    let finalAttachmentUrl = attachment_url || null;
+
+    if (req.file) {
+      finalAttachmentName = req.file.originalname;
+      const uniqueName = `${Date.now()}_${finalAttachmentName}`;
+      try {
+        const s3Upload = await uploadFile({
+          fileBuffer: req.file.buffer,
+          key: uniqueName,
+          directory: `recruitment/openings/${orgId}`,
+          contentType: req.file.mimetype || 'application/octet-stream'
+        });
+        finalAttachmentUrl = s3Upload.url;
+      } catch (s3Err) {
+        console.error('Failed to upload opening attachment to S3:', s3Err);
+      }
+    }
 
     const affected = await attendanceDB('recruitment_openings')
       .where({ id, org_id: orgId })
@@ -488,6 +627,9 @@ export const updateOpening = async (req, res) => {
         form_config: safeStringifyJSON(form_config),
         template_id,
         template_source: template_source || 'scratch',
+        attachment_name: finalAttachmentName,
+        attachment_url: finalAttachmentUrl,
+        other_details: other_details || null,
         updated_at: attendanceDB.fn.now()
       });
 
@@ -667,4 +809,39 @@ const calculateCandidateScores = (fullName, email, responses, resumeName) => {
     projects: 'Project Dashboard Implementation, Client Portal Interface',
     achievements: 'Optimized rendering flow by 20%'
   };
+};
+
+// Generate structured Job Description with Python & Pydantic
+export const generateAIJobDescription = async (req, res) => {
+  try {
+    const { rolePrompt } = req.body;
+    if (!rolePrompt) {
+      return res.status(400).json({ error: 'Missing role description prompt.' });
+    }
+
+    const scriptPath = path.join(__dirname, '../services/recruitment/generate_jd.py');
+    const args = [
+      scriptPath,
+      '--role-prompt', rolePrompt
+    ];
+
+    const pythonProcess = spawnSync('python', args, {
+      encoding: 'utf-8',
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    });
+
+    if (pythonProcess.status === 0 && pythonProcess.stdout) {
+      const output = JSON.parse(pythonProcess.stdout.trim());
+      if (output.error) {
+        throw new Error(output.error);
+      }
+      res.json(output);
+    } else {
+      const errorMsg = pythonProcess.stderr ? pythonProcess.stderr.trim() : 'Python process exited with non-zero status code.';
+      throw new Error(errorMsg);
+    }
+  } catch (error) {
+    console.error('Error generating AI job description:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate AI job description.' });
+  }
 };
