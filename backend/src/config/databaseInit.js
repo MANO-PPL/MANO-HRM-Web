@@ -217,6 +217,38 @@ export const initDatabase = async () => {
                 });
                 console.log('✅ Column "document_template_id" added to "users" table.');
             }
+
+            const hasJoiningDateCol = await db.schema.hasColumn('users', 'joining_date');
+            if (!hasJoiningDateCol) {
+                await db.schema.table('users', (table) => {
+                    table.date('joining_date').nullable();
+                });
+                console.log('✅ Column "joining_date" added to "users" table.');
+            }
+
+            const hasReportingManagerCol = await db.schema.hasColumn('users', 'reporting_manager');
+            if (!hasReportingManagerCol) {
+                await db.schema.table('users', (table) => {
+                    table.string('reporting_manager', 255).nullable();
+                });
+                console.log('✅ Column "reporting_manager" added to "users" table.');
+            }
+
+            const hasWorkLocationCol = await db.schema.hasColumn('users', 'work_location');
+            if (!hasWorkLocationCol) {
+                await db.schema.table('users', (table) => {
+                    table.string('work_location', 255).nullable();
+                });
+                console.log('✅ Column "work_location" added to "users" table.');
+            }
+
+            const hasOnboardingProgressCol = await db.schema.hasColumn('users', 'onboarding_progress');
+            if (!hasOnboardingProgressCol) {
+                await db.schema.table('users', (table) => {
+                    table.integer('onboarding_progress').defaultTo(0);
+                });
+                console.log('✅ Column "onboarding_progress" added to "users" table.');
+            }
         }
 
         // 9. Onboarding Checklist Templates

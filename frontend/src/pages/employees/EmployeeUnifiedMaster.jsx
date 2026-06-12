@@ -1196,10 +1196,12 @@ const EmployeeUnifiedMaster = () => {
             };
         }
 
+        let merged = { ...defaultProfile };
+
         if (stored) {
             try {
                 const parsed = JSON.parse(stored);
-                return {
+                merged = {
                     ...defaultProfile,
                     ...parsed,
                     checklist_template_id: checklistTemplateId !== null && checklistTemplateId !== undefined ? checklistTemplateId : (parsed.checklist_template_id || defaultProfile.checklist_template_id),
@@ -1211,12 +1213,32 @@ const EmployeeUnifiedMaster = () => {
             } catch (e) {
                 console.error(e);
             }
+        } else {
+            merged = {
+                ...defaultProfile,
+                checklist_template_id: checklistTemplateId !== null && checklistTemplateId !== undefined ? checklistTemplateId : defaultProfile.checklist_template_id,
+                document_template_id: documentTemplateId !== null && documentTemplateId !== undefined ? documentTemplateId : defaultProfile.document_template_id
+            };
         }
-        return {
-            ...defaultProfile,
-            checklist_template_id: checklistTemplateId !== null && checklistTemplateId !== undefined ? checklistTemplateId : defaultProfile.checklist_template_id,
-            document_template_id: documentTemplateId !== null && documentTemplateId !== undefined ? documentTemplateId : defaultProfile.document_template_id
-        };
+
+        // Overlay database properties if matching employee exists in state
+        const dbEmp = employees?.find(e => e.id === empId);
+        if (dbEmp) {
+            if ('joining_date' in dbEmp) {
+                merged.joining_date = dbEmp.joining_date || '-';
+            }
+            if ('reporting_manager' in dbEmp) {
+                merged.reporting_manager = dbEmp.reporting_manager || '-';
+            }
+            if ('work_location' in dbEmp) {
+                merged.work_location = dbEmp.work_location || '-';
+            }
+            if ('onboarding_progress' in dbEmp) {
+                merged.onboarding_progress = dbEmp.onboarding_progress || 0;
+            }
+        }
+
+        return merged;
     };
 
     const saveEmployeeProfile = (empId, updatedProfile) => {
@@ -1279,7 +1301,11 @@ const EmployeeUnifiedMaster = () => {
                     shift: u.shift_name || 'General Shift',
                     workLocations: u.work_locations || [],
                     checklist_template_id: u.checklist_template_id,
-                    document_template_id: u.document_template_id
+                    document_template_id: u.document_template_id,
+                    joining_date: u.joining_date ? u.joining_date.substring(0, 10) : null,
+                    reporting_manager: u.reporting_manager || null,
+                    work_location: u.work_location || null,
+                    onboarding_progress: u.onboarding_progress || 0
                 }));
                 setEmployees(updatedList);
             } else {
@@ -1346,8 +1372,7 @@ const EmployeeUnifiedMaster = () => {
         const matchesStatus = emp.status === statusFilter;
         
         // Cards 2 & 3 Onboarding progress filter
-        const profile = getEmployeeProfile(emp.id, emp.name, emp.checklist_template_id, emp.document_template_id);
-        const progress = getOnboardingProgress(profile.onboarding_checklist, profile.checklist_template_id);
+        const progress = emp.onboarding_progress || 0;
         let matchesOnboarding = true;
         
         if (onboardingFilter === 'Completed') {
@@ -1478,6 +1503,7 @@ const EmployeeUnifiedMaster = () => {
         try {
             await onboardingService.toggleChecklistItem(selectedEmployee.id, itemKey, nextCompleted);
             await loadEmployeeOnboarding(selectedEmployee.id);
+            await fetchEmployees(selectedEmployee.id);
             toast.success("Checklist task updated");
         } catch (err) {
             console.error(err);
@@ -1502,6 +1528,7 @@ const EmployeeUnifiedMaster = () => {
                 toast.loading(`Uploading ${itemName}...`, { id: 'upload_toast' });
                 await onboardingService.uploadDocument(formData);
                 await loadEmployeeOnboarding(selectedEmployee.id);
+                await fetchEmployees(selectedEmployee.id);
                 toast.success(`Uploaded ${itemName} successfully!`, { id: 'upload_toast' });
             } catch (error) {
                 console.error(error);
@@ -1515,6 +1542,7 @@ const EmployeeUnifiedMaster = () => {
         try {
             await onboardingService.deleteDocument(docId);
             await loadEmployeeOnboarding(selectedEmployee.id);
+            await fetchEmployees(selectedEmployee.id);
             toast.info(`Removed ${docName}`);
         } catch (err) {
             console.error(err);
@@ -1933,8 +1961,7 @@ const EmployeeUnifiedMaster = () => {
                             <p className="text-xl font-bold mt-0.5">
                                 {employees.filter(e => {
                                     if (e.status !== statusFilter) return false;
-                                    const profile = getEmployeeProfile(e.id, e.name);
-                                    return getOnboardingProgress(profile.onboarding_checklist, profile.checklist_template_id) === 100;
+                                    return (e.onboarding_progress || 0) === 100;
                                 }).length}
                             </p>
                         </div>
@@ -1957,8 +1984,7 @@ const EmployeeUnifiedMaster = () => {
                             <p className="text-xl font-bold mt-0.5">
                                 {employees.filter(e => {
                                     if (e.status !== statusFilter) return false;
-                                    const profile = getEmployeeProfile(e.id, e.name);
-                                    const progress = getOnboardingProgress(profile.onboarding_checklist, profile.checklist_template_id);
+                                    const progress = e.onboarding_progress || 0;
                                     return progress > 0 && progress < 100;
                                 }).length}
                             </p>
@@ -2161,7 +2187,7 @@ const EmployeeUnifiedMaster = () => {
                                 ) : filteredEmployees.length > 0 ? (
                                     filteredEmployees.map((emp) => {
                                         const profile = getEmployeeProfile(emp.id, emp.name);
-                                        const progress = getOnboardingProgress(profile.onboarding_checklist, profile.checklist_template_id);
+                                        const progress = emp.onboarding_progress || 0;
                                         
                                         return (
                                             <tr

@@ -17,7 +17,10 @@ const ALLOWED_UPDATE_FIELDS = new Set([
     "desg_id",
     "dept_id",
     "shift_id",
-    "user_type"
+    "user_type",
+    "joining_date",
+    "reporting_manager",
+    "work_location"
 ]);
 
 export const getAllUsers = async (orgId, includeWorkLocation = false) => {
@@ -30,7 +33,9 @@ export const getAllUsers = async (orgId, includeWorkLocation = false) => {
             'd.desg_name', 'd.desg_id', 'dep.dept_name', 'dep.dept_id',
             's.shift_name', 's.shift_id', 'u.profile_image_url',
             'u.is_active', 'u.is_deleted', 'u.deleted_at',
-            'u.checklist_template_id', 'u.document_template_id'
+            'u.checklist_template_id', 'u.document_template_id',
+            'u.joining_date', 'u.reporting_manager', 'u.work_location',
+            'u.onboarding_progress'
         )
         .where('u.org_id', orgId);
 
@@ -64,7 +69,9 @@ export const getUserById = async (userId, orgId) => {
             'u.user_id', 'u.user_name', 'u.email', 'u.phone_no', 'u.user_type', 'u.desg_id', 'u.dept_id', 'u.shift_id', 'u.org_id',
             'u.profile_image_url', 'u.is_active', 'u.is_deleted', 'u.deleted_at',
             'd.desg_name', 'dep.dept_name', 's.shift_name',
-            'u.checklist_template_id', 'u.document_template_id'
+            'u.checklist_template_id', 'u.document_template_id',
+            'u.joining_date', 'u.reporting_manager', 'u.work_location',
+            'u.onboarding_progress'
         )
         .where('u.user_id', userId)
         .andWhere('u.org_id', orgId)
@@ -125,11 +132,29 @@ export const createUser = async (userData, authInfo, profileImageBuffer = null) 
         const [insertedId] = await trx("users").insert({
             org_id: authInfo.orgId, user_name, user_code: userCode, user_password: hashedPassword,
             email, phone_no: phoneToSave, desg_id: desg_id || null, dept_id: dept_id || null,
-            shift_id: shift_id || null, user_type: user_type || "employee"
+            shift_id: shift_id || null, user_type: user_type || "employee",
+            joining_date: userData.joining_date || null,
+            reporting_manager: userData.reporting_manager || null,
+            work_location: ''
         });
 
         if (!insertedId) throw new AppError("Failed to create user", 500);
         newUserId = insertedId;
+
+        if (userData.work_locations && Array.isArray(userData.work_locations) && userData.work_locations.length > 0) {
+            const inserts = userData.work_locations.map(locId => ({
+                user_id: newUserId,
+                location_id: locId
+            }));
+            await trx('user_work_locations').insert(inserts);
+
+            const locNames = await trx('work_locations')
+                .whereIn('location_id', userData.work_locations)
+                .select('location_name');
+            const workLocationStr = locNames.map(l => l.location_name).join(', ');
+
+            await trx('users').where('user_id', newUserId).update({ work_location: workLocationStr });
+        }
 
         try {
             EventBus.emitActivityLog({
@@ -208,6 +233,24 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
     }
 
     await attendanceDB.transaction(async (trx) => {
+        if (updatesData.work_locations !== undefined) {
+            await trx('user_work_locations').where('user_id', userId).del();
+            let workLocationStr = '';
+            if (Array.isArray(updatesData.work_locations) && updatesData.work_locations.length > 0) {
+                const inserts = updatesData.work_locations.map(locId => ({
+                    user_id: userId,
+                    location_id: locId
+                }));
+                await trx('user_work_locations').insert(inserts);
+
+                const locNames = await trx('work_locations')
+                    .whereIn('location_id', updatesData.work_locations)
+                    .select('location_name');
+                workLocationStr = locNames.map(l => l.location_name).join(', ');
+            }
+            updates.work_location = workLocationStr;
+        }
+
         if (Object.keys(updates).length > 0) {
             const affected = await trx('users').where('user_id', userId).andWhere('org_id', authInfo.orgId).update(updates);
             if (affected === 0) throw new AppError("User not found or unauthorized", 404);

@@ -98,6 +98,9 @@ router.post('/checklist/toggle', async (req, res) => {
                 });
         }
 
+        // Recalculate and update user's total onboarding progress
+        await updateUserOnboardingProgress(employee_id);
+
         res.json({ success: true });
     } catch (error) {
         console.error("Error toggling checklist item:", error);
@@ -146,6 +149,9 @@ router.post('/assign-templates', ensureAdmin, async (req, res) => {
         await attendanceDB('users')
             .where({ user_id: employee_id })
             .update(updates);
+
+        // Recalculate and update user's total onboarding progress
+        await updateUserOnboardingProgress(employee_id);
 
         res.json({ success: true, message: "Templates assigned successfully" });
     } catch (error) {
@@ -217,6 +223,9 @@ router.post('/upload-document', upload.single('file'), async (req, res) => {
             insertedOrUpdated = await attendanceDB('employee_uploaded_documents').where({ id: newId }).first();
         }
 
+        // Recalculate and update user's total onboarding progress
+        await updateUserOnboardingProgress(employee_id);
+
         res.status(201).json({ success: true, doc: insertedOrUpdated });
     } catch (error) {
         console.error("Error uploading onboarding document:", error);
@@ -245,6 +254,12 @@ router.put('/document/:id/verify', ensureAdmin, async (req, res) => {
 
         if (!affected) {
             return res.status(404).json({ success: false, message: "Uploaded document record not found" });
+        }
+
+        // Recalculate and update user's total onboarding progress
+        const doc = await attendanceDB('employee_uploaded_documents').where({ id }).first();
+        if (doc) {
+            await updateUserOnboardingProgress(doc.employee_id);
         }
 
         res.json({ success: true, message: `Document verification status updated to ${status}` });
@@ -331,11 +346,70 @@ router.delete('/document/:id', async (req, res) => {
             .where({ id })
             .del();
 
+        // Recalculate and update user's total onboarding progress
+        await updateUserOnboardingProgress(doc.employee_id);
+
         res.json({ success: true, message: "Document deleted successfully" });
     } catch (error) {
         console.error("Error deleting onboarding document:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
+
+// Helper function to recalculate onboarding progress percentage
+async function updateUserOnboardingProgress(employeeId) {
+    try {
+        const user = await attendanceDB('users')
+            .where({ user_id: employeeId })
+            .select('checklist_template_id', 'document_template_id')
+            .first();
+
+        if (!user) return 0;
+
+        let totalTasks = 0;
+        let completedTasks = 0;
+
+        // 1. Checklist Items
+        if (user.checklist_template_id) {
+            const checklistItems = await attendanceDB('onboarding_checklist_items')
+                .where({ template_id: user.checklist_template_id });
+            
+            totalTasks += checklistItems.length;
+
+            const completedChecklist = await attendanceDB('employee_checklist_progress')
+                .where({ employee_id: employeeId, is_completed: true });
+            
+            const itemKeys = new Set(checklistItems.map(item => item.task_key));
+            const validCompleted = completedChecklist.filter(p => itemKeys.has(p.task_key)).length;
+            completedTasks += validCompleted;
+        }
+
+        // 2. Required Documents
+        if (user.document_template_id) {
+            const requiredDocs = await attendanceDB('required_document_items')
+                .where({ template_id: user.document_template_id });
+
+            totalTasks += requiredDocs.length;
+
+            const uploadedDocs = await attendanceDB('employee_uploaded_documents')
+                .where({ employee_id: employeeId });
+
+            const docKeys = new Set(requiredDocs.map(doc => doc.doc_key));
+            const validUploaded = uploadedDocs.filter(doc => docKeys.has(doc.doc_key)).length;
+            completedTasks += validUploaded;
+        }
+
+        const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+        await attendanceDB('users')
+            .where({ user_id: employeeId })
+            .update({ onboarding_progress: progressPercent });
+
+        return progressPercent;
+    } catch (err) {
+        console.error(`Error updating onboarding progress for user ${employeeId}:`, err);
+        return 0;
+    }
+}
 
 export default router;
