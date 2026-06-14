@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import MinimalSelect from '../../components/MinimalSelect';
 import { useAuth } from '../../context/AuthContext';
+import { performanceGoalService } from '../../services/performanceGoalService';
+import { toast } from 'react-toastify';
 import {
     Award,
     CheckCircle2,
@@ -21,70 +23,6 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-// Mock cycles identical to the admin master definitions
-const DEFAULT_CYCLES = [
-    { id: 'cycle-1', name: 'Q1 2026 Performance Cycle', type: 'Quarterly', status: 'Evaluating', startDate: '2026-01-01', endDate: '2026-03-31' },
-    { id: 'cycle-2', name: 'Q2 2026 Performance Cycle', type: 'Quarterly', status: 'Active', startDate: '2026-04-01', endDate: '2026-06-30' },
-    { id: 'cycle-3', name: 'Mid-Year 2026 Appraisal', type: 'Half Yearly', status: 'Closed', startDate: '2026-01-01', endDate: '2026-06-30' },
-    { id: 'cycle-4', name: 'Annual Review 2026', type: 'Yearly', status: 'Closed', startDate: '2026-01-01', endDate: '2026-12-31' }
-];
-
-// Helper to resolve fallback goals matching PerformanceViews.jsx logic
-const getFallbackGoals = (empId) => {
-    const variant = Number(empId) % 3;
-    if (variant === 0) {
-        return [
-            { id: 'g-1', title: 'Complete Core Module Sprint Tasks', deadline: '2026-06-15', status: 'Completed', rating: 9, comments: 'Delivered all geofencing modules on time.' },
-            { id: 'g-2', title: 'Achieve 95% Bug Resolution within SLA', deadline: '2026-06-20', status: 'Completed', rating: 8, comments: 'Resolved critical blocker tickets inside SLA limits.' },
-            { id: 'g-3', title: 'Refactor Legacy Code and reduce smells', deadline: '2026-06-30', status: 'Completed', rating: 9, comments: 'Cleaned up CSS variables and reduced build sizes.' }
-        ];
-    } else if (variant === 1) {
-        return [
-            { id: 'g-1', title: 'Review and fix CSS scaling on tablet screens', deadline: '2026-06-15', status: 'Completed', rating: 7, comments: 'Fixed layout queries, but took extra time.' },
-            { id: 'g-2', title: 'Conduct user feedback sessions for DAR logging', deadline: '2026-06-20', status: 'In-Progress', rating: 0, comments: '' },
-            { id: 'g-3', title: 'Improve unit test coverage by 15%', deadline: '2026-06-30', status: 'Pending', rating: 0, comments: '' }
-        ];
-    } else {
-        return [
-            { id: 'g-1', title: 'Complete compliance training courses', deadline: '2026-06-10', status: 'Pending', rating: 0, comments: '' },
-            { id: 'g-2', title: 'Update API endpoint error handling structures', deadline: '2026-06-25', status: 'In-Progress', rating: 0, comments: '' }
-        ];
-    }
-};
-
-// Helper to resolve fallback reviews matching PerformanceViews.jsx logic
-const getFallbackReview = (empId) => {
-    const variant = Number(empId) % 3;
-    if (variant === 0) {
-        return {
-            selfAchievements: 'Delivered the attendance logging geofencing module ahead of the sprint timeline and verified all check-in edge cases. Mentored two interns.',
-            selfChallenges: 'Faced layout scaling problems on specific tablet screen queries, but resolved them by refactoring index.css layout classes.',
-            selfLearning: 'Learned HSL color palette designs, advanced Socket.io logic, and local storage state sync layouts.',
-            managerComments: 'Consistently check-in on time. Excelled at frontend delivery. Suresh has shown superior engineering quality and was a great mentor this cycle.',
-            managerRec: 'Promote to Senior Role',
-            lastUpdated: '2026-06-05 11:10:00'
-        };
-    } else if (variant === 1) {
-        return {
-            selfAchievements: 'Resolved CSS scaling query errors and updated client pages. Set up active DAR notifications.',
-            selfChallenges: 'Struggled with unit testing frameworks configuration due to legacy mock setup libraries.',
-            selfLearning: 'Learned CSS flexbox grid layouts and Jest mock testing suites.',
-            managerComments: 'Good work on UI modifications. Need to show more speed in test cases and complete pending goals.',
-            managerRec: 'Retain with Standard Increment',
-            lastUpdated: '2026-06-05 13:40:00'
-        };
-    } else {
-        return {
-            selfAchievements: 'Started refactoring error check routes in backend API systems.',
-            selfChallenges: 'Faced frequent connectivity and local check-in deployment blockers.',
-            selfLearning: 'Read express API routing documentation and basic node crash logs.',
-            managerComments: 'Appraisal progress has been slow. Check-in records have also been irregular this quarter. Needs to show improvement in sprint velocity.',
-            managerRec: 'Retain with Performance Improvement Plan',
-            lastUpdated: '2026-06-05 16:20:00'
-        };
-    }
-};
-
 const COMPANY_DECORUM_GUIDELINES = [
     { key: 'attendance_time', title: 'Daily Attendance Punctuality', detail: 'Mark attendance before 09:30 AM daily to avoid late checks. 95%+ punctuality required.' },
     { key: 'dar_submissions', title: 'Daily Activity Reporting (DAR)', detail: 'Submit comprehensive task updates before 07:00 PM. Keep comments descriptive.' },
@@ -99,67 +37,192 @@ const MyPerformance = () => {
     const empId = user?.user_id ?? user?.id ?? 101;
     const empName = user?.user_name ?? 'Employee';
 
-    const [selectedCycleId, setSelectedCycleId] = useState('cycle-2');
+    const [cycles, setCycles] = useState([]);
+    const [selectedCycleId, setSelectedCycleId] = useState('');
     const [goals, setGoals] = useState([]);
     const [review, setReview] = useState(null);
     const [aiResult, setAiResult] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    // Fetch cycle list
-    const [cycles] = useState(() => {
-        const stored = localStorage.getItem('mano_performance_cycles');
-        if (stored) {
-            try {
-                return JSON.parse(stored);
-            } catch (e) {
-                console.error(e);
-            }
-        }
-        return DEFAULT_CYCLES;
-    });
+    const [commentingGoalId, setCommentingGoalId] = useState(null);
+    const [employeeCommentInput, setEmployeeCommentInput] = useState('');
 
-    // Load data based on selected cycle and employee ID
+    // 1. Fetch cycles on mount
     useEffect(() => {
-        if (empId) {
-            // 1. Load Goals
-            const goalsKey = `mano_perf_goals_${empId}_${selectedCycleId}`;
-            const storedGoals = localStorage.getItem(goalsKey);
-            if (storedGoals) {
-                try {
-                    setGoals(JSON.parse(storedGoals));
-                } catch (e) {
-                    setGoals(getFallbackGoals(empId));
+        if (!empId) return;
+        const fetchCycles = async () => {
+            try {
+                const res = await performanceGoalService.getPerformanceCycles();
+                if (res.success && res.data.length > 0) {
+                    setCycles(res.data);
+                    
+                    // Find most recent active/evaluating cycle with assigned tasks
+                    let defaultCycleId = '';
+                    for (const cycle of res.data) {
+                        if (cycle.status !== 'Active' && cycle.status !== 'Evaluating') {
+                            continue;
+                        }
+                        try {
+                            const goalsRes = await performanceGoalService.getEmployeeGoals(empId, cycle.id);
+                            if (goalsRes.success && goalsRes.data.length > 0) {
+                                defaultCycleId = cycle.id;
+                                break;
+                            }
+                        } catch (err) {
+                            console.error(`Error checking goals for cycle ${cycle.id}:`, err);
+                        }
+                    }
+                    
+                    // Fallback 1: Check if any other cycle (e.g. Closed) has assigned goals
+                    if (!defaultCycleId) {
+                        for (const cycle of res.data) {
+                            if (cycle.status === 'Upcoming') continue;
+                            try {
+                                const goalsRes = await performanceGoalService.getEmployeeGoals(empId, cycle.id);
+                                if (goalsRes.success && goalsRes.data.length > 0) {
+                                    defaultCycleId = cycle.id;
+                                    break;
+                                }
+                            } catch (err) {
+                                console.error(`Error checking goals for fallback cycle ${cycle.id}:`, err);
+                            }
+                        }
+                    }
+                    
+                    // Fallback 2: Fallback to most recent Active cycle, or Evaluating cycle, or first cycle
+                    if (!defaultCycleId) {
+                        const activeCycle = res.data.find(c => c.status === 'Active') || 
+                                            res.data.find(c => c.status === 'Evaluating') || 
+                                            res.data[0];
+                        defaultCycleId = activeCycle.id;
+                    }
+                    
+                    setSelectedCycleId(defaultCycleId);
                 }
-            } else {
-                setGoals(getFallbackGoals(empId));
+            } catch (err) {
+                console.error("Error fetching performance cycles:", err);
             }
+        };
+        fetchCycles();
+    }, [empId]);
 
-            // 2. Load Reviews
-            const reviewsKey = `mano_perf_review_${empId}_${selectedCycleId}`;
-            const storedReview = localStorage.getItem(reviewsKey);
-            if (storedReview) {
-                try {
-                    setReview(JSON.parse(storedReview));
-                } catch (e) {
-                    setReview(getFallbackReview(empId));
-                }
-            } else {
-                setReview(getFallbackReview(empId));
-            }
+    // 2. Load data based on selected cycle and employee ID from API
+    useEffect(() => {
+        if (!empId || !selectedCycleId) return;
 
-            // 3. Load AI Analyzer results
-            const aiKey = `mano_perf_ai_${empId}_${selectedCycleId}`;
-            const storedAi = localStorage.getItem(aiKey);
-            if (storedAi) {
-                try {
-                    setAiResult(JSON.parse(storedAi));
-                } catch (e) {
-                    setAiResult(null);
+        const loadCycleData = async () => {
+            setLoading(true);
+            try {
+                // Fetch Goals
+                const goalsRes = await performanceGoalService.getEmployeeGoals(empId, selectedCycleId);
+                if (goalsRes.success) {
+                    setGoals(goalsRes.data);
+                } else {
+                    setGoals([]);
                 }
-            } else {
+
+                // Fetch Review
+                const reviewRes = await performanceGoalService.getEmployeeReview(empId, selectedCycleId);
+                if (reviewRes.success && reviewRes.data) {
+                    const rev = reviewRes.data;
+                    const mappedRev = {
+                        selfAchievements: rev.self_achievements || '',
+                        selfChallenges: rev.self_challenges || '',
+                        selfLearning: rev.self_learning || '',
+                        managerComments: rev.manager_comments || '',
+                        managerRec: rev.manager_recommendation || '',
+                        lastUpdated: rev.updated_at ? new Date(rev.updated_at).toLocaleString() : ''
+                    };
+                    setReview(mappedRev);
+
+                    // Parse AI report card if present in DB
+                    if (rev.ai_analysis_report) {
+                        try {
+                            const aiReportObj = typeof rev.ai_analysis_report === 'string'
+                                ? JSON.parse(rev.ai_analysis_report)
+                                : rev.ai_analysis_report;
+                            setAiResult(aiReportObj);
+                        } catch (aiErr) {
+                            console.error("Error parsing AI analysis report from DB:", aiErr);
+                            setAiResult(null);
+                        }
+                    } else {
+                        // Fallback to localStorage if not in DB yet for legacy compatibility
+                        const storedAi = localStorage.getItem(`mano_perf_ai_${empId}_${selectedCycleId}`);
+                        if (storedAi) {
+                            try {
+                                setAiResult(JSON.parse(storedAi));
+                            } catch(e) {
+                                setAiResult(null);
+                            }
+                        } else {
+                            setAiResult(null);
+                        }
+                    }
+                } else {
+                    setReview(null);
+                    // Fallback to localStorage if review row doesn't exist yet but report is in local storage
+                    const storedAi = localStorage.getItem(`mano_perf_ai_${empId}_${selectedCycleId}`);
+                    if (storedAi) {
+                        try {
+                            setAiResult(JSON.parse(storedAi));
+                        } catch(e) {
+                            setAiResult(null);
+                        }
+                    } else {
+                        setAiResult(null);
+                    }
+                }
+            } catch (err) {
+                console.error("Error loading performance cycle data:", err);
+                setGoals([]);
+                setReview(null);
                 setAiResult(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadCycleData();
+    }, [empId, selectedCycleId]);
+
+    const handleStatusChange = async (goal, newStatus) => {
+        if (newStatus === 'Completed') {
+            setCommentingGoalId(goal.id);
+            setEmployeeCommentInput(goal.employee_comments || '');
+        } else {
+            try {
+                const res = await performanceGoalService.updateGoal(goal.id, {
+                    status: newStatus
+                });
+                if (res.success) {
+                    setGoals(goals.map(g => g.id === goal.id ? { ...g, status: newStatus } : g));
+                    toast.success(`Goal status updated to ${newStatus}`);
+                }
+            } catch (err) {
+                console.error(err);
+                toast.error("Failed to update status");
             }
         }
-    }, [empId, selectedCycleId]);
+    };
+
+    const submitCompletionWithComment = async (goalId) => {
+        try {
+            const res = await performanceGoalService.updateGoal(goalId, {
+                status: 'Completed',
+                employee_comments: employeeCommentInput
+            });
+            if (res.success) {
+                setGoals(goals.map(g => g.id === goalId ? { ...g, status: 'Completed', employee_comments: employeeCommentInput } : g));
+                setCommentingGoalId(null);
+                setEmployeeCommentInput('');
+                toast.success("Goal completed successfully with comments!");
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to complete goal with comments");
+        }
+    };
 
     // Calculate arithmetic average score
     const ratedGoals = goals.filter(g => g.rating > 0);
@@ -205,13 +268,17 @@ const MyPerformance = () => {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[10px] text-slate-500 font-bold uppercase font-sans">Appraisal Period:</span>
-                        <MinimalSelect
-                            value={selectedCycleId}
-                            onChange={setSelectedCycleId}
-                            options={cycles.map(c => ({ value: c.id, label: `${c.name} (${c.status})` }))}
-                            triggerClassName="bg-slate-50 dark:bg-github-dark-subtle/50 border-slate-200 dark:border-github-dark-border text-[11px] text-slate-700 dark:text-github-dark-text font-bold"
-                            size="sm"
-                        />
+                        {cycles.length > 0 ? (
+                            <MinimalSelect
+                                value={selectedCycleId}
+                                onChange={setSelectedCycleId}
+                                options={cycles.map(c => ({ value: c.id, label: `${c.name} (${c.status})` }))}
+                                triggerClassName="bg-slate-50 dark:bg-github-dark-subtle/50 border-slate-200 dark:border-github-dark-border text-[11px] text-slate-700 dark:text-github-dark-text font-bold"
+                                size="sm"
+                            />
+                        ) : (
+                            <span className="text-[10px] text-slate-400 italic">Loading cycles...</span>
+                        )}
                     </div>
                 </div>
 
@@ -319,13 +386,68 @@ const MyPerformance = () => {
                                                         <span>•</span>
                                                         <span className="flex items-center gap-1.5">
                                                             Status:
-                                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${getStatusBadgeClass(goal.status)}`}>
-                                                                {goal.status}
-                                                            </span>
+                                                            {cycles.find(c => c.id === selectedCycleId)?.status !== 'Closed' ? (
+                                                                <select
+                                                                    value={goal.status}
+                                                                    onChange={(e) => handleStatusChange(goal, e.target.value)}
+                                                                    className="bg-transparent border-b border-slate-200 dark:border-github-dark-border font-bold text-slate-600 dark:text-slate-350 focus:outline-none cursor-pointer"
+                                                                >
+                                                                    <option value="Pending">Pending</option>
+                                                                    <option value="In-Progress">In-Progress</option>
+                                                                    <option value="Completed">Completed</option>
+                                                                </select>
+                                                            ) : (
+                                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${getStatusBadgeClass(goal.status)}`}>
+                                                                    {goal.status}
+                                                                </span>
+                                                            )}
                                                         </span>
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            {/* Employee completion notes display */}
+                                            {goal.employee_comments && (
+                                                <div className="p-2.5 bg-indigo-50/30 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl text-[10px] space-y-1">
+                                                    <span className="text-[8px] text-indigo-500 font-bold uppercase tracking-wider block">My Completion Note</span>
+                                                    <p className="text-slate-600 dark:text-slate-350 italic font-semibold leading-relaxed">
+                                                        "{goal.employee_comments}"
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Inline commenting form */}
+                                            {commentingGoalId === goal.id && (
+                                                <div className="p-3 bg-white dark:bg-dark-card border border-indigo-200 dark:border-indigo-950/40 rounded-xl space-y-3 shadow-inner">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] uppercase font-black text-indigo-500 tracking-wider block">Add Completion Note</label>
+                                                        <textarea
+                                                            value={employeeCommentInput}
+                                                            onChange={(e) => setEmployeeCommentInput(e.target.value)}
+                                                            placeholder="Describe how you completed this KPI / task..."
+                                                            className="w-full p-2 text-xs bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-github-dark-text"
+                                                            rows={2}
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                setCommentingGoalId(null);
+                                                                setEmployeeCommentInput('');
+                                                            }}
+                                                            className="px-2.5 py-1 text-slate-450 hover:text-slate-650 text-[10px] font-bold"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            onClick={() => submitCompletionWithComment(goal.id)}
+                                                            className="px-3.5 py-1 bg-[#0969da] hover:bg-[#0969da]/90 text-white rounded-lg text-[10px] font-bold shadow-sm"
+                                                        >
+                                                            Submit
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Rating and comments output */}
                                             {goal.rating > 0 ? (
