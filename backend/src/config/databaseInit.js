@@ -200,11 +200,29 @@ export const initDatabase = async () => {
                 table.text('certifications').nullable();
                 table.text('projects').nullable();
                 table.text('achievements').nullable();
+                table.text('template_snapshot', 'longtext').nullable();
+                table.text('stage_history', 'longtext').nullable();
+                table.text('recruiter_notes', 'longtext').nullable();
+                table.text('ai_match_metrics', 'longtext').nullable();
                 table.timestamp('created_at').defaultTo(db.fn.now());
-
+ 
                 table.index(['job_id']);
             });
             console.log('✅ "recruitment_candidates" table initialized.');
+        } else {
+            const hasTemplateSnapshot = await db.schema.hasColumn('recruitment_candidates', 'template_snapshot');
+            const hasStageHistory = await db.schema.hasColumn('recruitment_candidates', 'stage_history');
+            const hasRecruiterNotes = await db.schema.hasColumn('recruitment_candidates', 'recruiter_notes');
+            const hasAiMatchMetrics = await db.schema.hasColumn('recruitment_candidates', 'ai_match_metrics');
+            if (!hasTemplateSnapshot || !hasStageHistory || !hasRecruiterNotes || !hasAiMatchMetrics) {
+                await db.schema.table('recruitment_candidates', (table) => {
+                    if (!hasTemplateSnapshot) table.text('template_snapshot', 'longtext').nullable();
+                    if (!hasStageHistory) table.text('stage_history', 'longtext').nullable();
+                    if (!hasRecruiterNotes) table.text('recruiter_notes', 'longtext').nullable();
+                    if (!hasAiMatchMetrics) table.text('ai_match_metrics', 'longtext').nullable();
+                });
+                console.log('✅ Added template_snapshot, stage_history, recruiter_notes, and ai_match_metrics to recruitment_candidates table.');
+            }
         }
 
         // 8. Add column_preferences to users table

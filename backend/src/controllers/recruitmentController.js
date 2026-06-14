@@ -61,6 +61,63 @@ const safeStringifyJSON = (data) => {
   return typeof data === 'string' ? data : JSON.stringify(data);
 };
 
+// Helper to resolve fields by semantic_type
+const resolveSemanticField = (candidate, semanticType) => {
+  const responses = safeParseJSON(candidate.form_responses, {});
+  const snapshot = safeParseJSON(candidate.template_snapshot, []);
+
+  if (Array.isArray(snapshot) && snapshot.length > 0) {
+    const field = snapshot.find(f => f.semantic_type === semanticType);
+    if (field) {
+      const val = responses[field.label] || responses[field.id];
+      if (val !== undefined && val !== null) return val;
+    }
+  }
+
+  // Fallbacks if snapshot isn't matching or available (backward compatibility)
+  if (semanticType === 'identity.name') {
+    if (responses.full_name) return responses.full_name;
+    if (responses['Full Name']) return responses['Full Name'];
+    if (responses['Name']) return responses['Name'];
+    if (responses['Applicant Name']) return responses['Applicant Name'];
+    if (responses['first_name'] || responses['last_name']) {
+      return `${responses['first_name'] || ''} ${responses['last_name'] || ''}`.trim();
+    }
+    return null;
+  }
+  if (semanticType === 'identity.email') {
+    return responses.email || responses['Email Address'] || responses['Gmail'] || responses['Email'] || responses['gmail'] || null;
+  }
+  if (semanticType === 'identity.phone') {
+    return responses.mobile || responses['Mobile Number'] || responses['Phone Number'] || responses['Contact Number'] || responses['Phone'] || null;
+  }
+  if (semanticType === 'professional.notice_period') {
+    return responses.notice_period || responses['Notice Period'] || responses['Availability'] || responses['Joining Time'] || null;
+  }
+  if (semanticType === 'professional.current_company') {
+    return responses.current_company || responses['Current Company'] || responses['Current Employer'] || responses['Company'] || null;
+  }
+  if (semanticType === 'professional.designation') {
+    return responses.designation || responses['Current Designation'] || responses['Current Role'] || responses['Role'] || null;
+  }
+  if (semanticType === 'professional.experience') {
+    return responses.total_experience || responses['Total Experience (Years)'] || responses['Experience'] || responses['Years of Experience'] || null;
+  }
+  if (semanticType === 'professional.current_ctc') {
+    return responses.current_ctc || responses['Current CTC'] || responses['Current Salary'] || responses['Salary'] || null;
+  }
+  if (semanticType === 'professional.expected_ctc') {
+    return responses.expected_ctc || responses['Expected CTC'] || responses['Expected Salary'] || null;
+  }
+  if (semanticType === 'application.cover_letter') {
+    return responses.cover_letter || responses['Cover Note'] || responses['Cover Letter'] || null;
+  }
+  if (semanticType === 'application.resume') {
+    return responses.resume_url || responses.resume_name || responses['Resume File'] || responses['Resume Upload (PDF)'] || null;
+  }
+  return null;
+};
+
 // ─── JOB OPENINGS ─────────────────────────────────────────────────────────────
 
 // Get openings scoped to organization
@@ -373,6 +430,118 @@ export const deleteTemplate = async (req, res) => {
 
 // ─── CANDIDATES & APPLICATIONS ───────────────────────────────────────────────
 
+// Lazy candidate matching analysis helper
+const ensureCandidateAIAnalysis = async (candidate, opening) => {
+  // If candidate already has a valid stored AI score (e.g. > 0), do nothing
+  if (candidate.ai_score && candidate.ai_score > 0) {
+    return candidate;
+  }
+
+  console.log(`Running lazy AI Match analysis for candidate ${candidate.id}...`);
+
+  let aiResults;
+  let tempPath = null;
+  
+  try {
+    const resp = safeParseJSON(candidate.form_responses, {});
+    const resumeName = resp.resume_name || null;
+    const resumeUrl = resp.resume_url || null;
+
+    // Check if local file exists
+    if (resumeUrl) {
+      const filename = resumeUrl.replace('/uploads/resumes/', '');
+      const localFile = path.join(__dirname, '../../uploads/resumes', filename);
+      if (fs.existsSync(localFile)) {
+        tempPath = localFile;
+      }
+    }
+
+    const scriptPath = path.join(__dirname, '../services/recruitment/generate_ai_report.py');
+    const args = [
+      scriptPath,
+      '--job-title', opening.job_title || '',
+      '--job-skills', opening.skills_required || '',
+      '--job-experience', opening.experience_required || '',
+      '--form-responses', JSON.stringify(resp)
+    ];
+    if (tempPath && fs.existsSync(tempPath)) {
+      args.push('--resume-path', tempPath);
+    }
+
+    const pythonProcess = spawnSync(getPythonExecutable(), args, {
+      encoding: 'utf-8',
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    });
+
+    if (pythonProcess.status === 0 && pythonProcess.stdout) {
+      const output = JSON.parse(pythonProcess.stdout.trim());
+      if (output.error) {
+        throw new Error(output.error);
+      }
+      aiResults = {
+        ai_score: output.ai_score,
+        skill_match_score: output.skill_match_score,
+        experience_match_score: output.experience_match_score,
+        education_match_score: output.education_match_score,
+        culture_fit_score: output.culture_fit_score,
+        ai_strengths: output.ai_strengths,
+        ai_weaknesses: output.ai_weaknesses,
+        ai_recommendation: output.ai_recommendation,
+        extracted_skills: output.extracted_skills,
+        total_experience: output.total_experience,
+        relevant_experience: output.relevant_experience,
+        education: output.education,
+        certifications: output.certifications || '',
+        projects: output.projects || '',
+        achievements: output.achievements || ''
+      };
+    } else {
+      const errorMsg = pythonProcess.stderr ? pythonProcess.stderr.trim() : 'Python process exited with non-zero status code.';
+      throw new Error(errorMsg);
+    }
+  } catch (err) {
+    console.warn(`Lazy AI analysis failed for candidate ${candidate.id}:`, err.message);
+    const resp = safeParseJSON(candidate.form_responses, {});
+    const fullName = resolveSemanticField(candidate, 'identity.name') || 'Candidate';
+    const email = resolveSemanticField(candidate, 'identity.email') || 'N/A';
+    const resumeName = resp.resume_name || null;
+    aiResults = calculateCandidateScores(fullName, email, resp, resumeName);
+  }
+
+  // Update candidate record in DB
+  const metrics = {
+    skill_match_score: aiResults.skill_match_score,
+    experience_match_score: aiResults.experience_match_score,
+    education_match_score: aiResults.education_match_score,
+    culture_fit_score: aiResults.culture_fit_score
+  };
+
+  const dbUpdates = {
+    ai_score: aiResults.ai_score,
+    ai_strengths: safeStringifyJSON(aiResults.ai_strengths),
+    ai_weaknesses: safeStringifyJSON(aiResults.ai_weaknesses),
+    ai_recommendation: aiResults.ai_recommendation,
+    extracted_skills: safeStringifyJSON(aiResults.extracted_skills),
+    total_experience: aiResults.total_experience,
+    relevant_experience: aiResults.relevant_experience,
+    education: aiResults.education,
+    certifications: aiResults.certifications,
+    projects: aiResults.projects,
+    achievements: aiResults.achievements,
+    ai_match_metrics: safeStringifyJSON(metrics)
+  };
+
+  await attendanceDB('recruitment_candidates')
+    .where({ id: candidate.id })
+    .update(dbUpdates);
+
+  // Return updated candidate fields merged in memory
+  return {
+    ...candidate,
+    ...dbUpdates
+  };
+};
+
 // Get candidates applying to active jobs of an organization
 export const getCandidatesForJob = async (req, res) => {
   try {
@@ -380,29 +549,60 @@ export const getCandidatesForJob = async (req, res) => {
     const candidates = await attendanceDB('recruitment_candidates')
       .join('recruitment_openings', 'recruitment_candidates.job_id', '=', 'recruitment_openings.id')
       .where('recruitment_openings.org_id', orgId)
-      .select('recruitment_candidates.*', 'recruitment_openings.job_title', 'recruitment_openings.department')
+      .select(
+        'recruitment_candidates.*',
+        'recruitment_openings.job_title',
+        'recruitment_openings.department',
+        'recruitment_openings.skills_required',
+        'recruitment_openings.experience_required'
+      )
       .orderBy('recruitment_candidates.created_at', 'desc');
 
-    const formatted = candidates.map(c => {
-      const resp = safeParseJSON(c.form_responses, {});
-      return {
-        ...c,
+    const formatted = [];
+    for (const c of candidates) {
+      const opening = {
+        job_title: c.job_title,
+        skills_required: c.skills_required,
+        experience_required: c.experience_required
+      };
+
+      // Perform check: if missing AI analysis, trigger lazy matching
+      let processed = c;
+      if (!c.ai_score || c.ai_score === 0) {
+        processed = await ensureCandidateAIAnalysis(c, opening);
+      }
+
+      const resp = safeParseJSON(processed.form_responses, {});
+      const metrics = safeParseJSON(processed.ai_match_metrics, {});
+
+      formatted.push({
+        ...processed,
         form_responses: resp,
-        ai_strengths: safeParseJSON(c.ai_strengths, []),
-        ai_weaknesses: safeParseJSON(c.ai_weaknesses, []),
-        extracted_skills: safeParseJSON(c.extracted_skills, []),
+        ai_strengths: safeParseJSON(processed.ai_strengths, []),
+        ai_weaknesses: safeParseJSON(processed.ai_weaknesses, []),
+        extracted_skills: safeParseJSON(processed.extracted_skills, []),
+        template_snapshot: safeParseJSON(processed.template_snapshot, []),
+        stage_history: safeParseJSON(processed.stage_history, []),
+        recruiter_notes: safeParseJSON(processed.recruiter_notes, []),
+        
+        // Map match percentages back to candidate properties for frontend backwards-compatibility
+        skill_match_score: metrics.skill_match_score || processed.skill_match_score || 0,
+        experience_match_score: metrics.experience_match_score || processed.experience_match_score || 0,
+        education_match_score: metrics.education_match_score || processed.education_match_score || 0,
+        culture_fit_score: metrics.culture_fit_score || processed.culture_fit_score || 0,
+
         // Map fields dynamically from the response JSON for presentation compatibility
-        full_name: resp.full_name || resp['Full Name'] || 'Candidate ' + c.id,
-        email: resp.email || resp['Email Address'] || 'N/A',
-        mobile: resp.mobile || resp['Mobile Number'] || 'N/A',
+        full_name: resolveSemanticField(processed, 'identity.name') || 'Candidate ' + processed.id,
+        email: resolveSemanticField(processed, 'identity.email') || 'N/A',
+        mobile: resolveSemanticField(processed, 'identity.phone') || 'N/A',
         resume_name: resp.resume_name || resp['Resume File'] || 'resume.pdf',
         resume_path: resp.resume_url ? resp.resume_url.replace('/uploads/resumes/', '') : null,
-        notice_period: resp.notice_period || resp['Notice Period'] || 'N/A',
-        current_ctc: resp.current_ctc || resp['Current CTC'] || 'N/A',
-        current_company: resp.current_company || resp['Current Company'] || 'N/A',
-        cover_letter: resp.cover_letter || resp['Cover Note'] || resp['Cover Letter'] || ''
-      };
-    });
+        notice_period: resolveSemanticField(processed, 'professional.notice_period') || 'N/A',
+        current_ctc: resolveSemanticField(processed, 'professional.current_ctc') || 'N/A',
+        current_company: resolveSemanticField(processed, 'professional.current_company') || 'N/A',
+        cover_letter: resolveSemanticField(processed, 'application.cover_letter') || ''
+      });
+    }
 
     res.json(formatted);
   } catch (error) {
@@ -423,15 +623,26 @@ export const updateCandidateStage = async (req, res) => {
       .join('recruitment_openings', 'recruitment_candidates.job_id', '=', 'recruitment_openings.id')
       .where('recruitment_candidates.id', id)
       .andWhere('recruitment_openings.org_id', orgId)
+      .select('recruitment_candidates.*')
       .first();
 
     if (!candidate) {
       return res.status(404).json({ error: 'Candidate profile not found.' });
     }
 
+    const currentHistory = safeParseJSON(candidate.stage_history, []);
+    const changer = req.user.full_name || req.user.email || 'Recruiter';
+    const updatedHistory = [
+      ...currentHistory,
+      { stage, changed_at: new Date().toISOString(), changed_by: changer }
+    ];
+
     await attendanceDB('recruitment_candidates')
       .where({ id })
-      .update({ stage });
+      .update({ 
+        stage,
+        stage_history: safeStringifyJSON(updatedHistory)
+      });
 
     res.json({ message: `Candidate moved to stage: ${stage}` });
   } catch (error) {
@@ -571,17 +782,23 @@ export const applyForJob = async (req, res) => {
 
     const firstStageName = pipelineStages.length > 0 ? pipelineStages[0].name : 'Applied';
 
+    const metrics = {
+      skill_match_score: aiResults.skill_match_score,
+      experience_match_score: aiResults.experience_match_score,
+      education_match_score: aiResults.education_match_score,
+      culture_fit_score: aiResults.culture_fit_score
+    };
+
     const [candId] = await attendanceDB('recruitment_candidates').insert({
       job_id: jobId,
       template_id: template_id || opening.template_id || null,
       template_source: template_source || opening.template_source || 'scratch',
       stage: firstStageName,
       form_responses: safeStringifyJSON(fullFormResponses),
+      template_snapshot: opening.form_config || null,
+      stage_history: safeStringifyJSON([{ stage: firstStageName, changed_at: new Date().toISOString(), changed_by: 'system' }]),
+      recruiter_notes: safeStringifyJSON([]),
       ai_score: aiResults.ai_score,
-      skill_match_score: aiResults.skill_match_score,
-      experience_match_score: aiResults.experience_match_score,
-      education_match_score: aiResults.education_match_score,
-      culture_fit_score: aiResults.culture_fit_score,
       ai_strengths: safeStringifyJSON(aiResults.ai_strengths),
       ai_weaknesses: safeStringifyJSON(aiResults.ai_weaknesses),
       ai_recommendation: aiResults.ai_recommendation,
@@ -591,7 +808,8 @@ export const applyForJob = async (req, res) => {
       education: aiResults.education,
       certifications: aiResults.certifications,
       projects: aiResults.projects,
-      achievements: aiResults.achievements
+      achievements: aiResults.achievements,
+      ai_match_metrics: safeStringifyJSON(metrics)
     });
 
     res.status(201).json({ message: 'Application submitted successfully!', id: candId });
@@ -878,5 +1096,83 @@ export const generateAIJobDescription = async (req, res) => {
   } catch (error) {
     console.error('Error generating AI job description:', error);
     res.status(500).json({ error: error.message || 'Failed to generate AI job description.' });
+  }
+};
+
+// Add internal note to a candidate
+export const addCandidateNote = async (req, res) => {
+  try {
+    const orgId = req.user.org_id;
+    const { id } = req.params;
+    const { text } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Note text cannot be empty.' });
+    }
+
+    const candidate = await attendanceDB('recruitment_candidates')
+      .join('recruitment_openings', 'recruitment_candidates.job_id', '=', 'recruitment_openings.id')
+      .where('recruitment_candidates.id', id)
+      .andWhere('recruitment_openings.org_id', orgId)
+      .select('recruitment_candidates.*')
+      .first();
+
+    if (!candidate) {
+      return res.status(404).json({ error: 'Candidate profile not found.' });
+    }
+
+    const currentNotes = safeParseJSON(candidate.recruiter_notes, []);
+    const newNote = {
+      id: 'note_' + Date.now(),
+      text: text.trim(),
+      created_at: new Date().toISOString(),
+      created_by: req.user.full_name || req.user.email || 'Recruiter'
+    };
+
+    const updatedNotes = [newNote, ...currentNotes]; // Show newest first
+
+    await attendanceDB('recruitment_candidates')
+      .where({ id })
+      .update({
+        recruiter_notes: safeStringifyJSON(updatedNotes)
+      });
+
+    res.status(201).json({ message: 'Note added successfully!', note: newNote });
+  } catch (error) {
+    console.error('Error adding candidate note:', error);
+    res.status(500).json({ error: 'Failed to add recruiter note.' });
+  }
+};
+
+// Delete internal note from a candidate
+export const deleteCandidateNote = async (req, res) => {
+  try {
+    const orgId = req.user.org_id;
+    const { id, noteId } = req.params;
+
+    const candidate = await attendanceDB('recruitment_candidates')
+      .join('recruitment_openings', 'recruitment_candidates.job_id', '=', 'recruitment_openings.id')
+      .where('recruitment_candidates.id', id)
+      .andWhere('recruitment_openings.org_id', orgId)
+      .select('recruitment_candidates.*')
+      .first();
+
+    if (!candidate) {
+      return res.status(404).json({ error: 'Candidate profile not found.' });
+    }
+
+    const currentNotes = safeParseJSON(candidate.recruiter_notes, []);
+    const updatedNotes = currentNotes.filter(n => n.id !== noteId);
+
+    await attendanceDB('recruitment_candidates')
+      .where({ id })
+      .update({
+        recruiter_notes: safeStringifyJSON(updatedNotes)
+      });
+
+    res.json({ message: 'Note deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting candidate note:', error);
+    res.status(500).json({ error: 'Failed to delete recruiter note.' });
   }
 };

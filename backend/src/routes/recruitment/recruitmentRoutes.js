@@ -22,7 +22,9 @@ import {
   applyForJob,
   updateCandidateStage,
   deleteCandidate,
-  generateAIJobDescription
+  generateAIJobDescription,
+  addCandidateNote,
+  deleteCandidateNote
 } from '../../controllers/recruitmentController.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -93,5 +95,7 @@ router.delete('/templates/:id', deleteTemplate);
 router.get('/candidates', getCandidatesForJob);
 router.put('/candidates/:id/stage', updateCandidateStage);
 router.delete('/candidates/:id', deleteCandidate);
+router.post('/candidates/:id/notes', addCandidateNote);
+router.delete('/candidates/:id/notes/:noteId', deleteCandidateNote);
 
 export default router;
