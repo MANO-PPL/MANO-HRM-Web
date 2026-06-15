@@ -393,11 +393,14 @@ export const styleExcelWorksheet = (worksheet, type) => {
 
 
 export const previewReport = catchAsync(async (req, res) => {
-    if (req.user.user_type !== "admin" && req.user.user_type !== "hr") {
+    const isUserReport = req.originalUrl.includes("/attendance/");
+    const targetUserId = isUserReport ? (req.user.user_id || req.user.id) : req.query.user_id;
+
+    if (!isUserReport && req.user.user_type !== "admin" && req.user.user_type !== "hr") {
         return res.status(403).json({ ok: false, message: "Access denied" });
     }
 
-    const { month, date, type, startDate, endDate, user_id, columns } = req.query;
+    const { month, date, type, startDate, endDate, columns } = req.query;
     const org_id = req.user.org_id;
 
     if (!type) {
@@ -415,7 +418,7 @@ export const previewReport = catchAsync(async (req, res) => {
     }
 
     const { startDate: resolvedStart, endDate: resolvedEnd } = reportsService.resolveDateRange({ type, month, date, startDate, endDate });
-    const data = await reportsService.getPreviewData({ type, org_id, month, startDate: resolvedStart, endDate: resolvedEnd, targetUserId: user_id, columns });
+    const data = await reportsService.getPreviewData({ type, org_id, month, startDate: resolvedStart, endDate: resolvedEnd, targetUserId, columns });
 
     res.json({ ok: true, data });
 });
@@ -427,7 +430,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
     const users = await reportsService.getUsers({ org_id, targetUserId });
     let records = [];
     if (type !== "employee_master") {
-        records = await reportsService.getAttendanceRecords({ org_id, startDate, endDate });
+        records = await reportsService.getAttendanceRecords({ org_id, startDate, endDate, targetUserId });
     }
 
     if (format === "pdf") {
@@ -435,7 +438,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         let pdfCols, pdfRows;
 
         if (type === "attendance_detailed") {
-            const detailedRecords = await reportsService.getDetailedRecords({ org_id, startDate, endDate });
+            const detailedRecords = await reportsService.getDetailedRecords({ org_id, startDate, endDate, targetUserId });
             pdfCols = ["Date", "Name", "Dept", "Shift"];
             const pdfColIndices = [];
 
@@ -1468,7 +1471,7 @@ export const downloadReport = catchAsync(async (req, res) => {
     } catch (e) {}
     const org_id = req.user.org_id;
     const isUserReport = req.originalUrl.includes("/attendance/");
-    const targetUserId = isUserReport ? req.user.user_id : req.query.user_id;
+    const targetUserId = isUserReport ? (req.user.user_id || req.user.id) : req.query.user_id;
 
     if (!isUserReport && req.user.user_type !== "admin" && req.user.user_type !== "hr") {
         return res.status(403).json({ ok: false, message: "Access denied" });
@@ -1493,7 +1496,7 @@ export const downloadReport = catchAsync(async (req, res) => {
     // 1. Write status entry to generated_reports table
     await attendanceDB('generated_reports').insert({
         report_id: reportId,
-        user_id: req.user.user_id,
+        user_id: req.user.user_id || req.user.id,
         org_id,
         report_type: type,
         format,
@@ -1506,7 +1509,7 @@ export const downloadReport = catchAsync(async (req, res) => {
     await reportQueue.add('generate-report', {
         reportId,
         org_id,
-        user_id: req.user.user_id,
+        user_id: req.user.user_id || req.user.id,
         targetUserId,
         month,
         date,
@@ -1540,7 +1543,7 @@ export const getReportStatus = catchAsync(async (req, res) => {
         return res.status(404).json({ ok: false, message: "Report not found" });
     }
 
-    if (req.user.user_type !== "admin" && req.user.user_type !== "hr" && report.user_id !== req.user.user_id) {
+    if (req.user.user_type !== "admin" && req.user.user_type !== "hr" && report.user_id !== (req.user.user_id || req.user.id)) {
         return res.status(403).json({ ok: false, message: "Access denied" });
     }
 

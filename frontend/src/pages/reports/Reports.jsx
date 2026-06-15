@@ -693,7 +693,7 @@ const Reports = () => {
                             {/* File Format Tabs Selector */}
                             <div className="flex items-center gap-2">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Format:</span>
-                                <div className="flex p-0.5 bg-slate-100 dark:bg-[#161b22] rounded-lg border border-slate-200 dark:border-[#30363d]">
+                                <div className="h-8 flex items-center p-1 bg-slate-100 dark:bg-[#161b22] rounded-md border border-slate-200 dark:border-[#30363d]">
                                     {[
                                         { id: 'xlsx', label: 'Excel' },
                                         { id: 'csv', label: 'CSV' },
@@ -705,7 +705,7 @@ const Reports = () => {
                                                 key={format.id}
                                                 type="button"
                                                 onClick={() => setFileFormat(format.id)}
-                                                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all cursor-pointer ${
+                                                className={`h-full px-3 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${
                                                     isSelected 
                                                         ? 'bg-indigo-600 text-white shadow-sm' 
                                                         : 'text-slate-500 hover:text-slate-700 dark:text-github-dark-muted dark:hover:text-github-dark-text'
@@ -722,7 +722,7 @@ const Reports = () => {
                             <button
                                 onClick={handleGenerate}
                                 disabled={isGenerating}
-                                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 h-8 text-[10px] cursor-pointer"
+                                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-md shadow-md transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 h-8 text-[10px] cursor-pointer"
                             >
                                 {isGenerating ? (
                                     <>

@@ -310,5 +310,24 @@ export const attendanceService = {
             console.error("Failed to fetch admin daily summary", error);
             throw new Error(error.response?.data?.message || "Failed to fetch live daily summary");
         }
+    },
+    // Get self-service report preview
+    async getMyReportPreview(month, type, date = "", startDate = "", endDate = "", columns = "") {
+        try {
+            const res = await api.get(`${API_BASE_URL}/reports/preview?month=${month}&type=${type}&date=${date}${startDate ? `&startDate=${startDate}` : ""}${endDate ? `&endDate=${endDate}` : ""}${columns ? `&columns=${encodeURIComponent(columns)}` : ""}&_t=${Date.now()}`);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || "Failed to fetch report preview");
+        }
+    },
+    // Queue self-service report download
+    async queueMyReport(month, type, format = "xlsx", date = "", startDate = "", endDate = "", columns = "") {
+        try {
+            const url = `${API_BASE_URL}/reports/download?month=${month}&type=${type}&format=${format}${date ? `&date=${date}` : ""}${startDate ? `&startDate=${startDate}` : ""}${endDate ? `&endDate=${endDate}` : ""}${columns ? `&columns=${encodeURIComponent(columns)}` : ""}&_t=${Date.now()}`;
+            const res = await api.get(url);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || "Failed to queue report");
+        }
     }
 };

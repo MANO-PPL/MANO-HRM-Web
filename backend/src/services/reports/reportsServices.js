@@ -236,28 +236,40 @@ export async function getUsers({ org_id, targetUserId }) {
         .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
         .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type", "s.policy_rules")
         .where("u.org_id", org_id)
-        .whereNotIn("u.user_type", ["admin", "super_admin"])
-        .modify(qb => { if (targetUserId) qb.where("u.user_id", targetUserId); })
+        .modify(qb => {
+            if (targetUserId) {
+                qb.where("u.user_id", targetUserId);
+            } else {
+                qb.whereNotIn("u.user_type", ["admin", "super_admin"]);
+            }
+        })
         .orderBy("u.user_name", "asc");
 }
 
-export async function getAttendanceRecords({ org_id, startDate, endDate }) {
+export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId }) {
     return attendanceDB("attendance_records")
         .where("org_id", org_id)
         .whereRaw("DATE(time_in) >= ?", [startDate])
-        .whereRaw("DATE(time_in) <= ?", [endDate]);
+        .whereRaw("DATE(time_in) <= ?", [endDate])
+        .modify(qb => { if (targetUserId) qb.where("user_id", targetUserId); });
 }
 
-export async function getDetailedRecords({ org_id, startDate, endDate }) {
+export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId }) {
     return attendanceDB("attendance_records as ar")
         .join("users as u", "ar.user_id", "u.user_id")
         .leftJoin("departments as d", "u.dept_id", "d.dept_id")
         .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
         .select("ar.time_in", "u.user_id", "u.user_name", "d.dept_name", "s.shift_name", "ar.time_out", "ar.status", "ar.time_in_address", "ar.time_out_address", "ar.late_minutes", "ar.overtime_hours")
         .where("ar.org_id", org_id)
-        .whereNotIn("u.user_type", ["admin", "super_admin"])
         .whereRaw("DATE(ar.time_in) >= ?", [startDate])
         .whereRaw("DATE(ar.time_in) <= ?", [endDate])
+        .modify(qb => {
+            if (targetUserId) {
+                qb.where("ar.user_id", targetUserId);
+            } else {
+                qb.whereNotIn("u.user_type", ["admin", "super_admin"]);
+            }
+        })
         .orderBy("ar.time_in", "asc");
 }
 
@@ -274,11 +286,16 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
             .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "s.policy_rules")
             .where("u.org_id", org_id)
-            .whereNotIn("u.user_type", ["admin", "super_admin"])
-            .modify(qb => { if (targetUserId) qb.where("u.user_id", targetUserId); })
+            .modify(qb => {
+                if (targetUserId) {
+                    qb.where("u.user_id", targetUserId);
+                } else {
+                    qb.whereNotIn("u.user_type", ["admin", "super_admin"]);
+                }
+            })
             .orderBy("u.user_name", "asc");
 
-        const records = await getAttendanceRecords({ org_id, startDate, endDate });
+        const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId });
 
         if (type === "matrix_daily") {
             const cols = [];
@@ -668,7 +685,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             });
         }
     } else if (type === "attendance_detailed") {
-        const records = await getDetailedRecords({ org_id, startDate, endDate });
+        const records = await getDetailedRecords({ org_id, startDate, endDate, targetUserId });
         const cols = ["Date", "Name", "Dept", "Shift"];
         const colIndices = [];
 
@@ -720,9 +737,15 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
             .select("u.user_id", "u.user_name", "d.dept_name", "s.policy_rules")
             .where("u.org_id", org_id)
-            .whereNotIn("u.user_type", ["admin", "super_admin"]);
+            .modify(qb => {
+                if (targetUserId) {
+                    qb.where("u.user_id", targetUserId);
+                } else {
+                    qb.whereNotIn("u.user_type", ["admin", "super_admin"]);
+                }
+            });
 
-        const records = await getAttendanceRecords({ org_id, startDate, endDate });
+        const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId });
 
         const cols = ["Name", "Dept", "Total Days"];
         const colIndices = [];
