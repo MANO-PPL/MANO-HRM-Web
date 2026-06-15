@@ -6,7 +6,7 @@ import app from './src/app.js';
 import { initAttendanceProcessor } from './src/cron/AttendanceProcessor.js';
 import { initCleanupScheduler } from './src/cron/cleanupScheduler.js';
 import { initDARReportScheduler } from './src/cron/DARReportScheduler.js';
-import { initDatabase } from './src/config/databaseInit.js';
+
 import { sendPushNotification } from './src/services/notifications/fcmService.js';
 import EventBus from './src/utils/EventBus.js';
 import './src/workers/reportWorker.js';
@@ -109,24 +109,19 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join_room', (roomId) => {
-    // Join legacy room name and the new strictly namespaced format for transition safety
-    socket.join(`room_${roomId}`);
     socket.join(`org_${orgId}:conversation_${roomId}`);
   });
 
   socket.on('leave_room', (roomId) => {
-    socket.leave(`room_${roomId}`);
     socket.leave(`org_${orgId}:conversation_${roomId}`);
   });
 
   socket.on('typing', ({ roomId, username }) => {
     socket.to(`org_${orgId}:conversation_${roomId}`).emit('user_typing', { roomId, userId, username });
-    socket.to(`room_${roomId}`).emit('user_typing', { roomId, userId, username });
   });
 
   socket.on('stop_typing', ({ roomId }) => {
     socket.to(`org_${orgId}:conversation_${roomId}`).emit('user_stop_typing', { roomId, userId });
-    socket.to(`room_${roomId}`).emit('user_stop_typing', { roomId, userId });
   });
 
   socket.on('subscribe_pm2_logs', () => {
@@ -224,8 +219,7 @@ function startLogTailing(ioInstance) {
 server.listen(activePort, '0.0.0.0', () => {
   console.log(`Backend server listening at http://0.0.0.0:${activePort}`);
 
-  // Auto-initialize database tables if needed
-  initDatabase();
+
 
   if (!hasStartedSchedulers) {
     hasStartedSchedulers = true;

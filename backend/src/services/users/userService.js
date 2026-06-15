@@ -236,83 +236,95 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
     if (nameChanged && oldName) {
         try {
             const newName = updates.user_name.trim();
-            // Find all chat rooms for this org
-            const rooms = await attendanceDB('chat_rooms').where({ org_id: authInfo.orgId });
             const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const oldMentionRegex = new RegExp('@' + escapeRegExp(oldName) + '(?![a-zA-Z0-9_])', 'gi');
 
-            for (const room of rooms) {
-                let msgs = [];
+            // Find all messages in the organization
+            const dbMessages = await attendanceDB('messages').where({ org_id: authInfo.orgId });
+
+            for (const msg of dbMessages) {
+                let msgText = null;
                 try {
-                    const decrypted = decryptText(room.messages);
-                    msgs = typeof decrypted === 'string' ? JSON.parse(decrypted || '[]') : (decrypted || []);
+                    msgText = decryptText(msg.content);
                 } catch (e) {
                     continue;
                 }
 
-                if (!Array.isArray(msgs)) continue;
+                if (msgText && typeof msgText === 'string') {
+                    let isUpdated = false;
+                    let newMetadata = null;
 
-                let isUpdated = false;
-                for (const msg of msgs) {
-                    if (msg.message_text && typeof msg.message_text === 'string') {
-                        // 1. Standard mention replace
-                        if (oldMentionRegex.test(msg.message_text)) {
-                            msg.message_text = msg.message_text.replace(oldMentionRegex, `@${newName}`);
-                            isUpdated = true;
-                        }
-
-                        // 2. System card payload replacement
-                        if (msg.message_text.startsWith('[SYSTEM_CARD:')) {
-                            const systemCardRegex = /^\[SYSTEM_CARD:([^:]+):([^:]+):([^\]]+)\]\s*(.*)$/;
-                            const match = msg.message_text.match(systemCardRegex);
-                            if (match) {
-                                const [_, cardType, entityId, status, payloadStr] = match;
-                                try {
-                                    const payload = JSON.parse(payloadStr);
-                                    let payloadUpdated = false;
-                                    if (payload.employee_name && payload.employee_name === oldName) {
-                                        payload.employee_name = newName;
-                                        payloadUpdated = true;
-                                    }
-                                    if (payload.reviewer_name && payload.reviewer_name === oldName) {
-                                        payload.reviewer_name = newName;
-                                        payloadUpdated = true;
-                                    }
-                                    if (payloadUpdated) {
-                                        msg.message_text = `[SYSTEM_CARD:${cardType}:${entityId}:${status}] ${JSON.stringify(payload)}`;
-                                        isUpdated = true;
-                                    }
-                                } catch (e) {
-                                    // ignore
-                                }
-                            }
-                        }
+                    // 1. Standard mention replace
+                    if (oldMentionRegex.test(msgText)) {
+                        msgText = msgText.replace(oldMentionRegex, `@${newName}`);
+                        isUpdated = true;
                     }
-                }
 
-                if (isUpdated) {
-                    await attendanceDB('chat_rooms')
-                        .where({ room_id: room.room_id })
-                        .update({
-                            messages: encryptText(JSON.stringify(msgs)),
-                            updated_at: attendanceDB.fn.now()
-                        });
-
-                    if (io) {
-                        try {
-                            let memberIds = [];
+                    // 2. System card payload replacement
+                    if (msgText.startsWith('[SYSTEM_CARD:')) {
+                        const systemCardRegex = /^\[SYSTEM_CARD:([^:]+):([^:]+):([^\]]+)\]\s*(.*)$/;
+                        const match = msgText.match(systemCardRegex);
+                        if (match) {
+                            const [_, cardType, entityId, status, payloadStr] = match;
                             try {
-                                memberIds = typeof room.member_ids === 'string' ? JSON.parse(room.member_ids) : room.member_ids;
+                                const payload = JSON.parse(payloadStr);
+                                let payloadUpdated = false;
+                                if (payload.employee_name && payload.employee_name === oldName) {
+                                    payload.employee_name = newName;
+                                    payloadUpdated = true;
+                                }
+                                if (payload.reviewer_name && payload.reviewer_name === oldName) {
+                                    payload.reviewer_name = newName;
+                                    payloadUpdated = true;
+                                }
+                                if (payloadUpdated) {
+                                    msgText = `[SYSTEM_CARD:${cardType}:${entityId}:${status}] ${JSON.stringify(payload)}`;
+                                    newMetadata = {
+                                        card_type: cardType,
+                                        entity_id: entityId,
+                                        status,
+                                        ...payload
+                                    };
+                                    isUpdated = true;
+                                }
                             } catch (e) {
                                 // ignore
                             }
-                            if (Array.isArray(memberIds)) {
-                                for (const memberId of memberIds) {
-                                    io.to(`user_${memberId}`).emit('room_updated', { room_id: room.room_id });
-                                }
+                        }
+                    }
+
+                    if (isUpdated) {
+                        const updatePayload = {
+                            content: encryptText(msgText),
+                            updated_at: attendanceDB.fn.now()
+                        };
+                        if (newMetadata) {
+                            updatePayload.metadata_json = JSON.stringify(newMetadata);
+                        }
+
+                        await attendanceDB('messages')
+                            .where({ org_id: authInfo.orgId, id: msg.id })
+                            .update(updatePayload);
+
+                        if (io) {
+                            try {
+                                const sender = await attendanceDB('users').where({ user_id: msg.sender_id }).select('user_name', 'profile_image_url').first();
+                                const formattedResponseMsg = {
+                                    message_id: msg.id,
+                                    room_id: Number(msg.conversation_id),
+                                    sender_id: Number(msg.sender_id),
+                                    message_text: msgText,
+                                    created_at: msg.created_at,
+                                    user_name: msg.sender_id === 0 ? 'System' : (sender?.user_name || 'Unknown Colleague'),
+                                    profile_image_url: msg.sender_id === 0 ? null : (sender?.profile_image_url || null)
+                                };
+
+                                // Broadcast to namespaced conversation channel
+                                io.to(`org_${authInfo.orgId}:conversation_${msg.conversation_id}`).emit('message_received', formattedResponseMsg);
+                                io.to(`org_${authInfo.orgId}:conversation_${msg.conversation_id}`).emit('room_updated', { room_id: msg.conversation_id });
+                            } catch (emitErr) {
+                                console.error('Error emitting socket update for name change sync:', emitErr);
                             }
-                        } catch (emitErr) {
-                            console.error('Error emitting room_updated for name change sync:', emitErr);
                         }
                     }
                 }
@@ -438,40 +450,30 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('events_meetings').where('user_id', userId).del();
         await trx('security_alerts').where('user_id', userId).del();
 
-        // Clean up chat room memberships and DM rooms
-        const userRooms = await trx('chat_rooms').where('org_id', user.org_id);
-        for (const room of userRooms) {
-            let memberIds = [];
-            try {
-                memberIds = typeof room.member_ids === 'string' ? JSON.parse(room.member_ids) : room.member_ids;
-            } catch (e) {
-                memberIds = [];
-            }
+        // Clean up relational chat room memberships and DM rooms
+        const memberships = await trx('conversation_members')
+            .where({ org_id: user.org_id, user_id: userId });
 
-            if (Array.isArray(memberIds) && memberIds.map(Number).includes(Number(userId))) {
-                if (room.room_type === 'direct') {
+        for (const membership of memberships) {
+            const conversation = await trx('conversations')
+                .where({ org_id: user.org_id, id: membership.conversation_id })
+                .first();
+
+            if (conversation) {
+                if (conversation.type === 'dm') {
                     // Delete direct DM room completely since one of the two members is gone
-                    await trx('chat_rooms').where({ room_id: room.room_id }).del();
+                    await trx('conversations').where({ org_id: user.org_id, id: conversation.id }).del();
                 } else {
-                    // Group room: remove the member and their read timestamps
-                    const updatedMemberIds = memberIds.filter(id => Number(id) !== Number(userId));
-                    if (updatedMemberIds.length === 0) {
-                        await trx('chat_rooms').where({ room_id: room.room_id }).del();
-                    } else {
-                        let readTimes = {};
-                        try {
-                            readTimes = typeof room.last_read_times === 'string' ? JSON.parse(room.last_read_times || '{}') : (room.last_read_times || {});
-                        } catch (e) {
-                            readTimes = {};
-                        }
-                        delete readTimes[userId];
+                    // Group/dept room: delete this user's membership
+                    await trx('conversation_members')
+                        .where({ org_id: user.org_id, conversation_id: conversation.id, user_id: userId })
+                        .del();
 
-                        await trx('chat_rooms')
-                            .where({ room_id: room.room_id })
-                            .update({
-                                member_ids: JSON.stringify(updatedMemberIds),
-                                last_read_times: JSON.stringify(readTimes)
-                            });
+                    // Check if group is now empty, if so, delete it
+                    const remainingMembers = await trx('conversation_members')
+                        .where({ org_id: user.org_id, conversation_id: conversation.id });
+                    if (remainingMembers.length === 0) {
+                        await trx('conversations').where({ org_id: user.org_id, id: conversation.id }).del();
                     }
                 }
             }

@@ -3,6 +3,63 @@ import { createNotification } from '../notifications/notificationService.js';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import EventBus from '../../utils/EventBus.js';
 
+/**
+ * Helper to get or create a direct chat room between two users (relational)
+ */
+async function getOrCreateDM(orgId, userA, userB) {
+    const finalOrgId = orgId || 1;
+
+    // Find if a DM conversation exists
+    const userAConversations = await attendanceDB('conversation_members')
+        .where({ org_id: finalOrgId, user_id: userA })
+        .select('conversation_id');
+
+    const userAConvIds = userAConversations.map(c => c.conversation_id);
+
+    if (userAConvIds.length > 0) {
+        const existingDM = await attendanceDB('conversations')
+            .join('conversation_members', 'conversations.id', 'conversation_members.conversation_id')
+            .where({
+                'conversations.org_id': finalOrgId,
+                'conversations.type': 'dm',
+                'conversation_members.user_id': userB
+            })
+            .whereIn('conversations.id', userAConvIds)
+            .select('conversations.id')
+            .first();
+
+        if (existingDM) {
+            return existingDM.id;
+        }
+    }
+
+    // Create a new direct chat room between the two users
+    let newRoomId = null;
+
+    await attendanceDB.transaction(async (trx) => {
+        const [insertedId] = await trx('conversations').insert({
+            org_id: finalOrgId,
+            type: 'dm',
+            name: null,
+            created_by: userA,
+            created_at: trx.fn.now(),
+            updated_at: trx.fn.now()
+        });
+
+        newRoomId = insertedId;
+
+        // Add both users as members
+        const memberRows = [
+            { org_id: finalOrgId, conversation_id: insertedId, user_id: Number(userA), role: 'owner', joined_at: trx.fn.now() },
+            { org_id: finalOrgId, conversation_id: insertedId, user_id: Number(userB), role: 'member', joined_at: trx.fn.now() }
+        ];
+
+        await trx('conversation_members').insert(memberRows);
+    });
+
+    return newRoomId;
+}
+
 
 /**
  * Parses and processes `@mentions` within chat texts or DAR descriptions.
@@ -21,15 +78,10 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
 
         let allowedMemberIds = null;
         if (context_type === 'chat_message' && room_id) {
-            const room = await attendanceDB('chat_rooms')
-                .where({ room_id })
-                .first();
-            if (room) {
-                const parsedIds = typeof room.member_ids === 'string' ? JSON.parse(room.member_ids) : room.member_ids;
-                if (Array.isArray(parsedIds)) {
-                    allowedMemberIds = parsedIds.map(Number);
-                }
-            }
+            const members = await attendanceDB('conversation_members')
+                .where({ org_id: org_id || 1, conversation_id: room_id })
+                .select('user_id');
+            allowedMemberIds = members.map(m => Number(m.user_id));
         }
 
         // Fetch active coworkers in the organization (optionally filtered by org_id)
@@ -95,49 +147,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
             if (context_type === 'dar_activity' || context_type === 'dar_meeting') {
                 try {
                     const finalOrgId = org_id || 1;
-
-                    // 1. Try to find an existing direct chat room between sender_id and userId
-                    const allRooms = await attendanceDB('chat_rooms')
-                        .where({ room_type: 'direct', org_id: finalOrgId });
-
-                    let room = allRooms.find(r => {
-                        try {
-                            const ids = typeof r.member_ids === 'string' ? JSON.parse(r.member_ids) : r.member_ids;
-                            return Array.isArray(ids) &&
-                                   ids.map(Number).includes(Number(sender_id)) &&
-                                   ids.map(Number).includes(Number(userId));
-                        } catch (e) {
-                            return false;
-                        }
-                    });
-
-                    let roomId;
-                    let existingMessages = [];
-
-                    if (room) {
-                        roomId = room.room_id;
-                        try {
-                            const decrypted = decryptText(room.messages);
-                            existingMessages = typeof decrypted === 'string' ? JSON.parse(decrypted || '[]') : (decrypted || []);
-                        } catch (e) {
-                            existingMessages = [];
-                        }
-                    } else {
-                        // Create a new direct chat room between the two users
-                        const memberIds = [Number(sender_id), Number(userId)].sort((a, b) => a - b);
-                        const [insertedId] = await attendanceDB('chat_rooms').insert({
-                            org_id: finalOrgId,
-                            room_name: null,
-                            room_type: 'direct',
-                            created_by: sender_id,
-                            member_ids: JSON.stringify(memberIds),
-                            messages: encryptText(JSON.stringify([])),
-                            last_read_times: JSON.stringify({}),
-                            created_at: attendanceDB.fn.now(),
-                            updated_at: attendanceDB.fn.now()
-                        });
-                        roomId = insertedId;
-                    }
+                    const roomId = await getOrCreateDM(finalOrgId, sender_id, userId);
 
                     // 2. Fetch the task/meeting details
                     let mentionTitle = '';
@@ -169,20 +179,26 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
 
                     // 4. Create and append the message
                     const messageId = Date.now() + Math.floor(Math.random() * 1000);
-                    const newMsg = {
-                        message_id: messageId,
-                        sender_id: Number(sender_id),
-                        message_text: chatMessageText,
-                        created_at: new Date().toISOString()
-                    };
-
-                    const updatedMessages = [...existingMessages, newMsg];
-                    await attendanceDB('chat_rooms')
-                        .where({ room_id: roomId })
-                        .update({
-                            messages: encryptText(JSON.stringify(updatedMessages)),
-                            updated_at: attendanceDB.fn.now()
+                    
+                    await attendanceDB.transaction(async (trx) => {
+                        await trx('messages').insert({
+                            id: messageId,
+                            org_id: finalOrgId,
+                            conversation_id: roomId,
+                            sender_id: Number(sender_id),
+                            type: 'text',
+                            content: encryptText(chatMessageText),
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
                         });
+
+                        await trx('conversations')
+                            .where({ org_id: finalOrgId, id: roomId })
+                            .update({
+                                last_message_id: messageId,
+                                updated_at: trx.fn.now()
+                            });
+                    });
 
                     // 5. Emit real-time WebSocket update event
                     if (io) {
@@ -196,12 +212,12 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
                             room_id: Number(roomId),
                             sender_id: Number(sender_id),
                             message_text: chatMessageText,
-                            created_at: newMsg.created_at,
+                            created_at: new Date().toISOString(),
                             user_name: sender ? sender.user_name : 'Unknown Colleague',
                             profile_image_url: sender ? sender.profile_image_url : null
                         };
 
-                        io.to(`room_${roomId}`).emit('message_received', formattedResponseMsg);
+                        io.to(`org_${finalOrgId}:conversation_${roomId}`).emit('message_received', formattedResponseMsg);
                         io.to(`user_${sender_id}`).emit('room_updated', { room_id: roomId });
                         io.to(`user_${userId}`).emit('room_updated', { room_id: roomId });
                     }

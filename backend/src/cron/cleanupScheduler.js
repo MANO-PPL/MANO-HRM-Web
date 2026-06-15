@@ -170,7 +170,13 @@ async function cleanupDeletedOrganizations() {
                 await trx('leave_requests').where('org_id', org.org_id).del();
 
                 await trx('attendance_records').where('org_id', org.org_id).del();
-                await trx('chat_rooms').where('org_id', org.org_id).del();
+                // Relational chat tables cleanup
+                await trx('conversations').where('org_id', org.org_id).del();
+                await trx('conversation_members').where('org_id', org.org_id).del();
+                await trx('messages').where('org_id', org.org_id).del();
+                await trx('message_attachments').where('org_id', org.org_id).del();
+                await trx('message_mentions').where('org_id', org.org_id).del();
+                await trx('message_reactions').where('org_id', org.org_id).del();
 
                 // Now delete users and finally the organization
                 await trx('users').where('org_id', org.org_id).del();

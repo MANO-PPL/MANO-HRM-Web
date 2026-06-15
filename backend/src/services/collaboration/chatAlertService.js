@@ -164,9 +164,8 @@ export async function sendSystemAlert({ org_id, sender_id, recipient_id, card_ty
                 profile_image_url: sender ? sender.profile_image_url : null
             };
 
-            // Emit to both namespace formats for transition compatibility
+            // Emit to namespaced room channel
             io.to(`org_${finalOrgId}:conversation_${roomId}`).emit('message_received', formattedResponseMsg);
-            io.to(`room_${roomId}`).emit('message_received', formattedResponseMsg);
 
             io.to(`user_${sender_id}`).emit('room_updated', { room_id: roomId });
             io.to(`user_${recipient_id}`).emit('room_updated', { room_id: roomId });
