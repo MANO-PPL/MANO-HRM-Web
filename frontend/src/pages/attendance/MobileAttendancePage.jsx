@@ -340,6 +340,115 @@ const MobileAttendancePage = () => {
         setScrollerDates(d);
     }, []);
 
+    // --- FETCHING ---
+
+    const fetchDailyRecords = async () => {
+        try {
+            const res = await attendanceService.getMyRecords(selectedDate, selectedDate);
+            if (res.ok || res.data) {
+                const records = res.data || res || [];
+                setDailySessions(Array.isArray(records) ? records : []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch daily records", error);
+        }
+    };
+
+    const fetchMonthlyRecords = async (force = false) => {
+        if (!reportMonth) return;
+        const [year, month] = reportMonth.split('-');
+        const startDate = `${year}-${month}-01`;
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        const cacheKey = `${startDate}_${endDate}`;
+
+        if (!force && attendanceCacheData.records[cacheKey]) {
+            const records = attendanceCacheData.records[cacheKey].data || attendanceCacheData.records[cacheKey] || [];
+            setMonthlySessions(Array.isArray(records) ? records : []);
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const res = await attendanceService.getMyRecords(startDate, endDate);
+            if (res.ok || res.data) {
+                const records = res.data || res || [];
+                setMonthlySessions(Array.isArray(records) ? records : []);
+            }
+        } catch (error) {
+            console.error("Failed to load history");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchAnalyticsRecords = useCallback(async (force = false) => {
+        if (!force && (mainTab !== 'my_attendance' || subTab !== 'analytics')) return;
+
+        let start = '';
+        let end = '';
+        const today = new Date();
+
+        if (analyticsFilterType === 'this_month') {
+            const y = today.getFullYear();
+            const m = today.getMonth();
+            start = new Date(y, m, 1).toISOString().split('T')[0];
+            end = new Date(y, m + 1, 0).toISOString().split('T')[0];
+        } else if (analyticsFilterType === 'last_month') {
+            const y = today.getFullYear();
+            const m = today.getMonth() - 1;
+            start = new Date(y, m, 1).toISOString().split('T')[0];
+            end = new Date(y, m + 1, 0).toISOString().split('T')[0];
+        } else if (analyticsFilterType === 'select_month') {
+            if (analyticsSelectedMonth) {
+                const [y, m] = analyticsSelectedMonth.split('-').map(Number);
+                start = new Date(y, m - 1, 1).toISOString().split('T')[0];
+                end = new Date(y, m, 0).toISOString().split('T')[0];
+            }
+        } else if (analyticsFilterType === 'custom') {
+            start = analyticsStartDate;
+            end = analyticsEndDate;
+        }
+
+        if (start && end) {
+            const cacheKey = `${start}_${end}`;
+            if (!force && attendanceCacheData.records[cacheKey]) {
+                const records = attendanceCacheData.records[cacheKey].data || attendanceCacheData.records[cacheKey] || [];
+                setAnalyticsSessions(Array.isArray(records) ? records : []);
+                return;
+            }
+
+            setAnalyticsLoading(true);
+            try {
+                const res = await attendanceService.getMyRecords(start, end);
+                if (res.ok || res.data) {
+                    const records = res.data || res || [];
+                    setAnalyticsSessions(Array.isArray(records) ? records : []);
+                }
+            } catch (error) {
+                console.error("Failed to fetch analytics records", error);
+                toast.error("Failed to fetch analytics data");
+            } finally {
+                setAnalyticsLoading(false);
+            }
+        }
+    }, [mainTab, subTab, analyticsFilterType, analyticsSelectedMonth, analyticsStartDate, analyticsEndDate]);
+
+
+    const fetchCorrectionHistory = async (force = false) => {
+        const cacheKey = JSON.stringify({});
+        if (!force && attendanceCacheData.correctionRequests[cacheKey]) {
+            setCorrectionHistory(attendanceCacheData.correctionRequests[cacheKey].data || attendanceCacheData.correctionRequests[cacheKey] || []);
+            return;
+        }
+
+        try {
+            const res = await attendanceService.getCorrectionRequests();
+            setCorrectionHistory(res.data || []);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     // --- EFFECTS ---
 
     useEffect(() => {
@@ -461,118 +570,6 @@ const MobileAttendancePage = () => {
 
         fetchRecord();
     }, [correctionForm.date]);
-
-
-    // --- FETCHING ---
-
-
-
-    const fetchDailyRecords = async () => {
-        try {
-            const res = await attendanceService.getMyRecords(selectedDate, selectedDate);
-            if (res.ok || res.data) {
-                const records = res.data || res || [];
-                setDailySessions(Array.isArray(records) ? records : []);
-            }
-        } catch (error) {
-            console.error("Failed to fetch daily records", error);
-        }
-    };
-
-    const fetchMonthlyRecords = async (force = false) => {
-        if (!reportMonth) return;
-        const [year, month] = reportMonth.split('-');
-        const startDate = `${year}-${month}-01`;
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
-        const cacheKey = `${startDate}_${endDate}`;
-
-        if (!force && attendanceCacheData.records[cacheKey]) {
-            const records = attendanceCacheData.records[cacheKey].data || attendanceCacheData.records[cacheKey] || [];
-            setMonthlySessions(Array.isArray(records) ? records : []);
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const res = await attendanceService.getMyRecords(startDate, endDate);
-            if (res.ok || res.data) {
-                const records = res.data || res || [];
-                setMonthlySessions(Array.isArray(records) ? records : []);
-            }
-        } catch (error) {
-            console.error("Failed to load history");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchAnalyticsRecords = useCallback(async (force = false) => {
-        if (!force && (mainTab !== 'my_attendance' || subTab !== 'analytics')) return;
-
-        let start = '';
-        let end = '';
-        const today = new Date();
-
-        if (analyticsFilterType === 'this_month') {
-            const y = today.getFullYear();
-            const m = today.getMonth();
-            start = new Date(y, m, 1).toISOString().split('T')[0];
-            end = new Date(y, m + 1, 0).toISOString().split('T')[0];
-        } else if (analyticsFilterType === 'last_month') {
-            const y = today.getFullYear();
-            const m = today.getMonth() - 1;
-            start = new Date(y, m, 1).toISOString().split('T')[0];
-            end = new Date(y, m + 1, 0).toISOString().split('T')[0];
-        } else if (analyticsFilterType === 'select_month') {
-            if (analyticsSelectedMonth) {
-                const [y, m] = analyticsSelectedMonth.split('-').map(Number);
-                start = new Date(y, m - 1, 1).toISOString().split('T')[0];
-                end = new Date(y, m, 0).toISOString().split('T')[0];
-            }
-        } else if (analyticsFilterType === 'custom') {
-            start = analyticsStartDate;
-            end = analyticsEndDate;
-        }
-
-        if (start && end) {
-            const cacheKey = `${start}_${end}`;
-            if (!force && attendanceCacheData.records[cacheKey]) {
-                const records = attendanceCacheData.records[cacheKey].data || attendanceCacheData.records[cacheKey] || [];
-                setAnalyticsSessions(Array.isArray(records) ? records : []);
-                return;
-            }
-
-            setAnalyticsLoading(true);
-            try {
-                const res = await attendanceService.getMyRecords(start, end);
-                if (res.ok || res.data) {
-                    const records = res.data || res || [];
-                    setAnalyticsSessions(Array.isArray(records) ? records : []);
-                }
-            } catch (error) {
-                console.error("Failed to fetch analytics records", error);
-                toast.error("Failed to fetch analytics data");
-            } finally {
-                setAnalyticsLoading(false);
-            }
-        }
-    }, [mainTab, subTab, analyticsFilterType, analyticsSelectedMonth, analyticsStartDate, analyticsEndDate]);
-
-
-    const fetchCorrectionHistory = async (force = false) => {
-        const cacheKey = JSON.stringify({});
-        if (!force && attendanceCacheData.correctionRequests[cacheKey]) {
-            setCorrectionHistory(attendanceCacheData.correctionRequests[cacheKey].data || attendanceCacheData.correctionRequests[cacheKey] || []);
-            return;
-        }
-
-        try {
-            const res = await attendanceService.getCorrectionRequests();
-            setCorrectionHistory(res.data || []);
-        } catch (error) {
-            console.error(error);
-        }
-    };
 
     // --- ACTIONS ---
 

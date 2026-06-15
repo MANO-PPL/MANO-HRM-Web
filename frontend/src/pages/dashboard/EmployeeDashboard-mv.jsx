@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -12,24 +13,103 @@ import {
     TrendingUp,
     ChevronRight,
     Coffee,
-    Activity
+    Activity,
+    MapPin,
+    RefreshCw
 } from 'lucide-react';
-import { attendanceService } from '../../services/attendanceService';
+import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { toast } from 'react-toastify';
 
 const EmployeeDashboard = () => {
     const { user, avatarTimestamp } = useAuth();
     const navigate = useNavigate();
-    const [stats, setStats] = useState({
-        daysPresent: 0,
-        daysAbsent: 0,
-        lateDays: 0,
-        avgHours: 0
+
+    const [currentTime, setCurrentTime] = useState(new Date());
+    const [location, setLocation] = useState({ lat: null, lng: null, address: 'Fetching location...', error: null });
+    const [isLoadingLoc, setIsLoadingLoc] = useState(false);
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        
+        let watchId;
+        const startWatch = (highAccuracy = true) => {
+            if (!navigator.geolocation) return;
+            setIsLoadingLoc(true);
+            watchId = navigator.geolocation.watchPosition(
+                async (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                        const data = await res.json();
+                        setLocation({
+                            lat: latitude,
+                            lng: longitude,
+                            address: data.display_name?.split(',')[0] || 'Unknown Location',
+                            error: null
+                        });
+                    } catch (err) {
+                        setLocation({ lat: latitude, lng: longitude, address: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, error: null });
+                    } finally {
+                        setIsLoadingLoc(false);
+                    }
+                },
+                (err) => {
+                    console.warn(`watchPosition failed in dashboard:`, err);
+                    if (highAccuracy && (err.code === 3 || err.code === 1)) {
+                        if (watchId) navigator.geolocation.clearWatch(watchId);
+                        startWatch(false);
+                    } else {
+                        setLocation(prev => ({ ...prev, error: err.message, address: 'Location Access Denied' }));
+                        setIsLoadingLoc(false);
+                    }
+                },
+                { enableHighAccuracy: highAccuracy, timeout: 15000, maximumAge: 30000 }
+            );
+        };
+
+        startWatch(true);
+
+        return () => {
+            clearInterval(timer);
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+        };
+    }, []);
+
+    const todayDate = new Date();
+    const monthKey = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}`;
+    const todayStr = todayDate.toISOString().split('T')[0];
+
+    const [stats, setStats] = useState(() => {
+        const cached = attendanceCacheData.myStats[monthKey];
+        return cached?.data || {
+            daysPresent: 0,
+            daysAbsent: 0,
+            lateDays: 0,
+            avgHours: 0
+        };
     });
-    const [todayStatus, setTodayStatus] = useState(null);
-    const [upcomingHolidays, setUpcomingHolidays] = useState([]);
-    const [recentActivity, setRecentActivity] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [todayStatus, setTodayStatus] = useState(() => {
+        const cached = attendanceCacheData.todayStatus[todayStr];
+        return cached?.data || null;
+    });
+    const [upcomingHolidays, setUpcomingHolidays] = useState(() => {
+        const cached = attendanceCacheData.holidays;
+        if (cached?.data) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            return cached.data
+                .filter(holiday => new Date(holiday.date) >= today)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+        }
+        return [];
+    });
+    const [recentActivity, setRecentActivity] = useState(() => {
+        const cached = attendanceCacheData.recentActivity[todayStr];
+        return cached?.data || [];
+    });
+    const [loading, setLoading] = useState(() => {
+        return !attendanceCacheData.myStats[monthKey] || !attendanceCacheData.todayStatus[todayStr];
+    });
     const [missedPunchWarning, setMissedPunchWarning] = useState(null);
 
     useEffect(() => {
@@ -86,6 +166,31 @@ const EmployeeDashboard = () => {
         }
     };
 
+    const formatDashboardTime = (isoString) => {
+        if (!isoString || isoString === '--:--') return '--:--';
+        try {
+            const d = new Date(isoString);
+            if (isNaN(d.getTime())) return isoString;
+            
+            const timeStr = d.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+            
+            const abbrFormatter = new Intl.DateTimeFormat('en-US', {
+                timeZoneName: 'short'
+            });
+            const parts = abbrFormatter.formatToParts(d);
+            const tzPart = parts.find(p => p.type === 'timeZoneName');
+            const abbr = tzPart ? tzPart.value : '';
+            
+            return abbr ? `${timeStr} (${abbr})` : timeStr;
+        } catch (e) {
+            return isoString;
+        }
+    };
+
     const getGreeting = () => {
         const hour = new Date().getHours();
         if (hour < 12) return 'Good Morning';
@@ -97,12 +202,27 @@ const EmployeeDashboard = () => {
         <MobileDashboardLayout title="Employee Dashboard" hideHeader={false}>
             <div className="space-y-6">
                 {/* 1. Welcome Section */}
-                <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
-                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-white opacity-10 rounded-full -ml-12 -mb-12 blur-xl"></div>
+                <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-900 dark:from-indigo-900/40 dark:via-indigo-950/40 dark:to-black rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+                    {/* Animated Background Blobs */}
+                    <motion.div 
+                        animate={{ 
+                            scale: [1, 1.2, 1],
+                            rotate: [0, 90, 0],
+                        }}
+                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                        className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/20 blur-3xl rounded-full pointer-events-none"
+                    />
+                    <motion.div 
+                        animate={{ 
+                            scale: [1, 1.5, 1],
+                            x: [0, 50, 0],
+                        }}
+                        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+                        className="absolute -bottom-24 -left-24 w-80 h-80 bg-sky-500/10 blur-3xl rounded-full pointer-events-none"
+                    />
 
                     <div className="relative z-10 flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full border-2 border-white/30 bg-white/10 backdrop-blur-sm flex items-center justify-center text-2xl font-bold overflow-hidden shadow-inner">
+                        <div className="w-16 h-16 rounded-full border-2 border-white/30 bg-white/10 backdrop-blur-sm flex items-center justify-center text-2xl font-bold overflow-hidden shadow-inner shrink-0">
                             {user?.profile_image_url ? (
                                 <img
                                     src={`${user.profile_image_url}?t=${avatarTimestamp}`}
@@ -137,6 +257,30 @@ const EmployeeDashboard = () => {
                         >
                             <Coffee size={16} /> Apply Leave
                         </button>
+                    </div>
+
+                    {/* Current Time / Location Widget */}
+                    <div className="mt-5 bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex items-center justify-between text-white relative z-10">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-white/20 backdrop-blur-lg rounded-2xl flex items-center justify-center text-white shadow-inner">
+                                <Clock size={24} />
+                            </div>
+                            <div>
+                                <span className="block text-[10px] font-bold text-indigo-200 tracking-widest">Current Time</span>
+                                <span className="text-2xl font-black text-white font-mono">
+                                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <span className="block text-[10px] font-bold text-indigo-200 tracking-widest mb-1">Location</span>
+                            <div className="flex items-center gap-1.5 text-white/90 font-bold text-xs bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                                <MapPin size={12} className="text-indigo-300" />
+                                <span className="truncate max-w-[100px] inline-block align-middle" title={location.address}>
+                                    {isLoadingLoc ? 'Locating...' : location.address}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -177,14 +321,14 @@ const EmployeeDashboard = () => {
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-slate-400 font-medium uppercase">Check In</span>
                             <span className={`text-xl font-bold font-mono ${todayStatus?.time_in ? 'text-slate-800 dark:text-github-dark-text' : 'text-slate-300 dark:text-slate-600'}`}>
-                                {todayStatus?.time_in || '--:--'}
+                                {formatDashboardTime(todayStatus?.time_in)}
                             </span>
                         </div>
                         <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>
                         <div className="flex flex-col gap-1">
                             <span className="text-xs text-slate-400 font-medium uppercase">Check Out</span>
                             <span className={`text-xl font-bold font-mono ${todayStatus?.time_out ? 'text-slate-800 dark:text-github-dark-text' : 'text-slate-300 dark:text-slate-600'}`}>
-                                {todayStatus?.time_out || '--:--'}
+                                {formatDashboardTime(todayStatus?.time_out)}
                             </span>
                         </div>
                         <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>

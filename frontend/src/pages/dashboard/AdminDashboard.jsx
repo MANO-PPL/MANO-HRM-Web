@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import DashboardLayout from '../../components/DashboardLayout';
 import MinimalSelect from '../../components/MinimalSelect';
 import { useAuth } from '../../context/AuthContext';
@@ -29,40 +30,132 @@ import {
     Legend,
     ResponsiveContainer
 } from 'recharts';
-import { adminService } from '../../services/adminService';
-import { attendanceService } from '../../services/attendanceService';
+import { adminService, adminCacheData } from '../../services/adminService';
+import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { toast } from 'react-toastify';
 
 const AdminDashboard = () => {
     const navigate = useNavigate();
     const { avatarTimestamp, user } = useAuth();
-    const [stats, setStats] = React.useState({
-        presentToday: 0,
-        totalEmployees: 0,
-        absentToday: 0,
-        lateCheckins: 0
+
+    const targetDate = new Date().toISOString().split('T')[0];
+    const defaultCacheKey = 'weekly_null_null';
+
+    const [stats, setStats] = React.useState(() => {
+        const cached = adminCacheData.dashboardStats[defaultCacheKey];
+        return cached?.stats || {
+            presentToday: 0,
+            totalEmployees: 0,
+            absentToday: 0,
+            lateCheckins: 0
+        };
     });
-    const [trends, setTrends] = React.useState({
-        present: '0%',
-        absent: '0%',
-        late: '0%'
+    const [trends, setTrends] = React.useState(() => {
+        const cached = adminCacheData.dashboardStats[defaultCacheKey];
+        return cached?.trends || {
+            present: '0%',
+            absent: '0%',
+            late: '0%'
+        };
     });
-    const [chartData, setChartData] = React.useState([]);
-    const [activities, setActivities] = React.useState([]);
-    const [isLoading, setIsLoading] = React.useState(true);
+    const [chartData, setChartData] = React.useState(() => {
+        const cached = adminCacheData.dashboardStats[defaultCacheKey];
+        return cached?.chartData || [];
+    });
+    const [activities, setActivities] = React.useState(() => {
+        const cached = adminCacheData.dashboardStats[defaultCacheKey];
+        if (cached?.activities) return cached.activities;
+        const fallback = attendanceCacheData.realTimeAttendance[targetDate];
+        if (fallback?.data) {
+            return fallback.data.map(record => ({
+                id: `att-${record.attendance_id || record.acr_id || record.id || Math.random()}`,
+                user: record.user_name,
+                action: record.time_out ? 'Checked Out' : 'Checked In',
+                time: (() => {
+                    const rawTime = record.time_out || record.time_in;
+                    if (!rawTime) return '';
+                    const parsed = new Date(rawTime);
+                    if (isNaN(parsed.getTime())) {
+                        const cleaned = String(rawTime).replace(' ', 'T');
+                        const p2 = new Date(cleaned);
+                        if (!isNaN(p2.getTime())) {
+                            return p2.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
+                        }
+                        return String(rawTime);
+                    }
+                    return parsed.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
+                })(),
+                profile_image_url: record.profile_image_url,
+                role: record.designation || 'Staff'
+            })).slice(0, 10);
+        }
+        return [];
+    });
+    const [isLoading, setIsLoading] = React.useState(() => {
+        return !adminCacheData.dashboardStats[defaultCacheKey];
+    });
     const [activeRange, setActiveRange] = React.useState('weekly');
     const [viewMode, setViewMode] = React.useState('range'); // 'range' or 'calendar'
     const [selectedMonth, setSelectedMonth] = React.useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear());
+    const [todayStatus, setTodayStatus] = React.useState(null);
 
-    // Cache for dashboard data
-    const dataCache = React.useRef({});
+    const formatDashboardTime = (isoString) => {
+        if (!isoString || isoString === '--:--') return '--:--';
+        try {
+            const d = new Date(isoString);
+            if (isNaN(d.getTime())) return isoString;
+            
+            const timeStr = d.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+            
+            const abbrFormatter = new Intl.DateTimeFormat('en-US', {
+                timeZoneName: 'short'
+            });
+            const parts = abbrFormatter.formatToParts(d);
+            const tzPart = parts.find(p => p.type === 'timeZoneName');
+            const abbr = tzPart ? tzPart.value : '';
+            
+            return abbr ? `${timeStr} (${abbr})` : timeStr;
+        } catch (e) {
+            return isoString;
+        }
+    };
 
+    React.useEffect(() => {
+        const fetchStatus = async () => {
+            try {
+                const res = await attendanceService.getTodayStatus();
+                if (res.success) {
+                    setTodayStatus(res.data);
+                }
+            } catch (err) {
+                console.error("Failed to fetch admin today status:", err);
+            }
+        };
+        fetchStatus();
+    }, [user]);
 
     React.useEffect(() => {
         if (!user || !['admin', 'hr'].includes(user.user_type)) {
             setIsLoading(false);
             return;
+        }
+
+        const cacheKey = viewMode === 'range'
+            ? `${activeRange}_null_null`
+            : `custom_${selectedMonth}_${selectedYear}`;
+
+        const cached = adminCacheData.dashboardStats[cacheKey];
+        if (cached) {
+            setStats(cached.stats);
+            setTrends(cached.trends);
+            setChartData(cached.chartData);
+            setActivities(cached.activities);
+            setIsLoading(false);
         }
 
         if (viewMode === 'range') {
@@ -73,35 +166,38 @@ const AdminDashboard = () => {
     }, [activeRange, viewMode, selectedMonth, selectedYear, user]);
 
     const fetchDashboardData = async (range, month = null, year = null, forceRefresh = false) => {
-        const cacheKey = `${range}_${month || 'now'}_${year || 'now'}`;
-
-        if (!forceRefresh && dataCache.current[cacheKey]) {
-            const cachedData = dataCache.current[cacheKey];
-            setStats(cachedData.stats);
-            setTrends(cachedData.trends);
-            setChartData(cachedData.chartData);
-            setActivities(cachedData.activities);
-            setIsLoading(false);
-            return;
-        }
+        const cacheKey = `${range}_${month || 'null'}_${year || 'null'}`;
 
         try {
-            setIsLoading(true);
-            const res = await adminService.getDashboardStats(range, month, year);
+            if (!adminCacheData.dashboardStats[cacheKey]) {
+                setIsLoading(true);
+            }
+            const res = await adminService.getDashboardStats(range, month, year, forceRefresh);
             if (res.success) {
                 let finalActivities = res.activities || [];
                 
-                // Fallback: If no activities are returned from the main stats, 
-                // fetch real-time attendance to populate the feed
                 if (finalActivities.length === 0) {
                     try {
-                        const attendanceRes = await attendanceService.getRealTimeAttendance();
+                        const attendanceRes = await attendanceService.getRealTimeAttendance(null, forceRefresh);
                         if (attendanceRes.data) {
                             finalActivities = attendanceRes.data.map(record => ({
-                                id: `att-${record.acr_id}`,
+                                id: `att-${record.attendance_id || record.acr_id || record.id || Math.random()}`,
                                 user: record.user_name,
                                 action: record.time_out ? 'Checked Out' : 'Checked In',
-                                time: record.time_out || record.time_in,
+                                time: (() => {
+                                    const rawTime = record.time_out || record.time_in;
+                                    if (!rawTime) return '';
+                                    const parsed = new Date(rawTime);
+                                    if (isNaN(parsed.getTime())) {
+                                        const cleaned = String(rawTime).replace(' ', 'T');
+                                        const p2 = new Date(cleaned);
+                                        if (!isNaN(p2.getTime())) {
+                                            return p2.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
+                                        }
+                                        return String(rawTime);
+                                    }
+                                    return parsed.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
+                                })(),
                                 profile_image_url: record.profile_image_url,
                                 role: record.designation || 'Staff'
                             })).slice(0, 10);
@@ -111,18 +207,18 @@ const AdminDashboard = () => {
                     }
                 }
 
-                const dataToCache = {
+                setStats(res.stats);
+                setTrends(res.trends);
+                setChartData(res.chartData);
+                setActivities(finalActivities);
+                
+                adminCacheData.dashboardStats[cacheKey] = {
+                    success: true,
                     stats: res.stats,
                     trends: res.trends,
                     chartData: res.chartData,
-                    activities: finalActivities,
+                    activities: finalActivities
                 };
-                setStats(dataToCache.stats);
-                setTrends(dataToCache.trends);
-                setChartData(dataToCache.chartData);
-                setActivities(dataToCache.activities);
-                
-                dataCache.current[cacheKey] = dataToCache;
             }
         } catch (error) {
             console.error("Dashboard error:", error);
@@ -143,7 +239,87 @@ const AdminDashboard = () => {
 
     return (
         <DashboardLayout title="Dashboard">
-            <div className="space-y-6 sm:space-y-8">
+            <div className="space-y-6 sm:space-y-8 animate-fade-in-up">
+                {/* Premium Greetings Card */}
+                <div className="pt-8 pb-8 px-8 bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-900 dark:from-indigo-900/40 dark:via-indigo-950/40 dark:to-black rounded-2xl shadow-xl relative overflow-hidden">
+                    {/* Animated Background Blobs */}
+                    <motion.div 
+                        animate={{ 
+                            scale: [1, 1.2, 1],
+                            rotate: [0, 90, 0],
+                        }}
+                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                        className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/20 blur-3xl rounded-full pointer-events-none"
+                    />
+                    <motion.div 
+                        animate={{ 
+                            scale: [1, 1.5, 1],
+                            x: [0, 50, 0],
+                        }}
+                        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+                        className="absolute -bottom-24 -left-24 w-[30rem] h-[30rem] bg-sky-500/10 blur-3xl rounded-full pointer-events-none"
+                    />
+
+                    <div className="relative z-10 w-full mx-auto">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h1 className="text-3xl font-black text-white tracking-tight">
+                                    Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}, {user?.user_name || user?.name || 'Admin'}!
+                                </h1>
+                                <p className="text-indigo-100/70 text-base font-medium mt-2">
+                                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Recent Session Glass Card */}
+                        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl text-white">
+                            <div className="flex items-center gap-6">
+                                <div className="w-14 h-14 bg-white/20 backdrop-blur-lg rounded-xl flex items-center justify-center shadow-inner shrink-0">
+                                    <Clock size={32} strokeWidth={2.5} className="text-white" />
+                                </div>
+                                <div>
+                                    <span className="block text-[10px] font-black text-indigo-200 tracking-[0.2em] mb-1 opacity-90 uppercase">Recent Session</span>
+                                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+                                        <div>
+                                            <span className="text-xs text-indigo-100 font-semibold opacity-85">Check In: </span>
+                                            <span className="text-sm font-bold font-mono">
+                                                {formatDashboardTime(todayStatus?.time_in)}
+                                            </span>
+                                        </div>
+                                        <div className="hidden md:block h-5 w-px bg-white/20"></div>
+                                        <div>
+                                            <span className="text-xs text-indigo-100 font-semibold opacity-85">Check Out: </span>
+                                            <span className="text-sm font-bold font-mono">
+                                                {formatDashboardTime(todayStatus?.time_out)}
+                                            </span>
+                                        </div>
+                                        {todayStatus?.duration && (
+                                            <>
+                                                <div className="hidden md:block h-5 w-px bg-white/20"></div>
+                                                <div>
+                                                    <span className="text-xs text-indigo-100 font-semibold opacity-85">Duration: </span>
+                                                    <span className="text-sm font-bold font-mono text-emerald-300">
+                                                        {todayStatus.duration}
+                                                    </span>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="w-full md:w-auto flex flex-col md:items-end shrink-0">
+                                <span className="block text-[10px] font-black text-indigo-200 tracking-[0.2em] mb-1 opacity-90 uppercase">Status</span>
+                                <span className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wider ${
+                                    todayStatus ? (todayStatus.time_out ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-500/20' : 'bg-emerald-500/30 text-emerald-250 border border-emerald-500/20 animate-pulse') : 'bg-white/10 text-white/60 border border-white/5'
+                                }`}>
+                                    {todayStatus ? (todayStatus.time_out ? 'Completed' : 'Active Session') : 'No Session Today'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Stats and Charts - Only for Admin and HR */}
                 {['admin', 'hr'].includes(useAuth().user?.user_type) ? (
                     <>
