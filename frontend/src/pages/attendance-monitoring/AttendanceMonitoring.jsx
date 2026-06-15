@@ -45,7 +45,10 @@ import {
     ChevronDown,
     Layers,
     Check,
-    Users
+    Users,
+    X,
+    LogIn,
+    Camera
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
@@ -81,174 +84,279 @@ const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
     return null;
 };
 
-const ClusterEvents = ({ setSelectedCluster }) => {
-    const map = useMap();
+
+const MapSidebarContent = ({ selectedCluster, onClose }) => {
+    const [selectedUser, setSelectedUser] = useState(() => 
+        selectedCluster.data.length === 1 ? selectedCluster.data[0] : null
+    );
+    const [searchQuery, setSearchQuery] = useState('');
+
     useEffect(() => {
-        const handleClusterClick = (e) => {
-            const markers = e.layer.getAllChildMarkers();
-            if (markers.length > 3) {
-                const data = markers.map(m => m.options.customSessionData).filter(Boolean);
-                setSelectedCluster({
-                    position: [e.latlng.lat, e.latlng.lng],
-                    data: data
-                });
-            } else {
-                e.layer.spiderfy();
-            }
-        };
-        map.on('clusterclick', handleClusterClick);
-        return () => {
-            map.off('clusterclick', handleClusterClick);
-        };
-    }, [map, setSelectedCluster]);
-    return null;
-};
+        setSelectedUser(selectedCluster.data.length === 1 ? selectedCluster.data[0] : null);
+        setSearchQuery('');
+    }, [selectedCluster]);
 
-const ClusterDrillDownPopup = ({ data, onClose }) => {
-    const [selectedUser, setSelectedUser] = useState(null);
+    const filteredClusterData = selectedCluster.data.filter(item => {
+        const name = item.user.name || '';
+        const role = item.user.role || '';
+        const dept = item.user.department || '';
+        const q = searchQuery.toLowerCase();
+        return name.toLowerCase().includes(q) || role.toLowerCase().includes(q) || dept.toLowerCase().includes(q);
+    });
 
-    return (
-        <div className="bg-white dark:bg-[#0d1117] rounded-xl overflow-hidden w-[320px] flex flex-col shadow-2xl">
-            {/* Header */}
-            <div className="p-3 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 relative">
-                {selectedUser && (
+    return createPortal(
+        <>
+            {/* Backdrop */}
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={onClose}
+                className="fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-[9998]"
+            />
+
+            {/* Sidebar Drawer */}
+            <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="fixed right-0 top-0 bottom-0 w-[450px] bg-white dark:bg-[#0d1117] border-l border-slate-200 dark:border-github-dark-border flex flex-col z-[9999] shadow-2xl dar-context"
+            >
+                {/* Header */}
+                <div className="p-4 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                        {selectedUser && selectedCluster.data.length > 1 && (
+                            <button
+                                onClick={() => setSelectedUser(null)}
+                                className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400 mr-1"
+                            >
+                                <ChevronLeft size={18} />
+                            </button>
+                        )}
+                        <div>
+                            <h3 className="text-xs font-black text-slate-800 dark:text-github-dark-text uppercase tracking-widest">
+                                {selectedUser ? 'Session Details' : 'Location Group'}
+                            </h3>
+                            <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                                {selectedUser ? 'Employee Activity' : `${selectedCluster.data.length} checked-in at this location`}
+                            </p>
+                        </div>
+                    </div>
                     <button
-                        onClick={() => setSelectedUser(null)}
-                        className="absolute left-2 top-2.5 p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400"
+                        onClick={onClose}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-github-dark-text transition-colors"
                     >
-                        <ChevronLeft size={16} />
+                        <X size={18} />
                     </button>
-                )}
-                <div className={`flex items-center justify-between mb-0.5 ${selectedUser ? 'pl-6' : ''}`}>
-                    <h3 className="text-xs font-black text-slate-800 dark:text-github-dark-text uppercase tracking-widest">
-                        {selectedUser ? 'Session Details' : 'Location Group'}
-                    </h3>
-                    {!selectedUser && (
-                        <span className="bg-indigo-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">{data.length} Staff</span>
-                    )}
                 </div>
-                {!selectedUser && <p className="text-[9px] text-slate-500 font-medium">Multiple check-ins at this location</p>}
-            </div>
 
-            {/* Content Area */}
-            <div className="relative overflow-hidden bg-white dark:bg-[#0d1117]" style={{ height: '300px' }}>
-                <AnimatePresence initial={false} mode="wait">
-                    {!selectedUser ? (
-                        <motion.div
-                            key="list"
-                            initial={{ x: -20, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            exit={{ x: -20, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute inset-0 overflow-y-auto p-2 space-y-1.5 custom-scrollbar"
-                        >
-                            {data.map((m, idx) => (
-                                <div
-                                    key={idx}
-                                    onClick={() => setSelectedUser(m)}
-                                    className="flex items-center gap-3 p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl cursor-pointer transition-all border border-transparent hover:border-indigo-100 dark:hover:border-indigo-500/20 group"
+                {/* Search Bar - only shown in list view */}
+                {!selectedUser && (
+                    <div className="p-3 border-b border-slate-100 dark:border-github-dark-border shrink-0 bg-white dark:bg-[#0d1117]">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-2.5 text-slate-400 dark:text-github-dark-muted" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Search staff, role, or dept..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 text-slate-800 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:text-github-dark-muted dark:hover:text-github-dark-text"
                                 >
-                                    <div className="w-9 h-9 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm overflow-hidden shrink-0 border border-indigo-100 dark:border-indigo-500/20">
-                                        {m.user.avatar.startsWith('http') ? <img src={m.user.avatar} className="w-full h-full object-cover" /> : m.user.avatar}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-[11px] font-bold text-slate-800 dark:text-github-dark-text truncate leading-tight">{m.user.name}</p>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${m.type === 'in' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : m.type === 'out' ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
-                                                {m.type === 'combined' ? 'Full Session' : m.type === 'in' ? 'Check In' : 'Check Out'}
-                                            </span>
-                                            <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-mono flex items-center gap-1">
-                                                <Clock size={8} /> {m.type === 'out' ? m.session.out : m.session.in}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-slate-300 group-hover:bg-indigo-500 group-hover:text-white transition-all">
-                                        <ChevronRight size={14} />
-                                    </div>
-                                </div>
-                            ))}
-                        </motion.div>
-                    ) : (
-                        <motion.div
-                            key="detail"
-                            initial={{ x: 20, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            exit={{ x: 20, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute inset-0 overflow-y-auto p-3 custom-scrollbar"
-                        >
-                            <div className="flex items-center gap-2.5 mb-4">
-                                <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-sm overflow-hidden shrink-0 shadow-md">
-                                    {selectedUser.user.avatar.startsWith('http') ? <img src={selectedUser.user.avatar} className="w-full h-full object-cover" /> : selectedUser.user.avatar}
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{selectedUser.user.name}</p>
-                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">{selectedUser.type === 'combined' ? 'Full Session Details' : selectedUser.user.role}</p>
-                                </div>
-                            </div>
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
 
-                            <div className="space-y-3">
-                                {selectedUser.type === 'combined' ? (
-                                    <>
-                                        <div className="space-y-2 bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-1.5">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Time In</span>
-                                                </div>
-                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-md">{selectedUser.session.in}</span>
+                {/* Content Body */}
+                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-white dark:bg-[#0d1117]">
+                    <AnimatePresence initial={false} mode="wait">
+                        {!selectedUser ? (
+                            <motion.div
+                                key="list"
+                                initial={{ x: -20, opacity: 0 }}
+                                animate={{ x: 0, opacity: 1 }}
+                                exit={{ x: -20, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="space-y-2.5"
+                            >
+                                {filteredClusterData.length > 0 ? (
+                                    filteredClusterData.map((m, idx) => (
+                                        <div
+                                            key={idx}
+                                            onClick={() => setSelectedUser(m)}
+                                            className="flex items-center gap-3 p-3 bg-slate-50/50 dark:bg-github-dark-subtle/10 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 rounded-2xl cursor-pointer transition-all border border-slate-100 dark:border-github-dark-border hover:border-indigo-200 dark:hover:border-indigo-500/20 group"
+                                        >
+                                            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm overflow-hidden shrink-0 border border-indigo-100/50 dark:border-indigo-500/10">
+                                                {m.user.avatar.startsWith('http') ? (
+                                                    <img src={m.user.avatar} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    m.user.avatar
+                                                )}
                                             </div>
-                                            {selectedUser.session.inImage && (
-                                                <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle mt-2">
-                                                    <img src={selectedUser.session.inImage} className="w-full h-full object-cover" />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-xs font-bold text-slate-800 dark:text-github-dark-text truncate leading-tight">
+                                                    {m.user.name}
+                                                </p>
+                                                <p className="text-[10px] text-slate-500 dark:text-github-dark-muted truncate mt-0.5">
+                                                    {m.user.role} • {m.user.department}
+                                                </p>
+                                                <div className="flex items-center gap-2 mt-1.5">
+                                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${
+                                                        m.session.isActive && m.type === 'in'
+                                                            ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 animate-pulse'
+                                                            : m.type === 'in' 
+                                                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                                                            : m.type === 'out' 
+                                                            ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400' 
+                                                            : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'
+                                                    }`}>
+                                                        {m.session.isActive && m.type === 'in' ? 'Active' : m.type === 'combined' ? 'Full Session' : m.type === 'in' ? 'Check In' : 'Check Out'}
+                                                    </span>
+                                                    <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-mono flex items-center gap-1">
+                                                        <Clock size={8} /> {m.type === 'out' ? m.session.out : m.session.in}
+                                                    </span>
                                                 </div>
-                                            )}
-                                        </div>
-                                        <div className="space-y-2 bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-1.5">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
-                                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Time Out</span>
-                                                </div>
-                                                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-900/30 px-2 py-0.5 rounded-md">{selectedUser.session.out}</span>
                                             </div>
-                                            {selectedUser.session.outImage && (
-                                                <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle mt-2">
-                                                    <img src={selectedUser.session.outImage} className="w-full h-full object-cover" />
-                                                </div>
-                                            )}
+                                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-slate-300 group-hover:bg-indigo-500 group-hover:text-white transition-all">
+                                                <ChevronRight size={14} />
+                                            </div>
                                         </div>
-                                    </>
+                                    ))
                                 ) : (
-                                    <>
-                                        <div className="flex items-center justify-between bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-xl border border-slate-100 dark:border-github-dark-border">
-                                            <div className="flex items-center gap-1.5">
-                                                <div className={`w-1.5 h-1.5 rounded-full ${selectedUser.type === 'in' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-                                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{selectedUser.type === 'in' ? 'Check In' : 'Check Out'}</span>
-                                            </div>
-                                            <span className={`text-[10px] font-bold ${selectedUser.type === 'in' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'text-rose-600 bg-rose-50 dark:bg-rose-900/30'} px-2 py-0.5 rounded-md uppercase`}>{selectedUser.type === 'in' ? selectedUser.session.in : selectedUser.session.out}</span>
-                                        </div>
-                                        {(selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage) && (
-                                            <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-github-dark-border h-32 bg-slate-100 dark:bg-github-dark-subtle mt-2">
-                                                <img src={selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage} className="w-full h-full object-cover" />
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                                <div className="flex flex-col gap-1 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-100 dark:border-github-dark-border">
-                                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase">
-                                        <MapPin size={10} className="text-indigo-500" /> Location Details
+                                    <div className="text-center py-12 text-slate-400 dark:text-github-dark-muted">
+                                        <Search size={24} className="mx-auto mb-2 opacity-50" />
+                                        <p className="text-xs font-medium">No results match your search</p>
                                     </div>
-                                    <p className="text-[10px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal mt-0.5">
-                                        {selectedUser.type === 'out' ? selectedUser.session.outLocation : selectedUser.session.inLocation}
-                                    </p>
+                                )}
+                            </motion.div>
+                        ) : (
+                            <motion.div
+                                key="detail"
+                                initial={{ x: 20, opacity: 0 }}
+                                animate={{ x: 0, opacity: 1 }}
+                                exit={{ x: 20, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="space-y-4"
+                            >
+                                <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-github-dark-subtle/20 rounded-2xl border border-slate-100 dark:border-github-dark-border">
+                                    <div className="w-12 h-12 rounded-xl bg-indigo-500 flex items-center justify-center text-white font-bold text-sm overflow-hidden shrink-0 shadow-md">
+                                        {selectedUser.user.avatar.startsWith('http') ? (
+                                            <img src={selectedUser.user.avatar} className="w-full h-full object-cover" />
+                                        ) : (
+                                            selectedUser.user.avatar
+                                        )}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">
+                                            {selectedUser.user.name}
+                                        </p>
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                            {selectedUser.user.role} • {selectedUser.user.department}
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
-        </div>
+
+                                <div className="space-y-3">
+                                    {selectedUser.type === 'combined' ? (
+                                        <>
+                                            <div className="space-y-2 bg-slate-50 dark:bg-github-dark-subtle/30 p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                        <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Time In</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-0.5 rounded-md">
+                                                        {selectedUser.session.in}
+                                                    </span>
+                                                </div>
+                                                {selectedUser.session.inImage ? (
+                                                    <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-github-dark-border h-36 bg-slate-100 dark:bg-github-dark-subtle mt-2">
+                                                        <img src={selectedUser.session.inImage} className="w-full h-full object-cover" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center py-4 bg-slate-100/50 dark:bg-github-dark-subtle/10 rounded-xl border border-dashed border-slate-200 dark:border-github-dark-border mt-2">
+                                                        <Camera size={16} className="text-slate-400 mb-1" />
+                                                        <span className="text-[9px] text-slate-400">No Check-in Selfie</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="space-y-2 bg-slate-50 dark:bg-github-dark-subtle/30 p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
+                                                        <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Time Out</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-2.5 py-0.5 rounded-md">
+                                                        {selectedUser.session.out}
+                                                    </span>
+                                                </div>
+                                                {selectedUser.session.outImage ? (
+                                                    <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-github-dark-border h-36 bg-slate-100 dark:bg-github-dark-subtle mt-2">
+                                                        <img src={selectedUser.session.outImage} className="w-full h-full object-cover" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center py-4 bg-slate-100/50 dark:bg-github-dark-subtle/10 rounded-xl border border-dashed border-slate-200 dark:border-github-dark-border mt-2">
+                                                        <Camera size={16} className="text-slate-400 mb-1" />
+                                                        <span className="text-[9px] text-slate-400">No Check-out Selfie</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="flex items-center justify-between bg-slate-50 dark:bg-github-dark-subtle/30 p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${selectedUser.session.isActive && selectedUser.type === 'in' ? 'bg-indigo-500 animate-pulse' : selectedUser.type === 'in' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                                                    <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                                                        {selectedUser.session.isActive && selectedUser.type === 'in' ? 'Active Session' : selectedUser.type === 'in' ? 'Check In' : 'Check Out'}
+                                                    </span>
+                                                </div>
+                                                <span className={`text-[10px] font-bold ${
+                                                    selectedUser.session.isActive && selectedUser.type === 'in'
+                                                        ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 animate-pulse'
+                                                        : selectedUser.type === 'in' 
+                                                        ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' 
+                                                        : 'text-rose-600 bg-rose-50 dark:bg-rose-900/30'
+                                                } px-2.5 py-0.5 rounded-md uppercase`}>
+                                                    {selectedUser.type === 'in' ? selectedUser.session.in : selectedUser.session.out}
+                                                </span>
+                                            </div>
+                                            { (selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage) ? (
+                                                <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-github-dark-border h-48 bg-slate-100 dark:bg-github-dark-subtle mt-2">
+                                                    <img src={selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage} className="w-full h-full object-cover" />
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center py-6 bg-slate-100/50 dark:bg-github-dark-subtle/10 rounded-2xl border border-dashed border-slate-200 dark:border-github-dark-border mt-2">
+                                                    <Camera size={20} className="text-slate-400 mb-1" />
+                                                    <span className="text-[10px] text-slate-400">No Selfie image captured</span>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                    <div className="flex flex-col gap-1.5 p-3 bg-slate-50 dark:bg-github-dark-subtle/30 rounded-2xl border border-slate-100 dark:border-github-dark-border">
+                                        <div className="flex items-center gap-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                            <MapPin size={12} className="text-indigo-500" /> Location Details
+                                        </div>
+                                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed break-words whitespace-normal mt-0.5">
+                                            {selectedUser.type === 'out' ? selectedUser.session.outLocation : selectedUser.session.inLocation}
+                                        </p>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+            </motion.div>
+        </>,
+        document.body
     );
 };
 
@@ -330,16 +438,144 @@ const formatTotalTime = (totalMin, fallbackHours) => {
     }
 };
 
+const processAttendanceData = (staff, resolvedTz) => {
+    const mergedData = staff.map(u => {
+        const daySessions = u.sessions || [];
+        let totalMin = 0;
+        const sessions = daySessions.map(r => {
+            const inTime = parseTimeInTimezone(r, false, resolvedTz);
+            const formatTime = (d) => {
+                if (!d) return '-';
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            };
+
+            const inStr = formatTime(inTime);
+            let outStr = '-';
+            let isActive = !r.time_out && r.status !== 'MISSED_PUNCH';
+
+            const outTime = parseTimeInTimezone(r, true, resolvedTz);
+            if (outTime) {
+                outStr = formatTime(outTime);
+                if (inTime) totalMin += Math.max(0, (outTime - inTime) / 60000);
+            } else if (isActive && inTime) {
+                const nowTZ = getCurrentTimeInTimezone(resolvedTz);
+                totalMin += Math.max(0, (nowTZ - inTime) / 60000);
+            }
+
+            // Locations
+            const inLoc = r.time_in_address || (r.time_in_lat ? `${r.time_in_lat}, ${r.time_in_lng}` : 'Unknown');
+            const outLoc = r.time_out_address || (r.time_out_lat ? `${r.time_out_lat}, ${r.time_out_lng}` : null);
+
+            return {
+                rawIn: inTime,
+                rawOut: outTime,
+                in: inStr,
+                out: outStr,
+                date: inTime ? inTime.toLocaleDateString() : '-',
+                isActive,
+                inLocation: inLoc,
+                outLocation: outLoc,
+                lateMinutes: r.late_minutes || 0,
+                isLate: (r.late_minutes || 0) > 0,
+                lateReason: r.late_reason,
+                inImage: r.time_in_image,
+                outImage: r.time_out_image,
+                inLat: r.time_in_lat,
+                inLng: r.time_in_lng,
+                outLat: r.time_out_lat,
+                outLng: r.time_out_lng
+            };
+        });
+
+        // Standardize Status String to match frontend layout colors
+        const statusMap = {
+            'WEEK_OFF': 'Week Off',
+            'HOLIDAY': 'Holiday',
+            'LEAVE': 'Leave',
+            'ABSENT': 'Absent',
+            'PRESENT': 'Present',
+            'LATE': 'Late',
+            'OVERTIME': 'Overtime',
+            'MISSED_PUNCH': 'Missed Punch',
+            'Active': 'Active',
+            'Late Active': 'Late Active'
+        };
+        const status = statusMap[u.status] || u.status || 'Absent';
+
+        const totalHrs = formatTotalTime(totalMin, u.total_hours > 0 ? Number(u.total_hours) : 0);
+        const expectedHrs = u.expected_hours !== undefined && u.expected_hours !== null && u.expected_hours > 0 ? `${Number(u.expected_hours).toFixed(1)} hrs` : '-';
+        const lastLocation = u.sessions && u.sessions.length > 0
+            ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : '-')
+            : '-';
+
+        // Recreate allStatuses to retain compatibility with stats counts
+        let allStatuses = [];
+        if (status === 'Late Active') { allStatuses.push('Active', 'Late'); }
+        else if (status === 'Active') { allStatuses.push('Active'); }
+        else if (status === 'Present') { allStatuses.push('Present'); }
+        else if (status === 'Late') { allStatuses.push('Present', 'Late'); }
+        else if (status === 'Overtime') { allStatuses.push('Present', 'Overtime'); }
+        else if (status === 'Missed Punch') { allStatuses.push('Missed Punch'); }
+        else if (status === 'Week Off') { allStatuses.push('Week Off'); }
+        else if (status === 'Holiday') { allStatuses.push('Holiday'); }
+        else if (status === 'Leave') { allStatuses.push('Leave'); }
+        else { allStatuses.push('Absent'); }
+
+        return {
+            id: u.user_id,
+            name: u.user_name || 'Unknown',
+            role: u.desg_name || 'Employee',
+            avatar: (u.profile_image_url && u.profile_image_url.trim() !== '') ? u.profile_image_url : (u.user_name ? u.user_name.trim().charAt(0).toUpperCase() : 'U') || 'U',
+            department: u.dept_name || 'General',
+            sessions,
+            status,
+            allStatuses,
+            totalHours: totalHrs,
+            expectedHours: expectedHrs,
+            location: lastLocation,
+            lateReason: u.late_reason || ''
+        };
+    });
+
+    // Sort: Active/Present/Late/Overtime first, then Absent, then Week Off/Holiday/Leave
+    const statusWeights = {
+        'Active': 10,
+        'Late Active': 9,
+        'Late': 8,
+        'Overtime': 7,
+        'Present': 6,
+        'Missed Punch': 5,
+        'Absent': 4,
+        'Leave': 3,
+        'Holiday': 2,
+        'Week Off': 1
+    };
+    mergedData.sort((a, b) => (statusWeights[b.status] || 0) - (statusWeights[a.status] || 0));
+
+    return mergedData;
+};
+
 const AttendanceMonitoring = () => {
     const navigate = useNavigate();
-    const [orgTimezone, setOrgTimezone] = useState('UTC');
+
+    // Get initial values from localStorage to support persistent views/filters
+    const initialView = localStorage.getItem('live_attendance_active_view') || 'cards';
+    const initialDate = localStorage.getItem('live_attendance_selected_date') || new Date().toISOString().split("T")[0];
+    const initialSearch = localStorage.getItem('live_attendance_search_term') || '';
+    const initialDept = localStorage.getItem('live_attendance_department_filter') || 'All';
+    const initialStatus = localStorage.getItem('live_attendance_status_filter') || 'All';
+
+    // Synchronous memory cache check
+    const cachedResponse = attendanceCacheData.dailySummaryAdmin[initialDate];
+
+    const [orgTimezone, setOrgTimezone] = useState(() => cachedResponse?.timezone || 'UTC');
 
     const { avatarTimestamp } = useAuth();
     const [activeTab, setActiveTab] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         return params.get('tab') || 'live';
     });
-    const [activeView, setActiveView] = useState('cards'); // 'cards' | 'graph' | 'table' | 'map'
+    const [activeView, setActiveView] = useState(initialView); // 'cards' | 'graph' | 'table' | 'map'
     const [activeTheme, setActiveTheme] = useState('voyager');
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
 
@@ -361,15 +597,53 @@ const AttendanceMonitoring = () => {
     const [selectedRequest, setSelectedRequest] = useState(1); // For Detail View
     const [selectedLiveUser, setSelectedLiveUser] = useState(null); // For Live Attendance Detail Modal
     const [selectedCluster, setSelectedCluster] = useState(null);
+    const [clusterGroupElement, setClusterGroupElement] = useState(null);
 
-    const [loading, setLoading] = useState(true);
-    const [attendanceData, setAttendanceData] = useState([]);
-    const [stats, setStats] = useState({
-        present: 0,
-        late: 0,
-        absent: 0,
-        active: 0,
-        total: 0
+    useEffect(() => {
+        if (!clusterGroupElement) return;
+
+        const handleClusterClick = (e) => {
+            const markers = e.layer.getAllChildMarkers();
+            if (markers.length > 1) {
+                const data = markers.map(m => m.options.customSessionData).filter(Boolean);
+                setSelectedCluster({
+                    position: [e.latlng.lat, e.latlng.lng],
+                    data: data
+                });
+            }
+        };
+
+        clusterGroupElement.on('clusterclick', handleClusterClick);
+        return () => {
+            clusterGroupElement.off('clusterclick', handleClusterClick);
+        };
+    }, [clusterGroupElement]);
+
+    const [loading, setLoading] = useState(() => !cachedResponse);
+    const [attendanceData, setAttendanceData] = useState(() => {
+        if (cachedResponse?.data) {
+            return processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC');
+        }
+        return [];
+    });
+    const [stats, setStats] = useState(() => {
+        if (cachedResponse?.data) {
+            const merged = processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC');
+            return {
+                present: merged.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
+                late: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : d.status.includes('Late')).length,
+                absent: merged.filter(d => d.status === 'Absent').length,
+                active: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
+                total: merged.length
+            };
+        }
+        return {
+            present: 0,
+            late: 0,
+            absent: 0,
+            active: 0,
+            total: 0
+        };
     });
 
     // Correction Requests State
@@ -398,11 +672,11 @@ const AttendanceMonitoring = () => {
     const [overrideSessions, setOverrideSessions] = useState([{ time_in: '', time_out: '' }]);
 
     // Filters & Search
-    const [searchTerm, setSearchTerm] = useState('');
-    const [departmentFilter, setDepartmentFilter] = useState('All');
-    const [statusFilter, setStatusFilter] = useState('All');
+    const [searchTerm, setSearchTerm] = useState(initialSearch);
+    const [departmentFilter, setDepartmentFilter] = useState(initialDept);
+    const [statusFilter, setStatusFilter] = useState(initialStatus);
     const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
-    const [selectedDate, setSelectedDate] = React.useState(new Date().toISOString().split("T")[0]);
+    const [selectedDate, setSelectedDate] = React.useState(initialDate);
     const [lastSynced, setLastSynced] = React.useState(new Date());
 
     const DEPARTMENTS = [
@@ -415,6 +689,27 @@ const AttendanceMonitoring = () => {
         { value: 'HR', label: 'HR' }
     ];
 
+    // Sync filter states to localStorage
+    useEffect(() => {
+        localStorage.setItem('live_attendance_active_view', activeView);
+    }, [activeView]);
+
+    useEffect(() => {
+        localStorage.setItem('live_attendance_selected_date', selectedDate);
+    }, [selectedDate]);
+
+    useEffect(() => {
+        localStorage.setItem('live_attendance_search_term', searchTerm);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        localStorage.setItem('live_attendance_department_filter', departmentFilter);
+    }, [departmentFilter]);
+
+    useEffect(() => {
+        localStorage.setItem('live_attendance_status_filter', statusFilter);
+    }, [statusFilter]);
+
     // Data Fetching
     const fetchData = async (silent = false) => {
         const hasCache = !!attendanceCacheData.dailySummaryAdmin[selectedDate];
@@ -426,123 +721,12 @@ const AttendanceMonitoring = () => {
             const resolvedTz = res.timezone || 'UTC';
             setOrgTimezone(resolvedTz);
 
-            // 2. Map Data
-            const mergedData = staff.map(u => {
-                const daySessions = u.sessions || [];
-                let totalMin = 0;
-                const sessions = daySessions.map(r => {
-                    const inTime = parseTimeInTimezone(r, false, resolvedTz);
-                    const formatTime = (d) => {
-                        if (!d) return '-';
-                        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    };
-
-                    const inStr = formatTime(inTime);
-                    let outStr = '-';
-                    let isActive = !r.time_out && r.status !== 'MISSED_PUNCH';
-
-                    const outTime = parseTimeInTimezone(r, true, resolvedTz);
-                    if (outTime) {
-                        outStr = formatTime(outTime);
-                        if (inTime) totalMin += Math.max(0, (outTime - inTime) / 60000);
-                    } else if (isActive && inTime) {
-                        const nowTZ = getCurrentTimeInTimezone(resolvedTz);
-                        totalMin += Math.max(0, (nowTZ - inTime) / 60000);
-                    }
-
-                    // Locations
-                    const inLoc = r.time_in_address || (r.time_in_lat ? `${r.time_in_lat}, ${r.time_in_lng}` : 'Unknown');
-                    const outLoc = r.time_out_address || (r.time_out_lat ? `${r.time_out_lat}, ${r.time_out_lng}` : null);
-
-                    return {
-                        rawIn: inTime,
-                        rawOut: outTime,
-                        in: inStr,
-                        out: outStr,
-                        date: inTime ? inTime.toLocaleDateString() : '-',
-                        isActive,
-                        inLocation: inLoc,
-                        outLocation: outLoc,
-                        lateMinutes: r.late_minutes || 0,
-                        isLate: (r.late_minutes || 0) > 0,
-                        lateReason: r.late_reason,
-                        inImage: r.time_in_image,
-                        outImage: r.time_out_image,
-                        inLat: r.time_in_lat,
-                        inLng: r.time_in_lng,
-                        outLat: r.time_out_lat,
-                        outLng: r.time_out_lng
-                    };
-                });
-
-                // Standardize Status String to match frontend layout colors
-                const statusMap = {
-                    'WEEK_OFF': 'Week Off',
-                    'HOLIDAY': 'Holiday',
-                    'LEAVE': 'Leave',
-                    'ABSENT': 'Absent',
-                    'PRESENT': 'Present',
-                    'LATE': 'Late',
-                    'OVERTIME': 'Overtime',
-                    'MISSED_PUNCH': 'Missed Punch',
-                    'Active': 'Active',
-                    'Late Active': 'Late Active'
-                };
-                const status = statusMap[u.status] || u.status || 'Absent';
-
-                const totalHrs = formatTotalTime(totalMin, u.total_hours > 0 ? Number(u.total_hours) : 0);
-                const expectedHrs = u.expected_hours !== undefined && u.expected_hours !== null && u.expected_hours > 0 ? `${Number(u.expected_hours).toFixed(1)} hrs` : '-';
-                const lastLocation = u.sessions && u.sessions.length > 0
-                    ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : '-')
-                    : '-';
-
-                // Recreate allStatuses to retain compatibility with stats counts
-                let allStatuses = [];
-                if (status === 'Late Active') { allStatuses.push('Active', 'Late'); }
-                else if (status === 'Active') { allStatuses.push('Active'); }
-                else if (status === 'Present') { allStatuses.push('Present'); }
-                else if (status === 'Late') { allStatuses.push('Present', 'Late'); }
-                else if (status === 'Overtime') { allStatuses.push('Present', 'Overtime'); }
-                else if (status === 'Missed Punch') { allStatuses.push('Missed Punch'); }
-                else if (status === 'Week Off') { allStatuses.push('Week Off'); }
-                else if (status === 'Holiday') { allStatuses.push('Holiday'); }
-                else if (status === 'Leave') { allStatuses.push('Leave'); }
-                else { allStatuses.push('Absent'); }
-
-                return {
-                    id: u.user_id,
-                    name: u.user_name || 'Unknown',
-                    role: u.desg_name || 'Employee',
-                    avatar: (u.profile_image_url && u.profile_image_url.trim() !== '') ? u.profile_image_url : (u.user_name ? u.user_name.trim().charAt(0).toUpperCase() : 'U') || 'U',
-                    department: u.dept_name || 'General',
-                    sessions,
-                    status,
-                    allStatuses,
-                    totalHours: totalHrs,
-                    expectedHours: expectedHrs,
-                    location: lastLocation,
-                    lateReason: u.late_reason || ''
-                };
-            });
-
-            // 3. Sort: Active/Present/Late/Overtime first, then Absent, then Week Off/Holiday/Leave
-            const statusWeights = {
-                'Active': 10,
-                'Late Active': 9,
-                'Late': 8,
-                'Overtime': 7,
-                'Present': 6,
-                'Missed Punch': 5,
-                'Absent': 4,
-                'Leave': 3,
-                'Holiday': 2,
-                'Week Off': 1
-            };
-            mergedData.sort((a, b) => (statusWeights[b.status] || 0) - (statusWeights[a.status] || 0));
+            // 2. Map Data using helper
+            const mergedData = processAttendanceData(staff, resolvedTz);
 
             setAttendanceData(mergedData);
 
-            // 4. Calculate Stats precisely from merged data for consistency
+            // 3. Calculate Stats precisely from merged data for consistency
             setStats({
                 present: mergedData.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
                 late: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : d.status.includes('Late')).length,
@@ -1466,302 +1650,173 @@ const AttendanceMonitoring = () => {
                                                         <Search size={32} />
                                                     </div>
                                                     <p className="text-lg font-medium text-slate-600 dark:text-slate-300">No employees found</p>
-                                                    <p className="text-sm">Try adjusting your filters or search terms</p>
+                                                                     <p className="text-sm">Try adjusting your filters or search terms</p>
                                                 </div>
                                             )}
                                         </div>
                                     ) : activeView === 'map' ? (
                                         /* Map View Layout */
-                                        <div className="h-[650px] bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative">
-                                            <MapContainer
-                                                center={[20, 78]}
-                                                zoom={5}
-                                                className="h-full w-full z-0"
-                                                attributionControl={false}
-                                            >
-                                                <TileLayer url={MAP_THEMES[activeTheme].url} />
+                                        <div className="h-[720px] flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative">
+                                            <div className="flex-1 h-full relative">
+                                                <MapContainer
+                                                    center={[20, 78]}
+                                                    zoom={5}
+                                                    minZoom={3}
+                                                    maxBounds={[[-90, -180], [90, 180]]}
+                                                    maxBoundsViscosity={1.0}
+                                                    className="h-full w-full z-0"
+                                                    attributionControl={false}
+                                                >
+                                                    <TileLayer url={MAP_THEMES[activeTheme].url} noWrap={true} />
 
-                                                {/* Map Theme Switcher Overlay */}
-                                                <div className="absolute top-4 right-4 z-[1001]">
-                                                    <div className="relative">
-                                                        <button
-                                                            onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-                                                            className="flex items-center gap-2 bg-white dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text px-4 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-github-dark-border hover:border-indigo-500/50 transition-all group"
-                                                        >
-                                                            <Layers size={18} className="text-indigo-500 group-hover:scale-110 transition-transform" />
-                                                            <span className="text-sm font-semibold">{MAP_THEMES[activeTheme].name}</span>
-                                                            <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
-                                                        </button>
-
-                                                        {isThemeMenuOpen && (
-                                                            <>
-                                                                <div className="fixed inset-0 z-10" onClick={() => setIsThemeMenuOpen(false)} />
-                                                                <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-20">
-                                                                    <div className="py-1">
-                                                                        {Object.entries(MAP_THEMES).map(([id, theme]) => (
-                                                                            <button
-                                                                                key={id}
-                                                                                onClick={() => {
-                                                                                    setActiveTheme(id);
-                                                                                    setIsThemeMenuOpen(false);
-                                                                                }}
-                                                                                className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-colors ${activeTheme === id
-                                                                                    ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-bold'
-                                                                                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                    }`}
-                                                                            >
-                                                                                <span>{theme.name}</span>
-                                                                                {activeTheme === id && <Check size={14} className="text-indigo-500" />}
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <MapRecenter data={filteredData} searchTerm={searchTerm} departmentFilter={departmentFilter} />
-
-                                                {(() => {
-                                                    const areCoordsSame = (lat1, lng1, lat2, lng2) => {
-                                                        if (!lat1 || !lng1 || !lat2 || !lng2) return false;
-                                                        return Math.abs(Number(lat1) - Number(lat2)) < 0.0001 &&
-                                                            Math.abs(Number(lng1) - Number(lng2)) < 0.0001;
-                                                    };
-
-                                                    const createClusterCustomIcon = function (cluster) {
-                                                        const count = cluster.getChildCount();
-                                                        return L.divIcon({
-                                                            className: 'cluster-marker',
-                                                            html: `<div class="cluster-marker-inner">
-                                                                <span>${count}</span>
-                                                                <div class="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                                                </div>
-                                                               </div>`,
-                                                            iconSize: [44, 44],
-                                                            iconAnchor: [22, 22]
-                                                        });
-                                                    };
-
-                                                    return (
-                                                        <>
-                                                            <ClusterEvents setSelectedCluster={setSelectedCluster} />
-
-                                                            {selectedCluster && (
-                                                                <Popup
-                                                                    position={selectedCluster.position}
-                                                                    onClose={() => setSelectedCluster(null)}
-                                                                    className="premium-popup cluster-drill-down"
-                                                                >
-                                                                    <ClusterDrillDownPopup data={selectedCluster.data} onClose={() => setSelectedCluster(null)} />
-                                                                </Popup>
-                                                            )}
-
-                                                            <MarkerClusterGroup
-                                                                chunkedLoading
-                                                                iconCreateFunction={createClusterCustomIcon}
-                                                                maxClusterRadius={40}
-                                                                spiderfyOnMaxZoom={true}
-                                                                showCoverageOnHover={false}
-                                                                zoomToBoundsOnClick={false}
+                                                    {/* Map Theme Switcher Overlay */}
+                                                    <div className="absolute top-4 right-4 z-[1001]">
+                                                        <div className="relative">
+                                                            <button
+                                                                onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+                                                                className="flex items-center gap-2 bg-white dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text px-4 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-github-dark-border hover:border-indigo-500/50 transition-all group"
                                                             >
-                                                                {filteredData.flatMap(user => {
-                                                                    return user.sessions.flatMap((session, sIdx) => {
-                                                                        const isCombined = areCoordsSame(session.inLat, session.inLng, session.outLat, session.outLng);
+                                                                <Layers size={18} className="text-indigo-500 group-hover:scale-110 transition-transform" />
+                                                                <span className="text-sm font-semibold">{MAP_THEMES[activeTheme].name}</span>
+                                                                <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
+                                                            </button>
 
-                                                                        const markersToRender = [];
-
-                                                                        if (isCombined) {
-                                                                            markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
-                                                                        } else {
-                                                                            if (session.inLat && session.inLng) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
-                                                                            if (session.outLat && session.outLng) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
-                                                                        }
-
-                                                                        return markersToRender.map(m => {
-                                                                            const markerKey = `${user.id}-${sIdx}-${m.type}`;
-                                                                            const { type, lat, lng } = m;
-
-                                                                            return (
-                                                                                <Marker
-                                                                                    key={markerKey}
-                                                                                    position={[Number(lat), Number(lng)]}
-                                                                                    customSessionData={{ user, session, type }}
-                                                                                    eventHandlers={{
-                                                                                        click: () => setLockedMarkerId(markerKey),
-                                                                                        popupclose: () => { if (lockedMarkerId === markerKey) setLockedMarkerId(null); }
+                                                            {isThemeMenuOpen && (
+                                                                <>
+                                                                    <div className="fixed inset-0 z-10" onClick={() => setIsThemeMenuOpen(false)} />
+                                                                    <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-20">
+                                                                        <div className="py-1">
+                                                                            {Object.entries(MAP_THEMES).map(([id, theme]) => (
+                                                                                <button
+                                                                                    key={id}
+                                                                                    onClick={() => {
+                                                                                        setActiveTheme(id);
+                                                                                        setIsThemeMenuOpen(false);
                                                                                     }}
-                                                                                    icon={L.divIcon({
-                                                                                        className: `user-marker-${type}`,
-                                                                                        html: `<div class="marker-inner relative ${lockedMarkerId === markerKey ? 'locked' : ''}">
-                                                                                        <div class="w-10 h-10 rounded-full border-2 ${type === 'in' ? 'border-emerald-500' : type === 'out' ? 'border-rose-500' : 'border-transparent'} bg-white dark:bg-github-dark-subtle shadow-lg overflow-hidden flex items-center justify-center" ${type === 'combined' ? 'style="border-image: linear-gradient(to bottom right, #10b981 50%, #f43f5e 50%) 1;"' : ''}>
-                                                                                            ${type === 'combined' ? `
-                                                                                                <div class="absolute inset-0 border-2 border-emerald-500 rounded-full" style="clip-path: polygon(0 0, 100% 0, 0 100%);"></div>
-                                                                                                <div class="absolute inset-0 border-2 border-rose-500 rounded-full" style="clip-path: polygon(100% 0, 100% 100%, 0 100%);"></div>
-                                                                                            ` : ''}
-                                                                                            ${user.avatar.startsWith('http')
-                                                                                                ? `<img src="${user.avatar}" class="w-full h-full object-cover" />`
-                                                                                                : `<span class="text-xs font-black text-slate-600 dark:text-slate-300">${user.avatar}</span>`
-                                                                                            }
-                                                                                        </div>
-                                                                                        <div class="absolute -bottom-1 -right-1 w-4 h-4 ${type === 'in' ? 'bg-emerald-500' : type === 'out' ? 'bg-rose-500' : 'bg-indigo-600'} rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
-                                                                                            ${type === 'in' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>' :
-                                                                                                type === 'out' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' :
-                                                                                                    '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'}
-                                                                                        </div>
-                                                                                       </div>`,
-                                                                                        iconSize: [40, 40],
-                                                                                        iconAnchor: [20, 20]
-                                                                                    })}
+                                                                                    className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-colors ${activeTheme === id
+                                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-bold'
+                                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                                        }`}
                                                                                 >
-                                                                                    {lockedMarkerId !== markerKey && (
-                                                                                        <MapTooltip direction="auto" offset={[0, -10]} opacity={1} className="premium-tooltip" sticky={true}>
-                                                                                            <div className={`bg-white dark:bg-[#0d1117] rounded-xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden ${type === 'combined' ? 'w-[320px]' : 'w-[280px]'} animate-in fade-in zoom-in-95 duration-200`}>
-                                                                                                <div className="p-2.5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
-                                                                                                    <div className="flex items-center gap-2.5">
-                                                                                                        <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0">
-                                                                                                            {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
-                                                                                                        </div>
-                                                                                                        <div className="min-w-0">
-                                                                                                            <p className="font-bold text-slate-800 dark:text-github-dark-text text-xs leading-tight">{user.name}</p>
-                                                                                                            <p className="text-[9px] text-slate-500 font-medium">{type === 'combined' ? 'Full Session Details' : user.role}</p>
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                                <div className="p-2.5 space-y-2.5">
-                                                                                                    {type === 'combined' ? (
-                                                                                                        <>
-                                                                                                            <div className="space-y-2">
-                                                                                                                <div className="flex items-center justify-between">
-                                                                                                                    <div className="flex items-center gap-1.5">
-                                                                                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                                                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time In</span>
-                                                                                                                    </div>
-                                                                                                                    <span className="text-[10px] font-bold text-emerald-600 px-2 py-0.5 rounded-full">{session.in}</span>
-                                                                                                                </div>
-                                                                                                                {session.inImage && (
-                                                                                                                    <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                                                        <img src={session.inImage} className="w-full h-full object-cover" />
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                            <div className="border-t border-slate-100 dark:border-github-dark-border pt-3 space-y-2">
-                                                                                                                <div className="flex items-center justify-between">
-                                                                                                                    <div className="flex items-center gap-1.5">
-                                                                                                                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
-                                                                                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time Out</span>
-                                                                                                                    </div>
-                                                                                                                    <span className="text-[10px] font-bold text-rose-600 px-2 py-0.5 rounded-full">{session.out}</span>
-                                                                                                                </div>
-                                                                                                                {session.outImage && (
-                                                                                                                    <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                                                        <img src={session.outImage} className="w-full h-full object-cover" />
-                                                                                                                    </div>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                        </>
-                                                                                                    ) : (
-                                                                                                        <>
-                                                                                                            <div className="flex items-center justify-between">
-                                                                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{type === 'in' ? 'Login' : 'Logout'}</span>
-                                                                                                                <span className={`text-[10px] font-bold ${type === 'in' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-rose-600 bg-rose-50 dark:bg-rose-900/20'} px-2 py-0.5 rounded-full uppercase`}>{type === 'in' ? session.in : session.out}</span>
-                                                                                                            </div>
-                                                                                                            {(type === 'in' ? session.inImage : session.outImage) && (
-                                                                                                                <div className="relative group/img rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                                                    <img src={type === 'in' ? session.inImage : session.outImage} className="w-full h-full object-cover" />
-                                                                                                                </div>
-                                                                                                            )}
-                                                                                                        </>
-                                                                                                    )}
-                                                                                                    <div className="flex flex-col gap-0.5 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                                                        <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 uppercase">
-                                                                                                            <MapPin size={8} className="text-indigo-500" /> Location
-                                                                                                        </div>
-                                                                                                        <p className="text-[9px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal">{type === 'out' ? session.outLocation : session.inLocation}</p>
-                                                                                                    </div>
-                                                                                                </div>
+                                                                                    <span>{theme.name}</span>
+                                                                                    {activeTheme === id && <Check size={14} className="text-indigo-500" />}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <MapRecenter data={filteredData} searchTerm={searchTerm} departmentFilter={departmentFilter} />
+
+                                                    {(() => {
+                                                        const areCoordsSame = (lat1, lng1, lat2, lng2) => {
+                                                            if (!lat1 || !lng1 || !lat2 || !lng2) return false;
+                                                            return Math.abs(Number(lat1) - Number(lat2)) < 0.0001 &&
+                                                                Math.abs(Number(lng1) - Number(lng2)) < 0.0001;
+                                                        };
+
+                                                        const createClusterCustomIcon = function (cluster) {
+                                                            const count = cluster.getChildCount();
+                                                            return L.divIcon({
+                                                                className: 'cluster-marker',
+                                                                html: `<div class="cluster-marker-inner">
+                                                                    <span>${count}</span>
+                                                                    <div class="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                                                    </div>
+                                                                   </div>`,
+                                                                iconSize: [44, 44],
+                                                                iconAnchor: [22, 22]
+                                                            });
+                                                        };
+
+                                                        return (
+                                                            <>
+                                                                <MarkerClusterGroup
+                                                                    ref={setClusterGroupElement}
+                                                                    chunkedLoading
+                                                                    iconCreateFunction={createClusterCustomIcon}
+                                                                    maxClusterRadius={40}
+                                                                    spiderfyOnMaxZoom={false}
+                                                                    showCoverageOnHover={false}
+                                                                    zoomToBoundsOnClick={false}
+                                                                >
+                                                                    {filteredData.flatMap(user => {
+                                                                        return user.sessions.flatMap((session, sIdx) => {
+                                                                            const isCombined = areCoordsSame(session.inLat, session.inLng, session.outLat, session.outLng);
+
+                                                                            const markersToRender = [];
+
+                                                                            if (isCombined) {
+                                                                                markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
+                                                                            } else {
+                                                                                if (session.inLat && session.inLng) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
+                                                                                if (session.outLat && session.outLng) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
+                                                                            }
+
+                                                                            return markersToRender.map(m => {
+                                                                                const markerKey = `${user.id}-${sIdx}-${m.type}`;
+                                                                                const { type, lat, lng } = m;
+                                                                                const isSelected = selectedCluster && selectedCluster.data.some(item => item.user.id === user.id && item.type === type);
+
+                                                                                return (
+                                                                                    <Marker
+                                                                                        key={markerKey}
+                                                                                        position={[Number(lat), Number(lng)]}
+                                                                                        customSessionData={{ user, session, type }}
+                                                                                        eventHandlers={{
+                                                                                            click: () => {
+                                                                                                setSelectedCluster({
+                                                                                                    position: [Number(lat), Number(lng)],
+                                                                                                    data: [{ user, session, type }]
+                                                                                                });
+                                                                                            }
+                                                                                        }}
+                                                                                        icon={L.divIcon({
+                                                                                            className: `user-marker-${type}`,
+                                                                                            html: `<div class="marker-inner relative ${isSelected ? 'locked' : ''}">
+                                                                                            <div class="w-10 h-10 rounded-full border-2 ${type === 'in' ? 'border-emerald-500' : type === 'out' ? 'border-rose-500' : 'border-transparent'} bg-white dark:bg-github-dark-subtle shadow-lg overflow-hidden flex items-center justify-center" ${type === 'combined' ? 'style="border-image: linear-gradient(to bottom right, #10b981 50%, #f43f5e 50%) 1;"' : ''}>
+                                                                                                ${type === 'combined' ? `
+                                                                                                    <div class="absolute inset-0 border-2 border-emerald-500 rounded-full" style="clip-path: polygon(0 0, 100% 0, 0 100%);"></div>
+                                                                                                    <div class="absolute inset-0 border-2 border-rose-500 rounded-full" style="clip-path: polygon(100% 0, 100% 100%, 0 100%);"></div>
+                                                                                                ` : ''}
+                                                                                                ${user.avatar.startsWith('http')
+                                                                                                    ? `<img src="${user.avatar}" class="w-full h-full object-cover" />`
+                                                                                                    : `<span class="text-xs font-black text-slate-600 dark:text-slate-300">${user.avatar}</span>`
+                                                                                                }
                                                                                             </div>
-                                                                                        </MapTooltip>
-                                                                                    )}
-                                                                                    <Popup className="premium-popup">
-                                                                                        <div className={`bg-white dark:bg-[#0d1117] rounded-xl overflow-hidden ${type === 'combined' ? 'w-[320px]' : 'w-[280px]'}`}>
-                                                                                            <div className="p-2.5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
-                                                                                                <div className="flex items-center gap-2.5">
-                                                                                                    <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold text-xs overflow-hidden shrink-0">
-                                                                                                        {user.avatar.startsWith('http') ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.avatar}
-                                                                                                    </div>
-                                                                                                    <div className="min-w-0">
-                                                                                                        <p className="font-bold text-slate-800 dark:text-github-dark-text text-xs leading-tight">{user.name}</p>
-                                                                                                        <p className="text-[9px] text-slate-500 font-medium">{type === 'combined' ? 'Full Session Details' : user.role}</p>
-                                                                                                    </div>
-                                                                                                </div>
+                                                                                            <div class="absolute -bottom-1 -right-1 w-4 h-4 ${type === 'in' ? 'bg-emerald-500' : type === 'out' ? 'bg-rose-500' : 'bg-indigo-600'} rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
+                                                                                                ${type === 'in' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>' :
+                                                                                                    type === 'out' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' :
+                                                                                                        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'}
                                                                                             </div>
-                                                                                            <div className="p-2.5 space-y-2.5">
-                                                                                                {type === 'combined' ? (
-                                                                                                    <>
-                                                                                                        <div className="space-y-2">
-                                                                                                            <div className="flex items-center justify-between">
-                                                                                                                <div className="flex items-center gap-1.5">
-                                                                                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time In</span>
-                                                                                                                </div>
-                                                                                                                <span className="text-[10px] font-bold text-emerald-600 px-2 py-0.5 rounded-full">{session.in}</span>
-                                                                                                            </div>
-                                                                                                            {session.inImage && (
-                                                                                                                <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                                                    <img src={session.inImage} className="w-full h-full object-cover" />
-                                                                                                                </div>
-                                                                                                            )}
-                                                                                                        </div>
-                                                                                                        <div className="border-t border-slate-100 dark:border-github-dark-border pt-3 space-y-2">
-                                                                                                            <div className="flex items-center justify-between">
-                                                                                                                <div className="flex items-center gap-1.5">
-                                                                                                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
-                                                                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time Out</span>
-                                                                                                                </div>
-                                                                                                                <span className="text-[10px] font-bold text-rose-600 px-2 py-0.5 rounded-full">{session.out}</span>
-                                                                                                            </div>
-                                                                                                            {session.outImage && (
-                                                                                                                <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-20 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                                                <img src={session.outImage} className="w-full h-full object-cover" />
-                                                                                                                </div>
-                                                                                                            )}
-                                                                                                        </div>
-                                                                                                    </>
-                                                                                                ) : (
-                                                                                                    <>
-                                                                                                        <div className="flex items-center justify-between">
-                                                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{type === 'in' ? 'Login' : 'Logout'}</span>
-                                                                                                            <span className={`text-[10px] font-bold ${type === 'in' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-rose-600 bg-rose-50 dark:bg-rose-900/20'} px-2 py-0.5 rounded-full uppercase`}>{type === 'in' ? session.in : session.out}</span>
-                                                                                                        </div>
-                                                                                                        {(type === 'in' ? session.inImage : session.outImage) && (
-                                                                                                            <div className="relative group/img rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border h-24 bg-slate-100 dark:bg-github-dark-subtle">
-                                                                                                                <img src={type === 'in' ? session.inImage : session.outImage} className="w-full h-full object-cover" />
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                    </>
-                                                                                                )}
-                                                                                                <div className="flex flex-col gap-0.5 p-2 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                                                    <div className="flex items-center gap-1.5 text-[8px] font-bold text-slate-400 uppercase">
-                                                                                                        <MapPin size={8} className="text-indigo-500" /> Location
-                                                                                                    </div>
-                                                                                                    <p className="text-[9px] text-slate-600 dark:text-slate-300 leading-tight break-words whitespace-normal">{type === 'out' ? session.outLocation : session.inLocation}</p>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </Popup>
-                                                                                </Marker>
-                                                                            );
+                                                                                           </div>`,
+                                                                                            iconSize: [40, 40],
+                                                                                            iconAnchor: [20, 20]
+                                                                                        })}
+                                                                                    >
+                                                                                    </Marker>
+                                                                                );
+                                                                            });
                                                                         });
-                                                                    });
-                                                                })}
-                                                            </MarkerClusterGroup>
-                                                        </>
-                                                    );
-                                                })()}
-                                            </MapContainer>
+                                                                    })}
+                                                                </MarkerClusterGroup>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </MapContainer>
+                                            </div>
+                                            <AnimatePresence>
+                                                {selectedCluster && (
+                                                    <MapSidebarContent
+                                                        selectedCluster={selectedCluster}
+                                                        onClose={() => setSelectedCluster(null)}
+                                                    />
+                                                )}
+                                            </AnimatePresence>
                                         </div>
                                     ) : activeView === 'graph' ? (
                                         /* Graph View Layout */
