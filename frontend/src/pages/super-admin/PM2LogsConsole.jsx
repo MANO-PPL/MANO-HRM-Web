@@ -68,6 +68,31 @@ const PM2LogsConsole = () => {
 
   const terminalEndRef = useRef(null);
   const terminalBodyRef = useRef(null);
+  
+  // Refs for tracking scroll offset and preventing stale closures
+  const prevScrollHeightRef = useRef(0);
+  const prevScrollTopRef = useRef(0);
+  const pageRef = useRef(1);
+  const hasMoreRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  const loadingRef = useRef(false);
+
+  // Sync state variables to refs to avoid stale closures in handleScroll listener
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+
+  useEffect(() => {
+    loadingMoreRef.current = loadingMore;
+  }, [loadingMore]);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
 
   // Fetch paginated and filtered logs from backend
   const fetchLogs = async (pageNum = 1, append = false) => {
@@ -109,10 +134,17 @@ const PM2LogsConsole = () => {
         const fetchedLogs = res.data.data || [];
         
         if (append) {
+          // Record scroll position right before updating logs state to keep reading position stable
+          const element = terminalBodyRef.current;
+          if (element) {
+            prevScrollHeightRef.current = element.scrollHeight;
+            prevScrollTopRef.current = element.scrollTop;
+          }
           // Append older logs to the end of our newest-first list
           setLogs(prev => [...prev, ...fetchedLogs]);
         } else {
           setLogs(fetchedLogs);
+          setAutoScroll(true); // Reset to auto scroll on fresh load / search
         }
         
         setHasMore(res.data.hasMore);
@@ -168,12 +200,50 @@ const PM2LogsConsole = () => {
     };
   }, [socket, isLive]);
 
-  // Scroll to bottom helper
+  // Handle auto-scroll down or restore scroll height after fetching older logs
   useEffect(() => {
-    if (autoScroll && terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    const element = terminalBodyRef.current;
+    if (!element) return;
+
+    if (prevScrollHeightRef.current > 0) {
+      // Restoring scroll position: shift scroll down by the height of newly loaded logs
+      const newScrollHeight = element.scrollHeight;
+      const heightDiff = newScrollHeight - prevScrollHeightRef.current;
+      element.scrollTop = prevScrollTopRef.current + heightDiff;
+      
+      // Reset scroll tracking
+      prevScrollHeightRef.current = 0;
+      prevScrollTopRef.current = 0;
+    } else if (autoScroll) {
+      // Auto scroll to bottom
+      element.scrollTop = element.scrollHeight;
     }
   }, [logs, autoScroll]);
+
+  // Dynamic Scroll Listener
+  const handleScroll = () => {
+    const element = terminalBodyRef.current;
+    if (!element) return;
+
+    const scrollTop = element.scrollTop;
+    const scrollHeight = element.scrollHeight;
+    const clientHeight = element.clientHeight;
+
+    // 1. YouTube-style: load older logs when scrolling near the top
+    if (scrollTop < 25 && hasMoreRef.current && !loadingMoreRef.current && !loadingRef.current) {
+      fetchLogs(pageRef.current + 1, true);
+    }
+
+    // 2. Suspend/Resume Auto-Scroll based on user scroll position
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    const isAtBottom = distanceFromBottom < 20;
+
+    if (isAtBottom) {
+      setAutoScroll(true);
+    } else {
+      setAutoScroll(false);
+    }
+  };
 
   // Statistics of currently loaded logs
   const stats = useMemo(() => {
@@ -279,7 +349,7 @@ const PM2LogsConsole = () => {
       case 'Security & Auth': return 'text-pink-700 bg-pink-50 border-pink-200 dark:text-pink-400 dark:bg-pink-950/30 dark:border-pink-800/40';
       case 'FCM & Push': return 'text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-400 dark:bg-orange-950/30 dark:border-orange-800/40';
       case 'API & Requests': return 'text-teal-700 bg-teal-50 border-teal-200 dark:text-teal-400 dark:bg-teal-950/30 dark:border-teal-800/40';
-      default: return 'text-slate-700 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-905 dark:border-slate-700/40';
+      default: return 'text-slate-700 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900 dark:border-slate-700/40';
     }
   };
 
@@ -364,7 +434,7 @@ const PM2LogsConsole = () => {
               placeholder="Search / Filter messages, paths, queries..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-slate-900 dark:text-github-dark-text font-medium"
+              className="w-full pl-9 pr-8 py-2 bg-slate-55 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-slate-900 dark:text-github-dark-text font-medium"
             />
             {searchQuery && (
               <button 
@@ -398,7 +468,7 @@ const PM2LogsConsole = () => {
             <button
               onClick={() => fetchLogs(1, false)}
               disabled={loading}
-              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-650 hover:border-indigo-500 transition-all flex items-center justify-center disabled:opacity-50"
+              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-600 hover:border-indigo-500 transition-all flex items-center justify-center disabled:opacity-50"
               title="Sync log history from file"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -416,7 +486,7 @@ const PM2LogsConsole = () => {
             {/* Copy Logs */}
             <button
               onClick={handleCopyLogs}
-              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-650 hover:border-indigo-500 transition-all flex items-center justify-center"
+              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-600 hover:border-indigo-500 transition-all flex items-center justify-center"
               title="Copy active logs"
             >
               <Copy size={14} />
@@ -425,7 +495,7 @@ const PM2LogsConsole = () => {
             {/* Download logs */}
             <button
               onClick={handleDownloadLogs}
-              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-650 hover:text-indigo-650 hover:border-indigo-500 transition-all flex items-center justify-center"
+              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-605 hover:text-indigo-600 hover:border-indigo-500 transition-all flex items-center justify-center"
               title="Download active logs"
             >
               <Download size={14} />
@@ -457,7 +527,7 @@ const PM2LogsConsole = () => {
             {(startTime || endTime) && (
               <button 
                 onClick={() => { setStartTime(''); setEndTime(''); }}
-                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 dark:text-rose-400 rounded-lg text-xs font-semibold border border-rose-250 dark:border-rose-900/30 transition-all flex items-center justify-center gap-1.5 w-full lg:w-auto"
+                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-705 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 dark:text-rose-400 rounded-lg text-xs font-semibold border border-rose-250 dark:border-rose-900/30 transition-all flex items-center justify-center gap-1.5 w-full lg:w-auto"
               >
                 Clear Time Filter
               </button>
@@ -494,7 +564,7 @@ const PM2LogsConsole = () => {
             </div>
           </div>
 
-          {/* Sources Filter */}
+          {/* Log Source */}
           <div>
             <span className="text-[10px] text-slate-400 dark:text-github-dark-muted uppercase block mb-2 tracking-wider">Log Source</span>
             <div className="flex gap-2">
@@ -505,7 +575,7 @@ const PM2LogsConsole = () => {
                   className={`px-2.5 py-1 rounded border transition-all ${
                     selectedSources[src]
                       ? 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold'
-                      : 'bg-slate-50 dark:bg-github-dark-bg border-slate-200 dark:border-github-dark-border text-slate-400 dark:text-github-dark-muted opacity-50'
+                      : 'bg-slate-55 dark:bg-github-dark-bg border-slate-200 dark:border-github-dark-border text-slate-400 dark:text-github-dark-muted opacity-50'
                   }`}
                 >
                   {src === 'stdout' ? 'stdout (OUT)' : 'stderr (ERR)'}
@@ -521,7 +591,7 @@ const PM2LogsConsole = () => {
               className={`px-3 py-1.5 rounded border transition-all text-center w-full md:w-fit self-start md:self-end flex items-center justify-center gap-1.5 ${
                 autoScroll 
                   ? 'bg-indigo-50 dark:bg-indigo-500/15 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold' 
-                  : 'bg-slate-50 dark:bg-github-dark-bg border-slate-200 dark:border-github-dark-border text-slate-505 dark:text-github-dark-muted'
+                  : 'bg-slate-50 dark:bg-github-dark-bg border-slate-200 dark:border-github-dark-border text-slate-500 dark:text-github-dark-muted'
               }`}
             >
               <Check size={14} className={autoScroll ? 'opacity-100' : 'opacity-0'} />
@@ -553,17 +623,17 @@ const PM2LogsConsole = () => {
       </div>
 
       {/* Terminal View Console */}
-      <div className="bg-slate-950 dark:bg-black border border-slate-800 dark:border-zinc-800 rounded-xl overflow-hidden shadow-2xl relative flex flex-col h-[450px] sm:h-[550px] lg:h-auto lg:flex-1 lg:min-h-0">
+      <div className="bg-slate-950 dark:bg-black border border-slate-800 dark:border-zinc-800 rounded-xl overflow-hidden shadow-2xl relative flex flex-col h-[450px] sm:h-[550px] lg:h-auto lg:flex-1 lg:min-h-0 font-mono">
         {/* Terminal Header */}
-        <div className="bg-slate-900 border-b border-slate-800 flex justify-between items-center px-4 py-2 shrink-0">
+        <div className="bg-slate-900 border-b border-slate-800 flex justify-between items-center px-4 py-2 shrink-0 select-none">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-rose-500/80 hover:bg-rose-500 cursor-pointer" onClick={handleClearConsole} title="Clear console buffer" />
             <span className="w-3 h-3 rounded-full bg-amber-500/80" />
             <span className="w-3 h-3 rounded-full bg-emerald-500/80 cursor-pointer" onClick={() => setAutoScroll(!autoScroll)} title="Toggle auto scroll" />
-            <span className="text-slate-400 text-xs font-mono font-medium ml-2 select-none">ATTENDANCE-BACKEND console (~/logs)</span>
+            <span className="text-slate-400 text-xs font-medium ml-2 select-none">ATTENDANCE-BACKEND console (~/logs)</span>
           </div>
 
-          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 select-none">
+          <div className="flex items-center gap-2 text-[10px] text-slate-500">
             {isLive ? (
               <div className="flex items-center gap-1.5 text-emerald-400 font-semibold bg-emerald-950/20 px-2 py-0.5 rounded border border-emerald-900/30">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
@@ -574,40 +644,33 @@ const PM2LogsConsole = () => {
                 <span>PAUSED</span>
               </div>
             )}
-            <span className="hidden sm:inline border-l border-slate-800 pl-2">Loaded logs: {displayLogs.length}</span>
+            <span className="hidden sm:inline border-l border-slate-800 pl-2">Loaded: {displayLogs.length}</span>
           </div>
         </div>
 
         {/* Terminal Body */}
         <div 
           ref={terminalBodyRef}
-          className="p-4 flex-1 overflow-y-auto no-scrollbar font-mono text-xs text-slate-300 space-y-1.5 select-text"
+          onScroll={handleScroll}
+          style={{ overflowAnchor: 'none' }}
+          className="p-4 flex-1 overflow-y-auto no-scrollbar text-slate-300 space-y-1.5 select-text"
         >
-          {/* Infinite Scroll / Load More Older Logs Button at the top of terminal */}
-          {hasMore && (
-            <div className="flex justify-center py-2 border-b border-dashed border-slate-800 mb-3 shrink-0">
-              <button
-                onClick={() => fetchLogs(page + 1, true)}
-                disabled={loadingMore}
-                className="px-4 py-1.5 bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-white rounded-lg text-[10px] font-bold border border-slate-800 hover:border-slate-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
-              >
-                {loadingMore ? (
-                  <>
-                    <RefreshCw size={10} className="animate-spin" />
-                    <span>Loading older log entries...</span>
-                  </>
-                ) : (
-                  <>
-                    <Terminal size={10} />
-                    <span>Load Older Logs ({totalCount - logs.length} remaining)</span>
-                  </>
-                )}
-              </button>
+          {/* Infinite Scroll loading indicator at the top */}
+          {loadingMore && (
+            <div className="flex items-center justify-center gap-2 py-2 border-b border-dashed border-slate-850 mb-3 shrink-0 text-[10px] text-indigo-400 font-bold select-none">
+              <RefreshCw size={10} className="animate-spin" />
+              <span>Loading older log entries...</span>
+            </div>
+          )}
+          
+          {hasMore && !loadingMore && (
+            <div className="flex items-center justify-center py-2 border-b border-dashed border-slate-850 mb-3 shrink-0 text-[9px] text-slate-500 select-none">
+              <span>Scroll to top to load more older logs ({totalCount - logs.length} remaining)</span>
             </div>
           )}
 
           {loading ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
+            <div className="h-full flex flex-col items-center justify-center text-slate-550 space-y-2 select-none">
               <div className="w-6 h-6 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
               <p className="text-xs">Fetching log buffer history...</p>
             </div>
@@ -655,7 +718,7 @@ const PM2LogsConsole = () => {
                 </div>
 
                 {/* Log Message Text */}
-                <div className={`flex-1 break-all whitespace-pre-wrap select-text font-medium font-mono text-[11px] leading-relaxed ${
+                <div className={`flex-1 break-all whitespace-pre-wrap select-text font-medium text-[11px] leading-relaxed ${
                   log.severity === 'CRITICAL' 
                     ? 'text-rose-100 font-semibold' 
                     : log.severity === 'WARNING' 
