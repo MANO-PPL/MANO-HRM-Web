@@ -7,7 +7,7 @@ import { toast } from 'react-toastify';
 import { 
   Play, Pause, Trash2, Copy, Search, Terminal, AlertTriangle, 
   Info, ShieldAlert, Database, Cpu, Server, Activity, 
-  Check, RefreshCw, Download, ChevronRight, Eye, RefreshCw as SpinIcon
+  Check, RefreshCw, Download, ChevronRight, Eye
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 
@@ -32,10 +32,18 @@ const PM2LogsConsole = () => {
 
   // Core State
   const [logs, setLogs] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [isLive, setIsLive] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Time search parameters
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
 
   // Filters
   const [selectedSeverities, setSelectedSeverities] = useState({
@@ -61,27 +69,75 @@ const PM2LogsConsole = () => {
   const terminalEndRef = useRef(null);
   const terminalBodyRef = useRef(null);
 
-  // Fetch log history on mount
-  const fetchLogHistory = async () => {
-    setLoading(true);
+  // Fetch paginated and filtered logs from backend
+  const fetchLogs = async (pageNum = 1, append = false) => {
+    if (pageNum === 1) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+    
     try {
-      const res = await api.get('/super-admin/monitor/pm2-logs');
+      // Build query string params
+      const params = new URLSearchParams();
+      params.append('page', pageNum);
+      params.append('limit', 100);
+      params.append('search', searchQuery);
+      
+      if (startTime) {
+        params.append('startTime', new Date(startTime).toISOString());
+      }
+      if (endTime) {
+        params.append('endTime', new Date(endTime).toISOString());
+      }
+      
+      // Add array filters
+      Object.keys(selectedSeverities).forEach(sev => {
+        if (selectedSeverities[sev]) params.append('severities', sev);
+      });
+      
+      Object.keys(selectedCategories).forEach(cat => {
+        if (selectedCategories[cat]) params.append('categories', cat);
+      });
+      
+      Object.keys(selectedSources).forEach(src => {
+        if (selectedSources[src]) params.append('sources', src);
+      });
+
+      const res = await api.get(`/super-admin/monitor/pm2-logs?${params.toString()}`);
       if (res.data && (res.data.success || res.data.status === 'success')) {
-        setLogs(res.data.data || []);
+        const fetchedLogs = res.data.data || [];
+        
+        if (append) {
+          // Append older logs to the end of our newest-first list
+          setLogs(prev => [...prev, ...fetchedLogs]);
+        } else {
+          setLogs(fetchedLogs);
+        }
+        
+        setHasMore(res.data.hasMore);
+        setTotalCount(res.data.total);
+        setPage(pageNum);
       } else {
         toast.error('Failed to parse log history response');
       }
     } catch (err) {
-      console.error('Failed to fetch PM2 logs history:', err);
-      toast.error(err.response?.data?.message || 'Failed to fetch log history from backend');
+      console.error('Failed to fetch PM2 logs:', err);
+      toast.error(err.response?.data?.message || 'Failed to fetch logs from server');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
+  // Trigger reload on filter or search parameter changes
   useEffect(() => {
-    fetchLogHistory();
-  }, []);
+    const delayDebounce = setTimeout(() => {
+      fetchLogs(1, false);
+    }, searchQuery ? 400 : 0); // debounce only search text entry
+    
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery, startTime, endTime, selectedSeverities, selectedCategories, selectedSources]);
 
   // Subscribe to live logs via socket.io
   useEffect(() => {
@@ -90,15 +146,16 @@ const PM2LogsConsole = () => {
     socket.emit('subscribe_pm2_logs');
 
     const handleNewLog = (logEntry) => {
-      // If live updates are paused, discard or buffer? Rule: pause disables incoming stream updates to state
+      // Prepend the new log to our newest-first logs state list
       setLogs((prev) => {
         // Keep logs list capped at 1000 entries
-        const updated = [...prev, logEntry];
+        const updated = [logEntry, ...prev];
         if (updated.length > 1000) {
-          return updated.slice(-1000);
+          return updated.slice(0, 1000);
         }
         return updated;
       });
+      setTotalCount(prev => prev + 1);
     };
 
     if (isLive) {
@@ -118,9 +175,9 @@ const PM2LogsConsole = () => {
     }
   }, [logs, autoScroll]);
 
-  // Statistics
+  // Statistics of currently loaded logs
   const stats = useMemo(() => {
-    const counts = { INFO: 0, WARNING: 0, CRITICAL: 0, db: 0, auth: 0, api: 0, total: logs.length };
+    const counts = { INFO: 0, WARNING: 0, CRITICAL: 0, db: 0, auth: 0, api: 0, total: totalCount };
     logs.forEach(l => {
       if (l.severity === 'CRITICAL') counts.CRITICAL++;
       else if (l.severity === 'WARNING') counts.WARNING++;
@@ -131,42 +188,20 @@ const PM2LogsConsole = () => {
       else if (l.category === 'API & Requests') counts.api++;
     });
     return counts;
+  }, [logs, totalCount]);
+
+  // Reverse logs to render oldest-first in standard terminal view
+  const displayLogs = useMemo(() => {
+    return [...logs].reverse();
   }, [logs]);
-
-  // Filters logic
-  const filteredLogs = useMemo(() => {
-    return logs.filter((log) => {
-      // 1. Severity Filter
-      if (!selectedSeverities[log.severity]) return false;
-
-      // 2. Category Filter
-      if (!selectedCategories[log.category]) return false;
-
-      // 3. Source Filter
-      if (!selectedSources[log.source]) return false;
-
-      // 4. Text Search Match
-      if (searchQuery.trim() !== '') {
-        const query = searchQuery.toLowerCase();
-        const msgMatch = log.message && log.message.toLowerCase().includes(query);
-        const categoryMatch = log.category && log.category.toLowerCase().includes(query);
-        const sourceMatch = log.source && log.source.toLowerCase().includes(query);
-        const severityMatch = log.severity && log.severity.toLowerCase().includes(query);
-        const timestampMatch = log.timestamp && log.timestamp.includes(query);
-        return msgMatch || categoryMatch || sourceMatch || severityMatch || timestampMatch;
-      }
-
-      return true;
-    });
-  }, [logs, selectedSeverities, selectedCategories, selectedSources, searchQuery]);
 
   // Clipboard copy helper
   const handleCopyLogs = () => {
-    if (filteredLogs.length === 0) {
+    if (displayLogs.length === 0) {
       toast.warn('No logs to copy');
       return;
     }
-    const logText = filteredLogs.map(l => 
+    const logText = displayLogs.map(l => 
       `[${new Date(l.timestamp).toLocaleString()}] [${l.source.toUpperCase()}] [${l.severity}] [${l.category}] ${l.message}`
     ).join('\n');
 
@@ -176,11 +211,11 @@ const PM2LogsConsole = () => {
 
   // Download logs helper
   const handleDownloadLogs = () => {
-    if (filteredLogs.length === 0) {
+    if (displayLogs.length === 0) {
       toast.warn('No logs to download');
       return;
     }
-    const logText = filteredLogs.map(l => 
+    const logText = displayLogs.map(l => 
       `[${new Date(l.timestamp).toLocaleString()}] [${l.source.toUpperCase()}] [${l.severity}] [${l.category}] ${l.message}`
     ).join('\n');
 
@@ -197,10 +232,10 @@ const PM2LogsConsole = () => {
   // Clear console helper
   const handleClearConsole = () => {
     setLogs([]);
+    setTotalCount(0);
     toast.info('Console log buffer cleared');
   };
 
-  // Toggle helper
   const toggleSeverity = (sev) => {
     setSelectedSeverities(prev => ({ ...prev, [sev]: !prev[sev] }));
   };
@@ -244,7 +279,7 @@ const PM2LogsConsole = () => {
       case 'Security & Auth': return 'text-pink-700 bg-pink-50 border-pink-200 dark:text-pink-400 dark:bg-pink-950/30 dark:border-pink-800/40';
       case 'FCM & Push': return 'text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-400 dark:bg-orange-950/30 dark:border-orange-800/40';
       case 'API & Requests': return 'text-teal-700 bg-teal-50 border-teal-200 dark:text-teal-400 dark:bg-teal-950/30 dark:border-teal-800/40';
-      default: return 'text-slate-700 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900 dark:border-slate-700/40';
+      default: return 'text-slate-700 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-905 dark:border-slate-700/40';
     }
   };
 
@@ -276,11 +311,11 @@ const PM2LogsConsole = () => {
         {/* Total logs */}
         <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex flex-col justify-between">
           <div className="flex justify-between items-center text-slate-500 dark:text-github-dark-muted">
-            <span className="text-xs font-semibold uppercase tracking-wider">Log Buffer Size</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Matched Logs</span>
             <Terminal size={16} />
           </div>
-          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-github-dark-text">{stats.total} / 1000</div>
-          <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mt-1">Capped ring-buffer entries</p>
+          <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-github-dark-text">{logs.length} / {totalCount}</div>
+          <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mt-1">Loaded lines vs total matches</p>
         </div>
 
         {/* Critical Logs */}
@@ -361,9 +396,9 @@ const PM2LogsConsole = () => {
 
             {/* Refresh */}
             <button
-              onClick={fetchLogHistory}
+              onClick={() => fetchLogs(1, false)}
               disabled={loading}
-              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-600 hover:border-indigo-500 transition-all flex items-center justify-center disabled:opacity-50"
+              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-650 hover:border-indigo-500 transition-all flex items-center justify-center disabled:opacity-50"
               title="Sync log history from file"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -381,7 +416,7 @@ const PM2LogsConsole = () => {
             {/* Copy Logs */}
             <button
               onClick={handleCopyLogs}
-              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-600 hover:border-indigo-500 transition-all flex items-center justify-center"
+              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-650 hover:border-indigo-500 transition-all flex items-center justify-center"
               title="Copy active logs"
             >
               <Copy size={14} />
@@ -390,11 +425,43 @@ const PM2LogsConsole = () => {
             {/* Download logs */}
             <button
               onClick={handleDownloadLogs}
-              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-600 dark:text-slate-350 hover:text-indigo-600 hover:border-indigo-500 transition-all flex items-center justify-center"
+              className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-650 hover:text-indigo-650 hover:border-indigo-500 transition-all flex items-center justify-center"
               title="Download active logs"
             >
               <Download size={14} />
             </button>
+          </div>
+        </div>
+
+        {/* Row 1.5: Date Range Picker */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 border-t border-slate-100 dark:border-github-dark-border pt-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-slate-400 dark:text-github-dark-muted uppercase font-bold tracking-wider">Start Time</span>
+            <input 
+              type="datetime-local" 
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="px-3 py-1.5 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-900 dark:text-github-dark-text"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-slate-400 dark:text-github-dark-muted uppercase font-bold tracking-wider">End Time</span>
+            <input 
+              type="datetime-local" 
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              className="px-3 py-1.5 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-900 dark:text-github-dark-text"
+            />
+          </div>
+          <div className="flex items-end">
+            {(startTime || endTime) && (
+              <button 
+                onClick={() => { setStartTime(''); setEndTime(''); }}
+                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 dark:text-rose-400 rounded-lg text-xs font-semibold border border-rose-250 dark:border-rose-900/30 transition-all flex items-center justify-center gap-1.5 w-full lg:w-auto"
+              >
+                Clear Time Filter
+              </button>
+            )}
           </div>
         </div>
 
@@ -454,7 +521,7 @@ const PM2LogsConsole = () => {
               className={`px-3 py-1.5 rounded border transition-all text-center w-full md:w-fit self-start md:self-end flex items-center justify-center gap-1.5 ${
                 autoScroll 
                   ? 'bg-indigo-50 dark:bg-indigo-500/15 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold' 
-                  : 'bg-slate-50 dark:bg-github-dark-bg border-slate-200 dark:border-github-dark-border text-slate-500 dark:text-github-dark-muted'
+                  : 'bg-slate-50 dark:bg-github-dark-bg border-slate-200 dark:border-github-dark-border text-slate-505 dark:text-github-dark-muted'
               }`}
             >
               <Check size={14} className={autoScroll ? 'opacity-100' : 'opacity-0'} />
@@ -507,7 +574,7 @@ const PM2LogsConsole = () => {
                 <span>PAUSED</span>
               </div>
             )}
-            <span className="hidden sm:inline border-l border-slate-800 pl-2">Filter Match: {filteredLogs.length}</span>
+            <span className="hidden sm:inline border-l border-slate-800 pl-2">Loaded logs: {displayLogs.length}</span>
           </div>
         </div>
 
@@ -516,19 +583,42 @@ const PM2LogsConsole = () => {
           ref={terminalBodyRef}
           className="p-4 flex-1 overflow-y-auto no-scrollbar font-mono text-xs text-slate-300 space-y-1.5 select-text"
         >
+          {/* Infinite Scroll / Load More Older Logs Button at the top of terminal */}
+          {hasMore && (
+            <div className="flex justify-center py-2 border-b border-dashed border-slate-800 mb-3 shrink-0">
+              <button
+                onClick={() => fetchLogs(page + 1, true)}
+                disabled={loadingMore}
+                className="px-4 py-1.5 bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-white rounded-lg text-[10px] font-bold border border-slate-800 hover:border-slate-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {loadingMore ? (
+                  <>
+                    <RefreshCw size={10} className="animate-spin" />
+                    <span>Loading older log entries...</span>
+                  </>
+                ) : (
+                  <>
+                    <Terminal size={10} />
+                    <span>Load Older Logs ({totalCount - logs.length} remaining)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
               <div className="w-6 h-6 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
               <p className="text-xs">Fetching log buffer history...</p>
             </div>
-          ) : filteredLogs.length === 0 ? (
+          ) : displayLogs.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-500 text-center space-y-2 p-6 select-none">
               <Terminal className="text-slate-700" size={32} />
               <p className="text-xs font-semibold">No logs in current console buffer matching your filter rules.</p>
-              <p className="text-[10px] text-slate-600">Try toggling severity levels, enabling categories, or clearing search filter.</p>
+              <p className="text-[10px] text-slate-650">Try toggling severity levels, enabling categories, or clearing search filter.</p>
             </div>
           ) : (
-            filteredLogs.map((log, index) => (
+            displayLogs.map((log, index) => (
               <div 
                 key={index} 
                 className={`flex flex-col sm:flex-row items-start gap-1 sm:gap-2 leading-relaxed border-l-2 pl-2 ${
@@ -582,8 +672,8 @@ const PM2LogsConsole = () => {
         </div>
 
         {/* Scroll helper bar */}
-        {!autoScroll && filteredLogs.length > 0 && (
-          <div className="absolute bottom-2 right-4 bg-indigo-600/90 text-white text-[10px] font-bold px-2 py-1 rounded-md cursor-pointer hover:bg-indigo-700 transition-all flex items-center gap-1 shadow-lg border border-indigo-500 select-none animate-bounce" onClick={() => setAutoScroll(true)}>
+        {!autoScroll && displayLogs.length > 0 && (
+          <div className="absolute bottom-2 right-4 bg-indigo-650/90 text-white text-[10px] font-bold px-2 py-1 rounded-md cursor-pointer hover:bg-indigo-700 transition-all flex items-center gap-1 shadow-lg border border-indigo-500 select-none animate-bounce" onClick={() => setAutoScroll(true)}>
             <span>Auto-Scroll Paused</span>
             <ChevronRight size={12} className="rotate-90" />
           </div>

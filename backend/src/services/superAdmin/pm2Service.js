@@ -35,30 +35,48 @@ const SEVERITY_RULES = {
 
 const CATEGORY_RULES = {
     Database: /(knex|mysql|db_host|3306|3307|database|query|table initialization)/i,
-    Cache_Queue: /(redis|bullmq|cache|6379|queue|job|worker|elasticache)/i,
-    Security_Auth: /(auth|login|token|jwt|unauthorized|forbidden|otp|captcha|fcmService|security alert)/i,
-    FCM_Push: /(fcm|firebase|push notification|registered devices|admin sdk)/i,
-    API_Requests: /(get\s\/|post\s\/|put\s\/|delete\s\/|api_call|route path|status_code)/i
+    'Cache & Queues': /(redis|bullmq|cache|6379|queue|job|worker|elasticache)/i,
+    'Security & Auth': /(auth|login|token|jwt|unauthorized|forbidden|otp|captcha|fcmService|security alert)/i,
+    'FCM & Push': /(fcm|firebase|push notification|registered devices|admin sdk)/i,
+    'API & Requests': /(get\s\/|post\s\/|put\s\/|delete\s\/|api_call|route path|status_code)/i
 };
 
 // Helper to classify log line
 export const parseLogLine = (line, type = 'stdout') => {
     if (!line || line.trim() === '') return null;
 
+    // Check if it fits the new standardized format: [Timestamp] [Severity] [Category] Message
+    const stdMatch = line.match(/^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+(.*)$/s);
+    if (stdMatch) {
+        let timestamp = stdMatch[1];
+        try {
+            timestamp = new Date(timestamp).toISOString();
+        } catch (e) {}
+        
+        return {
+            timestamp,
+            severity: stdMatch[2],
+            category: stdMatch[3],
+            message: stdMatch[4],
+            source: type === 'stderr' ? 'stderr' : 'stdout'
+        };
+    }
+
+    // Fallback: old dynamic parsing for unformatted logs (e.g. process startup banners)
     let timestamp = new Date().toISOString();
     let message = line;
 
-    // PM2 and common loggers format: "YYYY-MM-DDTHH:mm:ss: message" or "[YYYY-MM-DD HH:mm:ss] message"
     const tsMatch = line.match(/^\[?(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z?)\]?\s*(.*)/);
     if (tsMatch) {
-        timestamp = new Date(tsMatch[1]).toISOString();
+        try {
+            timestamp = new Date(tsMatch[1]).toISOString();
+        } catch (e) {}
         message = tsMatch[2];
     }
 
-    // Determine Severity
-    let severity = 'INFO'; // default
+    let severity = 'INFO';
     if (type === 'stderr') {
-        severity = 'WARNING'; // Default stderr is warning unless critical keywords match
+        severity = 'WARNING';
     }
     if (SEVERITY_RULES.CRITICAL.test(line)) {
         severity = 'CRITICAL';
@@ -68,11 +86,10 @@ export const parseLogLine = (line, type = 'stdout') => {
         severity = 'INFO';
     }
 
-    // Determine Category
-    let category = 'System'; // default
+    let category = 'System';
     for (const [key, regex] of Object.entries(CATEGORY_RULES)) {
         if (regex.test(line)) {
-            category = key.replace('_', ' & '); // format nice name
+            category = key;
             break;
         }
     }
@@ -137,4 +154,83 @@ export const getHistoryLogs = async (maxLines = 150) => {
 
     // Return the last N logs of the merged array
     return combined.slice(-maxLines);
+};
+
+// Fetch filtered and paginated logs for infinite scrolling & time range search
+export const getFilteredLogs = async ({
+    startTime = null,
+    endTime = null,
+    search = '',
+    severities = [],
+    categories = [],
+    sources = [],
+    page = 1,
+    limit = 100
+}) => {
+    const paths = getLogPaths();
+    if (!paths.out || !paths.err) {
+        return { logs: [], hasMore: false, total: 0 };
+    }
+
+    // Read up to 10k lines to execute paging and search filters on
+    const maxReadLines = 10000;
+    const [outLines, errLines] = await Promise.all([
+        readLastLines(paths.out, maxReadLines),
+        readLastLines(paths.err, maxReadLines)
+    ]);
+
+    const parsedOut = outLines.map(line => parseLogLine(line, 'stdout')).filter(Boolean);
+    const parsedErr = errLines.map(line => parseLogLine(line, 'stderr')).filter(Boolean);
+
+    // Merge and sort newest first for infinite scroll paging
+    let combined = [...parsedOut, ...parsedErr].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Apply Time Range Filters
+    if (startTime) {
+        const startTs = new Date(startTime).getTime();
+        combined = combined.filter(l => new Date(l.timestamp).getTime() >= startTs);
+    }
+    if (endTime) {
+        const endTs = new Date(endTime).getTime();
+        combined = combined.filter(l => new Date(l.timestamp).getTime() <= endTs);
+    }
+
+    // Apply Search Query Filter
+    if (search && search.trim() !== '') {
+        const q = search.toLowerCase();
+        combined = combined.filter(l => 
+            (l.message && l.message.toLowerCase().includes(q)) ||
+            (l.category && l.category.toLowerCase().includes(q)) ||
+            (l.severity && l.severity.toLowerCase().includes(q))
+        );
+    }
+
+    // Apply Severity Filters
+    if (severities && severities.length > 0) {
+        const sevSet = new Set(severities.map(s => s.toUpperCase()));
+        combined = combined.filter(l => sevSet.has(l.severity));
+    }
+
+    // Apply Category Filters
+    if (categories && categories.length > 0) {
+        const catSet = new Set(categories);
+        combined = combined.filter(l => catSet.has(l.category));
+    }
+
+    // Apply Source Filters
+    if (sources && sources.length > 0) {
+        const srcSet = new Set(sources);
+        combined = combined.filter(l => srcSet.has(l.source));
+    }
+
+    // Perform Pagination
+    const startIndex = (page - 1) * limit;
+    const paginatedLogs = combined.slice(startIndex, startIndex + limit);
+    const hasMore = (startIndex + limit) < combined.length;
+
+    return {
+        logs: paginatedLogs,
+        hasMore,
+        total: combined.length
+    };
 };

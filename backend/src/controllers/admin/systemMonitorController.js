@@ -1,7 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 import { getFileUrl } from '../../services/s3/s3Service.js';
-import { getHistoryLogs } from '../../services/superAdmin/pm2Service.js';
+import { getHistoryLogs, getFilteredLogs } from '../../services/superAdmin/pm2Service.js';
 
 // --- Security Alerts ---
 export const getSecurityAlerts = async (req, res, next) => {
@@ -178,12 +178,36 @@ const getModuleFromPath = (path) => {
     return 'General';
 };
 
-// --- PM2 Logs Console ---
 export const getPM2Logs = async (req, res, next) => {
     try {
-        const limit = Number(req.query.limit) || 150;
-        const logs = await getHistoryLogs(limit);
-        res.status(200).json({ status: 'success', data: logs });
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 100;
+        const search = req.query.search || '';
+        const startTime = req.query.startTime || null;
+        const endTime = req.query.endTime || null;
+        
+        // Parse filters which can be sent as arrays
+        const severities = req.query.severities ? (Array.isArray(req.query.severities) ? req.query.severities : [req.query.severities]) : [];
+        const categories = req.query.categories ? (Array.isArray(req.query.categories) ? req.query.categories : [req.query.categories]) : [];
+        const sources = req.query.sources ? (Array.isArray(req.query.sources) ? req.query.sources : [req.query.sources]) : [];
+
+        const result = await getFilteredLogs({
+            startTime,
+            endTime,
+            search,
+            severities,
+            categories,
+            sources,
+            page,
+            limit
+        });
+
+        res.status(200).json({ 
+            status: 'success', 
+            data: result.logs,
+            hasMore: result.hasMore,
+            total: result.total
+        });
     } catch (error) {
         next(error);
     }

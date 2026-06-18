@@ -22,3 +22,6 @@ try {
     // Ignore if sharp is not loaded yet or fails
 }
 
+import { initializeLogger } from '../utils/Logger.js';
+initializeLogger();
+
