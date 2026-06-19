@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import "react-toastify/dist/ReactToastify.css";
-import { ToastContainer } from "react-toastify";
+import { ToastContainer, Slide } from "react-toastify";
 
 import ErrorBoundary from "./ErrorBoundary";
 import ResponsiveRoute from "./components/ResponsiveRoute";
@@ -270,7 +270,8 @@ function App() {
         <NotificationProvider>
           <SeoManager />
           <ScaleManager />
-        <ToastContainer position="bottom-center" autoClose={3000} limit={1} hideProgressBar={true} pauseOnHover={false} pauseOnFocusLoss={false} closeOnClick={true} />
+        <ToastContainer enableMultiContainer containerId="defaultContainer" position="bottom-center" autoClose={3000} limit={1} hideProgressBar={true} pauseOnHover={false} pauseOnFocusLoss={false} closeOnClick={true} />
+        <ToastContainer enableMultiContainer containerId="macOSNotifications" position="top-right" autoClose={3000} limit={3} hideProgressBar={true} closeButton={false} newestOnTop={true} transition={Slide} />
         <Routes>
 
           {/* Website Landing (shown first when not logged in) */}

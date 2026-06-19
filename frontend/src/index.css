@@ -345,3 +345,37 @@ html.platform-zoomed .space-y-8 > * + * {
     color: #60a5fa !important;
 }
 
+/* Custom premium overrides to position top-right toast at the extreme right */
+.Toastify__toast-container--top-right {
+    right: 0.5rem !important;
+    top: 0.5rem !important;
+    width: 340px !important;
+}
+
+/* Let the inner MacOSNotification handle its own layout and spacing */
+.Toastify__toast-container--top-right .Toastify__toast {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    min-height: unset !important;
+    display: block !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+.Toastify__toast-container--top-right .Toastify__toast-body {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    white-space: normal !important;
+    width: 100% !important;
+}
+
+.Toastify__toast-container--top-right .Toastify__toast-body::before {
+    display: none !important;
+}
+
+
