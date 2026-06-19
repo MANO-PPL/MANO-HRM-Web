@@ -10,22 +10,22 @@ async function getOrCreateDM(orgId, userA, userB) {
     const finalOrgId = orgId || 1;
 
     // Find if a DM conversation exists
-    const userAConversations = await attendanceDB('conversation_members')
+    const userAConversations = await attendanceDB('chat_conversation_members')
         .where({ org_id: finalOrgId, user_id: userA })
         .select('conversation_id');
 
     const userAConvIds = userAConversations.map(c => c.conversation_id);
 
     if (userAConvIds.length > 0) {
-        const existingDM = await attendanceDB('conversations')
-            .join('conversation_members', 'conversations.id', 'conversation_members.conversation_id')
+        const existingDM = await attendanceDB('chat_conversations')
+            .join('chat_conversation_members', 'chat_conversations.id', 'chat_conversation_members.conversation_id')
             .where({
-                'conversations.org_id': finalOrgId,
-                'conversations.type': 'dm',
-                'conversation_members.user_id': userB
+                'chat_conversations.org_id': finalOrgId,
+                'chat_conversations.type': 'dm',
+                'chat_conversation_members.user_id': userB
             })
-            .whereIn('conversations.id', userAConvIds)
-            .select('conversations.id')
+            .whereIn('chat_conversations.id', userAConvIds)
+            .select('chat_conversations.id')
             .first();
 
         if (existingDM) {
@@ -37,7 +37,7 @@ async function getOrCreateDM(orgId, userA, userB) {
     let newRoomId = null;
 
     await attendanceDB.transaction(async (trx) => {
-        const [insertedId] = await trx('conversations').insert({
+        const [insertedId] = await trx('chat_conversations').insert({
             org_id: finalOrgId,
             type: 'dm',
             name: null,
@@ -54,7 +54,7 @@ async function getOrCreateDM(orgId, userA, userB) {
             { org_id: finalOrgId, conversation_id: insertedId, user_id: Number(userB), role: 'member', joined_at: trx.fn.now() }
         ];
 
-        await trx('conversation_members').insert(memberRows);
+        await trx('chat_conversation_members').insert(memberRows);
     });
 
     return newRoomId;
@@ -78,7 +78,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
 
         let allowedMemberIds = null;
         if (context_type === 'chat_message' && room_id) {
-            const members = await attendanceDB('conversation_members')
+            const members = await attendanceDB('chat_conversation_members')
                 .where({ org_id: org_id || 1, conversation_id: room_id })
                 .select('user_id');
             allowedMemberIds = members.map(m => Number(m.user_id));
@@ -181,7 +181,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
                     const messageId = Date.now() + Math.floor(Math.random() * 1000);
                     
                     await attendanceDB.transaction(async (trx) => {
-                        await trx('messages').insert({
+                        await trx('chat_messages').insert({
                             id: messageId,
                             org_id: finalOrgId,
                             conversation_id: roomId,
@@ -192,7 +192,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
                             updated_at: new Date().toISOString()
                         });
 
-                        await trx('conversations')
+                        await trx('chat_conversations')
                             .where({ org_id: finalOrgId, id: roomId })
                             .update({
                                 last_message_id: messageId,

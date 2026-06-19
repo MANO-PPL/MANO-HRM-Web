@@ -240,7 +240,7 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
             const oldMentionRegex = new RegExp('@' + escapeRegExp(oldName) + '(?![a-zA-Z0-9_])', 'gi');
 
             // Find all messages in the organization
-            const dbMessages = await attendanceDB('messages').where({ org_id: authInfo.orgId });
+            const dbMessages = await attendanceDB('chat_messages').where({ org_id: authInfo.orgId });
 
             for (const msg of dbMessages) {
                 let msgText = null;
@@ -302,7 +302,7 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
                             updatePayload.metadata_json = JSON.stringify(newMetadata);
                         }
 
-                        await attendanceDB('messages')
+                        await attendanceDB('chat_messages')
                             .where({ org_id: authInfo.orgId, id: msg.id })
                             .update(updatePayload);
 
@@ -451,29 +451,29 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('sys_security_alerts').where('user_id', userId).del();
 
         // Clean up relational chat room memberships and DM rooms
-        const memberships = await trx('conversation_members')
+        const memberships = await trx('chat_conversation_members')
             .where({ org_id: user.org_id, user_id: userId });
 
         for (const membership of memberships) {
-            const conversation = await trx('conversations')
+            const conversation = await trx('chat_conversations')
                 .where({ org_id: user.org_id, id: membership.conversation_id })
                 .first();
 
             if (conversation) {
                 if (conversation.type === 'dm') {
                     // Delete direct DM room completely since one of the two members is gone
-                    await trx('conversations').where({ org_id: user.org_id, id: conversation.id }).del();
+                    await trx('chat_conversations').where({ org_id: user.org_id, id: conversation.id }).del();
                 } else {
                     // Group/dept room: delete this user's membership
-                    await trx('conversation_members')
+                    await trx('chat_conversation_members')
                         .where({ org_id: user.org_id, conversation_id: conversation.id, user_id: userId })
                         .del();
 
                     // Check if group is now empty, if so, delete it
-                    const remainingMembers = await trx('conversation_members')
+                    const remainingMembers = await trx('chat_conversation_members')
                         .where({ org_id: user.org_id, conversation_id: conversation.id });
                     if (remainingMembers.length === 0) {
-                        await trx('conversations').where({ org_id: user.org_id, id: conversation.id }).del();
+                        await trx('chat_conversations').where({ org_id: user.org_id, id: conversation.id }).del();
                     }
                 }
             }

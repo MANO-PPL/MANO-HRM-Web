@@ -86,17 +86,17 @@ const enrichRoomDetails = async (room, userId) => {
     const orgId = room.org_id;
 
     // Fetch details of all room members
-    const roomMembers = await attendanceDB('conversation_members')
-        .join('users', 'conversation_members.user_id', 'users.user_id')
+    const roomMembers = await attendanceDB('chat_conversation_members')
+        .join('users', 'chat_conversation_members.user_id', 'users.user_id')
         .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
         .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
-        .where({ 'conversation_members.org_id': orgId, 'conversation_members.conversation_id': room.id })
+        .where({ 'chat_conversation_members.org_id': orgId, 'chat_conversation_members.conversation_id': room.id })
         .where('users.is_deleted', 0)
         .select(
-            'conversation_members.user_id',
-            'conversation_members.role',
-            'conversation_members.is_archived',
-            'conversation_members.updated_at',
+            'chat_conversation_members.user_id',
+            'chat_conversation_members.role',
+            'chat_conversation_members.is_archived',
+            'chat_conversation_members.updated_at',
             'users.user_name',
             'users.profile_image_url',
             'users.email',
@@ -117,7 +117,7 @@ const enrichRoomDetails = async (room, userId) => {
     // Fetch the last message
     let lastMsg = null;
     if (room.last_message_id) {
-        lastMsg = await attendanceDB('messages')
+        lastMsg = await attendanceDB('chat_messages')
             .where({ org_id: orgId, id: room.last_message_id })
             .first();
     }
@@ -136,7 +136,7 @@ const enrichRoomDetails = async (room, userId) => {
     let unreadCount = 0;
     if (!isRemoved && currentMember) {
         const lastReadId = currentMember.last_read_message_id || 0;
-        const countQuery = await attendanceDB('messages')
+        const countQuery = await attendanceDB('chat_messages')
             .where({ org_id: orgId, conversation_id: room.id })
             .whereNot({ sender_id: userId })
             .where('id', '>', lastReadId)
@@ -224,7 +224,7 @@ export const getRooms = catchAsync(async (req, res, next) => {
     const orgId = req.user.org_id || 1;
 
     // Get memberships for the user
-    const memberships = await attendanceDB('conversation_members')
+    const memberships = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, user_id: userId });
 
     if (memberships.length === 0) {
@@ -234,23 +234,23 @@ export const getRooms = catchAsync(async (req, res, next) => {
     const conversationIds = memberships.map(m => m.conversation_id);
 
     // Fetch conversations
-    const conversations = await attendanceDB('conversations')
+    const conversations = await attendanceDB('chat_conversations')
         .where({ org_id: orgId })
         .whereIn('id', conversationIds);
 
     // Fetch all members of these conversations
-    const allMembersList = await attendanceDB('conversation_members')
-        .join('users', 'conversation_members.user_id', 'users.user_id')
+    const allMembersList = await attendanceDB('chat_conversation_members')
+        .join('users', 'chat_conversation_members.user_id', 'users.user_id')
         .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
         .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
-        .where({ 'conversation_members.org_id': orgId })
-        .whereIn('conversation_members.conversation_id', conversationIds)
+        .where({ 'chat_conversation_members.org_id': orgId })
+        .whereIn('chat_conversation_members.conversation_id', conversationIds)
         .where('users.is_deleted', 0)
         .select(
-            'conversation_members.conversation_id',
-            'conversation_members.role',
-            'conversation_members.is_archived',
-            'conversation_members.updated_at',
+            'chat_conversation_members.conversation_id',
+            'chat_conversation_members.role',
+            'chat_conversation_members.is_archived',
+            'chat_conversation_members.updated_at',
             'users.user_id',
             'users.user_name',
             'users.profile_image_url',
@@ -263,7 +263,7 @@ export const getRooms = catchAsync(async (req, res, next) => {
     const lastMessageIds = conversations.map(c => c.last_message_id).filter(Boolean);
     let lastMessages = [];
     if (lastMessageIds.length > 0) {
-        lastMessages = await attendanceDB('messages')
+        lastMessages = await attendanceDB('chat_messages')
             .where({ org_id: orgId })
             .whereIn('id', lastMessageIds);
     }
@@ -293,7 +293,7 @@ export const getRooms = catchAsync(async (req, res, next) => {
         let unreadCount = 0;
         if (!isRemoved) {
             const lastReadId = membership?.last_read_message_id || 0;
-            const countQuery = await attendanceDB('messages')
+            const countQuery = await attendanceDB('chat_messages')
                 .where({ org_id: orgId, conversation_id: conv.id })
                 .whereNot({ sender_id: userId })
                 .where('id', '>', lastReadId)
@@ -364,22 +364,22 @@ export const createRoom = catchAsync(async (req, res, next) => {
         const targetMemberId = allMemberIds.find(id => id !== userId);
 
         // Check if DM room already exists between these 2 users in this organization
-        const userConversations = await attendanceDB('conversation_members')
+        const userConversations = await attendanceDB('chat_conversation_members')
             .where({ org_id: orgId, user_id: userId })
             .select('conversation_id');
 
         const userConvIds = userConversations.map(c => c.conversation_id);
 
         if (userConvIds.length > 0) {
-            const existingDM = await attendanceDB('conversations')
-                .join('conversation_members', 'conversations.id', 'conversation_members.conversation_id')
+            const existingDM = await attendanceDB('chat_conversations')
+                .join('chat_conversation_members', 'chat_conversations.id', 'chat_conversation_members.conversation_id')
                 .where({
-                    'conversations.org_id': orgId,
-                    'conversations.type': 'dm',
-                    'conversation_members.user_id': targetMemberId
+                    'chat_conversations.org_id': orgId,
+                    'chat_conversations.type': 'dm',
+                    'chat_conversation_members.user_id': targetMemberId
                 })
-                .whereIn('conversations.id', userConvIds)
-                .select('conversations.*')
+                .whereIn('chat_conversations.id', userConvIds)
+                .select('chat_conversations.*')
                 .first();
 
             if (existingDM) {
@@ -397,7 +397,7 @@ export const createRoom = catchAsync(async (req, res, next) => {
     let newRoomId = null;
 
     await attendanceDB.transaction(async (trx) => {
-        const [insertedId] = await trx('conversations').insert({
+        const [insertedId] = await trx('chat_conversations').insert({
             org_id: orgId,
             type: room_type === 'group' ? 'group' : 'dm',
             name: room_type === 'group' ? encryptText(room_name || 'Group Chat') : null,
@@ -417,10 +417,10 @@ export const createRoom = catchAsync(async (req, res, next) => {
             joined_at: trx.fn.now()
         }));
 
-        await trx('conversation_members').insert(memberRows);
+        await trx('chat_conversation_members').insert(memberRows);
     });
 
-    const newConversation = await attendanceDB('conversations')
+    const newConversation = await attendanceDB('chat_conversations')
         .where({ id: newRoomId })
         .first();
 
@@ -447,7 +447,7 @@ export const getRoomMessages = catchAsync(async (req, res, next) => {
     const { before } = req.query; // message ID cursor
 
     // Verify user membership in this conversation
-    const membership = await attendanceDB('conversation_members')
+    const membership = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, conversation_id: roomId, user_id: userId })
         .first();
 
@@ -456,7 +456,7 @@ export const getRoomMessages = catchAsync(async (req, res, next) => {
     }
 
     // Fetch messages (with pagination limit)
-    let query = attendanceDB('messages')
+    let query = attendanceDB('chat_messages')
         .where({ org_id: orgId, conversation_id: roomId });
 
     if (before) {
@@ -488,7 +488,7 @@ export const getRoomMessages = catchAsync(async (req, res, next) => {
     const messageIds = msgs.map(m => m.id);
     let attachments = [];
     if (messageIds.length > 0) {
-        attachments = await attendanceDB('message_attachments')
+        attachments = await attendanceDB('chat_message_attachments')
             .where({ org_id: orgId })
             .whereIn('message_id', messageIds);
     }
@@ -546,7 +546,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
     }
 
     // Verify user membership in this conversation and org_id match
-    const membership = await attendanceDB('conversation_members')
+    const membership = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, conversation_id: roomId, user_id: userId })
         .first();
 
@@ -558,7 +558,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
         throw new AppError('You cannot send messages to this group because you have been removed', 403);
     }
 
-    const conversation = await attendanceDB('conversations')
+    const conversation = await attendanceDB('chat_conversations')
         .where({ org_id: orgId, id: roomId })
         .first();
 
@@ -571,7 +571,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
     let formattedResponseMsg = null;
 
     await attendanceDB.transaction(async (trx) => {
-        const [msgId] = await trx('messages').insert({
+        const [msgId] = await trx('chat_messages').insert({
             org_id: orgId,
             conversation_id: roomId,
             sender_id: userId,
@@ -585,7 +585,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
 
         // Insert attachment details if present
         if (attachment) {
-            await trx('message_attachments').insert({
+            await trx('chat_message_attachments').insert({
                 org_id: orgId,
                 message_id: msgId,
                 type: attachment.type || 'file',
@@ -600,7 +600,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
         }
 
         // Update conversation last_message_id and updated_at
-        await trx('conversations')
+        await trx('chat_conversations')
             .where({ org_id: orgId, id: roomId })
             .update({
                 last_message_id: msgId,
@@ -637,7 +637,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
         io.to(`org_${orgId}:conversation_${roomId}`).emit('message_received', formattedResponseMsg);
         
         // Also emit to user private channels for notification triggers
-        const roomMembers = await attendanceDB('conversation_members')
+        const roomMembers = await attendanceDB('chat_conversation_members')
             .where({ org_id: orgId, conversation_id: roomId });
 
         roomMembers.forEach(member => {
@@ -648,7 +648,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
     }
 
     // Send notifications via EventBus (handles push and notification save)
-    const roomMembers = await attendanceDB('conversation_members')
+    const roomMembers = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, conversation_id: roomId });
 
     const isGroup = conversation.type === 'group';
@@ -702,7 +702,7 @@ export const uploadAttachment = catchAsync(async (req, res, next) => {
         throw new AppError('No file uploaded', 400);
     }
 
-    const room = await attendanceDB('conversations')
+    const room = await attendanceDB('chat_conversations')
         .where({ org_id: orgId, id: roomId })
         .first();
 
@@ -711,7 +711,7 @@ export const uploadAttachment = catchAsync(async (req, res, next) => {
     }
 
     // Check user membership and archiving state
-    const membership = await attendanceDB('conversation_members')
+    const membership = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, conversation_id: roomId, user_id: userId })
         .first();
 
@@ -755,14 +755,14 @@ export const markAsRead = catchAsync(async (req, res, next) => {
     const orgId = req.user.org_id || 1;
 
     // Get the latest message ID in this room to set as last_read_message_id
-    const latestMsg = await attendanceDB('messages')
+    const latestMsg = await attendanceDB('chat_messages')
         .where({ org_id: orgId, conversation_id: roomId })
         .orderBy('id', 'desc')
         .select('id')
         .first();
 
     if (latestMsg) {
-        await attendanceDB('conversation_members')
+        await attendanceDB('chat_conversation_members')
             .where({ org_id: orgId, conversation_id: roomId, user_id: userId })
             .update({
                 last_read_message_id: latestMsg.id,
@@ -782,7 +782,7 @@ export const deleteRoom = catchAsync(async (req, res, next) => {
     const { roomId } = req.params;
     const orgId = req.user.org_id || 1;
 
-    const room = await attendanceDB('conversations')
+    const room = await attendanceDB('chat_conversations')
         .where({ org_id: orgId, id: roomId })
         .first();
 
@@ -791,7 +791,7 @@ export const deleteRoom = catchAsync(async (req, res, next) => {
     }
 
     // Verify user is member of room
-    const membership = await attendanceDB('conversation_members')
+    const membership = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, conversation_id: roomId, user_id: userId })
         .first();
 
@@ -800,12 +800,12 @@ export const deleteRoom = catchAsync(async (req, res, next) => {
     }
 
     // Get all members for notifying
-    const members = await attendanceDB('conversation_members')
+    const members = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, conversation_id: roomId })
         .select('user_id');
 
     // Delete conversation (triggers CASCADE delete on conversation_members, messages, attachments, etc.)
-    await attendanceDB('conversations')
+    await attendanceDB('chat_conversations')
         .where({ org_id: orgId, id: roomId })
         .del();
 
@@ -833,7 +833,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
         throw new AppError('member_ids must be a non-empty array', 400);
     }
 
-    const room = await attendanceDB('conversations')
+    const room = await attendanceDB('chat_conversations')
         .where({ org_id: orgId, id: roomId })
         .first();
 
@@ -846,7 +846,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
     }
 
     // Verify current user membership
-    const currentUserMembership = await attendanceDB('conversation_members')
+    const currentUserMembership = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, conversation_id: roomId, user_id: userId })
         .first();
 
@@ -866,7 +866,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
     const uniqueMemberIds = Array.from(new Set([Number(userId), ...validUserIds]));
 
     // Get current members (both active and archived)
-    const currentMembers = await attendanceDB('conversation_members')
+    const currentMembers = await attendanceDB('chat_conversation_members')
         .where({ org_id: orgId, conversation_id: roomId });
 
     const currentMemberIds = currentMembers.filter(cm => !cm.is_archived).map(cm => Number(cm.user_id));
@@ -878,7 +878,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
     await attendanceDB.transaction(async (trx) => {
         // For removed users, set is_archived = true (marks them as left/removed)
         if (removedUserIds.length > 0) {
-            await trx('conversation_members')
+            await trx('chat_conversation_members')
                 .where({ org_id: orgId, conversation_id: roomId })
                 .whereIn('user_id', removedUserIds)
                 .update({
@@ -891,7 +891,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
         for (const addId of addedUserIds) {
             const existing = currentMembers.find(cm => Number(cm.user_id) === addId);
             if (existing) {
-                await trx('conversation_members')
+                await trx('chat_conversation_members')
                     .where({ org_id: orgId, conversation_id: roomId, user_id: addId })
                     .update({
                         is_archived: false,
@@ -899,7 +899,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
                         updated_at: trx.fn.now()
                     });
             } else {
-                await trx('conversation_members').insert({
+                await trx('chat_conversation_members').insert({
                     org_id: orgId,
                     conversation_id: roomId,
                     user_id: addId,
@@ -937,7 +937,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
     }
 
     // Insert system message row
-    const [systemMsgId] = await attendanceDB('messages').insert({
+    const [systemMsgId] = await attendanceDB('chat_messages').insert({
         org_id: orgId,
         conversation_id: roomId,
         sender_id: 0,
@@ -947,21 +947,21 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
         updated_at: new Date().toISOString()
     });
 
-    await attendanceDB('conversations')
+    await attendanceDB('chat_conversations')
         .where({ org_id: orgId, id: roomId })
         .update({
             last_message_id: systemMsgId,
             updated_at: attendanceDB.fn.now()
         });
 
-    const enrichedMembersList = await attendanceDB('conversation_members')
-        .join('users', 'conversation_members.user_id', 'users.user_id')
+    const enrichedMembersList = await attendanceDB('chat_conversation_members')
+        .join('users', 'chat_conversation_members.user_id', 'users.user_id')
         .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
         .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
-        .where({ 'conversation_members.org_id': orgId, 'conversation_members.conversation_id': roomId })
-        .where('conversation_members.is_archived', false)
+        .where({ 'chat_conversation_members.org_id': orgId, 'chat_conversation_members.conversation_id': roomId })
+        .where('chat_conversation_members.is_archived', false)
         .select(
-            'conversation_members.user_id',
+            'chat_conversation_members.user_id',
             'users.user_name',
             'users.profile_image_url',
             'users.email',
