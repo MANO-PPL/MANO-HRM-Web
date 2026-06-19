@@ -206,12 +206,12 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
         throw new AppError('site_id and date parameters are required', 400);
     }
 
-    // Get all active labours assigned to this site
+    // Get all active labours permanently assigned to this site
     const labours = await attendanceDB('labours')
         .where({ site_id, status: 'Active' })
         .select('labour_id', 'name', 'role', 'wage_type');
 
-    // Get attendance marked for these labours on this date
+    // Get attendance marked for any labours on this date at this site
     const attendanceRecords = await attendanceDB('labour_attendance')
         .where({ site_id, date })
         .select('labour_id', 'status', 'attendance_id');
@@ -221,12 +221,27 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
         attendanceMap[rec.labour_id] = rec.status;
     });
 
-    const roster = labours.map(lab => ({
+    const permanentIds = new Set(labours.map(l => l.labour_id));
+    const borrowedLabourIds = attendanceRecords
+        .map(rec => rec.labour_id)
+        .filter(id => !permanentIds.has(id));
+
+    let borrowedLabours = [];
+    if (borrowedLabourIds.length > 0) {
+        borrowedLabours = await attendanceDB('labours')
+            .whereIn('labour_id', borrowedLabourIds)
+            .select('labour_id', 'name', 'role', 'wage_type');
+    }
+
+    const allLabours = [...labours, ...borrowedLabours];
+
+    const roster = allLabours.map(lab => ({
         labour_id: lab.labour_id,
         name: lab.name,
         role: lab.role,
         wage_type: lab.wage_type,
-        status: attendanceMap[lab.labour_id] || 'Present' // Default to Present if not marked
+        status: attendanceMap[lab.labour_id] || '', // Default to empty string (unmarked) if not marked
+        is_borrowed: !permanentIds.has(lab.labour_id)
     }));
 
     res.json({
@@ -261,7 +276,7 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                 labour_id: r.labour_id,
                 site_id: Number(site_id),
                 date,
-                status: r.status || 'Present',
+                status: r.status || '',
                 marked_by
             }));
 
@@ -336,6 +351,18 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         advancesMap[adv.labour_id] += Number(adv.amount);
     });
 
+    // 3.5 Fetch closed payouts logged for this month
+    const monthKey = start.slice(0, 7);
+    const payouts = await attendanceDB('labour_monthly_payouts')
+        .where('month', monthKey)
+        .whereIn('labour_id', labourIds)
+        .select('payout_id', 'labour_id', 'status', 'paid_amount', 'payment_date', 'notes');
+
+    const payoutsMap = {};
+    payouts.forEach(p => {
+        payoutsMap[p.labour_id] = p;
+    });
+
     // 4. Compute dynamic credits
     const summary = labours.map(lab => {
         const counts = attendanceMap[lab.labour_id] || { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0 };
@@ -378,7 +405,8 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
             },
             accrued_credit: accruedCredit,
             advances_taken: totalAdvances,
-            net_payable: netPayable
+            net_payable: netPayable,
+            payout: payoutsMap[lab.labour_id] || null
         };
     });
 
@@ -411,7 +439,7 @@ export const logLabourAdvance = catchAsync(async (req, res) => {
 });
 
 export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
-    const { site_id, month } = req.query; // month is format YYYY-MM
+    const { site_id, month, show_all_sites } = req.query; // month is format YYYY-MM
     if (!site_id || !month) {
         throw new AppError('site_id and month are required', 400);
     }
@@ -428,20 +456,51 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
     const start = formatDate(startOfMonth);
     const end = formatDate(endOfMonth);
 
-    // Fetch active labours for this site
-    const labours = await attendanceDB('labours')
-        .where({ site_id, status: 'Active' })
-        .select('labour_id', 'name', 'role');
+    let labours = [];
+    if (site_id === 'All') {
+        // Fetch all active labours
+        labours = await attendanceDB('labours')
+            .where('status', 'Active')
+            .select('labour_id', 'name', 'role');
+    } else {
+        // Fetch active labours who either belong to the site OR have attendance records logged on this site this month
+        labours = await attendanceDB('labours as l')
+            .where(function() {
+                this.where('l.site_id', site_id)
+                    .orWhereIn('l.labour_id', function() {
+                        this.select('labour_id')
+                            .from('labour_attendance')
+                            .where('site_id', site_id)
+                            .where('date', '>=', start)
+                            .where('date', '<=', end);
+                    });
+            })
+            .andWhere('l.status', 'Active')
+            .select('l.labour_id', 'l.name', 'l.role');
+    }
 
     const labourIds = labours.map(l => l.labour_id);
 
     let attendanceRecords = [];
     if (labourIds.length > 0) {
-        attendanceRecords = await attendanceDB('labour_attendance')
-            .where('date', '>=', start)
-            .andWhere('date', '<=', end)
-            .whereIn('labour_id', labourIds)
-            .select('labour_id', 'status', 'date');
+        const query = attendanceDB('labour_attendance as la')
+            .leftJoin('labour_sites as ls', 'la.site_id', 'ls.site_id')
+            .where('la.date', '>=', start)
+            .where('la.date', '<=', end)
+            .whereIn('la.labour_id', labourIds);
+
+        // If not showing all sites (and not in 'All' view), filter strictly by the selected site
+        if (site_id !== 'All' && show_all_sites !== 'true') {
+            query.where('la.site_id', site_id);
+        }
+
+        attendanceRecords = await query.select(
+            'la.labour_id',
+            'la.status',
+            'la.date',
+            'la.site_id',
+            'ls.site_name'
+        );
     }
 
     // Group records by labour_id and date
@@ -453,7 +512,11 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
     attendanceRecords.forEach(rec => {
         const dateStr = new Date(rec.date).toISOString().split('T')[0];
         if (attendanceMap[rec.labour_id]) {
-            attendanceMap[rec.labour_id][dateStr] = rec.status;
+            attendanceMap[rec.labour_id][dateStr] = {
+                status: rec.status,
+                site_id: rec.site_id,
+                site_name: rec.site_name || 'Floating Pool / Unassigned'
+            };
         }
     });
 
@@ -474,4 +537,131 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
         },
         grid
     });
+});
+
+export const bulkTransferLabours = catchAsync(async (req, res) => {
+    const { source_site_id, destination_site_id, labour_ids } = req.body;
+
+    if (!Array.isArray(labour_ids) || labour_ids.length === 0) {
+        throw new AppError('labour_ids array is required', 400);
+    }
+
+    const targetSiteId = destination_site_id ? Number(destination_site_id) : null;
+
+    await attendanceDB('labours')
+        .whereIn('labour_id', labour_ids)
+        .update({
+            site_id: targetSiteId,
+            updated_at: attendanceDB.fn.now()
+        });
+
+    res.json({
+        success: true,
+        message: `Successfully transferred ${labour_ids.length} workers.`
+    });
+});
+
+export const getLabourWorkHistory = catchAsync(async (req, res) => {
+    const { id } = req.params;
+
+    const labour = await attendanceDB('labours')
+        .where('labour_id', id)
+        .first();
+
+    if (!labour) {
+        throw new AppError('Labour worker not found', 404);
+    }
+
+    const history = await attendanceDB('labour_attendance as a')
+        .leftJoin('labour_sites as s', 'a.site_id', 's.site_id')
+        .where('a.labour_id', id)
+        .select(
+            'a.site_id',
+            's.site_name',
+            attendanceDB.raw('MIN(a.date) as first_date'),
+            attendanceDB.raw('MAX(a.date) as last_date'),
+            attendanceDB.raw('COUNT(CASE WHEN a.status = "Present" THEN 1 END) as present_days'),
+            attendanceDB.raw('COUNT(CASE WHEN a.status = "Half Day" THEN 1 END) as half_day_days'),
+            attendanceDB.raw('COUNT(CASE WHEN a.status = "Absent" THEN 1 END) as absent_days'),
+            attendanceDB.raw('COUNT(CASE WHEN a.status = "Paid Leave" THEN 1 END) as paid_leave_days'),
+            attendanceDB.raw('COUNT(*) as total_days')
+        )
+        .groupBy('a.site_id', 's.site_name')
+        .orderBy('last_date', 'desc');
+
+    const payouts = await attendanceDB('labour_monthly_payouts')
+        .where('labour_id', id)
+        .orderBy('month', 'desc');
+
+    res.json({
+        success: true,
+        labour: {
+            labour_id: labour.labour_id,
+            name: labour.name,
+            role: labour.role,
+            status: labour.status
+        },
+        history,
+        payouts
+    });
+});
+
+export const logLabourPayout = catchAsync(async (req, res) => {
+    const {
+        labour_id, month, wage_type, monthly_salary,
+        present_days, half_days, absent_days, paid_leaves,
+        accrued_credit, advances_taken, net_payable, paid_amount,
+        status, payment_date, notes
+    } = req.body;
+
+    if (!labour_id || !month || !wage_type || monthly_salary === undefined || accrued_credit === undefined || net_payable === undefined || !payment_date) {
+        throw new AppError('labour_id, month, wage_type, monthly_salary, accrued_credit, net_payable, and payment_date are required', 400);
+    }
+
+    const existing = await attendanceDB('labour_monthly_payouts')
+        .where('labour_id', labour_id)
+        .andWhere('month', month)
+        .first();
+
+    const recordData = {
+        labour_id,
+        month,
+        wage_type,
+        monthly_salary: Number(monthly_salary),
+        present_days: Number(present_days || 0),
+        half_days: Number(half_days || 0),
+        absent_days: Number(absent_days || 0),
+        paid_leaves: Number(paid_leaves || 0),
+        accrued_credit: Number(accrued_credit),
+        advances_taken: Number(advances_taken || 0),
+        net_payable: Number(net_payable),
+        paid_amount: Number(paid_amount !== undefined ? paid_amount : net_payable),
+        status: status || 'Paid',
+        payment_date,
+        notes: notes || null,
+        updated_at: attendanceDB.fn.now()
+    };
+
+    if (existing) {
+        await attendanceDB('labour_monthly_payouts')
+            .where('payout_id', existing.payout_id)
+            .update(recordData);
+        
+        res.json({
+            success: true,
+            message: 'Monthly payout updated successfully',
+            payout_id: existing.payout_id
+        });
+    } else {
+        const [payout_id] = await attendanceDB('labour_monthly_payouts').insert({
+            ...recordData,
+            created_at: attendanceDB.fn.now()
+        });
+        
+        res.status(201).json({
+            success: true,
+            message: 'Monthly payout logged successfully',
+            payout_id
+        });
+    }
 });

@@ -100,12 +100,30 @@ export const labourService = {
         }
     },
 
-    async getMonthlyGridAttendance(siteId, month) {
+    async getMonthlyGridAttendance(siteId, month, showAllSites = false) {
         try {
-            const res = await api.get(`/labour/attendance/monthly-summary?site_id=${siteId}&month=${month}`);
+            const res = await api.get(`/labour/attendance/monthly-summary?site_id=${siteId}&month=${month}&show_all_sites=${showAllSites}`);
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || 'Failed to fetch monthly attendance summary');
+        }
+    },
+
+    async bulkTransferLabours(transferData) {
+        try {
+            const res = await api.post('/labour/labours/bulk-transfer', transferData);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to bulk transfer workers');
+        }
+    },
+
+    async getLabourWorkHistory(labourId) {
+        try {
+            const res = await api.get(`/labour/labours/${labourId}/history`);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to fetch worker history');
         }
     },
 
@@ -127,6 +145,15 @@ export const labourService = {
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || 'Failed to log labour advance');
+        }
+    },
+
+    async logLabourPayout(payoutData) {
+        try {
+            const res = await api.post('/labour/finances/payout', payoutData);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to log labour payout');
         }
     }
 };

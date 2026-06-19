@@ -3,7 +3,8 @@ import {
     getAllSites, createSite, updateSite, deleteSite,
     getAllLabours, createLabour, updateLabour, deleteLabour,
     getSiteAttendance, saveSiteAttendance,
-    getFinancesSummary, logLabourAdvance, getMonthlyGridAttendance
+    getFinancesSummary, logLabourAdvance, getMonthlyGridAttendance,
+    bulkTransferLabours, getLabourWorkHistory, logLabourPayout
 } from '../../controllers/labour/labourController.js';
 
 const router = express.Router();
@@ -22,6 +23,9 @@ router.route('/labours')
     .get(getAllLabours)
     .post(createLabour);
 
+router.post('/labours/bulk-transfer', bulkTransferLabours);
+router.get('/labours/:id/history', getLabourWorkHistory);
+
 router.route('/labours/:id')
     .put(updateLabour)
     .delete(deleteLabour);
@@ -36,5 +40,6 @@ router.get('/attendance/monthly-summary', getMonthlyGridAttendance);
 // Financial/Salary Credit Tracker Routes
 router.get('/finances/summary', getFinancesSummary);
 router.post('/finances/advance', logLabourAdvance);
+router.post('/finances/payout', logLabourPayout);
 
 export default router;
