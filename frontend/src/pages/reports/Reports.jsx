@@ -28,7 +28,8 @@ import {
     MapPin,
     TrendingUp,
     History,
-    X
+    X,
+    XCircle
 } from 'lucide-react';
 
 import { adminService } from '../../services/adminService';
@@ -411,27 +412,25 @@ const Reports = () => {
 
     const navigate = useNavigate();
 
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
-    const [reportType, setReportType] = useState('matrix_monthly');
-    const [fileFormat, setFileFormat] = useState('xlsx');
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [previewMode, setPreviewMode] = useState('card'); // 'card' | 'table'
-    const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false);
-    const [selectedRecord, setSelectedRecord] = useState(null);
-    const [isDetailSidebarOpen, setIsDetailSidebarOpen] = useState(false);
-    const [hoveredRecord, setHoveredRecord] = useState(null);
-    const [hoveredPosition, setHoveredPosition] = useState({ top: 0, left: 0 });
+    const [attendanceMonth, setAttendanceMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
+    const [attendanceEmployeeId, setAttendanceEmployeeId] = useState('');
+    const [attendanceWeek, setAttendanceWeek] = useState('');
+    const [attendanceReportType, setAttendanceReportType] = useState('matrix_monthly');
+    const [attendanceIsEmpDropdownOpen, setAttendanceIsEmpDropdownOpen] = useState(false);
+    const [attendanceEmpSearchQuery, setAttendanceEmpSearchQuery] = useState('');
+    const [attendanceIsWeekDropdownOpen, setAttendanceIsWeekDropdownOpen] = useState(false);
 
-
-    // New filters states
-    const [employees, setEmployees] = useState([]);
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-    const [useCustomRange, setUseCustomRange] = useState(false);
-    const [customStartDate, setCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
-    const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
-    const [selectedWeek, setSelectedWeek] = useState('');
-    const [exportColumns, setExportColumns] = useState({
+    // Full Report Filters State
+    const [tableMonth, setTableMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [tableDate, setTableDate] = useState(new Date().toISOString().slice(0, 10));
+    const [tableEmployeeId, setTableEmployeeId] = useState('');
+    const [tableWeek, setTableWeek] = useState('');
+    const [tableReportType, setTableReportType] = useState('matrix_monthly');
+    const [tableUseCustomRange, setTableUseCustomRange] = useState(false);
+    const [tableCustomStartDate, setTableCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
+    const [tableCustomEndDate, setTableCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
+    const [tableExportColumns, setTableExportColumns] = useState({
         timeIn: true,
         timeOut: true,
         status: true,
@@ -441,52 +440,80 @@ const Reports = () => {
         location: false,
         attendanceDays: true
     });
+    const [tableFileFormat, setTableFileFormat] = useState('xlsx');
+    const [tableIsEmpDropdownOpen, setTableIsEmpDropdownOpen] = useState(false);
+    const [tableEmpSearchQuery, setTableEmpSearchQuery] = useState('');
+    const [tableIsTypeDropdownOpen, setTableIsTypeDropdownOpen] = useState(false);
+    const [tableIsWeekDropdownOpen, setTableIsWeekDropdownOpen] = useState(false);
+    const [tableIsColsDropdownOpen, setTableIsColsDropdownOpen] = useState(false);
 
-    // Searchable employee select states
-    const [isEmpDropdownOpen, setIsEmpDropdownOpen] = useState(false);
-    const [empSearchQuery, setEmpSearchQuery] = useState('');
-    const empDropdownRef = React.useRef(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [previewMode, setPreviewMode] = useState('card'); // 'card' | 'table'
+    const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false);
+    const [selectedRecord, setSelectedRecord] = useState(null);
+    const [isDetailSidebarOpen, setIsDetailSidebarOpen] = useState(false);
+    const [previewImage, setPreviewImage] = useState(null);
+    const [hoveredRecord, setHoveredRecord] = useState(null);
+    const [hoveredPosition, setHoveredPosition] = useState({ top: 0, left: 0 });
 
-    // Custom dropdown states
-    const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
-    const [isWeekDropdownOpen, setIsWeekDropdownOpen] = useState(false);
-    const [isColsDropdownOpen, setIsColsDropdownOpen] = useState(false);
+    const [employees, setEmployees] = useState([]);
 
-    const typeDropdownRef = React.useRef(null);
-    const weekDropdownRef = React.useRef(null);
-    const colsDropdownRef = React.useRef(null);
+    const attendanceEmpDropdownRef = React.useRef(null);
+    const attendanceWeekDropdownRef = React.useRef(null);
+    const tableEmpDropdownRef = React.useRef(null);
+    const tableTypeDropdownRef = React.useRef(null);
+    const tableWeekDropdownRef = React.useRef(null);
+    const tableColsDropdownRef = React.useRef(null);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (empDropdownRef.current && !empDropdownRef.current.contains(event.target)) {
-                setIsEmpDropdownOpen(false);
+            if (attendanceEmpDropdownRef.current && !attendanceEmpDropdownRef.current.contains(event.target)) {
+                setAttendanceIsEmpDropdownOpen(false);
             }
-            if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target)) {
-                setIsTypeDropdownOpen(false);
+            if (attendanceWeekDropdownRef.current && !attendanceWeekDropdownRef.current.contains(event.target)) {
+                setAttendanceIsWeekDropdownOpen(false);
             }
-            if (weekDropdownRef.current && !weekDropdownRef.current.contains(event.target)) {
-                setIsWeekDropdownOpen(false);
+            if (tableEmpDropdownRef.current && !tableEmpDropdownRef.current.contains(event.target)) {
+                setTableIsEmpDropdownOpen(false);
             }
-            if (colsDropdownRef.current && !colsDropdownRef.current.contains(event.target)) {
-                setIsColsDropdownOpen(false);
+            if (tableTypeDropdownRef.current && !tableTypeDropdownRef.current.contains(event.target)) {
+                setTableIsTypeDropdownOpen(false);
+            }
+            if (tableWeekDropdownRef.current && !tableWeekDropdownRef.current.contains(event.target)) {
+                setTableIsWeekDropdownOpen(false);
+            }
+            if (tableColsDropdownRef.current && !tableColsDropdownRef.current.contains(event.target)) {
+                setTableIsColsDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const selectedEmployeeName = employees.find(emp => emp.user_id === selectedEmployeeId)?.user_name || 'All Employees';
-    const filteredEmployees = employees.filter(emp =>
-        emp.user_name.toLowerCase().includes(empSearchQuery.toLowerCase())
+    const attendanceSelectedEmployeeName = employees.find(emp => emp.user_id === attendanceEmployeeId)?.user_name || 'All Employees';
+    const attendanceFilteredEmployees = employees.filter(emp =>
+        emp.user_name.toLowerCase().includes(attendanceEmpSearchQuery.toLowerCase())
     );
 
-    const weeks = React.useMemo(() => getWeeksOfMonth(selectedMonth), [selectedMonth]);
+    const tableSelectedEmployeeName = employees.find(emp => emp.user_id === tableEmployeeId)?.user_name || 'All Employees';
+    const tableFilteredEmployees = employees.filter(emp =>
+        emp.user_name.toLowerCase().includes(tableEmpSearchQuery.toLowerCase())
+    );
+
+    const attendanceWeeks = React.useMemo(() => getWeeksOfMonth(attendanceMonth), [attendanceMonth]);
+    const tableWeeks = React.useMemo(() => getWeeksOfMonth(tableMonth), [tableMonth]);
 
     useEffect(() => {
-        if (weeks.length > 0) {
-            setSelectedWeek(weeks[0].value);
+        if (attendanceWeeks.length > 0) {
+            setAttendanceWeek(attendanceWeeks[0].value);
         }
-    }, [weeks]);
+    }, [attendanceWeeks]);
+
+    useEffect(() => {
+        if (tableWeeks.length > 0) {
+            setTableWeek(tableWeeks[0].value);
+        }
+    }, [tableWeeks]);
 
     useEffect(() => {
         const fetchEmployees = async () => {
@@ -527,37 +554,82 @@ const Reports = () => {
     const [cacheHit, setCacheHit] = useState(false); // true when currently showing cached data
     const bgRefreshTimerRef = useRef(null);
 
-    // Fetch Preview — use JSON.stringify(exportColumns) so any checkbox toggle reliably
-    // re-fires this effect, even if React batches the object-reference comparison.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const exportColumnsKey = JSON.stringify(exportColumns);
+    // Compute activeFilters based on previewMode (card vs table)
+    const activeFilters = React.useMemo(() => {
+        const isCard = previewMode === 'card';
+        const rType = isCard ? attendanceReportType : tableReportType;
+        const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(rType);
+        
+        const selectedMonth = isCard ? attendanceMonth : tableMonth;
+        const selectedDate = isCard ? attendanceDate : tableDate;
+        const selectedWeek = isCard ? attendanceWeek : tableWeek;
+        const selectedEmployeeId = isCard ? attendanceEmployeeId : tableEmployeeId;
+        const useCustomRange = isCard ? false : tableUseCustomRange;
+        const customStartDate = isCard ? '' : tableCustomStartDate;
+        const customEndDate = isCard ? '' : tableCustomEndDate;
+        const exportColumnsObj = isCard ? {
+            timeIn: true,
+            timeOut: true,
+            status: true,
+            workedHours: true,
+            requiredHours: true,
+            late: true,
+            location: true,
+            attendanceDays: true
+        } : tableExportColumns;
 
-    // Build a stable cache key from all query params
-    const cacheKey = React.useMemo(() => {
-        const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType);
-        const dateToUse = (isWeekly && !useCustomRange) ? selectedWeek : selectedDate;
-        return JSON.stringify({
-            selectedMonth, reportType, dateToUse,
-            selectedEmployeeId, useCustomRange,
-            customStartDate: useCustomRange ? customStartDate : '',
-            customEndDate: useCustomRange ? customEndDate : '',
-            exportColumnsKey
-        });
-    }, [selectedMonth, reportType, selectedDate, selectedEmployeeId, useCustomRange, customStartDate, customEndDate, selectedWeek, exportColumnsKey]);
-
-    const fetchAndCachePreview = React.useCallback(async ({ key, cancelled, showLoadingIfNoCache }) => {
-        const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType);
         const dateToUse = (isWeekly && !useCustomRange) ? selectedWeek : selectedDate;
         const qStart = useCustomRange ? customStartDate : '';
         const qEnd = useCustomRange ? customEndDate : '';
+        const exportColumnsKey = JSON.stringify(exportColumnsObj);
 
+        return {
+            reportType: rType,
+            selectedMonth,
+            selectedDate,
+            selectedWeek,
+            selectedEmployeeId,
+            useCustomRange,
+            customStartDate,
+            customEndDate,
+            exportColumnsKey,
+            dateToUse,
+            qStart,
+            qEnd
+        };
+    }, [
+        previewMode,
+        attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId,
+        tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
+    ]);
+
+    // Build a stable cache key from activeFilters
+    const cacheKey = React.useMemo(() => {
+        return JSON.stringify({
+            selectedMonth: activeFilters.selectedMonth,
+            reportType: activeFilters.reportType,
+            dateToUse: activeFilters.dateToUse,
+            selectedEmployeeId: activeFilters.selectedEmployeeId,
+            useCustomRange: activeFilters.useCustomRange,
+            customStartDate: activeFilters.customStartDate,
+            customEndDate: activeFilters.customEndDate,
+            exportColumnsKey: activeFilters.exportColumnsKey
+        });
+    }, [activeFilters]);
+
+    const fetchAndCachePreview = React.useCallback(async ({ key, cancelled, showLoadingIfNoCache }) => {
         // Show loading spinner only if there's no cached data to display
         if (showLoadingIfNoCache) setLoadingPreview(true);
 
         try {
             const res = await adminService.getReportPreview(
-                selectedMonth, reportType, dateToUse,
-                selectedEmployeeId, qStart, qEnd, exportColumnsKey
+                activeFilters.selectedMonth,
+                activeFilters.reportType,
+                activeFilters.dateToUse,
+                activeFilters.selectedEmployeeId,
+                activeFilters.qStart,
+                activeFilters.qEnd,
+                activeFilters.exportColumnsKey
             );
             if (!cancelled && res.ok) {
                 attendanceViewCache.set(key, { data: res.data, fetchedAt: Date.now() });
@@ -572,8 +644,21 @@ const Reports = () => {
         } finally {
             if (!cancelled) setLoadingPreview(false);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedMonth, reportType, selectedDate, selectedEmployeeId, useCustomRange, customStartDate, customEndDate, selectedWeek, exportColumnsKey]);
+    }, [activeFilters]);
+
+    // Reset hover and detail states when active filter settings or view modes change
+    React.useEffect(() => {
+        setHoveredRecord(null);
+        setSelectedRecord(null);
+        setIsDetailSidebarOpen(false);
+    }, [cacheKey, previewMode]);
+
+    // Clear hover record if loading starts
+    React.useEffect(() => {
+        if (loadingPreview) {
+            setHoveredRecord(null);
+        }
+    }, [loadingPreview]);
 
     React.useEffect(() => {
         let cancelled = false;
@@ -616,26 +701,26 @@ const Reports = () => {
     const handleGenerate = async () => {
         setIsGenerating(true);
         try {
-            const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType);
-            const dateToUse = (isWeekly && !useCustomRange) ? selectedWeek : selectedDate;
+            const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType);
+            const dateToUse = (isWeekly && !tableUseCustomRange) ? tableWeek : tableDate;
 
-            const qStart = useCustomRange ? customStartDate : "";
-            const qEnd = useCustomRange ? customEndDate : "";
+            const qStart = tableUseCustomRange ? tableCustomStartDate : "";
+            const qEnd = tableUseCustomRange ? tableCustomEndDate : "";
 
             const res = await adminService.queueReport(
-                selectedMonth,
-                reportType,
-                fileFormat,
-                selectedEmployeeId,
+                tableMonth,
+                tableReportType,
+                tableFileFormat,
+                tableEmployeeId,
                 dateToUse,
                 qStart,
                 qEnd,
-                JSON.stringify(exportColumns)
+                JSON.stringify(tableExportColumns)
             );
             if (res.ok) {
                 const reportId = res.reportId;
-                const filename = `Report_${reportType}_${useCustomRange ? `${customStartDate}_to_${customEndDate}` : (selectedMonth || dateToUse)}.${fileFormat}`;
-                const reportTypeLabel = reportType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                const filename = `Report_${tableReportType}_${tableUseCustomRange ? `${tableCustomStartDate}_to_${tableCustomEndDate}` : (tableMonth || dateToUse)}.${tableFileFormat}`;
+                const reportTypeLabel = tableReportType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
                 const newReport = {
                     id: reportId || Date.now().toString(),
                     reportId: reportId,
@@ -721,8 +806,8 @@ const Reports = () => {
         { value: 'matrix_weekly', label: 'Weekly Attendance Report' }
     ];
 
-    const selectedReportTypeLabel = reportTypeOptions.find(opt => opt.value === reportType)?.label || reportType;
-    const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType);
+    const selectedReportTypeLabel = reportTypeOptions.find(opt => opt.value === activeFilters.reportType)?.label || activeFilters.reportType;
+    const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(activeFilters.reportType);
 
     const stats = React.useMemo(() => {
         if (!previewData || !previewData.rows || previewData.rows.length === 0) {
@@ -832,172 +917,331 @@ const Reports = () => {
     }, [previewData.cardRecords]);
 
     return (
-        <DashboardLayout title="Reports & Exports">
-            <div className="space-y-6">
-                {/* Top Control Bar: Generate Report */}
-                <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-4 space-y-4">
-                    {/* Row 1: Parameters Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 items-end">
-                        {/* Custom Report Type Dropdown */}
-                        <div className="relative xl:col-span-3" ref={typeDropdownRef}>
-                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Report Type</label>
-                            <button
-                                type="button"
-                                onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
-                                className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
-                            >
-                                <span className="truncate">{selectedReportTypeLabel}</span>
-                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${isTypeDropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
+        <DashboardLayout title="Reports & Exports" noPadding={true}>
+            <div className="min-h-[calc(100vh-64px)] p-4 flex flex-col space-y-4">
+                {/* Switcher & Parallel Filters Row (Tabs are kept below the header) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+                    {/* View Switcher Tabs */}
+                    <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
+                        {[
+                            { id: 'card', label: 'Attendance View', icon: TrendingUp },
+                            { id: 'table', label: 'Full Report', icon: Table }
+                        ].map((tab) => {
+                            const isSelected = previewMode === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setPreviewMode(tab.id)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isSelected
+                                            ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                        }`}
+                                >
+                                    <tab.icon size={14} />
+                                    <span>{tab.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
 
-                            {isTypeDropdownOpen && (
-                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
-                                    {reportTypeOptions.map((opt) => (
-                                        <button
-                                            key={opt.value}
-                                            type="button"
-                                            onClick={() => {
-                                                setReportType(opt.value);
-                                                setIsTypeDropdownOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${reportType === opt.value
-                                                    ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                                                    : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                }`}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Custom Searchable Employee Select */}
-                        <div className="relative xl:col-span-3" ref={empDropdownRef}>
-                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Employee</label>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setIsEmpDropdownOpen(!isEmpDropdownOpen);
-                                    setEmpSearchQuery('');
-                                }}
-                                className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
-                            >
-                                <span className="truncate">{selectedEmployeeName}</span>
-                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${isEmpDropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
-
-                            {isEmpDropdownOpen && (
-                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                    <div className="relative mb-2">
-                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search employees..."
-                                            value={empSearchQuery}
-                                            onChange={(e) => setEmpSearchQuery(e.target.value)}
-                                            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-github-dark-text"
-                                            autoFocus
+                    {/* Parallel Filters: Only visible in Attendance View tab */}
+                    {previewMode === 'card' && (
+                        <div className="flex flex-wrap items-center gap-3 animate-none">
+                            {/* Month / Week / Date Pickers */}
+                            {attendanceReportType !== 'employee_master' && (
+                                <div className="flex items-center gap-2">
+                                    {['matrix_monthly', 'attendance_matrix_monthly', 'attendance_detailed', 'attendance_summary'].includes(attendanceReportType) ? (
+                                        <MonthPicker
+                                            value={attendanceMonth}
+                                            onChange={(val) => setAttendanceMonth(val)}
+                                            compact={true}
                                         />
-                                    </div>
-                                    <div className="max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setSelectedEmployeeId('');
-                                                setIsEmpDropdownOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${selectedEmployeeId === ''
-                                                    ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                                                    : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                }`}
-                                        >
-                                            All Employees
-                                        </button>
-                                        {filteredEmployees.length > 0 ? (
-                                            filteredEmployees.map(emp => (
+                                    ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(attendanceReportType) ? (
+                                        <div className="flex items-center gap-2">
+                                            <MonthPicker
+                                                value={attendanceMonth}
+                                                onChange={(val) => setAttendanceMonth(val)}
+                                                compact={true}
+                                            />
+                                            <div className="relative" ref={attendanceWeekDropdownRef}>
                                                 <button
-                                                    key={emp.user_id}
                                                     type="button"
-                                                    onClick={() => {
-                                                        setSelectedEmployeeId(emp.user_id);
-                                                        setIsEmpDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${selectedEmployeeId === emp.user_id
-                                                            ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                        }`}
+                                                    onClick={() => setAttendanceIsWeekDropdownOpen(!attendanceIsWeekDropdownOpen)}
+                                                    className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d] min-w-[150px]"
                                                 >
-                                                    {emp.user_name}
+                                                    <span className="truncate">{attendanceWeeks.find(w => w.value === attendanceWeek)?.label || 'Select Week'}</span>
+                                                    <ChevronDown size={14} className="text-slate-400 shrink-0 ml-2" />
                                                 </button>
-                                            ))
-                                        ) : (
-                                            <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
-                                                No employees found
+
+                                                {attendanceIsWeekDropdownOpen && (
+                                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5 animate-in fade-in duration-200">
+                                                        {attendanceWeeks.map((w, idx) => (
+                                                            <button
+                                                                key={idx}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setAttendanceWeek(w.value);
+                                                                    setAttendanceIsWeekDropdownOpen(false);
+                                                                }}
+                                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${attendanceWeek === w.value
+                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                                                        : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                    }`}
+                                                            >
+                                                                {w.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : (
+                                        <DatePicker
+                                            value={attendanceDate}
+                                            onChange={(val) => setAttendanceDate(val)}
+                                            compact={true}
+                                        />
+                                    )}
                                 </div>
                             )}
+
+                            {/* Searchable Employee Selector */}
+                            <div className="relative" ref={attendanceEmpDropdownRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setAttendanceIsEmpDropdownOpen(!attendanceIsEmpDropdownOpen);
+                                        setAttendanceEmpSearchQuery('');
+                                    }}
+                                    className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d] min-w-[180px]"
+                                >
+                                    <span className="truncate">{attendanceSelectedEmployeeName}</span>
+                                    <ChevronDown size={14} className="text-slate-400 shrink-0 ml-2" />
+                                </button>
+
+                                {attendanceIsEmpDropdownOpen && (
+                                    <div className="absolute right-0 mt-1 w-64 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col animate-in fade-in duration-200">
+                                        <div className="relative mb-2">
+                                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search employees..."
+                                                value={attendanceEmpSearchQuery}
+                                                onChange={(e) => setAttendanceEmpSearchQuery(e.target.value)}
+                                                className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-github-dark-text"
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div className="max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setAttendanceEmployeeId('');
+                                                    setAttendanceIsEmpDropdownOpen(false);
+                                                }}
+                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${attendanceEmployeeId === ''
+                                                        ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                                        : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                    }`}
+                                            >
+                                                All Employees
+                                            </button>
+                                            {attendanceFilteredEmployees.length > 0 ? (
+                                                attendanceFilteredEmployees.map(emp => (
+                                                    <button
+                                                        key={emp.user_id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setAttendanceEmployeeId(emp.user_id);
+                                                            setAttendanceIsEmpDropdownOpen(false);
+                                                        }}
+                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${attendanceEmployeeId === emp.user_id
+                                                                ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                                                : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                            }`}
+                                                    >
+                                                        {emp.user_name}
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                    No employees found
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
+                    )}
+
+                </div>
+
+                {/* Top Control Bar: Generate Report (Only shown on Full Report view) */}
+                {previewMode === 'table' && (
+                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-4 space-y-4 shrink-0">
+                        {/* Row 1: Parameters Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 items-end">
+                            {/* Custom Report Type Dropdown */}
+                            <div className="relative xl:col-span-3" ref={tableTypeDropdownRef}>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Report Type</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setTableIsTypeDropdownOpen(!tableIsTypeDropdownOpen)}
+                                    className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                                >
+                                    <span className="truncate">{reportTypeOptions.find(opt => opt.value === tableReportType)?.label || tableReportType}</span>
+                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsTypeDropdownOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {tableIsTypeDropdownOpen && (
+                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
+                                        {reportTypeOptions.map((opt) => (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    setTableReportType(opt.value);
+                                                    setTableIsTypeDropdownOpen(false);
+                                                }}
+                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${tableReportType === opt.value
+                                                        ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                                        : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                    }`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Custom Searchable Employee Select */}
+                            <div className="relative xl:col-span-3" ref={tableEmpDropdownRef}>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Employee</label>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTableIsEmpDropdownOpen(!tableIsEmpDropdownOpen);
+                                        setTableEmpSearchQuery('');
+                                    }}
+                                    className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
+                                >
+                                    <span className="truncate">{tableSelectedEmployeeName}</span>
+                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {tableIsEmpDropdownOpen && (
+                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                        <div className="relative mb-2">
+                                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search employees..."
+                                                value={tableEmpSearchQuery}
+                                                onChange={(e) => setTableEmpSearchQuery(e.target.value)}
+                                                className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-github-dark-text"
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div className="max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setTableEmployeeId('');
+                                                    setTableIsEmpDropdownOpen(false);
+                                                }}
+                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${tableEmployeeId === ''
+                                                        ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                                        : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                    }`}
+                                            >
+                                                All Employees
+                                            </button>
+                                            {tableFilteredEmployees.length > 0 ? (
+                                                tableFilteredEmployees.map(emp => (
+                                                    <button
+                                                        key={emp.user_id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setTableEmployeeId(emp.user_id);
+                                                            setTableIsEmpDropdownOpen(false);
+                                                        }}
+                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${tableEmployeeId === emp.user_id
+                                                                ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                                                : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                            }`}
+                                                    >
+                                                        {emp.user_name}
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                    No employees found
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
                         {/* Date Picker Grid Item */}
-                        {reportType !== 'employee_master' && (
+                        {tableReportType !== 'employee_master' && (
                             <div className="xl:col-span-4">
-                                {useCustomRange ? (
+                                {tableUseCustomRange ? (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                         <DatePicker
                                             label="Start Date"
-                                            value={customStartDate}
-                                            onChange={(val) => setCustomStartDate(val)}
+                                            value={tableCustomStartDate}
+                                            onChange={(val) => setTableCustomStartDate(val)}
                                             compact={true}
                                         />
                                         <DatePicker
                                             label="End Date"
-                                            value={customEndDate}
-                                            onChange={(val) => setCustomEndDate(val)}
+                                            value={tableCustomEndDate}
+                                            onChange={(val) => setTableCustomEndDate(val)}
                                             compact={true}
                                         />
                                     </div>
                                 ) : (
                                     <div>
-                                        {['matrix_monthly', 'attendance_matrix_monthly', 'attendance_detailed', 'attendance_summary'].includes(reportType) ? (
+                                        {['matrix_monthly', 'attendance_matrix_monthly', 'attendance_detailed', 'attendance_summary'].includes(tableReportType) ? (
                                             <MonthPicker
                                                 label="Select Month"
-                                                value={selectedMonth}
-                                                onChange={(val) => setSelectedMonth(val)}
+                                                value={tableMonth}
+                                                onChange={(val) => setTableMonth(val)}
                                                 compact={true}
                                             />
-                                        ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType) ? (
+                                        ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType) ? (
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                                 <MonthPicker
                                                     label="Select Month"
-                                                    value={selectedMonth}
-                                                    onChange={(val) => setSelectedMonth(val)}
+                                                    value={tableMonth}
+                                                    onChange={(val) => setTableMonth(val)}
                                                     compact={true}
                                                 />
-                                                <div className="relative" ref={weekDropdownRef}>
+                                                <div className="relative" ref={tableWeekDropdownRef}>
                                                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Select Week</label>
                                                     <button
                                                         type="button"
-                                                        onClick={() => setIsWeekDropdownOpen(!isWeekDropdownOpen)}
+                                                        onClick={() => setTableIsWeekDropdownOpen(!tableIsWeekDropdownOpen)}
                                                         className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                                                     >
-                                                        <span className="truncate">{weeks.find(w => w.value === selectedWeek)?.label || 'Select Week'}</span>
-                                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${isWeekDropdownOpen ? 'rotate-180' : ''}`} />
+                                                        <span className="truncate">{tableWeeks.find(w => w.value === tableWeek)?.label || 'Select Week'}</span>
+                                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsWeekDropdownOpen ? 'rotate-180' : ''}`} />
                                                     </button>
 
-                                                    {isWeekDropdownOpen && (
+                                                    {tableIsWeekDropdownOpen && (
                                                         <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
-                                                            {weeks.map((w, idx) => (
+                                                            {tableWeeks.map((w, idx) => (
                                                                 <button
                                                                     key={idx}
                                                                     type="button"
                                                                     onClick={() => {
-                                                                        setSelectedWeek(w.value);
-                                                                        setIsWeekDropdownOpen(false);
+                                                                        setTableWeek(w.value);
+                                                                        setTableIsWeekDropdownOpen(false);
                                                                     }}
-                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${selectedWeek === w.value
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${tableWeek === w.value
                                                                             ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
                                                                             : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
                                                                         }`}
@@ -1012,8 +1256,8 @@ const Reports = () => {
                                         ) : (
                                             <DatePicker
                                                 label="Select Date"
-                                                value={selectedDate}
-                                                onChange={(val) => setSelectedDate(val)}
+                                                value={tableDate}
+                                                onChange={(val) => setTableDate(val)}
                                                 compact={true}
                                             />
                                         )}
@@ -1023,21 +1267,21 @@ const Reports = () => {
                         )}
 
                         {/* Columns Selection Dropdown */}
-                        {reportType !== 'employee_master' && (
-                            <div className="relative xl:col-span-2" ref={colsDropdownRef}>
+                        {tableReportType !== 'employee_master' && (
+                            <div className="relative xl:col-span-2" ref={tableColsDropdownRef}>
                                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Columns to Include</label>
                                 <button
                                     type="button"
-                                    onClick={() => setIsColsDropdownOpen(!isColsDropdownOpen)}
+                                    onClick={() => setTableIsColsDropdownOpen(!tableIsColsDropdownOpen)}
                                     className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                                 >
                                     <span className="truncate">
-                                        {Object.values(exportColumns).filter(Boolean).length} Columns Selected
+                                        {Object.values(tableExportColumns).filter(Boolean).length} Columns Selected
                                     </span>
-                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${isColsDropdownOpen ? 'rotate-180' : ''}`} />
+                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsColsDropdownOpen ? 'rotate-180' : ''}`} />
                                 </button>
 
-                                {isColsDropdownOpen && (
+                                {tableIsColsDropdownOpen && (
                                     <div className="absolute right-0 mt-1 w-full min-w-[220px] bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-3 space-y-2.5">
                                         {[
                                             { id: 'timeIn', label: 'Time In' },
@@ -1053,18 +1297,18 @@ const Reports = () => {
                                                 key={col.id}
                                                 type="button"
                                                 onClick={() => {
-                                                    setExportColumns(prev => ({
+                                                    setTableExportColumns(prev => ({
                                                         ...prev,
                                                         [col.id]: !prev[col.id]
                                                     }));
                                                 }}
                                                 className="w-full flex items-center gap-2.5 cursor-pointer focus:outline-none group text-left"
                                             >
-                                                <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${exportColumns[col.id]
+                                                <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${tableExportColumns[col.id]
                                                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
                                                         : 'bg-white dark:bg-github-dark-subtle border-slate-300 dark:border-github-dark-border group-hover:border-indigo-400 dark:group-hover:border-indigo-500'
                                                     }`}>
-                                                    {exportColumns[col.id] && (
+                                                    {tableExportColumns[col.id] && (
                                                         <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <polyline points="20 6 9 17 4 12" />
                                                         </svg>
@@ -1079,236 +1323,223 @@ const Reports = () => {
                                 )}
                             </div>
                         )}
-                    </div>
+                        </div>
 
-                    {/* Row 2: Divider & Action Toolbar */}
-                    <div className="border-t border-slate-100 dark:border-github-dark-border pt-3.5 flex flex-col sm:flex-row items-center justify-between gap-4">
-                        {/* Custom Date Range Toggle */}
-                        <div className="flex items-center">
-                            <button
-                                type="button"
-                                id="useCustomRangeWeb"
-                                onClick={() => setUseCustomRange(!useCustomRange)}
-                                className="flex items-center gap-2.5 cursor-pointer focus:outline-none group"
-                            >
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${useCustomRange
-                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
-                                        : 'bg-white dark:bg-[#161b22] border-slate-300 dark:border-[#30363d] group-hover:border-indigo-400 dark:group-hover:border-indigo-500'
-                                    }`}>
-                                    {useCustomRange && (
-                                        <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <polyline points="20 6 9 17 4 12" />
-                                        </svg>
+                        {/* Row 2: Divider & Action Toolbar */}
+                        <div className="border-t border-slate-100 dark:border-github-dark-border pt-3.5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            {/* Custom Date Range Toggle */}
+                            <div className="flex items-center">
+                                <button
+                                    type="button"
+                                    id="useCustomRangeWeb"
+                                    onClick={() => setTableUseCustomRange(!tableUseCustomRange)}
+                                    className="flex items-center gap-2.5 cursor-pointer focus:outline-none group"
+                                >
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${tableUseCustomRange
+                                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
+                                            : 'bg-white dark:bg-[#161b22] border-slate-300 dark:border-[#30363d] group-hover:border-indigo-400 dark:group-hover:border-indigo-500'
+                                        }`}>
+                                        {tableUseCustomRange && (
+                                            <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted select-none">
+                                        Use Custom Date Range
+                                    </span>
+                                </button>
+                            </div>
+
+                            {/* Format Switcher & Download Button */}
+                            <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto justify-end">
+                                {/* File Format Tabs Selector */}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Format:</span>
+                                    <div className="h-8 flex items-center p-1 bg-slate-100 dark:bg-[#161b22] rounded-md border border-slate-200 dark:border-[#30363d]">
+                                        {[
+                                            { id: 'xlsx', label: 'Excel' },
+                                            { id: 'csv', label: 'CSV' },
+                                            { id: 'pdf', label: 'PDF' }
+                                        ].map((format) => {
+                                            const isSelected = tableFileFormat === format.id;
+                                            return (
+                                                <button
+                                                    key={format.id}
+                                                    type="button"
+                                                    onClick={() => setTableFileFormat(format.id)}
+                                                    className={`h-full px-3 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${isSelected
+                                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                                            : 'text-slate-500 hover:text-slate-700 dark:text-github-dark-muted dark:hover:text-github-dark-text'
+                                                        }`}
+                                                >
+                                                    {format.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Download Button */}
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={isGenerating}
+                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-md shadow-md transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 h-8 text-[10px] cursor-pointer"
+                                >
+                                    {isGenerating ? (
+                                        <>
+                                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            <span>Generating...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download size={12} />
+                                            <span>Download Report</span>
+                                        </>
                                     )}
-                                </div>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted select-none">
-                                    Use Custom Date Range
-                                </span>
-                            </button>
-                        </div>
+                                </button>
 
-                        {/* Format Switcher & Download Button */}
-                        <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto justify-end">
-                            {/* File Format Tabs Selector */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Format:</span>
-                                <div className="h-8 flex items-center p-1 bg-slate-100 dark:bg-[#161b22] rounded-md border border-slate-200 dark:border-[#30363d]">
-                                    {[
-                                        { id: 'xlsx', label: 'Excel' },
-                                        { id: 'csv', label: 'CSV' },
-                                        { id: 'pdf', label: 'PDF' }
-                                    ].map((format) => {
-                                        const isSelected = fileFormat === format.id;
+                                {/* Export History Drawer Toggle Button */}
+                                <button
+                                    onClick={() => setIsHistorySidebarOpen(true)}
+                                    className="px-4 py-1.5 bg-[#f6f8fa] hover:bg-[#eaeef2] dark:bg-[#21262d] dark:hover:bg-[#30363d] text-[#24292f] dark:text-[#c9d1d9] border border-[#d0d7de] dark:border-[#30363d] font-bold uppercase tracking-wider rounded-md shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2 h-8 text-[10px] cursor-pointer"
+                                >
+                                    <History size={12} />
+                                    <span>Export History</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {previewMode === 'card' ? (
+                    /* Attendance View: Direct full-page rendering without outer card wrapper */
+                    loadingPreview ? (
+                        <div className="flex-1 flex flex-col items-center justify-center py-24 gap-4 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm">
+                            <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                            <p className="text-slate-500 text-sm font-medium">Crunching and parsing preview records...</p>
+                        </div>
+                    ) : (matrixData.employees && matrixData.employees.length > 0) ? (
+                        <div className="w-full overflow-x-auto no-scrollbar rounded-xl border border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card shadow-sm animate-none" style={{ isolation: 'isolate' }}>
+                            <table className="w-full text-left border-collapse" style={{ minWidth: 'max-content' }}>
+                                <thead className="sticky top-0 z-30">
+                                    <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
+                                        <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-[#161b22] z-40 min-w-[230px] border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.10)' }}>Employee</th>
+                                        {matrixData.dates.map(rawDate => {
+                                            const d = new Date(rawDate + 'T00:00:00Z');
+                                            return (
+                                                <th key={rawDate} className="py-2 px-1 text-center min-w-[52px]">
+                                                    <div className="text-[8px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { month: 'short' })}</div>
+                                                    <div className="text-sm font-black text-slate-700 dark:text-white leading-tight">{d.getUTCDate()}</div>
+                                                    <div className="text-[8px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
+                                                </th>
+                                            );
+                                        })}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-github-dark-border">
+                                    {matrixData.employees.map((emp) => {
+                                        const initials = emp.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
                                         return (
-                                            <button
-                                                key={format.id}
-                                                type="button"
-                                                onClick={() => setFileFormat(format.id)}
-                                                className={`h-full px-3 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${isSelected
-                                                        ? 'bg-indigo-600 text-white shadow-sm'
-                                                        : 'text-slate-500 hover:text-slate-700 dark:text-github-dark-muted dark:hover:text-github-dark-text'
-                                                    }`}
-                                            >
-                                                {format.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Download Button */}
-                            <button
-                                onClick={handleGenerate}
-                                disabled={isGenerating}
-                                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-md shadow-md transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 h-8 text-[10px] cursor-pointer"
-                            >
-                                {isGenerating ? (
-                                    <>
-                                        <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        <span>Generating...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Download size={12} />
-                                        <span>Download Report</span>
-                                    </>
-                                )}
-                            </button>
-
-                            {/* Export History Drawer Toggle Button */}
-                            <button
-                                onClick={() => setIsHistorySidebarOpen(true)}
-                                className="px-4 py-1.5 bg-[#f6f8fa] hover:bg-[#eaeef2] dark:bg-[#21262d] dark:hover:bg-[#30363d] text-[#24292f] dark:text-[#c9d1d9] border border-[#d0d7de] dark:border-[#30363d] font-bold uppercase tracking-wider rounded-md shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2 h-8 text-[10px] cursor-pointer"
-                            >
-                                <History size={12} />
-                                <span>Export History</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-
-
-
-                {/* View Switcher Tabs (Similar to the older setup) */}
-                <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl self-start">
-                    {[
-                        { id: 'card', label: 'Attendance View', icon: TrendingUp },
-                        { id: 'table', label: 'Full Report', icon: Table }
-                    ].map((tab) => {
-                        const isSelected = previewMode === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                onClick={() => setPreviewMode(tab.id)}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isSelected
-                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                    }`}
-                            >
-                                <tab.icon size={14} />
-                                <span>{tab.label}</span>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* Data Preview Card (Full Width) */}
-                <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden">
-                    {/* Card Header */}
-                    <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/10 flex justify-between items-center shrink-0">
-                        <div>
-                            <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-sm">
-                                <Table className="text-slate-400" size={16} />
-                                Report Preview Data
-                            </h3>
-                            <p className="text-xs text-slate-400 dark:text-github-dark-muted mt-1 leading-none">
-                                Active report: <span className="font-bold text-slate-600 dark:text-slate-300">{reportType.replace(/_/g, ' ')}</span>
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {previewData.rows?.length > 0 && (
-                                <span className="px-2.5 py-1 text-[10px] font-bold text-[#57606a] dark:text-[#8b949e] bg-[#f6f8fa] dark:bg-[#161b22] rounded-full border border-[#d0d7de] dark:border-[#30363d]">
-                                    {previewData.rows.filter(row => {
-                                        const firstCell = row[0]?.toString().toUpperCase();
-                                        return firstCell !== 'TOTALS' && firstCell !== 'TOTAL';
-                                    }).length} Records
-                                </span>
-                            )}
-                            {cacheHit && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 rounded-full border border-indigo-200/50 dark:border-indigo-800/30">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                                    Refreshing
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Preview Body */}
-                    <div className={`no-scrollbar bg-slate-100 dark:bg-github-dark-bg border-t border-slate-200 dark:border-github-dark-border min-h-[300px] ${previewMode === 'table' ? 'overflow-x-auto p-4' : ''}`}>
-                        {loadingPreview ? (
-                            <div className="flex flex-col items-center justify-center py-24 gap-4">
-                                <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-                                <p className="text-slate-500 text-sm font-medium">Crunching and parsing preview records...</p>
-                            </div>
-                        ) : ((previewData.cardRecords && previewData.cardRecords.length > 0) || (previewData.rows && previewData.rows.length > 0)) ? (
-                            previewMode === 'card' ? (
-                                /* Attendance Matrix View: employees as rows, dates as columns — click badge to open detail sidebar */
-                                <div className="w-full overflow-auto no-scrollbar rounded-xl border border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card" style={{ maxHeight: 'calc(100vh - 320px)', isolation: 'isolate' }}>
-                                    <table className="text-left border-collapse" style={{ minWidth: 'max-content' }}>
-                                        <thead className="sticky top-0 z-30">
-                                            <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
-                                                <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-[#161b22] z-40 min-w-[230px] border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.10)' }}>Employee</th>
+                                            <tr key={emp.user_id} className="hover:bg-slate-50 dark:hover:bg-[#1c2128] transition-colors group">
+                                                <td className="px-5 py-3.5 sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-[#1c2128] transition-colors z-10 border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.08)' }}>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shadow-inner shrink-0">
+                                                            {initials || <User size={14} />}
+                                                        </div>
+                                                        <div>
+                                                            <span className="block font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{emp.user_name}</span>
+                                                            <span className="block text-[10px] font-medium text-slate-400 dark:text-github-dark-muted mt-0.5">{emp.designation} · {emp.department}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
                                                 {matrixData.dates.map(rawDate => {
-                                                    const d = new Date(rawDate + 'T00:00:00Z');
+                                                    const record = emp.records[rawDate];
+                                                    const status = record?.status || '-';
+                                                    const isWeekend = status === 'Sun' || status === 'Sat';
+                                                    const isClickable = !!record && !isWeekend;
                                                     return (
-                                                        <th key={rawDate} className="py-2 px-1 text-center min-w-[52px]">
-                                                            <div className="text-[8px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { month: 'short' })}</div>
-                                                            <div className="text-sm font-black text-slate-700 dark:text-white leading-tight">{d.getUTCDate()}</div>
-                                                            <div className="text-[8px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
-                                                        </th>
+                                                        <td key={rawDate} className="px-1 py-3 text-center">
+                                                            <button
+                                                                type="button"
+                                                                onMouseEnter={(e) => {
+                                                                    if (record) {
+                                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                                        setHoveredRecord(record);
+                                                                        setHoveredPosition({
+                                                                            top: rect.top,
+                                                                            left: rect.left + rect.width / 2
+                                                                        });
+                                                                    }
+                                                                }}
+                                                                onMouseLeave={() => setHoveredRecord(null)}
+                                                                onClick={() => {
+                                                                    if (isClickable) {
+                                                                        setSelectedRecord(record);
+                                                                        setIsDetailSidebarOpen(true);
+                                                                        setHoveredRecord(null);
+                                                                    }
+                                                                }}
+                                                                title={!record ? 'No data' : undefined}
+                                                                className={`w-9 h-9 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${getStatusColor(status)} ${isClickable ? 'cursor-pointer hover:brightness-95 hover:shadow-md active:scale-95' : 'cursor-default'}`}
+                                                            >
+                                                                {getStatusLabel(status)}
+                                                            </button>
+                                                        </td>
                                                     );
                                                 })}
                                             </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 dark:divide-github-dark-border">
-                                            {matrixData.employees.map((emp) => {
-                                                const initials = emp.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-                                                return (
-                                                    <tr key={emp.user_id} className="hover:bg-slate-50 dark:hover:bg-[#1c2128] transition-colors group">
-                                                        <td className="px-5 py-3.5 sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-[#1c2128] transition-colors z-10 border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.08)' }}>
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shadow-inner shrink-0">
-                                                                    {initials || <User size={14} />}
-                                                                </div>
-                                                                <div>
-                                                                    <span className="block font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{emp.user_name}</span>
-                                                                    <span className="block text-[10px] font-medium text-slate-400 dark:text-github-dark-muted mt-0.5">{emp.designation} · {emp.department}</span>
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                        {matrixData.dates.map(rawDate => {
-                                                            const record = emp.records[rawDate];
-                                                            const status = record?.status || '-';
-                                                            const isWeekend = status === 'Sun' || status === 'Sat';
-                                                            const isClickable = !!record && !isWeekend;
-                                                            return (
-                                                                <td key={rawDate} className="px-1 py-3 text-center">
-                                                                    <button
-                                                                        type="button"
-                                                                        onMouseEnter={(e) => {
-                                                                            if (record) {
-                                                                                const rect = e.currentTarget.getBoundingClientRect();
-                                                                                setHoveredRecord(record);
-                                                                                setHoveredPosition({
-                                                                                    top: rect.top,
-                                                                                    left: rect.left + rect.width / 2
-                                                                                });
-                                                                            }
-                                                                        }}
-                                                                        onMouseLeave={() => setHoveredRecord(null)}
-                                                                        onClick={() => {
-                                                                            if (isClickable) {
-                                                                                setSelectedRecord(record);
-                                                                                setIsDetailSidebarOpen(true);
-                                                                                setHoveredRecord(null);
-                                                                            }
-                                                                        }}
-                                                                        title={!record ? 'No data' : undefined}
-                                                                        className={`w-9 h-9 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${getStatusColor(status)} ${isClickable ? 'cursor-pointer hover:brightness-95 hover:shadow-md active:scale-95' : 'cursor-default'}`}
-                                                                    >
-                                                                        {getStatusLabel(status)}
-                                                                    </button>
-                                                                </td>
-                                                            );
-                                                        })}
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center py-20 gap-3 bg-white dark:bg-dark-card border border-dashed border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm">
+                            <Table className="text-slate-200 dark:text-slate-700" size={48} />
+                            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">No preview records loaded for this filter.</p>
+                        </div>
+                    )
+                ) : (
+                    /* Full Report View: Render Spreadsheet table inside the Card layout */
+                    <div className="w-full flex flex-col bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden">
+                        {/* Card Header */}
+                        <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/10 flex justify-between items-center shrink-0">
+                            <div>
+                                <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-sm">
+                                    <Table className="text-slate-400" size={16} />
+                                    Report Preview Data
+                                </h3>
+                                <p className="text-xs text-slate-400 dark:text-github-dark-muted mt-1 leading-none">
+                                    Active report: <span className="font-bold text-slate-600 dark:text-slate-300">{activeFilters.reportType.replace(/_/g, ' ')}</span>
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {previewData.rows?.length > 0 && (
+                                    <span className="px-2.5 py-1 text-[10px] font-bold text-[#57606a] dark:text-[#8b949e] bg-[#f6f8fa] dark:bg-[#161b22] rounded-full border border-[#d0d7de] dark:border-[#30363d]">
+                                        {previewData.rows.filter(row => {
+                                            const firstCell = row[0]?.toString().toUpperCase();
+                                            return firstCell !== 'TOTALS' && firstCell !== 'TOTAL';
+                                        }).length} Records
+                                    </span>
+                                )}
+                                {cacheHit && (
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 rounded-full border border-indigo-200/50 dark:border-indigo-800/30">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                                        Refreshing
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Preview Body */}
+                        <div className="w-full no-scrollbar bg-slate-100 dark:bg-github-dark-bg border-t border-slate-200 dark:border-github-dark-border overflow-x-auto px-4 pb-4 pt-4">
+                            {loadingPreview ? (
+                                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                                    <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                                    <p className="text-slate-500 text-sm font-medium">Crunching and parsing preview records...</p>
                                 </div>
-                            ) : (
+                            ) : (previewData.rows && previewData.rows.length > 0) ? (
                                 /* Spreadsheet View: Render Original Excel replica table */
                                 <table className="w-full text-left border-collapse bg-white text-slate-800 shadow-sm rounded border border-slate-300" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
                                     <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-github-dark-subtle/95 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-github-dark-border">
@@ -1389,15 +1620,15 @@ const Reports = () => {
                                         })}
                                     </tbody>
                                 </table>
-                            )
-                        ) : (
-                            <div className="flex flex-col items-center justify-center py-20 gap-3 bg-white dark:bg-dark-card border border-dashed border-slate-200 dark:border-github-dark-border rounded-xl">
-                                <Table className="text-slate-200 dark:text-slate-700" size={48} />
-                                <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">No preview records loaded for this filter.</p>
-                            </div>
-                        )}
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-20 gap-3 bg-white dark:bg-dark-card border border-dashed border-slate-200 dark:border-github-dark-border rounded-xl">
+                                    <Table className="text-slate-200 dark:text-slate-700" size={48} />
+                                    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">No preview records loaded for this filter.</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Slide-over Export History Drawer */}
                 {createPortal(
@@ -1652,16 +1883,23 @@ const Reports = () => {
                                                             { label: 'In', img: selectedRecord.time_in_image, color: 'text-emerald-600 dark:text-emerald-400' },
                                                             { label: 'Out', img: selectedRecord.time_out_image, color: 'text-rose-600 dark:text-rose-400' }
                                                         ].map((item, i) => (
-                                                            <div key={i} className="relative rounded-xl border border-slate-200 dark:border-github-dark-border overflow-hidden bg-slate-100 dark:bg-github-dark-subtle shadow-sm flex flex-col">
+                                                            <div key={i} className="flex flex-col">
                                                                 {item.img ? (
-                                                                    <img src={item.img} alt={`${item.label} Selfie`} className="w-full h-28 object-contain" />
+                                                                    <div className="flex justify-center w-full mt-2">
+                                                                        <div className="relative rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border group/img cursor-pointer shadow-sm bg-transparent" onClick={() => setPreviewImage(item.img)}>
+                                                                            <img src={item.img} alt={`${item.label} Selfie`} className="max-h-48 max-w-full w-auto block object-contain transition-transform duration-500 group-hover/img:scale-110" />
+                                                                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                                                                <Search size={16} className="text-white" />
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
                                                                 ) : (
-                                                                    <div className="w-full h-28 flex flex-col items-center justify-center gap-1 bg-white dark:bg-dark-card">
-                                                                        <div className="text-xl opacity-20">📷</div>
-                                                                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">No photo</span>
+                                                                    <div className="w-full h-28 rounded-xl bg-slate-50 dark:bg-github-dark-subtle/20 border border-dashed border-slate-200 dark:border-github-dark-border flex flex-col items-center justify-center gap-1">
+                                                                        <XCircle size={14} className="text-slate-350" />
+                                                                        <span className="text-[9px] text-slate-400 font-medium">No Selfie {item.label}</span>
                                                                     </div>
                                                                 )}
-                                                                <span className={`text-[9px] font-black uppercase tracking-wider text-center py-1.5 bg-white dark:bg-dark-card border-t border-slate-100 dark:border-github-dark-border ${item.color}`}>
+                                                                <span className={`text-[9px] font-black uppercase tracking-wider text-center mt-2.5 ${item.color}`}>
                                                                     Punch {item.label}
                                                                 </span>
                                                             </div>
@@ -1794,6 +2032,36 @@ const Reports = () => {
                     </div>
                 )}
             </div>
+
+            {/* Image Preview Lightbox */}
+            {previewImage && createPortal(
+                <AnimatePresence>
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setPreviewImage(null)}
+                    >
+                        <button
+                            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
+                            onClick={() => setPreviewImage(null)}
+                        >
+                            <XCircle size={32} />
+                        </button>
+                        <motion.img
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            src={previewImage}
+                            alt="Selfie Preview"
+                            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </motion.div>
+                </AnimatePresence>,
+                document.body
+            )}
         </DashboardLayout>
     );
 };

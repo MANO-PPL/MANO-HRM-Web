@@ -147,7 +147,7 @@ const processAttendanceData = (staff, resolvedTz) => {
                 outLocation: outLoc,
                 lateMinutes: r.late_minutes || 0,
                 isLate: (r.late_minutes || 0) > 0,
-                lateReason: r.late_reason,
+                lateReason: r.late_reason || r.lateReason || '',
                 inImage: r.time_in_image,
                 outImage: r.time_out_image,
                 inLat: r.time_in_lat,
@@ -201,7 +201,7 @@ const processAttendanceData = (staff, resolvedTz) => {
             allStatuses,
             totalHours: totalHrs,
             location: lastLocation,
-            lateReason: u.late_reason || ''
+            lateReason: u.late_reason || u.lateReason || sessions.find(s => s.lateReason)?.lateReason || ''
         };
     });
 
@@ -386,12 +386,12 @@ const MobileAttendanceMonitoring = () => {
     }, [statusFilter]);
 
     // --- DATA FETCHING (Feature Parity with Web) ---
-    const fetchData = async (silent = false) => {
+    const fetchData = async (silent = false, forceRefresh = false) => {
         const hasCache = !!attendanceCacheData.dailySummaryAdmin[selectedDate];
         if (!silent && !hasCache) setLoading(true);
         try {
             const [summaryRes, requestsRes] = await Promise.all([
-                attendanceService.getDailySummaryAdmin(selectedDate),
+                attendanceService.getDailySummaryAdmin(selectedDate, forceRefresh),
                 attendanceService.getCorrectionRequests({ limit: 50 })
             ]);
 
@@ -424,10 +424,10 @@ const MobileAttendanceMonitoring = () => {
     };
 
     useEffect(() => {
-        fetchData();
-        const interval = setInterval(() => fetchData(true), 15000);
+        fetchData(false, false);
+        const interval = setInterval(() => fetchData(true, true), 15000);
         return () => clearInterval(interval);
-    }, [selectedDate]);
+    }, [activeTab, selectedDate]);
 
     // Theme Sync Effect
     useEffect(() => {
@@ -660,7 +660,7 @@ const MobileAttendanceMonitoring = () => {
                                 </div>
 
                                 <button
-                                    onClick={() => fetchData()}
+                                    onClick={() => fetchData(false, true)}
                                     className="w-12 h-12 bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-2xl flex items-center justify-center text-slate-400 shadow-sm active:scale-90 transition-all group"
                                 >
                                     <RefreshCcw size={18} className={loading ? 'animate-spin text-indigo-500' : 'group-active:rotate-180 transition-transform duration-500'} />
@@ -726,7 +726,7 @@ const MobileAttendanceMonitoring = () => {
                             dragConstraints={{ left: 0, right: 0 }}
                             dragElastic={0.2}
                             onDragEnd={handleDragEnd}
-                            className="p-3 space-y-3"
+                            className="p-3 space-y-3 touch-pan-y"
                         >
                             {/* --- DASHBOARD VIEW --- */}
                             {activeTab === 'dashboard' && (
@@ -1046,7 +1046,7 @@ const MobileAttendanceMonitoring = () => {
                         />
                     )}
                     {selectedRequest && (
-                        <RequestDetailModal request={selectedRequest} onClose={() => setSelectedRequest(null)} onUpdate={fetchData} />
+                        <RequestDetailModal request={selectedRequest} onClose={() => setSelectedRequest(null)} onUpdate={() => fetchData(true, true)} />
                     )}
                 </AnimatePresence>
             </div>
@@ -1207,6 +1207,8 @@ const CompactEmployeeCard = ({ employee, onClick, avatarTimestamp }) => {
                 </div>
                 <p className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-tighter truncate leading-none mb-2">{employee.role} • {employee.department}</p>
 
+
+
                 {!isAbsentOrNonWorking && employee.sessions.length > 0 && (
                     <div className="flex items-center gap-3 pt-2 border-t border-slate-50 dark:border-github-dark-border/50">
                         <div className="flex items-center gap-1">
@@ -1266,6 +1268,17 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                     </div>
                 </div>
 
+                {employee.status.includes('Late') && (
+                    <div className="p-3 mb-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                        <h5 className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-500 tracking-widest mb-1 flex items-center gap-1.5">
+                            <AlertCircle size={10} /> Late Reason
+                        </h5>
+                        <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">
+                            {employee.lateReason ? `"${employee.lateReason}"` : "No reason provided."}
+                        </p>
+                    </div>
+                )}
+
                 <div className="space-y-6">
                     <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 flex justify-between">
                         <span>Daily Activity</span>
@@ -1295,15 +1308,17 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                                             </div>
                                         </div>
                                         {s.inImage && (
-                                            <div
-                                                onClick={() => setPreviewImage(s.inImage)}
-                                                className="relative aspect-video rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border shadow-sm group active:scale-95 transition-all"
-                                            >
-                                                <img src={s.inImage} className="w-full h-full object-contain" />
-                                                <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Camera size={16} className="text-white" />
+                                            <div className="flex justify-center w-full mt-2">
+                                                <div
+                                                    onClick={() => setPreviewImage(s.inImage)}
+                                                    className="relative rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border shadow-sm group active:scale-95 transition-all bg-transparent"
+                                                >
+                                                    <img src={s.inImage} className="max-h-40 max-w-full w-auto block object-contain" />
+                                                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Camera size={16} className="text-white" />
+                                                    </div>
+                                                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[7px] font-black text-white uppercase tracking-tighter">Selfie In</div>
                                                 </div>
-                                                <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[7px] font-black text-white uppercase tracking-tighter">Selfie In</div>
                                             </div>
                                         )}
                                     </div>
@@ -1321,15 +1336,17 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                                             )}
                                         </div>
                                         {s.outImage && (
-                                            <div
-                                                onClick={() => setPreviewImage(s.outImage)}
-                                                className="relative aspect-video rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border shadow-sm group active:scale-95 transition-all"
-                                            >
-                                                <img src={s.outImage} className="w-full h-full object-contain" />
-                                                <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Camera size={16} className="text-white" />
+                                            <div className="flex justify-center w-full mt-2">
+                                                <div
+                                                    onClick={() => setPreviewImage(s.outImage)}
+                                                    className="relative rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border shadow-sm group active:scale-95 transition-all bg-transparent"
+                                                >
+                                                    <img src={s.outImage} className="max-h-40 max-w-full w-auto block object-contain" />
+                                                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Camera size={16} className="text-white" />
+                                                    </div>
+                                                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[7px] font-black text-white uppercase tracking-tighter">Selfie Out</div>
                                                 </div>
-                                                <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[7px] font-black text-white uppercase tracking-tighter">Selfie Out</div>
                                             </div>
                                         )}
                                     </div>

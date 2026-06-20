@@ -264,6 +264,17 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
                                     </div>
                                 </div>
 
+                                {selectedUser.user.allStatuses && selectedUser.user.allStatuses.includes('Late') && (
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm mt-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <h5 className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-500 tracking-widest mb-1 flex items-center gap-1.5">
+                                            <AlertTriangle size={10} /> Late Reason
+                                        </h5>
+                                        <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">
+                                            {selectedUser.user.lateReason ? `"${selectedUser.user.lateReason}"` : "No reason provided."}
+                                        </p>
+                                    </div>
+                                )}
+
                                 <div className="space-y-3">
                                     {selectedUser.type === 'combined' ? (
                                         <>
@@ -477,7 +488,7 @@ const processAttendanceData = (staff, resolvedTz) => {
                 outLocation: outLoc,
                 lateMinutes: r.late_minutes || 0,
                 isLate: (r.late_minutes || 0) > 0,
-                lateReason: r.late_reason,
+                lateReason: r.late_reason || r.lateReason || '',
                 inImage: r.time_in_image,
                 outImage: r.time_out_image,
                 inLat: r.time_in_lat,
@@ -533,7 +544,7 @@ const processAttendanceData = (staff, resolvedTz) => {
             totalHours: totalHrs,
             expectedHours: expectedHrs,
             location: lastLocation,
-            lateReason: u.late_reason || ''
+            lateReason: u.late_reason || u.lateReason || sessions.find(s => s.lateReason)?.lateReason || ''
         };
     });
 
@@ -711,12 +722,12 @@ const AttendanceMonitoring = () => {
     }, [statusFilter]);
 
     // Data Fetching
-    const fetchData = async (silent = false) => {
+    const fetchData = async (silent = false, forceRefresh = false) => {
         const hasCache = !!attendanceCacheData.dailySummaryAdmin[selectedDate];
         if (!silent && !hasCache) setLoading(true);
         try {
             // 1. Fetch Dynamic Daily Summary for Admin
-            const res = await attendanceService.getDailySummaryAdmin(selectedDate);
+            const res = await attendanceService.getDailySummaryAdmin(selectedDate, forceRefresh);
             const staff = res.data || [];
             const resolvedTz = res.timezone || 'UTC';
             setOrgTimezone(resolvedTz);
@@ -770,9 +781,9 @@ const AttendanceMonitoring = () => {
         fetchCorrectionRequests();
 
         if (activeTab === 'live') {
-            fetchData();
+            fetchData(false, false);
             // Auto refresh every 15 seconds (Live Monitoring)
-            const interval = setInterval(() => fetchData(true), 15000);
+            const interval = setInterval(() => fetchData(true, true), 15000);
             return () => clearInterval(interval);
         }
     }, [activeTab, selectedDate]);
@@ -942,7 +953,7 @@ const AttendanceMonitoring = () => {
             await attendanceService.updateCorrectionStatus(acr_id, status, reviewComment, overrides);
             toast.success(`Request ${status} successfully`);
             fetchCorrectionRequests();
-            fetchData(true); // Refetch live dashboard data silently
+            fetchData(true, true); // Refetch live dashboard data silently
             if (selectedRequestData && selectedRequestData.acr_id === acr_id) {
                 fetchRequestDetail(acr_id);
             }
@@ -1149,32 +1160,31 @@ const AttendanceMonitoring = () => {
                 `}
             </style>
             <DashboardLayout title="Live Attendance" noPadding={true}>
-                <div className="p-3 pb-0">
+                <div className={`${activeTab === 'requests' ? 'h-[calc(100vh-64px)] overflow-hidden' : ''} p-4 flex flex-col space-y-4`}>
                     {/* Tabs */}
-                    <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-xl w-fit">
+                    <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         <button
                             onClick={() => setActiveTab('live')}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ${activeTab === 'live' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'live' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-202'}`}
                         >
-                            <LayoutGrid size={15} className={`${activeTab === 'live' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                            <LayoutGrid size={14} className={`${activeTab === 'live' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
                             <span className="leading-none">Live Dashboard</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('requests')}
-                            className={`relative flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'}`}
+                            className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-202'}`}
                         >
-                            <FileText size={15} className={`${activeTab === 'requests' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                            <FileText size={14} className={`${activeTab === 'requests' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
                             <span className="leading-none">Correction Requests</span>
                             {requestCount > 0 && activeTab !== 'requests' && (
-                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full animate-pulse border-2 border-slate-100 dark:border-github-dark-subtle">
+                                <span className="absolute -top-1.5 -right-2 w-5 h-5 bg-red-500 text-white text-[9px] font-black flex items-center justify-center rounded-full animate-pulse border border-white dark:border-github-dark-subtle shadow-sm leading-none">
                                     {requestCount}
                                 </span>
                             )}
                         </button>
                     </div>
-                </div>
 
-                <div className="p-3 space-y-3" style={{ zoom: 0.8 }}>
+                    <div className={`${activeTab === 'requests' ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`} style={{ zoom: 0.8 }}>
 
                     {activeTab === 'live' ? (
                         <>
@@ -1210,10 +1220,10 @@ const AttendanceMonitoring = () => {
                             </div>
 
                             {/* Main Content */}
-                            <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden transition-colors duration-300">
+                            <div className="flex-1 min-h-0 transition-colors duration-300 flex flex-col space-y-4">
 
                                 {/* Premium Control Center */}
-                                <div className="p-6 border-b border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card space-y-6">
+                                <div className="p-6 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border space-y-6 shrink-0">
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-3">
@@ -1249,7 +1259,7 @@ const AttendanceMonitoring = () => {
                                                 />
                                             </div>
                                             <button
-                                                onClick={() => fetchData()}
+                                                onClick={() => fetchData(false, true)}
                                                 className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-dark-card rounded-md transition-all shadow-sm group"
                                                 title="Sync Data"
                                             >
@@ -1353,9 +1363,9 @@ const AttendanceMonitoring = () => {
                                 </div>
 
 
-                                <div className="p-6 bg-slate-50/50 dark:bg-github-dark-subtle/10 min-h-[500px]">
+                                <div className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar ${activeView === 'map' ? 'flex flex-col' : ''}`}>
                                     {activeView === 'table' ? (
-                                        <div className="bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+                                        <div className="bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 min-h-[450px]">
                                             <div className="overflow-x-auto custom-scrollbar">
                                                 <div className="min-w-[2000px]">
                                                     {/* Timeline Header */}
@@ -1379,7 +1389,7 @@ const AttendanceMonitoring = () => {
                                                         ) : filteredData.length === 0 ? (
                                                             <div className="p-10 text-center text-slate-400">No employees found.</div>
                                                         ) : (
-                                                            filteredData.map((item) => {
+                                                            filteredData.map((item, rowIdx) => {
                                                                 const startHour = 0;
                                                                 const totalHours = 24;
                                                                 const timeToPct = (date) => {
@@ -1391,7 +1401,7 @@ const AttendanceMonitoring = () => {
                                                                 };
 
                                                                 return (
-                                                                    <div key={item.id} className="flex hover:bg-slate-50/50 dark:hover:bg-indigo-500/5 transition-colors group cursor-pointer" onClick={() => setSelectedLiveUser(item)}>
+                                                                    <div key={item.id} className="relative z-10 flex hover:bg-slate-50/50 dark:hover:bg-indigo-500/5 transition-colors group cursor-pointer hover:z-20" onClick={() => setSelectedLiveUser(item)}>
                                                                         {/* Employee Info (Sticky) */}
                                                                         <div className="w-[300px] shrink-0 px-6 py-4 flex items-center gap-3 border-r border-slate-200 dark:border-github-dark-border sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-github-dark-subtle z-20">
                                                                             <div className="flex items-center gap-4">
@@ -1408,6 +1418,7 @@ const AttendanceMonitoring = () => {
                                                                                         <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30'}`}>
                                                                                             {item.status.split(' ')[0]}
                                                                                         </span>
+
                                                                                         <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-mono font-bold">
                                                                                             {item.totalHours && (item.totalHours.toLowerCase().includes('hr') || item.totalHours.toLowerCase().includes('min') || item.totalHours === '-') ? item.totalHours : `${item.totalHours} Hrs`}
                                                                                             {item.expectedHours && item.expectedHours !== '-' && ` / ${item.expectedHours}`}
@@ -1449,22 +1460,59 @@ const AttendanceMonitoring = () => {
                                                                                             )}
 
                                                                                             {/* Tooltip on Hover */}
-                                                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-4 py-3 bg-slate-900 dark:bg-github-dark-bg text-white text-[10px] rounded-lg opacity-0 group-hover/session:opacity-100 transition-all duration-300 transform translate-y-2 group-hover/session:translate-y-0 whitespace-nowrap z-30 pointer-events-none shadow-2xl border border-slate-700 dark:border-github-dark-border min-w-[180px]">
-                                                                                                <div className="flex items-center justify-between mb-2">
-                                                                                                    <span className="text-slate-400 font-black uppercase tracking-widest text-[8px]">Session Period</span>
-                                                                                                    <div className="flex items-center gap-1 text-emerald-400 font-mono font-bold">
-                                                                                                        <Clock size={10} />
-                                                                                                        {session.in} - {session.out}
+                                                                                            <div className={`absolute ${rowIdx < 2 ? 'top-full mt-3' : 'bottom-full mb-3'} left-1/2 -translate-x-1/2 px-4 py-3.5 bg-slate-955 dark:bg-[#0d1117] text-white text-[10px] rounded-xl opacity-0 group-hover/session:opacity-100 transition-all duration-300 transform ${rowIdx < 2 ? '-translate-y-2' : 'translate-y-2'} group-hover/session:translate-y-0 whitespace-normal z-50 pointer-events-none shadow-2xl border border-slate-700 dark:border-github-dark-border w-[320px]`}>
+                                                                                                {/* Timing Info */}
+                                                                                                <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
+                                                                                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Session Timing</span>
+                                                                                                    <span className="font-mono font-bold text-indigo-400">{session.in} — {session.out}</span>
+                                                                                                </div>
+                                                                                                
+                                                                                                <div className="grid grid-cols-2 gap-4">
+                                                                                                    {/* In details */}
+                                                                                                    <div className="space-y-2 flex flex-col items-center">
+                                                                                                        <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wider block self-start">Punch In</span>
+                                                                                                        {session.inImage ? (
+                                                                                                            <div className="w-24 h-24 rounded-lg overflow-hidden border border-slate-700 bg-black/40 flex items-center justify-center">
+                                                                                                                <img src={session.inImage} alt="In Selfie" className="max-h-full max-w-full object-contain" />
+                                                                                                            </div>
+                                                                                                        ) : (
+                                                                                                            <div className="w-24 h-24 rounded-lg border border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 text-[8px] gap-1 bg-black/10">
+                                                                                                                <Camera size={12} />
+                                                                                                                <span>No Selfie In</span>
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                        <div className="flex items-start gap-1 w-full text-[9px] leading-tight text-slate-300">
+                                                                                                            <MapPin size={8} className="text-emerald-500 shrink-0 mt-0.5" />
+                                                                                                            <span className="break-words">{session.inLocation}</span>
+                                                                                                        </div>
+                                                                                                    </div>
+
+                                                                                                    {/* Out details */}
+                                                                                                    <div className="space-y-2 flex flex-col items-center">
+                                                                                                        <span className="text-[8px] font-bold text-rose-400 uppercase tracking-wider block self-start">Punch Out</span>
+                                                                                                        {session.outImage ? (
+                                                                                                            <div className="w-24 h-24 rounded-lg overflow-hidden border border-slate-700 bg-black/40 flex items-center justify-center">
+                                                                                                                <img src={session.outImage} alt="Out Selfie" className="max-h-full max-w-full object-contain" />
+                                                                                                            </div>
+                                                                                                        ) : (
+                                                                                                            <div className="w-24 h-24 rounded-lg border border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 text-[8px] gap-1 bg-black/10">
+                                                                                                                <Camera size={12} />
+                                                                                                                <span>{session.isActive ? 'Ongoing...' : 'No Selfie Out'}</span>
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                        {session.outLocation ? (
+                                                                                                            <div className="flex items-start gap-1 w-full text-[9px] leading-tight text-slate-300">
+                                                                                                                <MapPin size={8} className="text-rose-500 shrink-0 mt-0.5" />
+                                                                                                                <span className="break-words">{session.outLocation}</span>
+                                                                                                            </div>
+                                                                                                        ) : (
+                                                                                                            <span className="text-[8px] text-slate-500 italic block self-start">{session.isActive ? 'Session Active' : 'N/A'}</span>
+                                                                                                        )}
                                                                                                     </div>
                                                                                                 </div>
-                                                                                                <div className="flex items-center gap-2 bg-white/5 p-2 rounded-lg border border-white/5">
-                                                                                                    <MapPin size={12} className="text-indigo-400 shrink-0" />
-                                                                                                    <div className="flex flex-col">
-                                                                                                        <span className="text-[8px] uppercase text-slate-500 font-bold">Location</span>
-                                                                                                        <span className="text-[10px] leading-tight break-words whitespace-normal">{session.inLocation}</span>
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                                <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 dark:bg-github-dark-bg rotate-45 border-r border-b border-slate-700 dark:border-github-dark-border"></div>
+
+                                                                                                {/* Arrow */}
+                                                                                                <div className={`absolute ${rowIdx < 2 ? '-top-1.5 border-l border-t' : '-bottom-1.5 border-r border-b'} left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-955 dark:bg-[#0d1117] rotate-45 border-slate-700 dark:border-github-dark-border`}></div>
                                                                                             </div>
                                                                                         </div>
                                                                                     );
@@ -1539,12 +1587,7 @@ const AttendanceMonitoring = () => {
                                                                             {statusBadge}
                                                                         </span>
                                                                     ))}
-                                                                    {item.allStatuses && item.allStatuses.includes('Late') && item.lateReason && (
-                                                                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate max-w-[120px]" title={item.lateReason}>
-                                                                            — {item.lateReason}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
+                                                                 </div>
 
                                                                 {/* Divider */}
                                                                 <div className="h-px bg-slate-100 dark:bg-github-dark-subtle mx-5"></div>
@@ -1656,7 +1699,7 @@ const AttendanceMonitoring = () => {
                                         </div>
                                     ) : activeView === 'map' ? (
                                         /* Map View Layout */
-                                        <div className="h-[720px] flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative">
+                                        <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]">
                                             <div className="flex-1 h-full relative">
                                                 <MapContainer
                                                     center={[20, 78]}
@@ -1970,9 +2013,9 @@ const AttendanceMonitoring = () => {
                         </>
                     ) : (
                     // Approvals Tab Content
-                    <div className="flex flex-col lg:flex-row gap-6 items-start">
+                    <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6">
 
-                        <div className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col lg:sticky lg:top-6" style={{ height: 'calc(125vh - 10rem)' }}>
+                        <div className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col h-full shrink-0">
                             {/* Header and Search */}
                             <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
                                 <div className="flex justify-between items-center px-1">
@@ -2028,9 +2071,6 @@ const AttendanceMonitoring = () => {
                                                         <p className={`text-xs font-bold leading-none ${selectedRequestId === request.acr_id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-github-dark-text'}`}>{request.user_name}</p>
                                                         <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium mt-1 inline-block">ID: {request.user_id}</span>
                                                     </div>
-                                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${getRequestTypeStyle(request.correction_type)}`}>
-                                                        {(request.correction_type || '').replace('_', ' ')}
-                                                    </span>
                                                 </div>
                                                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
                                                     request.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
@@ -2044,8 +2084,8 @@ const AttendanceMonitoring = () => {
                                             </p>
                                             <p className="text-xs text-slate-500 dark:text-github-dark-muted italic line-clamp-1">"{request.reason || 'No reason provided.'}"</p>
                                             <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2.5 font-mono border-t border-slate-100/50 dark:border-github-dark-border/30 pt-2">
-                                                <span>Sub. {request.submitted_at ? formatCorrectionDate(request.submitted_at) : '—'}</span>
-                                                <span className={`font-bold text-[9px] ${getRequestTypeStyle(request.correction_type)} bg-transparent dark:bg-transparent p-0`}>{(request.correction_type || '').replace('_', ' ')}</span>
+                                                <span>Sub. {request.submitted_at ? new Date(request.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                                                <span className={getRequestTypeStyle(request.correction_type)}>{(request.correction_type || '').replace('_', ' ')}</span>
                                             </div>
                                         </div>
                                     ))
@@ -2054,7 +2094,7 @@ const AttendanceMonitoring = () => {
                         </div>
 
                         {/* Detail Panel */}
-                        <div className="w-full lg:w-2/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col min-h-[calc(125vh-10rem)] h-fit">
+                        <div className="w-full lg:w-2/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col h-full">
                             {detailLoading ? (
                                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400 dark:text-github-dark-muted">
                                     <RefreshCw className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
@@ -2359,7 +2399,7 @@ const AttendanceMonitoring = () => {
                                                                     <span className="text-[10px] font-bold text-slate-400 uppercase">In</span>
                                                                     <span className="text-sm font-black text-slate-800 dark:text-github-dark-text font-mono">{String(s.time_in || '').substring(0, 5)}</span>
                                                                 </div>
-                                                                <span className="text-slate-300 dark:text-slate-600">→</span>
+                                                                <ChevronRight size={14} className="text-slate-400 dark:text-github-dark-muted shrink-0" />
                                                                 <div className="flex items-center gap-2 flex-1 justify-end">
                                                                     <span className="text-[10px] font-bold text-slate-400 uppercase">Out</span>
                                                                     <span className="text-sm font-black text-slate-800 dark:text-github-dark-text font-mono">{String(s.time_out || '').substring(0, 5)}</span>
@@ -2474,6 +2514,7 @@ const AttendanceMonitoring = () => {
                     </AnimatePresence>
 
                 </div>
+            </div>
             </DashboardLayout>
         </>
     );
@@ -2547,12 +2588,14 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                         </div>
                     </div>
 
-                    {user.lateReason && (
-                        <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm">
+                    {user.allStatuses && user.allStatuses.includes('Late') && (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
                             <h5 className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-500 tracking-widest mb-1 flex items-center gap-1.5">
                                 <AlertTriangle size={10} /> Late Reason
                             </h5>
-                            <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">"{user.lateReason}"</p>
+                            <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">
+                                {user.lateReason ? `"${user.lateReason}"` : "No reason provided."}
+                            </p>
                         </div>
                     )}
 
@@ -2569,7 +2612,7 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
 
                                     {/* Session Card */}
                                     <div className={`bg-white dark:bg-dark-card border ${session.isActive ? 'border-indigo-200 dark:border-indigo-500/40 shadow-indigo-100/50' : 'border-slate-200 dark:border-github-dark-border'} rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-300 group`}>
-                                        <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center mb-4">
                                             <div className="flex items-center gap-4">
                                                 <div className="flex flex-col">
                                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">Start</span>
@@ -2589,10 +2632,6 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="text-right bg-slate-50 dark:bg-github-dark-subtle/30 p-2 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-none mb-1">Duration</span>
-                                                <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">{session.hours || '-'}</span>
-                                            </div>
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-50 dark:border-github-dark-border/30">
@@ -2606,12 +2645,14 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                                                     </span>
                                                 </div>
                                                 {session.inImage && (
-                                                    <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border group/img cursor-pointer shadow-sm" onClick={() => setPreviewImage(session.inImage)}>
-                                                        <img src={session.inImage} alt="In Selfie" className="w-full h-full object-contain transition-transform duration-500 group-hover/img:scale-110" />
-                                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                                            <Search size={16} className="text-white" />
+                                                    <div className="flex justify-center w-full mt-2">
+                                                        <div className="relative rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border group/img cursor-pointer shadow-sm bg-transparent" onClick={() => setPreviewImage(session.inImage)}>
+                                                            <img src={session.inImage} alt="In Selfie" className="max-h-48 max-w-full w-auto block object-contain transition-transform duration-500 group-hover/img:scale-110" />
+                                                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                                                <Search size={16} className="text-white" />
+                                                            </div>
+                                                            <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[8px] font-bold text-white uppercase tracking-tighter">Selfie In</div>
                                                         </div>
-                                                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[8px] font-bold text-white uppercase tracking-tighter">Selfie In</div>
                                                     </div>
                                                 )}
                                             </div>
@@ -2632,15 +2673,17 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                                                     </div>
                                                 )}
                                                 {session.outImage ? (
-                                                    <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border group/img cursor-pointer shadow-sm" onClick={() => setPreviewImage(session.outImage)}>
-                                                        <img src={session.outImage} alt="Out Selfie" className="w-full h-full object-contain transition-transform duration-500 group-hover/img:scale-110" />
-                                                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                                            <Search size={16} className="text-white" />
+                                                    <div className="flex justify-center w-full mt-2">
+                                                        <div className="relative rounded-xl overflow-hidden border border-slate-100 dark:border-github-dark-border group/img cursor-pointer shadow-sm bg-transparent" onClick={() => setPreviewImage(session.outImage)}>
+                                                            <img src={session.outImage} alt="Out Selfie" className="max-h-48 max-w-full w-auto block object-contain transition-transform duration-500 group-hover/img:scale-110" />
+                                                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                                                <Search size={16} className="text-white" />
+                                                            </div>
+                                                            <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[8px] font-bold text-white uppercase tracking-tighter">Selfie Out</div>
                                                         </div>
-                                                        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[8px] font-bold text-white uppercase tracking-tighter">Selfie Out</div>
                                                     </div>
                                                 ) : !session.isActive && (
-                                                    <div className="w-full aspect-video rounded-xl bg-slate-50 dark:bg-github-dark-subtle/20 border border-dashed border-slate-200 dark:border-github-dark-border flex flex-col items-center justify-center gap-1">
+                                                    <div className="w-full h-28 rounded-xl bg-slate-50 dark:bg-github-dark-subtle/20 border border-dashed border-slate-200 dark:border-github-dark-border flex flex-col items-center justify-center gap-1">
                                                         <XCircle size={14} className="text-slate-300" />
                                                         <span className="text-[9px] text-slate-400 font-medium">No Selfie Out</span>
                                                     </div>

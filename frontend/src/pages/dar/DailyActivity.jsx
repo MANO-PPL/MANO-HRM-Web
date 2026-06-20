@@ -245,30 +245,30 @@ const DailyActivity = () => {
 
 
     return (
-        <DashboardLayout title="Daily Activity Report">
-            <div className="dar-context flex flex-col h-full">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <DashboardLayout title="Daily Activity Report" noPadding={true}>
+            <div className="h-[calc(100vh-64px)] p-4 flex flex-col overflow-hidden space-y-4 dar-context">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
                 {/* Admin Tabs */}
                 {['admin', 'hr'].includes(user?.user_type) ? (
-                    <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-xl w-fit">
+                    <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         <button
                             onClick={() => setActiveMainTab('daily_activity')}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ${activeMainTab === 'daily_activity'
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeMainTab === 'daily_activity'
                                 ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                                 }`}
                         >
-                            <Calendar size={15} className={`${activeMainTab === 'daily_activity' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                            <Calendar size={14} className={`${activeMainTab === 'daily_activity' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
                             <span className="leading-none">Daily Activity</span>
                         </button>
                         <button
                             onClick={() => setActiveMainTab('admin')}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ${activeMainTab === 'admin'
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeMainTab === 'admin'
                                 ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                                 }`}
                         >
-                            <Shield size={15} className={`${activeMainTab === 'admin' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                            <Shield size={14} className={`${activeMainTab === 'admin' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
                             <span className="leading-none">Admin Panel</span>
                         </button>
                     </div>
@@ -340,7 +340,7 @@ const DailyActivity = () => {
                     <DARAdmin embedded={true} />
                 ) : (
                     <>
-                        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-165px)]">
+                        <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
 
                             {/* Left Sidebar (Dynamic Width) */}
                             <motion.div
@@ -348,7 +348,7 @@ const DailyActivity = () => {
                                 initial={false}
                                 animate={{ width: sidebarMode === 'create-task' ? 336 : 240 }}
                                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                className="shrink-0 flex flex-col gap-6"
+                                className="shrink-0 flex flex-col gap-6 h-full overflow-y-auto no-scrollbar"
                             >
                                 <AnimatePresence mode="wait">
                                     {sidebarMode === 'create-task' ? (

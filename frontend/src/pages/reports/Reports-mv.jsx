@@ -400,71 +400,107 @@ const mvGetStatusLabel = (status) => {
 };
 
 const MobileReports = () => {
-    // State (Synchronized with Web)
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
-    const [reportType, setReportType] = useState('matrix_monthly');
-    const [fileFormat, setFileFormat] = useState('xlsx');
+    // Attendance View Filters State
+    const [attendanceMonth, setAttendanceMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
+    const [attendanceEmployeeId, setAttendanceEmployeeId] = useState('');
+    const [attendanceWeek, setAttendanceWeek] = useState('');
+    const [attendanceReportType, setAttendanceReportType] = useState('matrix_monthly');
+    const [attendanceIsEmpDropdownOpen, setAttendanceIsEmpDropdownOpen] = useState(false);
+    const [attendanceEmpSearchQuery, setAttendanceEmpSearchQuery] = useState('');
+    const [attendanceIsWeekDropdownOpen, setAttendanceIsWeekDropdownOpen] = useState(false);
+
+    // Full Report Filters State
+    const [tableMonth, setTableMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [tableDate, setTableDate] = useState(new Date().toISOString().slice(0, 10));
+    const [tableEmployeeId, setTableEmployeeId] = useState('');
+    const [tableWeek, setTableWeek] = useState('');
+    const [tableReportType, setTableReportType] = useState('matrix_monthly');
+    const [tableUseCustomRange, setTableUseCustomRange] = useState(false);
+    const [tableCustomStartDate, setTableCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
+    const [tableCustomEndDate, setTableCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
+    const [tableExportColumns, setTableExportColumns] = useState({
+        timeIn: true,
+        timeOut: true,
+        status: true,
+        workedHours: true,
+        requiredHours: false,
+        late: false,
+        location: false,
+        attendanceDays: true
+    });
+    const [tableFileFormat, setTableFileFormat] = useState('xlsx');
+    const [tableIsEmpDropdownOpen, setTableIsEmpDropdownOpen] = useState(false);
+    const [tableEmpSearchQuery, setTableEmpSearchQuery] = useState('');
+    const [tableIsTypeDropdownOpen, setTableIsTypeDropdownOpen] = useState(false);
+    const [tableIsWeekDropdownOpen, setTableIsWeekDropdownOpen] = useState(false);
+    const [tableIsColsDropdownOpen, setTableIsColsDropdownOpen] = useState(false);
+
     const [isGenerating, setIsGenerating] = useState(false);
     const [previewMode, setPreviewMode] = useState('card'); // 'card' | 'table'
     const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState(null);
     const [isDetailSidebarOpen, setIsDetailSidebarOpen] = useState(false);
 
-
-    // New filters states
     const [employees, setEmployees] = useState([]);
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-    const [useCustomRange, setUseCustomRange] = useState(false);
-    const [customStartDate, setCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
-    const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
-    const [selectedWeek, setSelectedWeek] = useState('');
 
-    // Searchable employee select states
-    const [isEmpDropdownOpen, setIsEmpDropdownOpen] = useState(false);
-    const [empSearchQuery, setEmpSearchQuery] = useState('');
-    const empDropdownRef = React.useRef(null);
-
-    // Custom dropdown states
-    const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
-    const [isWeekDropdownOpen, setIsWeekDropdownOpen] = useState(false);
-    const [isColsDropdownOpen, setIsColsDropdownOpen] = useState(false);
-
-    const typeDropdownRef = React.useRef(null);
-    const weekDropdownRef = React.useRef(null);
-    const colsDropdownRef = React.useRef(null);
+    // Refs
+    const attendanceEmpDropdownRef = React.useRef(null);
+    const attendanceWeekDropdownRef = React.useRef(null);
+    const tableEmpDropdownRef = React.useRef(null);
+    const tableTypeDropdownRef = React.useRef(null);
+    const tableWeekDropdownRef = React.useRef(null);
+    const tableColsDropdownRef = React.useRef(null);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (empDropdownRef.current && !empDropdownRef.current.contains(event.target)) {
-                setIsEmpDropdownOpen(false);
+            if (attendanceEmpDropdownRef.current && !attendanceEmpDropdownRef.current.contains(event.target)) {
+                setAttendanceIsEmpDropdownOpen(false);
             }
-            if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target)) {
-                setIsTypeDropdownOpen(false);
+            if (attendanceWeekDropdownRef.current && !attendanceWeekDropdownRef.current.contains(event.target)) {
+                setAttendanceIsWeekDropdownOpen(false);
             }
-            if (weekDropdownRef.current && !weekDropdownRef.current.contains(event.target)) {
-                setIsWeekDropdownOpen(false);
+            if (tableEmpDropdownRef.current && !tableEmpDropdownRef.current.contains(event.target)) {
+                setTableIsEmpDropdownOpen(false);
             }
-            if (colsDropdownRef.current && !colsDropdownRef.current.contains(event.target)) {
-                setIsColsDropdownOpen(false);
+            if (tableTypeDropdownRef.current && !tableTypeDropdownRef.current.contains(event.target)) {
+                setTableIsTypeDropdownOpen(false);
+            }
+            if (tableWeekDropdownRef.current && !tableWeekDropdownRef.current.contains(event.target)) {
+                setTableIsWeekDropdownOpen(false);
+            }
+            if (tableColsDropdownRef.current && !tableColsDropdownRef.current.contains(event.target)) {
+                setTableIsColsDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const selectedEmployeeName = employees.find(emp => emp.user_id === selectedEmployeeId)?.user_name || 'All Employees';
-    const filteredEmployees = employees.filter(emp =>
-        emp.user_name.toLowerCase().includes(empSearchQuery.toLowerCase())
+    const attendanceSelectedEmployeeName = employees.find(emp => emp.user_id === attendanceEmployeeId)?.user_name || 'All Employees';
+    const attendanceFilteredEmployees = employees.filter(emp =>
+        emp.user_name.toLowerCase().includes(attendanceEmpSearchQuery.toLowerCase())
     );
 
-    const weeks = React.useMemo(() => getWeeksOfMonth(selectedMonth), [selectedMonth]);
+    const tableSelectedEmployeeName = employees.find(emp => emp.user_id === tableEmployeeId)?.user_name || 'All Employees';
+    const tableFilteredEmployees = employees.filter(emp =>
+        emp.user_name.toLowerCase().includes(tableEmpSearchQuery.toLowerCase())
+    );
+
+    const attendanceWeeks = React.useMemo(() => getWeeksOfMonth(attendanceMonth), [attendanceMonth]);
+    const tableWeeks = React.useMemo(() => getWeeksOfMonth(tableMonth), [tableMonth]);
 
     useEffect(() => {
-        if (weeks.length > 0) {
-            setSelectedWeek(weeks[0].value);
+        if (attendanceWeeks.length > 0) {
+            setAttendanceWeek(attendanceWeeks[0].value);
         }
-    }, [weeks]);
+    }, [attendanceWeeks]);
+
+    useEffect(() => {
+        if (tableWeeks.length > 0) {
+            setTableWeek(tableWeeks[0].value);
+        }
+    }, [tableWeeks]);
 
     useEffect(() => {
         const fetchEmployees = async () => {
@@ -486,7 +522,6 @@ const MobileReports = () => {
             detail: { tab: 'preview' }
         }));
     }, []);
-
 
     const reportTypes = [
         { id: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
@@ -517,58 +552,75 @@ const MobileReports = () => {
         localStorage.setItem('attendance_export_history', JSON.stringify(exportHistory));
     }, [exportHistory]);
 
-    const [exportColumns, setExportColumns] = useState({
-        timeIn: true,
-        timeOut: true,
-        status: true,
-        workedHours: true,
-        requiredHours: false,
-        late: false,
-        location: false,
-        attendanceDays: true
-    });
-
     // Preview Data State
     const [previewData, setPreviewData] = useState({ columns: [], rows: [] });
     const [loadingPreview, setLoadingPreview] = useState(false);
 
-    // Stable string key so any checkbox toggle reliably re-fires the effect
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const exportColumnsKey = JSON.stringify(exportColumns);
+    // Compute activeFilters based on previewMode (card vs table)
+    const activeFilters = React.useMemo(() => {
+        const isCard = previewMode === 'card';
+        const rType = isCard ? attendanceReportType : tableReportType;
+        const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(rType);
+        
+        const selectedMonth = isCard ? attendanceMonth : tableMonth;
+        const selectedDate = isCard ? attendanceDate : tableDate;
+        const selectedWeek = isCard ? attendanceWeek : tableWeek;
+        const selectedEmployeeId = isCard ? attendanceEmployeeId : tableEmployeeId;
+        const useCustomRange = isCard ? false : tableUseCustomRange;
+        const customStartDate = isCard ? '' : tableCustomStartDate;
+        const customEndDate = isCard ? '' : tableCustomEndDate;
+        const exportColumnsObj = isCard ? {
+            timeIn: true,
+            timeOut: true,
+            status: true,
+            workedHours: true,
+            requiredHours: true,
+            late: true,
+            location: true,
+            attendanceDays: true
+        } : tableExportColumns;
+
+        const dateToUse = (isWeekly && !useCustomRange) ? selectedWeek : selectedDate;
+        const qStart = useCustomRange ? customStartDate : '';
+        const qEnd = useCustomRange ? customEndDate : '';
+        const exportColumnsKey = JSON.stringify(exportColumnsObj);
+
+        return {
+            reportType: rType,
+            selectedMonth,
+            selectedDate,
+            selectedWeek,
+            selectedEmployeeId,
+            useCustomRange,
+            customStartDate,
+            customEndDate,
+            exportColumnsKey,
+            dateToUse,
+            qStart,
+            qEnd
+        };
+    }, [
+        previewMode,
+        attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId,
+        tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
+    ]);
 
     // Fetch Preview
     useEffect(() => {
         let cancelled = false;
         const fetchPreview = async () => {
-            console.log("fetchPreview triggered (mobile):", {
-                selectedMonth,
-                reportType,
-                dateToUse: (['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType) && !useCustomRange) ? selectedWeek : selectedDate,
-                selectedEmployeeId,
-                useCustomRange,
-                customStartDate,
-                customEndDate,
-                exportColumns
-            });
             setLoadingPreview(true);
             try {
-                const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType);
-                const dateToUse = (isWeekly && !useCustomRange) ? selectedWeek : selectedDate;
-
-                const qStart = useCustomRange ? customStartDate : "";
-                const qEnd = useCustomRange ? customEndDate : "";
-
                 const res = await adminService.getReportPreview(
-                    selectedMonth,
-                    reportType,
-                    dateToUse,
-                    selectedEmployeeId,
-                    qStart,
-                    qEnd,
-                    exportColumnsKey
+                    activeFilters.selectedMonth,
+                    activeFilters.reportType,
+                    activeFilters.dateToUse,
+                    activeFilters.selectedEmployeeId,
+                    activeFilters.qStart,
+                    activeFilters.qEnd,
+                    activeFilters.exportColumnsKey
                 );
                 if (!cancelled && res.ok) {
-                    console.log("fetchPreview success (mobile), columns count:", res.data.columns?.length);
                     setPreviewData(res.data);
                 }
             } catch (error) {
@@ -582,32 +634,31 @@ const MobileReports = () => {
         };
         fetchPreview();
         return () => { cancelled = true; };
-    }, [selectedMonth, reportType, selectedDate, selectedEmployeeId, useCustomRange, customStartDate, customEndDate, selectedWeek, exportColumnsKey]);
-
+    }, [activeFilters]);
 
     const handleGenerate = async () => {
         setIsGenerating(true);
         try {
-            const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType);
-            const dateToUse = (isWeekly && !useCustomRange) ? selectedWeek : selectedDate;
+            const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType);
+            const dateToUse = (isWeekly && !tableUseCustomRange) ? tableWeek : tableDate;
 
-            const qStart = useCustomRange ? customStartDate : "";
-            const qEnd = useCustomRange ? customEndDate : "";
+            const qStart = tableUseCustomRange ? tableCustomStartDate : "";
+            const qEnd = tableUseCustomRange ? tableCustomEndDate : "";
 
             const res = await adminService.queueReport(
-                selectedMonth,
-                reportType,
-                fileFormat,
-                selectedEmployeeId,
+                tableMonth,
+                tableReportType,
+                tableFileFormat,
+                tableEmployeeId,
                 dateToUse,
                 qStart,
                 qEnd,
-                JSON.stringify(exportColumns)
+                JSON.stringify(tableExportColumns)
             );
             if (res.ok) {
                 const reportId = res.reportId;
-                const filename = `Report_${reportType}_${useCustomRange ? `${customStartDate}_to_${customEndDate}` : (selectedMonth || dateToUse)}.${fileFormat}`;
-                const reportTypeLabel = reportTypes.find(r => r.id === reportType)?.label || reportType;
+                const filename = `Report_${tableReportType}_${tableUseCustomRange ? `${tableCustomStartDate}_to_${tableCustomEndDate}` : (tableMonth || dateToUse)}.${tableFileFormat}`;
+                const reportTypeLabel = reportTypes.find(r => r.id === tableReportType)?.label || tableReportType;
                 const newReport = {
                     id: reportId || Date.now().toString(),
                     reportId: reportId,
@@ -683,12 +734,11 @@ const MobileReports = () => {
         return () => clearInterval(interval);
     }, [exportHistory]);
 
-    const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType);
-    const dateToUse = (isWeekly && !useCustomRange) ? selectedWeek : selectedDate;
-    const displayedPeriod = useCustomRange
-        ? `${customStartDate} to ${customEndDate}`
-        : ((isWeekly && !useCustomRange) ? (weeks.find(w => w.value === selectedWeek)?.label || selectedWeek) : (selectedMonth || selectedDate));
-    const selectedReportTypeLabel = reportTypes.find(opt => opt.id === reportType)?.label || reportType;
+    const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(activeFilters.reportType);
+    const displayedPeriod = activeFilters.useCustomRange
+        ? `${activeFilters.customStartDate} to ${activeFilters.customEndDate}`
+        : (isWeekly ? (tableWeeks.find(w => w.value === activeFilters.selectedWeek)?.label || activeFilters.selectedWeek) : (activeFilters.selectedMonth || activeFilters.selectedDate));
+    const selectedReportTypeLabel = reportTypes.find(opt => opt.id === activeFilters.reportType)?.label || activeFilters.reportType;
     const stats = React.useMemo(() => {
         if (!previewData || !previewData.rows || previewData.rows.length === 0) {
             return { total: 0, avgHrs: 0, presentRate: null, lateCount: null };
@@ -821,320 +871,7 @@ const MobileReports = () => {
                 </div>
 
                 <div className="px-5 py-6 space-y-6">
-                    {/* --- CONFIGURATION PANEL --- */}
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-white/5 shadow-sm space-y-5">
-                        <div className="grid grid-cols-2 gap-4">
-                            {/* Custom Report Type Dropdown */}
-                            <div className="space-y-1.5 relative animate-none" ref={typeDropdownRef}>
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Type</label>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
-                                    className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                >
-                                    <span className="truncate">{selectedReportTypeLabel}</span>
-                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${isTypeDropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {isTypeDropdownOpen && (
-                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                        {reportTypes.map((t) => (
-                                            <button
-                                                key={t.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setReportType(t.id);
-                                                    setIsTypeDropdownOpen(false);
-                                                }}
-                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${reportType === t.id
-                                                        ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                    }`}
-                                            >
-                                                {t.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Employee Selector */}
-                            <div className="space-y-1.5 relative animate-none" ref={empDropdownRef}>
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Employee</label>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIsEmpDropdownOpen(!isEmpDropdownOpen);
-                                        setEmpSearchQuery('');
-                                    }}
-                                    className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                >
-                                    <span className="truncate">{selectedEmployeeName}</span>
-                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${isEmpDropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {isEmpDropdownOpen && (
-                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                        <div className="relative mb-2">
-                                            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                            <input
-                                                type="text"
-                                                placeholder="Search..."
-                                                value={empSearchQuery}
-                                                onChange={(e) => setEmpSearchQuery(e.target.value)}
-                                                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                autoFocus
-                                            />
-                                        </div>
-                                        <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedEmployeeId('');
-                                                    setIsEmpDropdownOpen(false);
-                                                }}
-                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${selectedEmployeeId === ''
-                                                        ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                    }`}
-                                            >
-                                                All Employees
-                                            </button>
-                                            {filteredEmployees.length > 0 ? (
-                                                filteredEmployees.map(emp => (
-                                                    <button
-                                                        key={emp.user_id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setSelectedEmployeeId(emp.user_id);
-                                                            setIsEmpDropdownOpen(false);
-                                                        }}
-                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${selectedEmployeeId === emp.user_id
-                                                                ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                                : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                            }`}
-                                                    >
-                                                        {emp.user_name}
-                                                    </button>
-                                                ))
-                                            ) : (
-                                                <div className="text-[10px] text-slate-400 dark:text-github-dark-muted text-center py-3 font-bold uppercase tracking-widest">
-                                                    No results
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Date Picker Section */}
-                        {useCustomRange ? (
-                            <div className="grid grid-cols-2 gap-4">
-                                <MobileDatePicker
-                                    label="Start Date"
-                                    value={customStartDate}
-                                    onChange={setCustomStartDate}
-                                />
-                                <MobileDatePicker
-                                    label="End Date"
-                                    value={customEndDate}
-                                    onChange={setCustomEndDate}
-                                />
-                            </div>
-                        ) : (
-                            reportType !== 'employee_master' && (
-                                <div className="w-full">
-                                    {['matrix_monthly', 'attendance_matrix_monthly', 'lateness_report', 'attendance_detailed', 'attendance_summary'].includes(reportType) ? (
-                                        <MonthPicker
-                                            label="Period"
-                                            value={selectedMonth}
-                                            onChange={setSelectedMonth}
-                                        />
-                                    ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportType) ? (
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <MonthPicker
-                                                label="Period"
-                                                value={selectedMonth}
-                                                onChange={setSelectedMonth}
-                                            />
-                                            <div className="space-y-1.5 relative" ref={weekDropdownRef}>
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Select Week</label>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsWeekDropdownOpen(!isWeekDropdownOpen)}
-                                                    className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                                >
-                                                    <span className="truncate">{weeks.find(w => w.value === selectedWeek)?.label || 'Select Week'}</span>
-                                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${isWeekDropdownOpen ? 'rotate-180' : ''}`} />
-                                                </button>
-
-                                                {isWeekDropdownOpen && (
-                                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                                        {weeks.map((w, idx) => (
-                                                            <button
-                                                                key={idx}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setSelectedWeek(w.value);
-                                                                    setIsWeekDropdownOpen(false);
-                                                                }}
-                                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${selectedWeek === w.value
-                                                                        ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                                    }`}
-                                                            >
-                                                                {w.label}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <MobileDatePicker
-                                            label="Period"
-                                            value={selectedDate}
-                                            onChange={setSelectedDate}
-                                        />
-                                    )}
-                                </div>
-                            )
-                        )}
-
-                        {/* Custom Date Range Toggle */}
-                        <button
-                            type="button"
-                            id="useCustomRangeMobile"
-                            onClick={() => setUseCustomRange(!useCustomRange)}
-                            className="flex items-center gap-2.5 px-1 cursor-pointer focus:outline-none"
-                        >
-                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${useCustomRange
-                                    ? 'bg-indigo-500 border-indigo-500 text-white shadow-sm shadow-indigo-500/20'
-                                    : 'bg-white dark:bg-black border-slate-300 dark:border-white/10'
-                                }`}>
-                                {useCustomRange && (
-                                    <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <polyline points="20 6 9 17 4 12" />
-                                    </svg>
-                                )}
-                            </div>
-                            <span className="text-[10px] font-black text-slate-500 dark:text-github-dark-muted select-none uppercase tracking-widest">
-                                Use Custom Date Range
-                            </span>
-                        </button>
-
-                        {/* Columns Selection Dropdown */}
-                        {reportType !== 'employee_master' && (
-                            <div className="space-y-1.5 relative animate-none" ref={colsDropdownRef}>
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Columns to Include</label>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsColsDropdownOpen(!isColsDropdownOpen)}
-                                    className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                >
-                                    <span className="truncate">
-                                        {Object.values(exportColumns).filter(Boolean).length} Columns Selected
-                                    </span>
-                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${isColsDropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {isColsDropdownOpen && (
-                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-3 space-y-3">
-                                        {[
-                                            { id: 'timeIn', label: 'Time In' },
-                                            { id: 'timeOut', label: 'Time Out' },
-                                            { id: 'status', label: 'Status' },
-                                            { id: 'workedHours', label: 'Worked Hours' },
-                                            { id: 'requiredHours', label: 'Required Hours' },
-                                            { id: 'late', label: 'Lateness Info' },
-                                            { id: 'location', label: 'Locations' },
-                                            { id: 'attendanceDays', label: 'Attendance Summary' }
-                                        ].map((col) => (
-                                            <button
-                                                key={col.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setExportColumns(prev => ({
-                                                        ...prev,
-                                                        [col.id]: !prev[col.id]
-                                                    }));
-                                                }}
-                                                className="w-full flex items-center gap-2.5 cursor-pointer focus:outline-none group text-left"
-                                            >
-                                                <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${exportColumns[col.id]
-                                                        ? 'bg-indigo-500 border-indigo-500 text-white shadow-sm shadow-indigo-500/20'
-                                                        : 'bg-white dark:bg-black border-slate-300 dark:border-white/10 group-hover:border-indigo-400'
-                                                    }`}>
-                                                    {exportColumns[col.id] && (
-                                                        <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <polyline points="20 6 9 17 4 12" />
-                                                        </svg>
-                                                    )}
-                                                </div>
-                                                <span className="text-[10px] font-bold text-slate-600 dark:text-github-dark-muted select-none">
-                                                    {col.label}
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Format Selection */}
-                        <div className="space-y-2">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">File Format</label>
-                            <div className="flex gap-2">
-                                {fileFormats.map((f) => (
-                                    <button
-                                        key={f.id}
-                                        onClick={() => setFileFormat(f.id)}
-                                        className={`flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border transition-all duration-300 ${fileFormat === f.id
-                                                ? 'bg-indigo-500 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                                                : 'bg-slate-50 dark:bg-black/20 border-slate-100 dark:border-white/5 text-slate-400 hover:text-slate-600'
-                                            }`}
-                                    >
-                                        <f.icon size={14} />
-                                        <span className="text-[10px] font-black uppercase">{f.id}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="space-y-2.5">
-                            <button
-                                onClick={handleGenerate}
-                                disabled={isGenerating}
-                                className="w-full py-4 bg-[#1f2937] dark:bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 cursor-pointer"
-                            >
-                                {isGenerating ? (
-                                    <>
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        <span>Generating...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Download size={16} strokeWidth={3} />
-                                        <span>Generate & Download</span>
-                                    </>
-                                )}
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setIsHistorySidebarOpen(true)}
-                                className="w-full py-3.5 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl text-xs font-bold text-slate-700 dark:text-[#c9d1d9] flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
-                            >
-                                <HistoryIcon size={14} />
-                                <span>View Export History</span>
-                            </button>
-                        </div>
-                    </motion.div>
-
-
-                    {/* View Switcher Tabs (Similar to the older setup) */}
+                    {/* View Switcher Tabs (tab bar is kept below the header) */}
                     <div className="bg-slate-200/50 dark:bg-github-dark-border/50 p-1 flex rounded-xl backdrop-blur-md border border-white/20 dark:border-white/5">
                         {[
                             { id: 'card', label: 'Attendance View' },
@@ -1154,90 +891,549 @@ const MobileReports = () => {
                         ))}
                     </div>
 
-                    {/* --- PREVIEW AREA --- */}
-                    <div className="bg-white dark:bg-github-dark-subtle rounded-[2rem] border border-slate-100 dark:border-white/5 shadow-sm overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-github-dark-bg/10 flex flex-row items-center justify-between">
-                            <div>
-                                <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-1.5 text-xs uppercase tracking-wider">
-                                    <Table className="text-slate-400" size={14} />
-                                    Preview Data
-                                </h3>
-                            </div>
-                            {previewData.rows?.length > 0 && (
-                                <span className="text-[8px] font-black text-slate-400 px-2.5 py-1 bg-slate-100 dark:bg-white/5 rounded-full border border-slate-200 dark:border-white/10">
-                                    {previewData.rows.filter(row => row[0]?.toString().toUpperCase() !== 'TOTALS' && row[0]?.toString().toUpperCase() !== 'TOTAL').length} Records
-                                </span>
-                            )}
-                        </div>
+                    {/* --- CONFIGURATION PANEL --- */}
+                    {previewMode === 'table' ? (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-white/5 shadow-sm space-y-5">
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Custom Report Type Dropdown */}
+                                <div className="space-y-1.5 relative animate-none" ref={tableTypeDropdownRef}>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Type</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTableIsTypeDropdownOpen(!tableIsTypeDropdownOpen)}
+                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                    >
+                                        <span className="truncate">{selectedReportTypeLabel}</span>
+                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsTypeDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
 
-                        {/* Preview Body */}
-                        <div className="p-4 bg-slate-50 dark:bg-[#0d1117] min-h-[200px]">
-                            {loadingPreview ? (
-                                <div className="flex flex-col items-center justify-center py-16 gap-3">
-                                    <div className="w-8 h-8 border-3 border-indigo-100 dark:border-indigo-900/30 border-t-indigo-500 rounded-full animate-spin" />
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crunching records...</p>
+                                    {tableIsTypeDropdownOpen && (
+                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                            {reportTypes.map((t) => (
+                                                <button
+                                                    key={t.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setTableReportType(t.id);
+                                                        setTableIsTypeDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableReportType === t.id
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                        }`}
+                                                >
+                                                    {t.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                            ) : ((previewData.cardRecords && previewData.cardRecords.length > 0) || (previewData.rows && previewData.rows.length > 0)) ? (
-                                previewMode === 'card' ? (
-                                    /* Attendance Matrix View (Mobile): Employees as rows, dates as columns */
-                                    <div className="w-full overflow-auto rounded-2xl border border-slate-100 dark:border-white/5 bg-white dark:bg-github-dark-subtle shadow-sm" style={{ maxHeight: 'calc(100vh - 400px)' }}>
-                                        <table className="text-left border-collapse" style={{ minWidth: 'max-content' }}>
-                                            <thead className="sticky top-0 z-20">
-                                                <tr className="bg-slate-50 dark:bg-github-dark-bg/60 border-b border-slate-100 dark:border-white/10">
-                                                    <th className="px-4 py-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-github-dark-bg/60 z-30 min-w-[160px] border-r border-slate-100 dark:border-white/10" style={{ boxShadow: '1px 0 4px rgba(0,0,0,0.05)' }}>Employee</th>
+
+                                {/* Employee Selector */}
+                                <div className="space-y-1.5 relative animate-none" ref={tableEmpDropdownRef}>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Employee</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTableIsEmpDropdownOpen(!tableIsEmpDropdownOpen);
+                                            setTableEmpSearchQuery('');
+                                        }}
+                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                    >
+                                        <span className="truncate">{tableSelectedEmployeeName}</span>
+                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {tableIsEmpDropdownOpen && (
+                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                            <div className="relative mb-2">
+                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search..."
+                                                    value={tableEmpSearchQuery}
+                                                    onChange={(e) => setTableEmpSearchQuery(e.target.value)}
+                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setTableEmployeeId('');
+                                                        setTableIsEmpDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableEmployeeId === ''
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                        }`}
+                                                >
+                                                    All Employees
+                                                </button>
+                                                {tableFilteredEmployees.length > 0 ? (
+                                                    tableFilteredEmployees.map(emp => (
+                                                        <button
+                                                            key={emp.user_id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTableEmployeeId(emp.user_id);
+                                                                setTableIsEmpDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableEmployeeId === emp.user_id
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            {emp.user_name}
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-[10px] text-slate-400 dark:text-github-dark-muted text-center py-3 font-bold uppercase tracking-widest">
+                                                        No results
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Date Picker Section */}
+                            {tableUseCustomRange ? (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <MobileDatePicker
+                                        label="Start Date"
+                                        value={tableCustomStartDate}
+                                        onChange={setTableCustomStartDate}
+                                    />
+                                    <MobileDatePicker
+                                        label="End Date"
+                                        value={tableCustomEndDate}
+                                        onChange={setTableCustomEndDate}
+                                    />
+                                </div>
+                            ) : (
+                                tableReportType !== 'employee_master' && (
+                                    <div className="w-full">
+                                        {['matrix_monthly', 'attendance_matrix_monthly', 'lateness_report', 'attendance_detailed', 'attendance_summary'].includes(tableReportType) ? (
+                                            <MonthPicker
+                                                label="Period"
+                                                value={tableMonth}
+                                                onChange={setTableMonth}
+                                            />
+                                        ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType) ? (
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <MonthPicker
+                                                    label="Period"
+                                                    value={tableMonth}
+                                                    onChange={setTableMonth}
+                                                />
+                                                <div className="space-y-1.5 relative" ref={tableWeekDropdownRef}>
+                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Select Week</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setTableIsWeekDropdownOpen(!tableIsWeekDropdownOpen)}
+                                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                                    >
+                                                        <span className="truncate">{tableWeeks.find(w => w.value === tableWeek)?.label || 'Select Week'}</span>
+                                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsWeekDropdownOpen ? 'rotate-180' : ''}`} />
+                                                    </button>
+
+                                                    {tableIsWeekDropdownOpen && (
+                                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                            {tableWeeks.map((w, idx) => (
+                                                                <button
+                                                                    key={idx}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setTableWeek(w.value);
+                                                                        setTableIsWeekDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableWeek === w.value
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {w.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <MobileDatePicker
+                                                label="Period"
+                                                value={tableDate}
+                                                onChange={setTableDate}
+                                            />
+                                        )}
+                                    </div>
+                                )
+                            )}
+
+                            {/* Custom Date Range Toggle */}
+                            <button
+                                type="button"
+                                id="useCustomRangeMobile"
+                                onClick={() => setTableUseCustomRange(!tableUseCustomRange)}
+                                className="flex items-center gap-2.5 px-1 cursor-pointer focus:outline-none"
+                            >
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${tableUseCustomRange
+                                        ? 'bg-indigo-500 border-indigo-500 text-white shadow-sm shadow-indigo-500/20'
+                                        : 'bg-white dark:bg-black border-slate-300 dark:border-white/10'
+                                    }`}>
+                                    {tableUseCustomRange && (
+                                        <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                    )}
+                                </div>
+                                <span className="text-[10px] font-black text-slate-500 dark:text-github-dark-muted select-none uppercase tracking-widest">
+                                    Use Custom Date Range
+                                </span>
+                            </button>
+
+                            {/* Columns Selection Dropdown */}
+                            {tableReportType !== 'employee_master' && (
+                                <div className="space-y-1.5 relative animate-none" ref={tableColsDropdownRef}>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Columns to Include</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTableIsColsDropdownOpen(!tableIsColsDropdownOpen)}
+                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                    >
+                                        <span className="truncate">
+                                            {Object.values(tableExportColumns).filter(Boolean).length} Columns Selected
+                                        </span>
+                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsColsDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {tableIsColsDropdownOpen && (
+                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-3 space-y-3">
+                                            {[
+                                                { id: 'timeIn', label: 'Time In' },
+                                                { id: 'timeOut', label: 'Time Out' },
+                                                { id: 'status', label: 'Status' },
+                                                { id: 'workedHours', label: 'Worked Hours' },
+                                                { id: 'requiredHours', label: 'Required Hours' },
+                                                { id: 'late', label: 'Lateness Info' },
+                                                { id: 'location', label: 'Locations' },
+                                                { id: 'attendanceDays', label: 'Attendance Summary' }
+                                            ].map((col) => (
+                                                <button
+                                                    key={col.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setTableExportColumns(prev => ({
+                                                            ...prev,
+                                                            [col.id]: !prev[col.id]
+                                                        }));
+                                                    }}
+                                                    className="w-full flex items-center gap-2.5 cursor-pointer focus:outline-none group text-left"
+                                                >
+                                                    <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${tableExportColumns[col.id]
+                                                            ? 'bg-indigo-500 border-indigo-500 text-white shadow-sm shadow-indigo-500/20'
+                                                            : 'bg-white dark:bg-black border-slate-300 dark:border-white/10 group-hover:border-indigo-400'
+                                                        }`}>
+                                                        {tableExportColumns[col.id] && (
+                                                            <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <polyline points="20 6 9 17 4 12" />
+                                                            </svg>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-slate-600 dark:text-github-dark-muted select-none">
+                                                        {col.label}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Format Selection */}
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">File Format</label>
+                                <div className="flex gap-2">
+                                    {fileFormats.map((f) => (
+                                        <button
+                                            key={f.id}
+                                            onClick={() => setTableFileFormat(f.id)}
+                                            className={`flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border transition-all duration-300 ${tableFileFormat === f.id
+                                                    ? 'bg-indigo-500 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                                    : 'bg-slate-50 dark:bg-black/20 border-slate-100 dark:border-white/5 text-slate-400 hover:text-slate-600'
+                                                }`}
+                                        >
+                                            <f.icon size={14} />
+                                            <span className="text-[10px] font-black uppercase">{f.id}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="space-y-2.5">
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={isGenerating}
+                                    className="w-full py-4 bg-[#1f2937] dark:bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 cursor-pointer"
+                                >
+                                    {isGenerating ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            <span>Generating...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download size={16} strokeWidth={3} />
+                                            <span>Generate & Download</span>
+                                        </>
+                                    )}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setIsHistorySidebarOpen(true)}
+                                    className="w-full py-3.5 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl text-xs font-bold text-slate-700 dark:text-[#c9d1d9] flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+                                >
+                                    <HistoryIcon size={14} />
+                                    <span>View Export History</span>
+                                </button>
+                            </div>
+                        </motion.div>
+                    ) : (
+                        /* Compact filters for Attendance View on mobile */
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-white/5 shadow-sm space-y-5">
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Employee Selector */}
+                                <div className="space-y-1.5 relative animate-none" ref={attendanceEmpDropdownRef}>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Employee</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setAttendanceIsEmpDropdownOpen(!attendanceIsEmpDropdownOpen);
+                                            setAttendanceEmpSearchQuery('');
+                                        }}
+                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                    >
+                                        <span className="truncate">{attendanceSelectedEmployeeName}</span>
+                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {attendanceIsEmpDropdownOpen && (
+                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                            <div className="relative mb-2">
+                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search..."
+                                                    value={attendanceEmpSearchQuery}
+                                                    onChange={(e) => setAttendanceEmpSearchQuery(e.target.value)}
+                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setAttendanceEmployeeId('');
+                                                        setAttendanceIsEmpDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceEmployeeId === ''
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                        }`}
+                                                >
+                                                    All Employees
+                                                </button>
+                                                {attendanceFilteredEmployees.length > 0 ? (
+                                                    attendanceFilteredEmployees.map(emp => (
+                                                        <button
+                                                            key={emp.user_id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setAttendanceEmployeeId(emp.user_id);
+                                                                setAttendanceIsEmpDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceEmployeeId === emp.user_id
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            {emp.user_name}
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-[10px] text-slate-400 dark:text-github-dark-muted text-center py-3 font-bold uppercase tracking-widest">
+                                                        No results
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Period Picker */}
+                                {attendanceReportType !== 'employee_master' && (
+                                    <div className="w-full">
+                                        {['matrix_monthly', 'attendance_matrix_monthly', 'lateness_report', 'attendance_detailed', 'attendance_summary'].includes(attendanceReportType) ? (
+                                            <MonthPicker
+                                                label="Period"
+                                                value={attendanceMonth}
+                                                onChange={setAttendanceMonth}
+                                            />
+                                        ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(attendanceReportType) ? (
+                                            <div className="space-y-1.5 relative">
+                                                <MonthPicker
+                                                    label="Period"
+                                                    value={attendanceMonth}
+                                                    onChange={setAttendanceMonth}
+                                                />
+                                                <div className="space-y-1.5 relative mt-2" ref={attendanceWeekDropdownRef}>
+                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Select Week</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAttendanceIsWeekDropdownOpen(!attendanceIsWeekDropdownOpen)}
+                                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                                    >
+                                                        <span className="truncate">{attendanceWeeks.find(w => w.value === attendanceWeek)?.label || 'Select Week'}</span>
+                                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsWeekDropdownOpen ? 'rotate-180' : ''}`} />
+                                                    </button>
+
+                                                    {attendanceIsWeekDropdownOpen && (
+                                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                            {attendanceWeeks.map((w, idx) => (
+                                                                <button
+                                                                    key={idx}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setAttendanceWeek(w.value);
+                                                                        setAttendanceIsWeekDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceWeek === w.value
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {w.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <MobileDatePicker
+                                                label="Period"
+                                                value={attendanceDate}
+                                                onChange={setAttendanceDate}
+                                            />
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {/* --- PREVIEW AREA --- */}
+                    {previewMode === 'card' ? (
+                        /* Attendance View: Direct full-page rendering without outer card wrapper */
+                        loadingPreview ? (
+                            <div className="bg-white dark:bg-github-dark-subtle rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm p-8 flex flex-col items-center justify-center gap-3">
+                                <div className="w-8 h-8 border-3 border-indigo-100 dark:border-indigo-900/30 border-t-indigo-500 rounded-full animate-spin" />
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crunching records...</p>
+                            </div>
+                        ) : (matrixData.employees && matrixData.employees.length > 0) ? (
+                            <div className="w-full overflow-auto rounded-2xl border border-slate-100 dark:border-white/5 bg-white dark:bg-github-dark-subtle shadow-sm animate-none" style={{ maxHeight: 'calc(100vh - 280px)', isolation: 'isolate' }}>
+                                <table className="text-left border-collapse" style={{ minWidth: 'max-content' }}>
+                                    <thead className="sticky top-0 z-20">
+                                        <tr className="bg-slate-50 dark:bg-github-dark-bg/60 border-b border-slate-100 dark:border-white/10">
+                                            <th className="px-4 py-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-github-dark-bg/60 z-30 min-w-[160px] border-r border-slate-100 dark:border-white/10" style={{ boxShadow: '1px 0 4px rgba(0,0,0,0.05)' }}>Employee</th>
+                                            {matrixData.dates.map(rawDate => {
+                                                const d = new Date(rawDate + 'T00:00:00Z');
+                                                return (
+                                                    <th key={rawDate} className="py-1.5 px-0.5 text-center min-w-[44px]">
+                                                        <div className="text-[7px] uppercase text-slate-400 leading-none">{d.toLocaleString('en-US', { month: 'short' })}</div>
+                                                        <div className="text-xs font-black text-slate-700 dark:text-white leading-tight">{d.getUTCDate()}</div>
+                                                        <div className="text-[7px] uppercase text-slate-400 leading-none">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
+                                                    </th>
+                                                );
+                                            })}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                                        {matrixData.employees.map((emp) => {
+                                            const initials = emp.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                                            return (
+                                                <tr key={emp.user_id} className="group active:bg-slate-50 dark:active:bg-white/5 transition-colors">
+                                                    <td className="px-3 py-3 sticky left-0 bg-white dark:bg-github-dark-subtle group-hover:bg-slate-50/80 dark:group-hover:bg-github-dark-bg/20 transition-colors z-20 border-r border-slate-100 dark:border-white/10" style={{ boxShadow: '1px 0 3px rgba(0,0,0,0.04)' }}>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-[9px] shadow-inner shrink-0">
+                                                                {initials || <User size={10} />}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <span className="block font-bold text-slate-800 dark:text-white text-[10px] leading-tight truncate max-w-[105px]">{emp.user_name}</span>
+                                                                <span className="block text-[7px] font-medium text-slate-400 mt-0.5 truncate max-w-[105px]">{emp.department}</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
                                                     {matrixData.dates.map(rawDate => {
-                                                        const d = new Date(rawDate + 'T00:00:00Z');
+                                                        const record = emp.records[rawDate];
+                                                        const status = record?.status || '-';
+                                                        const isWeekend = status === 'Sun' || status === 'Sat';
+                                                        const isClickable = !!record && !isWeekend;
                                                         return (
-                                                            <th key={rawDate} className="py-1.5 px-0.5 text-center min-w-[44px]">
-                                                                <div className="text-[7px] uppercase text-slate-400 leading-none">{d.toLocaleString('en-US', { month: 'short' })}</div>
-                                                                <div className="text-xs font-black text-slate-700 dark:text-white leading-tight">{d.getUTCDate()}</div>
-                                                                <div className="text-[7px] uppercase text-slate-400 leading-none">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
-                                                            </th>
+                                                            <td key={rawDate} className="px-0.5 py-2.5 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { if (isClickable) { setSelectedRecord(record); setIsDetailSidebarOpen(true); } }}
+                                                                    title={record ? `${status} — ${record.date}` : 'No data'}
+                                                                    className={`w-8 h-8 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${mvGetStatusColor(status)} ${isClickable ? 'cursor-pointer active:scale-90' : 'cursor-default'}`}
+                                                                >
+                                                                    {mvGetStatusLabel(status)}
+                                                                </button>
+                                                            </td>
                                                         );
                                                     })}
                                                 </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50 dark:divide-white/5">
-                                                {matrixData.employees.map((emp) => {
-                                                    const initials = emp.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-                                                    return (
-                                                        <tr key={emp.user_id} className="group active:bg-slate-50 dark:active:bg-white/5 transition-colors">
-                                                            <td className="px-3 py-3 sticky left-0 bg-white dark:bg-github-dark-subtle group-hover:bg-slate-50/80 dark:group-hover:bg-github-dark-bg/20 transition-colors z-20 border-r border-slate-100 dark:border-white/10" style={{ boxShadow: '1px 0 3px rgba(0,0,0,0.04)' }}>
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-[9px] shadow-inner shrink-0">
-                                                                        {initials || <User size={10} />}
-                                                                    </div>
-                                                                    <div className="min-w-0">
-                                                                        <span className="block font-bold text-slate-800 dark:text-white text-[10px] leading-tight truncate max-w-[105px]">{emp.user_name}</span>
-                                                                        <span className="block text-[7px] font-medium text-slate-400 mt-0.5 truncate max-w-[105px]">{emp.department}</span>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            {matrixData.dates.map(rawDate => {
-                                                                const record = emp.records[rawDate];
-                                                                const status = record?.status || '-';
-                                                                const isWeekend = status === 'Sun' || status === 'Sat';
-                                                                const isClickable = !!record && !isWeekend;
-                                                                return (
-                                                                    <td key={rawDate} className="px-0.5 py-2.5 text-center">
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => { if (isClickable) { setSelectedRecord(record); setIsDetailSidebarOpen(true); } }}
-                                                                            title={record ? `${status} — ${record.date}` : 'No data'}
-                                                                            className={`w-8 h-8 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${mvGetStatusColor(status)} ${isClickable ? 'cursor-pointer active:scale-90' : 'cursor-default'}`}
-                                                                        >
-                                                                            {mvGetStatusLabel(status)}
-                                                                        </button>
-                                                                    </td>
-                                                                );
-                                                            })}
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-16 gap-3 border border-dashed border-slate-200 dark:border-white/5 rounded-2xl bg-white dark:bg-github-dark-subtle shadow-sm">
+                                <Activity size={32} className="text-slate-200 dark:text-white/5" />
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">No results for this selection</p>
+                            </div>
+                        )
+                    ) : (
+                        /* Full Report View: Render Spreadsheet table inside the Card layout */
+                        <div className="bg-white dark:bg-github-dark-subtle rounded-[2rem] border border-slate-100 dark:border-white/5 shadow-sm overflow-hidden">
+                            <div className="p-4 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-github-dark-bg/10 flex flex-row items-center justify-between">
+                                <div>
+                                    <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                                        <Table className="text-slate-400" size={14} />
+                                        Preview Data
+                                    </h3>
+                                </div>
+                                {previewData.rows?.length > 0 && (
+                                    <span className="text-[8px] font-black text-slate-400 px-2.5 py-1 bg-slate-100 dark:bg-white/5 rounded-full border border-slate-200 dark:border-white/10">
+                                        {previewData.rows.filter(row => row[0]?.toString().toUpperCase() !== 'TOTALS' && row[0]?.toString().toUpperCase() !== 'TOTAL').length} Records
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="p-4 bg-slate-50 dark:bg-[#0d1117] min-h-[200px]">
+                                {loadingPreview ? (
+                                    <div className="flex flex-col items-center justify-center py-16 gap-3">
+                                        <div className="w-8 h-8 border-3 border-indigo-100 dark:border-indigo-900/30 border-t-indigo-500 rounded-full animate-spin" />
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crunching records...</p>
                                     </div>
-                                ) : (
+                                ) : (previewData.rows && previewData.rows.length > 0) ? (
                                     /* Spreadsheet View: Render Original Excel replica table in scroll container */
                                     <div className="overflow-x-auto no-scrollbar">
                                         <table className="w-full text-left border-collapse min-w-max bg-white text-slate-800 shadow-sm rounded border border-slate-300" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
@@ -1320,15 +1516,15 @@ const MobileReports = () => {
                                             </tbody>
                                         </table>
                                     </div>
-                                )
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-16 gap-3 border border-dashed border-slate-200 dark:border-white/5 rounded-2xl bg-white dark:bg-github-dark-subtle/50">
-                                    <Activity size={32} className="text-slate-200 dark:text-white/5" />
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">No results for this selection</p>
-                                </div>
-                            )}
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-16 gap-3 border border-dashed border-slate-200 dark:border-white/5 rounded-2xl bg-white dark:bg-github-dark-subtle/50">
+                                        <Activity size={32} className="text-slate-200 dark:text-white/5" />
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">No results for this selection</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Mobile Export History Drawer */}
                     <AnimatePresence>

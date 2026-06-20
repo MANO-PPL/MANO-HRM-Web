@@ -12,6 +12,72 @@ import {
 import { useNotification } from '../context/NotificationContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const formatDateToCustom = (date) => {
+    if (!date || isNaN(date.getTime())) return null;
+    const day = date.getDate();
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+    
+    let suffix = 'th';
+    if (day === 1 || day === 21 || day === 31) suffix = 'st';
+    else if (day === 2 || day === 22) suffix = 'nd';
+    else if (day === 3 || day === 23) suffix = 'rd';
+    
+    return `${day}${suffix} ${month} ${year}`;
+};
+
+const formatYmdToCustom = (yearStr, monthStr, dayStr) => {
+    const day = parseInt(dayStr, 10);
+    const monthIndex = parseInt(monthStr, 10) - 1;
+    const year = parseInt(yearStr, 10);
+    
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+    
+    if (monthIndex < 0 || monthIndex > 11 || isNaN(day) || isNaN(year)) return null;
+    const month = monthNames[monthIndex];
+    
+    let suffix = 'th';
+    if (day === 1 || day === 21 || day === 31) suffix = 'st';
+    else if (day === 2 || day === 22) suffix = 'nd';
+    else if (day === 3 || day === 23) suffix = 'rd';
+    
+    return `${day}${suffix} ${month} ${year}`;
+};
+
+const formatMessageDates = (message) => {
+    if (!message) return '';
+    
+    // 1. GMT Date Format: e.g. Wed Jun 17 2026 00:00:00 GMT+0000
+    const gmtRegex = /([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}\s+GMT[+-]\d{4}(?:\s+\([^)]+\))?)/g;
+    let formatted = message.replace(gmtRegex, (match) => {
+        try {
+            const date = new Date(match);
+            return formatDateToCustom(date) || match;
+        } catch (e) {
+            return match;
+        }
+    });
+
+    // 2. YYYY-MM-DD Format: e.g. 2026-06-20
+    const ymdRegex = /\b(\d{4})-(\d{2})-(\d{2})\b/g;
+    formatted = formatted.replace(ymdRegex, (match, y, m, d) => {
+        try {
+            return formatYmdToCustom(y, m, d) || match;
+        } catch (e) {
+            return match;
+        }
+    });
+
+    return formatted;
+};
+
 const NotificationSidebar = ({ isOpen, onClose }) => {
     const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotification();
     const [activeTab, setActiveTab] = useState('all'); // 'all' or 'unread'
@@ -38,7 +104,8 @@ const NotificationSidebar = ({ isOpen, onClose }) => {
         if (diffInSeconds < 60) return 'Just now';
         if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
         if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-        return date.toLocaleDateString();
+        
+        return formatDateToCustom(date) || dateString;
     };
 
     return (
@@ -78,51 +145,48 @@ const NotificationSidebar = ({ isOpen, onClose }) => {
                             </button>
                         </div>
 
-                        {/* Tabs */}
-                        <div className="px-6 py-4">
-                            <div className="bg-slate-100 dark:bg-github-dark-subtle/50 p-1 flex rounded-xl">
+                        {/* Tabs & Actions */}
+                        <div className="px-6 py-3 flex items-center justify-between gap-4 shrink-0">
+                            <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                                 <button
                                     onClick={() => setActiveTab('all')}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                                        activeTab === 'all' 
-                                        ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                                        activeTab === 'all'
+                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                                     }`}
                                 >
-                                    <Bell size={14} className={activeTab === 'all' ? 'text-indigo-500' : 'text-slate-400'} />
-                                    <span>All Notifications</span>
+                                    <Bell size={14} className={activeTab === 'all' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} />
+                                    <span>All</span>
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('unread')}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all relative ${
-                                        activeTab === 'unread' 
-                                        ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                    className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                                        activeTab === 'unread'
+                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                                     }`}
                                 >
-                                    <Info size={14} className={activeTab === 'unread' ? 'text-indigo-500' : 'text-slate-400'} />
+                                    <Info size={14} className={activeTab === 'unread' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} />
                                     <span>Unread</span>
                                     {unreadCount > 0 && (
-                                        <span className="ml-1 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[10px] px-1.5 py-0.5 rounded-full">
+                                        <span className="ml-0.5 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                                             {unreadCount}
                                         </span>
                                     )}
                                 </button>
                             </div>
-                        </div>
 
-                        {/* Mark all as read */}
-                        {unreadCount > 0 && (
-                            <div className="px-6 pb-2">
+                            {unreadCount > 0 && (
                                 <button 
                                     onClick={markAllAsRead}
-                                    className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-all border border-indigo-100 dark:border-indigo-500/20"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-dark-card border border-indigo-200 dark:border-indigo-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-[#f6f8fa] dark:hover:bg-[#161b22] hover:text-indigo-700 rounded-lg transition-all cursor-pointer shrink-0 shadow-sm"
                                 >
-                                    <Check size={14} />
-                                    Mark all as read
+                                    <Check size={12} className="stroke-[3]" />
+                                    <span className="leading-none">Mark all as read</span>
                                 </button>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                         {/* List */}
                         <div className="flex-1 overflow-y-auto px-2 no-scrollbar">
@@ -161,7 +225,7 @@ const NotificationSidebar = ({ isOpen, onClose }) => {
                                                         )}
                                                     </div>
                                                     <p className="text-xs text-slate-500 dark:text-github-dark-muted line-clamp-2 leading-relaxed">
-                                                        {notification.message}
+                                                        {formatMessageDates(notification.message)}
                                                     </p>
                                                     <div className="flex items-center gap-1.5 mt-3 text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">
                                                         <Clock size={10} />

@@ -1920,11 +1920,11 @@ const EmployeeUnifiedMaster = () => {
     };
 
     return (
-        <DashboardLayout title="Employee Master Directory (Unified)">
-            <div className="space-y-6">
+        <DashboardLayout title="Employee Master Directory (Unified)" noPadding={true}>
+            <div className="h-[calc(100vh-64px)] p-4 flex flex-col overflow-hidden space-y-4">
                 
                 {/* 4 Top Metric & Status Filtering Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 shrink-0">
                     
                     {/* Card 1: Total Employees (Resets Onboarding Quick filters) */}
                     <div 
@@ -2012,10 +2012,10 @@ const EmployeeUnifiedMaster = () => {
                                         className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
                                             isSelected
                                                 ? 'bg-white dark:bg-[#1f2937] text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/50 dark:border-slate-800'
-                                                : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-350'
+                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                                         }`}
                                     >
-                                        {tab.icon}
+                                        <tab.icon size={14} className={`${isSelected ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
                                         <span>{tab.label}</span>
                                         <span className="text-[9px] opacity-65 font-mono">({tab.count})</span>
                                     </button>
@@ -2026,7 +2026,7 @@ const EmployeeUnifiedMaster = () => {
                 </div>
 
                 {/* Operations & Customizer Row */}
-                <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm shrink-0">
                     <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
                         
                         {/* Search Input */}
@@ -2158,8 +2158,8 @@ const EmployeeUnifiedMaster = () => {
                 </div>
 
                 {/* Main Dynamic Columns Table */}
-                <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm transition-colors duration-300">
-                    <div className="overflow-x-auto custom-scrollbar">
+                <div className="flex-1 min-h-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm transition-colors duration-300 flex flex-col">
+                    <div className="flex-1 overflow-auto custom-scrollbar">
                         <table className="w-full text-left border-collapse text-xs">
                             <thead className="bg-slate-50 dark:bg-github-dark-subtle border-b border-slate-200 dark:border-github-dark-border">
                                 <tr className="text-slate-500 dark:text-github-dark-muted font-bold text-xs uppercase tracking-wider">

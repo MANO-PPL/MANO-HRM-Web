@@ -17,6 +17,12 @@ const cache = {
     recentActivity: new Map()
 };
 
+// Tracks retrieval timestamps for live attendance caches
+const cacheTimestamps = {
+    dailySummaryAdmin: new Map(),
+    realTimeAttendance: new Map()
+};
+
 // Synchronous client-side cache for direct component consumption
 export const attendanceCacheData = {
     holidays: null,
@@ -45,6 +51,9 @@ const clearCache = () => {
     cache.myStats.clear();
     cache.todayStatus.clear();
     cache.recentActivity.clear();
+
+    cacheTimestamps.dailySummaryAdmin.clear();
+    cacheTimestamps.realTimeAttendance.clear();
 
     attendanceCacheData.holidays = null;
     attendanceCacheData.shiftPolicy = null;
@@ -140,8 +149,17 @@ export const attendanceService = {
     async getRealTimeAttendance(date, forceRefresh = false) {
         // Defaults to today if no date provided
         const targetDate = date || new Date().toISOString().split('T')[0];
+        
+        const now = Date.now();
+        const cachedTime = cacheTimestamps.realTimeAttendance.get(targetDate);
         if (!forceRefresh && cache.realTimeAttendance.has(targetDate)) {
-            return cache.realTimeAttendance.get(targetDate);
+            if (cachedTime && (now - cachedTime < 15 * 60 * 1000)) {
+                return cache.realTimeAttendance.get(targetDate);
+            } else {
+                cache.realTimeAttendance.delete(targetDate);
+                delete attendanceCacheData.realTimeAttendance[targetDate];
+                cacheTimestamps.realTimeAttendance.delete(targetDate);
+            }
         }
 
         const promise = (async () => {
@@ -149,9 +167,12 @@ export const attendanceService = {
             try {
                 const res = await api.get(url);
                 attendanceCacheData.realTimeAttendance[targetDate] = res.data;
+                cacheTimestamps.realTimeAttendance.set(targetDate, Date.now());
                 return res.data;
             } catch (error) {
                 cache.realTimeAttendance.delete(targetDate);
+                delete attendanceCacheData.realTimeAttendance[targetDate];
+                cacheTimestamps.realTimeAttendance.delete(targetDate);
                 throw new Error(error.response?.data?.message || "Failed to fetch live attendance");
             }
         })();
@@ -515,17 +536,29 @@ export const attendanceService = {
     // Get Daily Summary (Admin single date)
     async getDailySummaryAdmin(date) {
         const cacheKey = date || new Date().toISOString().split('T')[0];
+        
+        const now = Date.now();
+        const cachedTime = cacheTimestamps.dailySummaryAdmin.get(cacheKey);
         if (cache.dailySummaryAdmin.has(cacheKey)) {
-            return cache.dailySummaryAdmin.get(cacheKey);
+            if (cachedTime && (now - cachedTime < 15 * 60 * 1000)) {
+                return cache.dailySummaryAdmin.get(cacheKey);
+            } else {
+                cache.dailySummaryAdmin.delete(cacheKey);
+                delete attendanceCacheData.dailySummaryAdmin[cacheKey];
+                cacheTimestamps.dailySummaryAdmin.delete(cacheKey);
+            }
         }
 
         const promise = (async () => {
             try {
                 const res = await api.get(`${API_BASE_URL}/daily-summary/admin?date=${cacheKey}`);
                 attendanceCacheData.dailySummaryAdmin[cacheKey] = res.data;
+                cacheTimestamps.dailySummaryAdmin.set(cacheKey, Date.now());
                 return res.data;
             } catch (error) {
                 cache.dailySummaryAdmin.delete(cacheKey);
+                delete attendanceCacheData.dailySummaryAdmin[cacheKey];
+                cacheTimestamps.dailySummaryAdmin.delete(cacheKey);
                 console.error("Failed to fetch admin daily summary", error);
                 throw new Error(error.response?.data?.message || "Failed to fetch live daily summary");
             }
