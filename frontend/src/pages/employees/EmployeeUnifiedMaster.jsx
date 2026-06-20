@@ -2000,9 +2000,9 @@ const EmployeeUnifiedMaster = () => {
                         {/* Segmented controls mirroring second image */}
                         <div className="flex bg-slate-100 dark:bg-github-dark-border/40 p-0.5 rounded-lg border border-slate-200 dark:border-github-dark-border/60">
                             {[
-                                { id: 'Active', label: 'Active', icon: <UserCheck size={13} />, count: activeCount },
-                                { id: 'Inactive', label: 'Inactive', icon: <UserX size={13} />, count: inactiveCount },
-                                { id: 'Deleted', label: 'Trash', icon: <Trash2 size={13} />, count: trashCount }
+                                { id: 'Active', label: 'Active', icon: UserCheck, count: activeCount },
+                                { id: 'Inactive', label: 'Inactive', icon: UserX, count: inactiveCount },
+                                { id: 'Deleted', label: 'Trash', icon: Trash2, count: trashCount }
                             ].map((tab) => {
                                 const isSelected = statusFilter === tab.id;
                                 return (
