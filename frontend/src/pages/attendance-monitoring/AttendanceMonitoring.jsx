@@ -1149,21 +1149,21 @@ const AttendanceMonitoring = () => {
                 `}
             </style>
             <DashboardLayout title="Live Attendance" noPadding={true}>
-                <div className="p-3 pb-0">
+                <div className="h-[calc(100vh-64px)] p-4 flex flex-col overflow-hidden space-y-4">
                     {/* Tabs */}
-                    <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-xl w-fit">
+                    <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         <button
                             onClick={() => setActiveTab('live')}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ${activeTab === 'live' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'}`}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'live' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
                         >
-                            <LayoutGrid size={15} className={`${activeTab === 'live' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                            <LayoutGrid size={14} className={`${activeTab === 'live' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
                             <span className="leading-none">Live Dashboard</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('requests')}
-                            className={`relative flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'}`}
+                            className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
                         >
-                            <FileText size={15} className={`${activeTab === 'requests' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                            <FileText size={14} className={`${activeTab === 'requests' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
                             <span className="leading-none">Correction Requests</span>
                             {requestCount > 0 && activeTab !== 'requests' && (
                                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full animate-pulse border-2 border-slate-100 dark:border-github-dark-subtle">
@@ -1172,9 +1172,8 @@ const AttendanceMonitoring = () => {
                             )}
                         </button>
                     </div>
-                </div>
 
-                <div className="p-3 space-y-3" style={{ zoom: 0.8 }}>
+                    <div className="flex-1 min-h-0 flex flex-col space-y-4" style={{ zoom: 0.8 }}>
 
                     {activeTab === 'live' ? (
                         <>
@@ -1970,9 +1969,9 @@ const AttendanceMonitoring = () => {
                         </>
                     ) : (
                     // Approvals Tab Content
-                    <div className="flex flex-col lg:flex-row gap-6 items-start">
+                    <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6">
 
-                        <div className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col lg:sticky lg:top-6" style={{ height: 'calc(125vh - 10rem)' }}>
+                        <div className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col h-full shrink-0">
                             {/* Header and Search */}
                             <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
                                 <div className="flex justify-between items-center px-1">
@@ -2054,7 +2053,7 @@ const AttendanceMonitoring = () => {
                         </div>
 
                         {/* Detail Panel */}
-                        <div className="w-full lg:w-2/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col min-h-[calc(125vh-10rem)] h-fit">
+                        <div className="w-full lg:w-2/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col h-full">
                             {detailLoading ? (
                                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400 dark:text-github-dark-muted">
                                     <RefreshCw className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
@@ -2474,6 +2473,7 @@ const AttendanceMonitoring = () => {
                     </AnimatePresence>
 
                 </div>
+            </div>
             </DashboardLayout>
         </>
     );
