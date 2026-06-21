@@ -7,7 +7,7 @@ import {
     ChevronDown, FileText, CheckCircle, XCircle, AlertCircle, X, LogIn,
     LogOut, History, PieChart as PieChartIcon, BarChart as BarChartIcon,
     RefreshCcw, MoreVertical, LayoutGrid, ArrowRight, Eye, Info,
-    ChevronRight, ChevronLeft, Map, Camera, Users
+    ChevronRight, ChevronLeft, Map, Camera, Users, Check, Briefcase
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
@@ -302,15 +302,49 @@ const MobileAttendanceMonitoring = () => {
     // Filters
     const [searchTerm, setSearchTerm] = useState(initialSearch);
     const [selectedDept, setSelectedDept] = useState(initialDept);
+    const [selectedDesg, setSelectedDesg] = useState('All');
     const [statusFilter, setStatusFilter] = useState(initialStatus);
     const [selectedDate, setSelectedDate] = useState(initialDate);
+    const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
+    const [isDesgDropdownOpen, setIsDesgDropdownOpen] = useState(false);
 
     // Selection/Popup State
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [requestSubTab, setRequestSubTab] = useState('PENDING');
 
-    const DEPARTMENTS = ['All', 'Sales', 'Retail', 'Logistics', 'Operations', 'IT', 'HR'];
+    const [departments, setDepartments] = useState([]);
+    const [designations, setDesignations] = useState([]);
+
+    useEffect(() => {
+        const fetchDepts = async () => {
+            try {
+                const deptRes = await adminService.getDepartments();
+                if (deptRes && deptRes.departments) {
+                    const sortedDepts = [...deptRes.departments].sort((a, b) => a.dept_name.localeCompare(b.dept_name));
+                    setDepartments(sortedDepts);
+                }
+            } catch (err) {
+                console.error("Failed to load departments (mobile)", err);
+            }
+        };
+        const fetchDesgs = async () => {
+            try {
+                const desgRes = await adminService.getDesignations();
+                if (desgRes && desgRes.designations) {
+                    const sortedDesgs = [...desgRes.designations].sort((a, b) => a.desg_name.localeCompare(b.desg_name));
+                    setDesignations(sortedDesgs);
+                }
+            } catch (err) {
+                console.error("Failed to load designations (mobile)", err);
+            }
+        };
+        fetchDepts();
+        fetchDesgs();
+    }, []);
+
+    const DEPARTMENTS = ['All', ...departments.map(d => d.dept_name)];
+    const DESIGNATIONS = ['All', ...designations.map(d => d.desg_name)];
 
     const handleTabChange = (newTab) => {
         const currentIndex = MAIN_TABS.indexOf(activeTab);
@@ -539,7 +573,9 @@ const MobileAttendanceMonitoring = () => {
     // --- FILTERED DATA ---
     const filteredEmployees = attendanceData.filter(e => {
         const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesDept = selectedDept === 'All' || e.department === selectedDept;
+        const matchesDept = selectedDept === 'All' || (e.department && String(e.department) === String(selectedDept));
+        const matchesDesg = selectedDesg === 'All' || (e.role && String(e.role) === String(selectedDesg));
+
         
         let matchesStatus = true;
         if (statusFilter === 'present') {
@@ -552,7 +588,7 @@ const MobileAttendanceMonitoring = () => {
             matchesStatus = e.allStatuses ? e.allStatuses.includes('Active') : e.status.includes('Active');
         }
         
-        return matchesSearch && matchesDept && matchesStatus;
+        return matchesSearch && matchesDept && matchesDesg && matchesStatus;
     });
 
     const activeEmployees = filteredEmployees.filter(e => e.status !== 'Absent' && e.status !== 'Week Off' && e.status !== 'Holiday' && e.status !== 'Leave');
@@ -734,7 +770,7 @@ const MobileAttendanceMonitoring = () => {
                                     {activeSubTab === 'overview' && (
                                         <div className="space-y-6">
                                             {/* Toolbar */}
-                                            <div className="flex gap-2">
+                                            <div className="flex gap-2 relative z-[60]">
                                                 <div className="relative flex-1 group">
                                                     <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
                                                     <input
@@ -745,9 +781,109 @@ const MobileAttendanceMonitoring = () => {
                                                         className="w-full pl-10 pr-4 py-3 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg text-xs font-bold outline-none shadow-sm focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-white"
                                                     />
                                                 </div>
-                                                <button className="w-12 h-12 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg flex items-center justify-center text-slate-400 shadow-sm active:scale-90 transition-transform">
-                                                    <Filter size={18} />
-                                                </button>
+                                                <div className="relative flex gap-2">
+                                                    <div className="relative">
+                                                        <button 
+                                                            onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
+                                                            className={`w-12 h-12 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg flex items-center justify-center shadow-sm active:scale-90 transition-transform ${selectedDept !== 'All' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-indigo-50/20' : 'text-slate-400'}`}
+                                                            title="Filter by Department"
+                                                        >
+                                                            <Filter size={18} />
+                                                        </button>
+
+                                                        <AnimatePresence>
+                                                            {isDeptDropdownOpen && (
+                                                                <>
+                                                                    <div 
+                                                                        className="fixed inset-0 z-[80]" 
+                                                                        onClick={() => setIsDeptDropdownOpen(false)} 
+                                                                    />
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                                        transition={{ duration: 0.15 }}
+                                                                        className="absolute right-0 mt-1.5 min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
+                                                                    >
+                                                                        <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
+                                                                            {DEPARTMENTS.map((dept, idx) => {
+                                                                                const deptName = typeof dept === 'object' && dept ? dept.dept_name || dept.value || '' : String(dept);
+                                                                                const isSelected = String(selectedDept) === String(deptName);
+                                                                                return (
+                                                                                    <button
+                                                                                        key={idx}
+                                                                                        onClick={() => {
+                                                                                            setSelectedDept(deptName);
+                                                                                            setIsDeptDropdownOpen(false);
+                                                                                        }}
+                                                                                        className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
+                                                                                                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                                            }`}
+                                                                                    >
+                                                                                        <span>{deptName}</span>
+                                                                                        {isSelected && <Check size={12} className="text-indigo-500" />}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </motion.div>
+                                                                </>
+                                                            )}
+                                                        </AnimatePresence>
+                                                    </div>
+
+                                                    <div className="relative">
+                                                        <button 
+                                                            onClick={() => setIsDesgDropdownOpen(!isDesgDropdownOpen)}
+                                                            className={`w-12 h-12 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg flex items-center justify-center shadow-sm active:scale-90 transition-transform ${selectedDesg !== 'All' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-indigo-50/20' : 'text-slate-400'}`}
+                                                            title="Filter by Designation"
+                                                        >
+                                                            <Briefcase size={18} />
+                                                        </button>
+
+                                                        <AnimatePresence>
+                                                            {isDesgDropdownOpen && (
+                                                                <>
+                                                                    <div 
+                                                                        className="fixed inset-0 z-[80]" 
+                                                                        onClick={() => setIsDesgDropdownOpen(false)} 
+                                                                    />
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                                        transition={{ duration: 0.15 }}
+                                                                        className="absolute right-0 mt-1.5 min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
+                                                                    >
+                                                                        <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
+                                                                            {DESIGNATIONS.map((desg, idx) => {
+                                                                                const desgName = typeof desg === 'object' && desg ? desg.desg_name || desg.value || '' : String(desg);
+                                                                                const isSelected = String(selectedDesg) === String(desgName);
+                                                                                return (
+                                                                                    <button
+                                                                                        key={idx}
+                                                                                        onClick={() => {
+                                                                                            setSelectedDesg(desgName);
+                                                                                            setIsDesgDropdownOpen(false);
+                                                                                        }}
+                                                                                        className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
+                                                                                                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                                            }`}
+                                                                                    >
+                                                                                        <span>{desgName}</span>
+                                                                                        {isSelected && <Check size={12} className="text-indigo-500" />}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </motion.div>
+                                                                </>
+                                                            )}
+                                                        </AnimatePresence>
+                                                    </div>
+                                                </div>
                                             </div>
 
                                             {/* Stats Grid */}

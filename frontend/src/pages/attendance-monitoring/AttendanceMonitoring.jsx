@@ -686,18 +686,50 @@ const AttendanceMonitoring = () => {
     const [searchTerm, setSearchTerm] = useState(initialSearch);
     const [departmentFilter, setDepartmentFilter] = useState(initialDept);
     const [statusFilter, setStatusFilter] = useState(initialStatus);
+    const [desgFilter, setDesgFilter] = useState('All');
     const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
+    const [isDesgDropdownOpen, setIsDesgDropdownOpen] = useState(false);
     const [selectedDate, setSelectedDate] = React.useState(initialDate);
     const [lastSynced, setLastSynced] = React.useState(new Date());
 
+    const [departments, setDepartments] = useState([]);
+    const [designations, setDesignations] = useState([]);
+
+    useEffect(() => {
+        const fetchDepts = async () => {
+            try {
+                const deptRes = await adminService.getDepartments();
+                if (deptRes && deptRes.departments) {
+                    const sortedDepts = [...deptRes.departments].sort((a, b) => a.dept_name.localeCompare(b.dept_name));
+                    setDepartments(sortedDepts);
+                }
+            } catch (err) {
+                console.error("Failed to load departments", err);
+            }
+        };
+        const fetchDesgs = async () => {
+            try {
+                const desgRes = await adminService.getDesignations();
+                if (desgRes && desgRes.designations) {
+                    const sortedDesgs = [...desgRes.designations].sort((a, b) => a.desg_name.localeCompare(b.desg_name));
+                    setDesignations(sortedDesgs);
+                }
+            } catch (err) {
+                console.error("Failed to load designations", err);
+            }
+        };
+        fetchDepts();
+        fetchDesgs();
+    }, []);
+
     const DEPARTMENTS = [
         { value: 'All', label: 'All Departments' },
-        { value: 'Sales', label: 'Sales' },
-        { value: 'Retail', label: 'Retail' },
-        { value: 'Logistics', label: 'Logistics' },
-        { value: 'Operations', label: 'Operations' },
-        { value: 'IT', label: 'IT' },
-        { value: 'HR', label: 'HR' }
+        ...departments.map(d => ({ value: d.dept_name, label: d.dept_name }))
+    ];
+
+    const DESIGNATIONS = [
+        { value: 'All', label: 'All Designations' },
+        ...designations.map(d => ({ value: d.desg_name, label: d.desg_name }))
     ];
 
     // Sync filter states to localStorage
@@ -861,6 +893,7 @@ const AttendanceMonitoring = () => {
     const filteredData = attendanceData.filter(item => {
         const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesDept = departmentFilter === 'All' || item.department === departmentFilter;
+        const matchesDesg = desgFilter === 'All' || item.role === desgFilter;
         
         let matchesStatus = true;
         if (statusFilter === 'present') {
@@ -873,7 +906,7 @@ const AttendanceMonitoring = () => {
             matchesStatus = item.allStatuses ? item.allStatuses.includes('Active') : item.status.includes('Active');
         }
         
-        return matchesSearch && matchesDept && matchesStatus;
+        return matchesSearch && matchesDept && matchesDesg && matchesStatus;
     });
 
     const getStatusStyle = (status) => {
@@ -1322,6 +1355,59 @@ const AttendanceMonitoring = () => {
                                                                                     }`}
                                                                             >
                                                                                 <span>{dept.label}</span>
+                                                                                {isSelected && <Check size={12} className="text-indigo-500" />}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </motion.div>
+                                                        </>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => setIsDesgDropdownOpen(!isDesgDropdownOpen)}
+                                                    className="pl-10 pr-8 py-2.5 text-xs rounded-lg border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner min-w-[155px] font-bold text-left flex items-center justify-between gap-2"
+                                                >
+                                                    <span className="truncate">
+                                                        {DESIGNATIONS.find(d => d.value === desgFilter)?.label || 'All Designations'}
+                                                    </span>
+                                                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isDesgDropdownOpen ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+                                                <AnimatePresence>
+                                                    {isDesgDropdownOpen && (
+                                                        <>
+                                                            <div
+                                                                className="fixed inset-0 z-[80]"
+                                                                onClick={() => setIsDesgDropdownOpen(false)}
+                                                            />
+                                                            <motion.div
+                                                                initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                                transition={{ duration: 0.15 }}
+                                                                className="absolute top-full left-0 mt-1.5 w-full min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
+                                                            >
+                                                                <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
+                                                                    {DESIGNATIONS.map((desg) => {
+                                                                        const isSelected = desgFilter === desg.value;
+                                                                        return (
+                                                                            <button
+                                                                                key={desg.value}
+                                                                                onClick={() => {
+                                                                                    setDesgFilter(desg.value);
+                                                                                    setIsDesgDropdownOpen(false);
+                                                                                }}
+                                                                                className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
+                                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                                    }`}
+                                                                            >
+                                                                                <span>{desg.label}</span>
                                                                                 {isSelected && <Check size={12} className="text-indigo-500" />}
                                                                             </button>
                                                                         );

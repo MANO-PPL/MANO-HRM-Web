@@ -512,6 +512,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
         .select(
             'users.user_id', 'users.user_name', 'users.org_id', 'users.shift_id',
             'users.profile_image_url',
+            'users.user_type',
             'designations.desg_name',
             'shifts.shift_name',
             'shifts.policy_rules'
