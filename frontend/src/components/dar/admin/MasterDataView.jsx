@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    Calendar, Download, Users, Building, Clock, FileText, Plus
+    Calendar, Download, Users, Building, Clock, FileText, Plus, UserCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MinimalSelect from "../../MinimalSelect"; // Ensure path is correct relative to new location
@@ -60,10 +60,15 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
     const [selectedShift, setSelectedShift] = useState(''); // Name of shift
     const [currentShift, setCurrentShift] = useState({ start: 8, end: 18 }); // Default View Range
 
-    // Filters
     const [selectedDepartment, setSelectedDepartment] = useState("All Departments");
+    const [selectedDesignation, setSelectedDesignation] = useState("All Designations");
     const [selectedEmployee, setSelectedEmployee] = useState("All Employees");
     const [employeesList, setEmployeesList] = useState([]);
+
+    const designationsList = React.useMemo(() => {
+        const desgs = allUsers.map(u => u.designation).filter(d => d && d !== '-');
+        return ["All Designations", ...new Set(desgs)].sort((a, b) => a.localeCompare(b));
+    }, [allUsers]);
 
     // Calendar Popup State
     const [showCalendar, setShowCalendar] = useState(false);
@@ -126,7 +131,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
         }
     }, [selectedShift, shifts]);
 
-    // Dynamic Employee List based on Selected Dept & Shift
+    // Dynamic Employee List based on Selected Dept, Shift & Role
     useEffect(() => {
         let filtered = allUsers;
 
@@ -140,8 +145,13 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
             filtered = filtered.filter(u => u.shift === selectedShift);
         }
 
+        // 4. Filter by Designation
+        if (selectedDesignation !== "All Designations") {
+            filtered = filtered.filter(u => u.designation === selectedDesignation);
+        }
+
         setEmployeesList(filtered.map(u => u.name));
-    }, [selectedDepartment, selectedShift, allUsers]);
+    }, [selectedDepartment, selectedShift, selectedDesignation, allUsers]);
 
     const fetchMasterData = async () => {
         setLoadingData(true);
@@ -198,6 +208,8 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
                 // Group activities
                 const grouped = {};
+                const userMap = {};
+                allUsers.forEach(u => userMap[u.userId] = u);
 
                 // Helper inside fetchMasterData scope
                 const parseTimeHelper = (t) => {
@@ -210,6 +222,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                     if (!localDate) return;
                     if (localDate < selectedStart || localDate > selectedEnd) return;
                     const key = `${a.user_id}-${localDate}`;
+                    const u = userMap[a.user_id];
 
                     if (!grouped[key]) {
                         grouped[key] = {
@@ -217,6 +230,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                             userId: a.user_id,
                             name: a.user_name,
                             role: a.user_role || 'Employee',
+                            designation: u?.designation || '-',
                             date: localDate,
                             dept: a.user_dept,
                             shift: a.user_shift_name,
@@ -239,8 +253,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                 });
 
                 // Process Events
-                const userMap = {};
-                allUsers.forEach(u => userMap[u.userId] = u);
+                // userMap is already generated above
 
                 if (eventsRes.data?.data) {
                     eventsRes.data.data.forEach(e => {
@@ -257,6 +270,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                     userId: u.userId,
                                     name: u.name,
                                     role: u.role || 'Employee',
+                                    designation: u.designation || '-',
                                     date: eventDate,
                                     dept: u.dept,
                                     shift: u.shift,
@@ -311,6 +325,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                 userId: u.userId,
                                 name: u.name,
                                 role: u.role || 'Employee',
+                                designation: u.designation || '-',
                                 date: dateStr,
                                 dept: u.dept,
                                 shift: u.shift,
@@ -348,6 +363,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                 userId: item.userId,
                                 name: item.name,
                                 role: item.role,
+                                designation: item.designation,
                                 dateStart: item.date,
                                 dateEnd: item.date,
                                 dept: item.dept,
@@ -399,6 +415,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
         if (selectedDepartment !== "All Departments" && user.dept !== selectedDepartment) return false;
         if (selectedShift && user.shift !== selectedShift) return false;
         if (selectedEmployee !== "All Employees" && user.name !== selectedEmployee) return false;
+        if (selectedDesignation !== "All Designations" && user.designation !== selectedDesignation) return false;
         return true;
     });
 
@@ -626,6 +643,15 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                         options={["All Departments", ...departments]}
                         value={selectedDepartment}
                         onChange={setSelectedDepartment}
+                        searchable
+                    />
+
+                    <MinimalSelect
+                        icon={UserCheck}
+                        placeholder="Designation"
+                        options={designationsList}
+                        value={selectedDesignation}
+                        onChange={setSelectedDesignation}
                         searchable
                     />
                     <MinimalSelect

@@ -31,7 +31,8 @@ const DARAdmin = ({ embedded = false }) => {
                         name: u.user_name,
                         dept: u.dept_name,
                         shift: u.shift_name,
-                        role: u.user_type
+                        role: u.user_type,
+                        designation: u.desg_name || '-'
                     })));
                 }
             } catch (e) {
@@ -130,7 +131,7 @@ const DARAdmin = ({ embedded = false }) => {
 
                 {/* --- REQUESTS TAB --- */}
                 {activeTab === 'requests' && (
-                    <RequestManager />
+                    <RequestManager departments={departments} />
                 )}
 
                 {/* --- INSIGHTS DASHBOARD --- */}

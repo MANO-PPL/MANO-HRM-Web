@@ -1,14 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, FileText } from 'lucide-react';
+import { Search, FileText, Filter } from 'lucide-react';
 import RequestReviewModal from '../../dar/RequestReviewModal'; // Ensure path is correct
 import api from '../../../services/api'; // Ensure path is correct
 import { toast } from 'react-toastify';
+import MinimalSelect from '../../MinimalSelect';
 
-const RequestManager = () => {
+const RequestManager = ({ departments = [] }) => {
     const [requests, setRequests] = useState([]);
     const [loadingRequests, setLoadingRequests] = useState(false);
     const [requestSearch, setRequestSearch] = useState("");
+    const [selectedDepartment, setSelectedDepartment] = useState("All Departments");
     const [selectedRequest, setSelectedRequest] = useState(null);
 
     // Fetch Requests
@@ -20,6 +22,8 @@ const RequestManager = () => {
             const mapped = res.data.data.map(r => ({
                 id: r.request_id,
                 user: r.user_name, // from join
+                dept: r.user_dept || 'Unknown',
+                role: r.user_role || 'employee',
                 date: r.request_date,
                 changes: (r.proposed_data?.length || 0), // Rough count
                 employeeName: r.user_name,
@@ -93,6 +97,23 @@ const RequestManager = () => {
                             className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
                         />
                     </div>
+                    <div className="flex gap-2">
+                        <div className="flex-1">
+                            <MinimalSelect
+                                options={[
+                                    { value: 'All Departments', label: 'All Depts' },
+                                    ...departments.map(d => ({ value: d, label: d }))
+                                ]}
+                                value={selectedDepartment}
+                                onChange={(val) => setSelectedDepartment(val)}
+                                placeholder="All Depts"
+                                icon={Filter}
+                                triggerClassName="w-full justify-between"
+                                size="sm"
+                            />
+                        </div>
+
+                    </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
                     {loadingRequests ? (
@@ -100,7 +121,11 @@ const RequestManager = () => {
                     ) : requests.length === 0 ? (
                         <div className="text-center py-10 text-slate-400 italic">No requests found.</div>
                     ) : (
-                        requests.filter(req => req.user.toLowerCase().includes(requestSearch.toLowerCase())).map(req => (
+                        requests.filter(req => {
+                            const matchesSearch = req.user.toLowerCase().includes(requestSearch.toLowerCase());
+                            const matchesDept = selectedDepartment === "All Departments" || req.dept === selectedDepartment;
+                            return matchesSearch && matchesDept;
+                        }).map(req => (
                             <div
                                 key={req.id}
                                 onClick={() => setSelectedRequest(req)}

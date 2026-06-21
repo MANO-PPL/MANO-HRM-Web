@@ -36,10 +36,13 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
 export async function getPendingRequests({ org_id }) {
     const requests = await attendanceDB("dar_requests")
         .join("users", "dar_requests.user_id", "users.user_id")
+        .leftJoin("departments as dep", "users.dept_id", "dep.dept_id")
         .select(
             "dar_requests.*",
             "users.user_name as user_name",
             "users.email as user_email",
+            "users.user_type as user_role",
+            "dep.dept_name as user_dept",
             attendanceDB.raw("DATE_FORMAT(dar_requests.request_date, '%Y-%m-%d') as request_date_str")
         )
         .where("dar_requests.org_id", org_id)
