@@ -4,7 +4,8 @@ import { labourService } from '../../services/labourService';
 import { toast } from 'react-toastify';
 import {
     Building, Calendar, DollarSign, Clock, Plus, Search,
-    UserPlus, Edit2, Trash2, Save, AlertTriangle, User, Phone, X
+    UserPlus, Edit2, Trash2, Save, AlertTriangle, User, Phone, X,
+    CheckCircle, XCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -35,6 +36,7 @@ const MobileLabourManagement = () => {
     const [gridData, setGridData] = useState([]);
     const [gridLoading, setGridLoading] = useState(false);
     const [gridMonthDetails, setGridMonthDetails] = useState(null);
+    const [showAllSitesAttendance, setShowAllSitesAttendance] = useState(false);
 
     // Modal Control States
     const [showSiteModal, setShowSiteModal] = useState(false);
@@ -50,6 +52,39 @@ const MobileLabourManagement = () => {
 
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
     const [advanceForm, setAdvanceForm] = useState({ labour_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
+
+    // Phase 2 States
+    const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
+    const [bulkSourceSiteId, setBulkSourceSiteId] = useState('All');
+    const [bulkDestinationSiteId, setBulkDestinationSiteId] = useState('');
+    const [selectedLabourIds, setSelectedLabourIds] = useState([]);
+
+    const [showBorrowModal, setShowBorrowModal] = useState(false);
+    const [borrowSearchQuery, setBorrowSearchQuery] = useState('');
+
+    const [selectedHistoryLabour, setSelectedHistoryLabour] = useState(null);
+    const [labourHistoryData, setLabourHistoryData] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
+    const [showPayoutModal, setShowPayoutModal] = useState(false);
+    const [historyTab, setHistoryTab] = useState('sites'); // 'sites', 'payouts'
+    const [labourPayoutHistory, setLabourPayoutHistory] = useState([]);
+    const [payoutForm, setPayoutForm] = useState({
+        payout_id: null, labour_id: '', name: '', month: '', wage_type: '', monthly_salary: '',
+        present_days: 0, half_days: 0, absent_days: 0, paid_leaves: 0,
+        accrued_credit: 0, advances_taken: 0, net_payable: 0, paid_amount: '',
+        status: 'Paid', payment_date: new Date().toISOString().split('T')[0], notes: ''
+    });
+
+    const [financeMonth, setFinanceMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+
+    const [showSiteClosurePrompt, setShowSiteClosurePrompt] = useState(false);
+    const [closureSiteId, setClosureSiteId] = useState('');
+    const [closureSiteName, setClosureSiteName] = useState('');
+    const [closureDestinationSiteId, setClosureDestinationSiteId] = useState('');
+    const [closureLabours, setClosureLabours] = useState([]);
+    const [siteStatusToSave, setSiteStatusToSave] = useState('');
+    const [siteFormToSave, setSiteFormToSave] = useState(null);
 
     // ==========================================
     // DATA FETCHING HANDLERS
@@ -83,7 +118,7 @@ const MobileLabourManagement = () => {
 
     const fetchFinances = async () => {
         try {
-            const res = await labourService.getFinancesSummary();
+            const res = await labourService.getFinancesSummary(financeMonth ? `${financeMonth}-01` : '');
             setFinanceSummary(res.summary || []);
             setMonthDetails(res.monthDetails || null);
         } catch (err) {
@@ -95,7 +130,7 @@ const MobileLabourManagement = () => {
         if (!gridSiteId || !gridMonth) return;
         setGridLoading(true);
         try {
-            const res = await labourService.getMonthlyGridAttendance(gridSiteId, gridMonth);
+            const res = await labourService.getMonthlyGridAttendance(gridSiteId, gridMonth, showAllSitesAttendance);
             setGridData(res.grid || []);
             setGridMonthDetails(res.monthDetails || null);
         } catch (err) {
@@ -109,11 +144,13 @@ const MobileLabourManagement = () => {
         setLoading(true);
         if (tab === 'sites') {
             await fetchSites();
+            await fetchLabours();
         } else if (tab === 'labours') {
             await fetchSites();
             await fetchLabours();
         } else if (tab === 'attendance') {
             await fetchSites();
+            await fetchLabours();
         } else if (tab === 'grid') {
             await fetchSites();
             await fetchGridData();
@@ -126,6 +163,12 @@ const MobileLabourManagement = () => {
     useEffect(() => {
         loadTabInitialData(activeTab);
     }, [activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'finances') {
+            fetchFinances();
+        }
+    }, [financeMonth, activeTab]);
 
     const loadAttendanceRoster = async () => {
         if (!attendanceSiteId || !attendanceDate) return;
@@ -160,6 +203,12 @@ const MobileLabourManagement = () => {
         return arr;
     };
 
+    const getMonthNameAndYear = (startDateStr) => {
+        if (!startDateStr) return '';
+        const date = new Date(startDateStr);
+        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+    };
+
     useEffect(() => {
         if (activeTab === 'attendance') {
             loadAttendanceRoster();
@@ -170,7 +219,7 @@ const MobileLabourManagement = () => {
         if (activeTab === 'grid') {
             fetchGridData();
         }
-    }, [gridSiteId, gridMonth, activeTab]);
+    }, [gridSiteId, gridMonth, showAllSitesAttendance, activeTab]);
 
     // ==========================================
     // SITE HANDLERS
@@ -180,6 +229,22 @@ const MobileLabourManagement = () => {
         e.preventDefault();
         try {
             if (editingSite) {
+                // If status is changed from Active to Completed or Inactive, check for active labours
+                const statusChanged = editingSite.status === 'Active' && (siteForm.status === 'Completed' || siteForm.status === 'Inactive');
+                const siteLabours = statusChanged ? labours.filter(l => l.site_id === editingSite.site_id) : [];
+
+                if (statusChanged && siteLabours.length > 0) {
+                    setClosureSiteId(editingSite.site_id);
+                    setClosureSiteName(editingSite.site_name);
+                    setClosureLabours(siteLabours);
+                    setSiteStatusToSave(siteForm.status);
+                    setSiteFormToSave({ ...siteForm });
+                    setShowSiteModal(false);
+                    setClosureDestinationSiteId('');
+                    setShowSiteClosurePrompt(true);
+                    return;
+                }
+
                 await labourService.updateSite(editingSite.site_id, siteForm);
                 toast.success('Site updated');
             } else {
@@ -193,6 +258,80 @@ const MobileLabourManagement = () => {
         } catch (err) {
             toast.error(err.message || 'Failed to save site');
         }
+    };
+
+    const handleConfirmSiteClosure = async (e) => {
+        e.preventDefault();
+        try {
+            const labourIdsToTransfer = closureLabours.map(l => l.labour_id);
+            await labourService.bulkTransferLabours({
+                source_site_id: closureSiteId,
+                destination_site_id: closureDestinationSiteId ? Number(closureDestinationSiteId) : null,
+                labour_ids: labourIdsToTransfer
+            });
+
+            await labourService.updateSite(closureSiteId, siteFormToSave);
+            toast.success(`Site status updated. Transferred ${labourIdsToTransfer.length} workers.`);
+            setShowSiteClosurePrompt(false);
+            setEditingSite(null);
+            setSiteForm({ site_name: '', location_details: '', status: 'Active' });
+            fetchSites();
+            fetchLabours();
+        } catch (err) {
+            toast.error(err.message || 'Failed during site closure reassignment');
+        }
+    };
+
+    const handleExecuteBulkTransfer = async (e) => {
+        e.preventDefault();
+        if (selectedLabourIds.length === 0) {
+            toast.error('Select at least one worker to transfer');
+            return;
+        }
+        try {
+            await labourService.bulkTransferLabours({
+                source_site_id: bulkSourceSiteId === 'All' ? null : Number(bulkSourceSiteId),
+                destination_site_id: bulkDestinationSiteId === 'Unassigned' || !bulkDestinationSiteId ? null : Number(bulkDestinationSiteId),
+                labour_ids: selectedLabourIds
+            });
+            toast.success(`Transferred ${selectedLabourIds.length} workers.`);
+            setShowBulkTransferModal(false);
+            setSelectedLabourIds([]);
+            fetchLabours();
+        } catch (err) {
+            toast.error(err.message || 'Failed to transfer workers');
+        }
+    };
+
+    const handleViewHistory = async (lab) => {
+        setSelectedHistoryLabour(lab);
+        setHistoryTab('sites');
+        setHistoryLoading(true);
+        try {
+            const res = await labourService.getLabourWorkHistory(lab.labour_id);
+            setLabourHistoryData(res.history || []);
+            setLabourPayoutHistory(res.payouts || []);
+        } catch (err) {
+            toast.error(err.message || 'Failed to load history');
+        }
+        setHistoryLoading(false);
+    };
+
+    const handleBorrowLabour = (lab) => {
+        setAttendanceRoster(prev => [
+            ...prev,
+            {
+                labour_id: lab.labour_id,
+                name: lab.name,
+                role: lab.role,
+                wage_type: lab.wage_type,
+                status: '',
+                is_borrowed: true
+            }
+        ]);
+        setShowBorrowModal(false);
+        setBorrowSearchQuery('');
+        toast.success(`${lab.name} borrowed successfully`);
     };
 
     const handleEditSite = (site) => {
@@ -226,7 +365,7 @@ const MobileLabourManagement = () => {
             const payload = {
                 ...labourForm,
                 monthly_salary: Number(labourForm.monthly_salary),
-                allowed_leaves: labourForm.wage_type === 'Fixed Salary' ? Number(labourForm.allowed_leaves) : 0,
+                allowed_leaves: 0,
                 site_id: labourForm.site_id ? Number(labourForm.site_id) : null
             };
 
@@ -327,6 +466,60 @@ const MobileLabourManagement = () => {
         }
     };
 
+    const handleOpenPayout = (row) => {
+        const monthKey = monthDetails?.start ? monthDetails.start.slice(0, 7) : new Date().toISOString().slice(0, 7);
+        const isExisting = !!row.payout;
+        
+        setPayoutForm({
+            payout_id: isExisting ? row.payout.payout_id : null,
+            labour_id: row.labour_id,
+            name: row.name,
+            month: monthKey,
+            wage_type: row.wage_type,
+            monthly_salary: row.monthly_salary,
+            present_days: row.attendance.present,
+            half_days: row.attendance.half_day,
+            absent_days: row.attendance.absent,
+            paid_leaves: row.attendance.paid_leave || 0,
+            accrued_credit: row.accrued_credit,
+            advances_taken: row.advances_taken,
+            net_payable: row.net_payable,
+            paid_amount: isExisting ? row.payout.paid_amount : row.net_payable,
+            status: isExisting ? row.payout.status : 'Paid',
+            payment_date: isExisting ? row.payout.payment_date.split('T')[0] : new Date().toISOString().split('T')[0],
+            notes: isExisting ? row.payout.notes || '' : ''
+        });
+        setShowPayoutModal(true);
+    };
+
+    const handleSavePayout = async (e) => {
+        e.preventDefault();
+        try {
+            await labourService.logLabourPayout({
+                labour_id: Number(payoutForm.labour_id),
+                month: payoutForm.month,
+                wage_type: payoutForm.wage_type,
+                monthly_salary: Number(payoutForm.monthly_salary),
+                present_days: Number(payoutForm.present_days),
+                half_days: Number(payoutForm.half_days),
+                absent_days: Number(payoutForm.absent_days),
+                paid_leaves: Number(payoutForm.paid_leaves),
+                accrued_credit: Number(payoutForm.accrued_credit),
+                advances_taken: Number(payoutForm.advances_taken),
+                net_payable: Number(payoutForm.net_payable),
+                paid_amount: Number(payoutForm.paid_amount),
+                status: payoutForm.status,
+                payment_date: payoutForm.payment_date,
+                notes: payoutForm.notes
+            });
+            toast.success(`Payout successfully processed for ${payoutForm.name}`);
+            setShowPayoutModal(false);
+            fetchFinances();
+        } catch (err) {
+            toast.error(err.message || 'Failed to log monthly payout');
+        }
+    };
+
     return (
         <MobileDashboardLayout title="Labour Management">
             <div className="space-y-4 pb-24 text-xs">
@@ -393,6 +586,9 @@ const MobileLabourManagement = () => {
                                                     </span>
                                                 </div>
                                                 <p className="text-[10px] text-slate-500 dark:text-github-dark-muted mt-1.5">{site.location_details || 'No details.'}</p>
+                                                <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 mt-1 block">
+                                                    👥 {labours.filter(l => l.site_id === site.site_id).length} Assigned Workers
+                                                </span>
                                             </div>
                                             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-github-dark-border/40">
                                                 <button onClick={() => handleEditSite(site)} className="p-1 text-slate-500 rounded border border-slate-200 dark:border-github-dark-border"><Edit2 size={12} /></button>
@@ -433,6 +629,17 @@ const MobileLabourManagement = () => {
                                             ))}
                                         </select>
                                         <button
+                                            onClick={() => {
+                                                setSelectedLabourIds([]);
+                                                setBulkSourceSiteId('All');
+                                                setBulkDestinationSiteId('');
+                                                setShowBulkTransferModal(true);
+                                            }}
+                                            className="px-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl font-bold flex items-center gap-1 border border-slate-200 dark:border-github-dark-border"
+                                        >
+                                            <Building size={14} /> Bulk
+                                        </button>
+                                        <button
                                             onClick={() => { setEditingLabour(null); setLabourForm({ name: '', phone: '', sex: 'Male', role: '', wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '' }); setShowLabourModal(true); }}
                                             className="px-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center gap-1 shrink-0"
                                         >
@@ -453,8 +660,11 @@ const MobileLabourManagement = () => {
                                         })
                                         .map(lab => (
                                             <div key={lab.labour_id} className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-sm flex items-center justify-between">
-                                                <div>
-                                                    <h4 className="font-bold text-slate-800 dark:text-white text-xs">{lab.name}</h4>
+                                                <div className="cursor-pointer" onClick={() => handleViewHistory(lab)}>
+                                                    <h4 className="font-bold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
+                                                        <span>{lab.name}</span>
+                                                        <span className="text-[8px] text-indigo-500 font-bold uppercase tracking-wider font-sans bg-indigo-50 dark:bg-indigo-950/20 px-1 rounded">History</span>
+                                                    </h4>
                                                     <p className="text-[10px] text-slate-400 font-mono mt-0.5">{lab.role} | {lab.wage_type}</p>
                                                     <p className="text-[9px] text-slate-500 mt-1 uppercase tracking-wide flex items-center gap-1 font-semibold">
                                                         <Building size={10} />
@@ -501,15 +711,23 @@ const MobileLabourManagement = () => {
                                 </div>
 
                                 <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-2xl overflow-hidden shadow-sm">
-                                    <div className="p-3 border-b border-slate-100 dark:border-github-dark-border flex justify-between items-center bg-slate-50 dark:bg-github-dark-border/40">
-                                        <span className="font-bold text-xs">Workers Checklist ({attendanceRoster.length})</span>
-                                        <button
-                                            disabled={attendanceRoster.length === 0}
-                                            onClick={handleSaveAttendance}
-                                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-xl font-bold flex items-center gap-1 shadow-sm disabled:opacity-50 text-[10px] cursor-pointer"
-                                        >
-                                            <Save size={12} /> Save Roster
-                                        </button>
+                                    <div className="p-3 border-b border-slate-100 dark:border-github-dark-border flex justify-between items-center bg-slate-50 dark:bg-github-dark-border/40 gap-2">
+                                        <span className="font-bold text-xs truncate">Roster ({attendanceRoster.length})</span>
+                                        <div className="flex gap-1.5 shrink-0">
+                                            <button
+                                                onClick={() => setShowBorrowModal(true)}
+                                                className="px-2 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl font-bold flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px] cursor-pointer"
+                                            >
+                                                <Plus size={10} /> Borrow
+                                            </button>
+                                            <button
+                                                disabled={attendanceRoster.length === 0}
+                                                onClick={handleSaveAttendance}
+                                                className="px-2 py-1.5 bg-indigo-600 text-white rounded-xl font-bold flex items-center gap-1 shadow-sm disabled:opacity-50 text-[9px] cursor-pointer"
+                                            >
+                                                <Save size={10} /> Save
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {attendanceLoading ? (
@@ -519,9 +737,12 @@ const MobileLabourManagement = () => {
                                     ) : (
                                         <div className="grid grid-cols-1 gap-3 p-3 bg-slate-50/50 dark:bg-transparent">
                                             {attendanceRoster.map(item => (
-                                                <div key={item.labour_id} className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl p-3.5 flex flex-col gap-3.5 shadow-sm">
+                                                <div key={item.labour_id} className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl p-3.5 flex flex-col gap-3.5 shadow-sm relative overflow-hidden">
+                                                    {item.is_borrowed && (
+                                                        <span className="absolute top-0 right-0 bg-amber-500 text-white text-[8px] font-black px-2 py-0.5 rounded-bl uppercase">Borrowed</span>
+                                                    )}
                                                     <div>
-                                                        <h4 className="font-bold text-slate-800 dark:text-white text-xs truncate">{item.name}</h4>
+                                                        <h4 className="font-bold text-slate-800 dark:text-white text-xs truncate pr-12">{item.name}</h4>
                                                         <p className="text-[9px] text-slate-450 dark:text-github-dark-muted font-mono uppercase mt-0.5">{item.role}</p>
                                                     </div>
                                                     
@@ -565,8 +786,9 @@ const MobileLabourManagement = () => {
                                         <select
                                             value={gridSiteId}
                                             onChange={(e) => setGridSiteId(e.target.value)}
-                                            className="px-2 py-1.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl cursor-pointer"
+                                            className="px-2 py-1.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl cursor-pointer text-xs"
                                         >
+                                            <option value="All">💼 All Labours (All Sites)</option>
                                             {sites.map(s => (
                                                 <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
                                             ))}
@@ -578,9 +800,23 @@ const MobileLabourManagement = () => {
                                             type="month"
                                             value={gridMonth}
                                             onChange={(e) => setGridMonth(e.target.value)}
-                                            className="px-2 py-1 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl focus:outline-none"
+                                            className="px-2 py-1 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl focus:outline-none text-xs"
                                         />
                                     </div>
+                                    {gridSiteId !== 'All' && (
+                                        <div className="col-span-2 mt-1.5 pt-2.5 border-t border-slate-100 dark:border-github-dark-border/40 flex items-center">
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={showAllSitesAttendance}
+                                                    onChange={(e) => setShowAllSitesAttendance(e.target.checked)}
+                                                    className="sr-only peer"
+                                                />
+                                                <div className="w-8 h-4 bg-slate-200 dark:bg-github-dark-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-350 dark:after:border-none after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-650"></div>
+                                                <span className="ml-2 text-[10px] font-semibold text-slate-550 dark:text-github-dark-text">Include attendance from other sites</span>
+                                            </label>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {gridLoading ? (
@@ -621,26 +857,43 @@ const MobileLabourManagement = () => {
                                                                     <div className="text-[8px] text-slate-400 dark:text-github-dark-muted font-mono mt-0.5">{row.role}</div>
                                                                 </td>
                                                                 {getDaysInMonthArray().map(day => {
-                                                                    const status = row.attendance[day.dateStr];
+                                                                    const attObj = row.attendance[day.dateStr];
+                                                                    const statusStr = attObj && typeof attObj === 'object' ? attObj.status : attObj;
+                                                                    const attSiteId = attObj && typeof attObj === 'object' ? attObj.site_id : null;
+                                                                    const attSiteName = attObj && typeof attObj === 'object' ? attObj.site_name : null;
+                                                                    
+                                                                    const isOtherSite = gridSiteId !== 'All' && attSiteId !== null && Number(attSiteId) !== Number(gridSiteId);
+                                                                    const tooltipText = isOtherSite 
+                                                                        ? `${statusStr} (at ${attSiteName})` 
+                                                                        : (gridSiteId === 'All' && attSiteName ? `${statusStr} (at ${attSiteName})` : statusStr);
+
                                                                     const dateObj = new Date(day.dateStr);
                                                                     const dayNum = dateObj.getDay();
                                                                     let cellContent = null;
                                                                     
-                                                                    if (status === 'Present') {
-                                                                        cellContent = (
-                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-emerald-500 text-white text-[8px] font-black shadow-sm" title="Present">P</span>
+                                                                    if (statusStr === 'Present') {
+                                                                        cellContent = isOtherSite ? (
+                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-450 border border-emerald-300 dark:border-emerald-850/50 text-[8px] font-black shadow-sm" title={tooltipText}>P</span>
+                                                                        ) : (
+                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-emerald-500 text-white text-[8px] font-black shadow-sm" title={tooltipText}>P</span>
                                                                         );
-                                                                    } else if (status === 'Half Day') {
-                                                                        cellContent = (
-                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-500 text-white text-[8px] font-black shadow-sm" title="Half Day">HD</span>
+                                                                    } else if (statusStr === 'Half Day') {
+                                                                        cellContent = isOtherSite ? (
+                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-50/90 dark:bg-amber-950/40 text-amber-600 dark:text-amber-450 border border-amber-300 dark:border-amber-850/50 text-[8px] font-black shadow-sm" title={tooltipText}>HD</span>
+                                                                        ) : (
+                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-500 text-white text-[8px] font-black shadow-sm" title={tooltipText}>HD</span>
                                                                         );
-                                                                    } else if (status === 'Absent') {
-                                                                        cellContent = (
-                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-rose-500 text-white text-[8px] font-black shadow-sm" title="Absent">A</span>
+                                                                    } else if (statusStr === 'Absent') {
+                                                                        cellContent = isOtherSite ? (
+                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-rose-50/90 dark:bg-rose-950/40 text-rose-600 dark:text-rose-450 border border-rose-300 dark:border-rose-850/50 text-[8px] font-black shadow-sm" title={tooltipText}>A</span>
+                                                                        ) : (
+                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-rose-500 text-white text-[8px] font-black shadow-sm" title={tooltipText}>A</span>
                                                                         );
-                                                                    } else if (status === 'Paid Leave') {
-                                                                        cellContent = (
-                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-indigo-500 text-white text-[8px] font-black shadow-sm" title="Paid Leave">PL</span>
+                                                                    } else if (statusStr === 'Paid Leave') {
+                                                                        cellContent = isOtherSite ? (
+                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-indigo-50/90 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-450 border border-indigo-300 dark:border-indigo-850/50 text-[8px] font-black shadow-sm" title={tooltipText}>PL</span>
+                                                                        ) : (
+                                                                            <span className="w-5 h-5 flex items-center justify-center rounded-full bg-indigo-500 text-white text-[8px] font-black shadow-sm" title={tooltipText}>PL</span>
                                                                         );
                                                                     } else if (dayNum === 6) { // Saturday
                                                                         cellContent = (
@@ -680,9 +933,18 @@ const MobileLabourManagement = () => {
                             ========================================== */}
                         {activeTab === 'finances' && (
                             <div className="space-y-3">
+                                <div className="bg-white dark:bg-github-dark-subtle p-3 rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm flex items-center justify-between gap-3 text-xs">
+                                    <span className="font-bold text-slate-800 dark:text-white">Select Month:</span>
+                                    <input
+                                        type="month"
+                                        value={financeMonth}
+                                        onChange={(e) => setFinanceMonth(e.target.value)}
+                                        className="px-2.5 py-1 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-bold text-slate-700 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                    />
+                                </div>
                                 {monthDetails && (
                                     <div className="bg-slate-100 dark:bg-github-dark-border p-2.5 rounded-xl text-[9px] font-bold text-slate-600 dark:text-github-dark-text text-center border border-slate-200/50">
-                                        🗓️ DAYS ELAPSED {monthDetails.elapsedDays} OF {monthDetails.totalDays} IN MONTH
+                                        🗓️ {getMonthNameAndYear(monthDetails.start)} PERIOD: DAYS ELAPSED {monthDetails.elapsedDays} OF {monthDetails.totalDays}
                                     </div>
                                 )}
 
@@ -724,15 +986,42 @@ const MobileLabourManagement = () => {
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex justify-between items-center pt-1">
-                                                        <span className="text-[9px] text-slate-400">Base Salary: ₹{row.monthly_salary}</span>
-                                                        <button
-                                                            onClick={() => handleOpenAdvance(row)}
-                                                            className="px-2 py-1 text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 rounded-lg transition-colors"
-                                                        >
-                                                            Log Advance
-                                                        </button>
-                                                    </div>
+                                                    <div className="flex justify-between items-center pt-1 border-t border-slate-100 dark:border-github-dark-border/40 mt-1">
+                                                         <div className="flex items-center gap-1.5">
+                                                             <span className="text-[9px] text-slate-400">Base: ₹{row.monthly_salary}</span>
+                                                             {row.payout ? (
+                                                                 <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                                                                     row.payout.status === 'Paid'
+                                                                         ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-450 border border-emerald-200/50'
+                                                                         : 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-450 border border-amber-200/50'
+                                                                 }`}>
+                                                                     <span>{row.payout.status}</span>
+                                                                 </span>
+                                                             ) : (
+                                                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-205">
+                                                                     <span>Unprocessed</span>
+                                                                 </span>
+                                                             )}
+                                                         </div>
+                                                         <div className="flex gap-1.5">
+                                                             <button
+                                                                 onClick={() => handleOpenAdvance(row)}
+                                                                 className="px-2 py-1 text-[9px] font-bold bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 text-amber-705 dark:text-amber-400 hover:bg-amber-100 rounded-lg transition-colors"
+                                                             >
+                                                                 Log Advance
+                                                             </button>
+                                                             <button
+                                                                 onClick={() => handleOpenPayout(row)}
+                                                                 className={`px-2 py-1 text-[9px] font-bold border rounded-lg transition-colors ${
+                                                                     row.payout
+                                                                         ? 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                                                                         : 'bg-indigo-600 dark:bg-indigo-700 text-white border-transparent'
+                                                                 }`}
+                                                             >
+                                                                 {row.payout ? 'View Payout' : 'Release Salary'}
+                                                             </button>
+                                                         </div>
+                                                     </div>
                                                 </div>
                                             );
                                         })
@@ -842,15 +1131,6 @@ const MobileLabourManagement = () => {
                                     required
                                     placeholder="Monthly Salary"
                                 />
-                                {labourForm.wage_type === 'Fixed Salary' && (
-                                    <input
-                                        type="number"
-                                        value={labourForm.allowed_leaves}
-                                        onChange={(e) => setLabourForm({ ...labourForm, allowed_leaves: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl"
-                                        placeholder="Allowed Leaves"
-                                    />
-                                )}
                                 <div className="flex gap-2 pt-2">
                                     <button type="button" onClick={() => setShowLabourModal(false)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl font-bold">Cancel</button>
                                     <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-bold">Save</button>
@@ -896,6 +1176,401 @@ const MobileLabourManagement = () => {
                                     <button type="submit" className="flex-1 py-2 bg-amber-500 text-white rounded-xl font-bold">Record</button>
                                 </div>
                             </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* Payout Modal */}
+                {showPayoutModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                        <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-4 space-y-4 text-xs">
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-github-dark-border">
+                                <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-1">
+                                    <DollarSign size={16} className="text-indigo-500" />
+                                    <span>{payoutForm.payout_id ? 'Update Payout' : 'Process Payout'}</span>
+                                </h4>
+                                <button onClick={() => setShowPayoutModal(false)} className="text-slate-400"><XCircle size={16} /></button>
+                            </div>
+                            
+                            <form onSubmit={handleSavePayout} className="space-y-3">
+                                <div className="bg-indigo-50 dark:bg-indigo-950/20 p-2.5 rounded-xl border border-indigo-150 dark:border-indigo-900/30 text-[10px]">
+                                    <div className="font-bold text-slate-700 dark:text-slate-300">Name: {payoutForm.name}</div>
+                                    <div className="text-slate-500 font-mono mt-0.5">{payoutForm.wage_type} | Month: {payoutForm.month}</div>
+                                </div>
+
+                                {/* Earnings Grid */}
+                                <div className="grid grid-cols-2 gap-2 bg-slate-55 dark:bg-[#161b22]/60 p-2.5 rounded-xl border border-slate-150 dark:border-github-dark-border text-[10px]">
+                                    <div>
+                                        <span className="text-slate-400 block">Attendance:</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                                            {payoutForm.present_days}P / {payoutForm.half_days}HD / {payoutForm.absent_days}A
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-400 block">Accrued Credit:</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-300">₹{payoutForm.accrued_credit}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-400 block">Advances Taken:</span>
+                                        <span className="font-bold text-amber-500">-₹{payoutForm.advances_taken}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-450 font-bold block">Net Payable:</span>
+                                        <span className="font-extrabold text-indigo-650 dark:text-indigo-400">₹{payoutForm.net_payable}</span>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-slate-450 font-semibold mb-1 text-[10px]">Paid Amount</label>
+                                        <input
+                                            type="number"
+                                            value={payoutForm.paid_amount}
+                                            onChange={(e) => setPayoutForm({ ...payoutForm, paid_amount: e.target.value })}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none"
+                                            required
+                                            min="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-slate-455 font-semibold mb-1 text-[10px]">Status</label>
+                                        <select
+                                            value={payoutForm.status}
+                                            onChange={(e) => setPayoutForm({ ...payoutForm, status: e.target.value })}
+                                            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none"
+                                        >
+                                            <option value="Paid">Paid</option>
+                                            <option value="Pending">Pending</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-slate-455 font-semibold mb-1 text-[10px]">Payment Date</label>
+                                    <input
+                                        type="date"
+                                        value={payoutForm.payment_date}
+                                        onChange={(e) => setPayoutForm({ ...payoutForm, payment_date: e.target.value })}
+                                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-[#161b22] border border-slate-205 dark:border-github-dark-border rounded-lg text-xs focus:outline-none"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-slate-455 font-semibold mb-1 text-[10px]">Notes</label>
+                                    <input
+                                        type="text"
+                                        value={payoutForm.notes}
+                                        onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })}
+                                        className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none"
+                                        placeholder="Payment method or Ref#"
+                                    />
+                                </div>
+
+                                <div className="flex gap-2 pt-2">
+                                    <button type="button" onClick={() => setShowPayoutModal(false)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl font-bold transition-colors">Cancel</button>
+                                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-sm transition-colors">
+                                        {payoutForm.payout_id ? 'Update' : 'Release'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* ==========================================
+                    MODAL: BULK TRANSFER
+                    ========================================== */}
+                {showBulkTransferModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 text-xs">
+                        <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-4 space-y-4">
+                            <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-1">
+                                <Building size={16} className="text-indigo-500" />
+                                <span>Bulk Transfer Workers</span>
+                            </h4>
+                            <form onSubmit={handleExecuteBulkTransfer} className="space-y-3">
+                                <div>
+                                    <label className="block text-slate-400 font-bold mb-1 text-[10px] uppercase">Source Site</label>
+                                    <select
+                                        value={bulkSourceSiteId}
+                                        onChange={(e) => {
+                                            setBulkSourceSiteId(e.target.value);
+                                            setSelectedLabourIds([]);
+                                        }}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl"
+                                    >
+                                        <option value="All">All Sites</option>
+                                        <option value="Unassigned">Unassigned</option>
+                                        {sites.map(s => (
+                                            <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-slate-400 font-bold mb-1 text-[10px] uppercase">Destination Site</label>
+                                    <select
+                                        value={bulkDestinationSiteId}
+                                        onChange={(e) => setBulkDestinationSiteId(e.target.value)}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl"
+                                        required
+                                    >
+                                        <option value="">-- Select Destination Site --</option>
+                                        <option value="Unassigned">Unassigned / Independent</option>
+                                        {sites.map(s => (
+                                            <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <span className="block text-slate-400 font-bold text-[10px] uppercase">Select Workers:</span>
+                                    <div className="border border-slate-200 dark:border-github-dark-border rounded-xl max-h-40 overflow-y-auto p-2 bg-slate-50 dark:bg-[#161b22]/40 divide-y divide-slate-100 dark:divide-github-dark-border/40">
+                                        {labours
+                                            .filter(lab => {
+                                                if (bulkSourceSiteId === 'Unassigned') return lab.site_id === null;
+                                                if (bulkSourceSiteId !== 'All') return lab.site_id === Number(bulkSourceSiteId);
+                                                return true;
+                                            })
+                                            .map(lab => (
+                                                <label key={lab.labour_id} className="flex items-center gap-2 py-1.5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedLabourIds.includes(lab.labour_id)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedLabourIds(prev => [...prev, lab.labour_id]);
+                                                            } else {
+                                                                setSelectedLabourIds(prev => prev.filter(id => id !== lab.labour_id));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span className="font-semibold text-slate-800 dark:text-github-dark-text text-[11px]">{lab.name}</span>
+                                                </label>
+                                            ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 pt-2">
+                                    <button type="button" onClick={() => setShowBulkTransferModal(false)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl font-bold">Cancel</button>
+                                    <button type="submit" disabled={selectedLabourIds.length === 0} className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50">Transfer</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* ==========================================
+                    MODAL: BORROW/ADD FLOATING WORKER
+                    ========================================== */}
+                {showBorrowModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 text-xs">
+                        <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-4 space-y-3">
+                            <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-1">
+                                <Plus size={16} className="text-indigo-500" />
+                                <span>Borrow Worker for Today</span>
+                            </h4>
+                            <input
+                                type="text"
+                                placeholder="Search by name..."
+                                value={borrowSearchQuery}
+                                onChange={(e) => setBorrowSearchQuery(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl focus:outline-none"
+                            />
+                            <div className="border border-slate-200 dark:border-github-dark-border rounded-xl max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-github-dark-border/40">
+                                {labours
+                                    .filter(lab => {
+                                        const isAlreadyInRoster = attendanceRoster.some(r => r.labour_id === lab.labour_id);
+                                        const matchesSearch = lab.name.toLowerCase().includes(borrowSearchQuery.toLowerCase());
+                                        return !isAlreadyInRoster && matchesSearch && lab.status === 'Active';
+                                    })
+                                    .map(lab => (
+                                        <div
+                                            key={lab.labour_id}
+                                            onClick={() => handleBorrowLabour(lab)}
+                                            className="flex justify-between items-center p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                                        >
+                                            <div>
+                                                <span className="font-bold text-slate-800 dark:text-github-dark-text block">{lab.name}</span>
+                                                <span className="text-[9px] text-slate-400">{lab.role}</span>
+                                            </div>
+                                            <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 dark:bg-indigo-950/20 px-2 py-0.5 rounded">Select</span>
+                                        </div>
+                                    ))}
+                            </div>
+                            <button type="button" onClick={() => setShowBorrowModal(false)} className="w-full py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl font-bold">Close</button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ==========================================
+                    MODAL: SITE CLOSURE REASSIGNMENT PROMPT
+                    ========================================== */}
+                {showSiteClosurePrompt && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 text-xs">
+                        <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-4 space-y-3">
+                            <h4 className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                <AlertTriangle size={18} />
+                                <span>Reassign Workers ({closureLabours.length})</span>
+                            </h4>
+                            <p className="text-slate-500">
+                                This site is now closed. Select where to transfer the assigned workers:
+                            </p>
+                            <form onSubmit={handleConfirmSiteClosure} className="space-y-3">
+                                <select
+                                    value={closureDestinationSiteId}
+                                    onChange={(e) => setClosureDestinationSiteId(e.target.value)}
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl"
+                                >
+                                    <option value="">Leave Unassigned / Independent</option>
+                                    {sites
+                                        .filter(s => s.site_id !== Number(closureSiteId) && s.status === 'Active')
+                                        .map(s => (
+                                            <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
+                                        ))}
+                                </select>
+                                <div className="flex gap-2 pt-1">
+                                    <button type="button" onClick={() => setShowSiteClosurePrompt(false)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-xl font-bold">Cancel</button>
+                                    <button type="submit" className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-bold">Reassign</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* ==========================================
+                    SLIDE-OVER: WORK HISTORY & INSIGHTS
+                    ========================================== */}
+                {selectedHistoryLabour && (
+                    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm">
+                        <div className="bg-white dark:bg-github-dark-subtle rounded-t-2xl shadow-xl w-full max-h-[80vh] overflow-hidden flex flex-col justify-between p-4 space-y-4 animate-in slide-in-from-bottom duration-200">
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-github-dark-border">
+                                <div>
+                                    <h4 className="font-bold text-slate-800 dark:text-white">{selectedHistoryLabour.name}</h4>
+                                    <span className="text-[9px] text-slate-400">{selectedHistoryLabour.role} | Work Insights</span>
+                                </div>
+                                <button onClick={() => setSelectedHistoryLabour(null)} className="text-slate-400"><X size={18} /></button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto space-y-4 text-xs">
+                                {/* Tab selector */}
+                                <div className="flex bg-slate-100 dark:bg-[#161b22] p-1 rounded-xl border border-slate-200 dark:border-github-dark-border select-none">
+                                    <button
+                                        type="button"
+                                        onClick={() => setHistoryTab('sites')}
+                                        className={`flex-1 text-center py-1.5 font-bold rounded-lg text-[10px] transition-all ${
+                                            historyTab === 'sites'
+                                                ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm'
+                                                : 'text-slate-500 dark:text-slate-400'
+                                        }`}
+                                    >
+                                        Sites
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setHistoryTab('payouts')}
+                                        className={`flex-1 text-center py-1.5 font-bold rounded-lg text-[10px] transition-all ${
+                                            historyTab === 'payouts'
+                                                ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm'
+                                                : 'text-slate-500 dark:text-slate-400'
+                                        }`}
+                                    >
+                                        Payout History
+                                    </button>
+                                </div>
+
+                                {historyLoading ? (
+                                    <div className="py-10 flex justify-center"><Clock className="animate-spin text-indigo-500" size={20} /></div>
+                                ) : historyTab === 'sites' ? (
+                                    labourHistoryData.length === 0 ? (
+                                        <div className="p-8 text-center text-slate-400 italic">No site history logged.</div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {labourHistoryData.map(siteLog => {
+                                                const attendanceRate = siteLog.total_days > 0 
+                                                    ? Math.round(((siteLog.present_days + siteLog.paid_leave_days + (0.5 * siteLog.half_day_days)) / siteLog.total_days) * 100)
+                                                    : 0;
+                                                return (
+                                                    <div key={siteLog.site_id} className="bg-slate-50 dark:bg-[#161b22]/40 p-3 rounded-xl border border-slate-150 dark:border-github-dark-border">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <span className="font-bold text-[11px] block">{siteLog.site_name || 'Unassigned'}</span>
+                                                                <span className="text-[8px] text-slate-400 block mt-0.5">
+                                                                    {new Date(siteLog.first_date).toLocaleDateString()} - {new Date(siteLog.last_date).toLocaleDateString()}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-1.5 py-0.5 rounded">{attendanceRate}% Active</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-4 gap-1 mt-2.5 pt-2 border-t border-slate-100 dark:border-github-dark-border/40 text-center font-bold text-[9px]">
+                                                            <div className="text-emerald-600">Pres: {siteLog.present_days}</div>
+                                                            <div className="text-amber-505">HD: {siteLog.half_day_days}</div>
+                                                            <div className="text-indigo-500">PL: {siteLog.paid_leave_days}</div>
+                                                            <div className="text-rose-505">Abs: {siteLog.absent_days}</div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )
+                                ) : (
+                                    labourPayoutHistory.length === 0 ? (
+                                        <div className="p-8 text-center text-slate-400 italic">No payout history logged.</div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {labourPayoutHistory.map(payout => {
+                                                const pDate = new Date(payout.payment_date);
+                                                const monthYearFormatted = getMonthNameAndYear(payout.month + '-01');
+                                                return (
+                                                    <div key={payout.payout_id} className="bg-slate-50 dark:bg-[#161b22]/40 p-3.5 rounded-xl border border-slate-150 dark:border-github-dark-border space-y-2">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <span className="font-bold text-[11px] block">{monthYearFormatted}</span>
+                                                                <span className="text-[8px] text-slate-400 block mt-0.5">
+                                                                    Paid Date: {pDate.toLocaleDateString()}
+                                                                </span>
+                                                            </div>
+                                                            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ${
+                                                                payout.status === 'Paid'
+                                                                    ? 'bg-emerald-55 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-250/30'
+                                                                    : 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-250/30'
+                                                            }`}>
+                                                                {payout.status}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Summary Grid */}
+                                                        <div className="grid grid-cols-2 gap-2 bg-white dark:bg-[#1c2128] p-2 rounded-lg border border-slate-100 dark:border-github-dark-border/40 text-[9px]">
+                                                            <div>
+                                                                <span className="text-slate-405 block">Wage Type:</span>
+                                                                <span className="font-semibold text-slate-707 dark:text-slate-300">{payout.wage_type}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-slate-450 block">Accrued Credit:</span>
+                                                                <span className="font-bold text-slate-700 dark:text-slate-300">₹{payout.accrued_credit}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-slate-450 block">Advances:</span>
+                                                                <span className="font-semibold text-amber-600">₹{payout.advances_taken}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-slate-450 font-bold block">Actual Paid:</span>
+                                                                <span className="font-black text-indigo-650 dark:text-indigo-400">₹{payout.paid_amount}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {payout.notes && (
+                                                            <div className="text-[9px] text-slate-500 italic bg-white dark:bg-[#1c2128]/40 p-1.5 rounded border-l border-slate-350">
+                                                                Notes: {payout.notes}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )
+                                )}
+                            </div>
+
+                            <button onClick={() => setSelectedHistoryLabour(null)} className="w-full py-2 bg-slate-800 text-white rounded-xl font-bold">Close Panel</button>
                         </div>
                     </div>
                 )}
