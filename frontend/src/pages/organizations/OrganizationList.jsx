@@ -6,6 +6,8 @@ import api from '../../services/api';
 import { toast } from 'react-toastify';
 import LoadingScreen from '../../components/LoadingScreen';
 import MinimalSelect from '../../components/MinimalSelect';
+import PhoneInput from '../../components/PhoneInput';
+import { validatePhone, validateEmail } from '../../utils/validation';
 
 const OrganizationList = () => {
     const [organizations, setOrganizations] = useState([]);
@@ -45,6 +47,45 @@ const OrganizationList = () => {
     const [deleteConfirmOrg, setDeleteConfirmOrg] = useState(null); // org object to confirm deletion
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [listTab, setListTab] = useState('active'); // 'active' | 'deleted'
+    const [isOrgCodeManuallyEdited, setIsOrgCodeManuallyEdited] = useState(false);
+
+    // Auto-generate organization code based on organization name (only when creating new)
+    useEffect(() => {
+        if (!selectedOrg && isEditing && !isOrgCodeManuallyEdited && formData.org_name) {
+            const name = formData.org_name;
+            const words = name.trim().split(/[\s\-_]+/).map(w => w.replace(/[^a-zA-Z0-9]/g, "")).filter(Boolean);
+            let code = "";
+            if (words.length >= 3) {
+                code = words.map(w => w[0]).join("");
+            } else if (words.length === 2) {
+                const firstWord = words[0];
+                const secondWord = words[1];
+                if (firstWord.length >= 2) {
+                    code = firstWord.substring(0, 2) + secondWord.charAt(0);
+                } else {
+                    code = firstWord.charAt(0) + secondWord.substring(0, 2);
+                }
+            } else if (words.length === 1) {
+                code = words[0];
+            }
+
+            let cleanCode = code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+            if (cleanCode.length > 10) {
+                cleanCode = cleanCode.substring(0, 10);
+            }
+            if (cleanCode.length < 3 && cleanCode.length > 0) {
+                const originalClean = name.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+                if (originalClean.length >= 3) {
+                    cleanCode = originalClean.substring(0, 5);
+                } else {
+                    cleanCode = (cleanCode + "ORG").substring(0, 5);
+                }
+            }
+            if (cleanCode) {
+                setFormData(prev => ({ ...prev, org_code: cleanCode }));
+            }
+        }
+    }, [formData.org_name, isOrgCodeManuallyEdited, selectedOrg, isEditing]);
 
     useEffect(() => {
         fetchOrganizations();
@@ -159,6 +200,14 @@ const OrganizationList = () => {
     };
 
     const handleSaveAdmin = async (adminId) => {
+        if (!validateEmail(adminFormData.email)) {
+            toast.error("Please enter a valid email address.");
+            return;
+        }
+        if (adminFormData.phone_no && !validatePhone(adminFormData.phone_no)) {
+            toast.error("Please enter a valid phone number according to the country code.");
+            return;
+        }
         try {
             await api.put(`/organizations/${selectedOrg.org_id}/admins/${adminId}`, adminFormData);
             toast.success("Admin updated successfully");
@@ -175,11 +224,42 @@ const OrganizationList = () => {
             contact_name: '', contact_email: '', contact_phone: '',
             admin_name: '', admin_email: '', admin_phone: '', admin_password: ''
         });
+        setIsOrgCodeManuallyEdited(false);
         setIsEditing(true); // Mode: Create new
     };
 
     const handleSave = async (e) => {
         e.preventDefault();
+        
+        // Validate organization code
+        const cleanCode = formData.org_code.trim().toUpperCase();
+        if (cleanCode.length < 3 || cleanCode.length > 10 || !/^[A-Z0-9]+$/.test(cleanCode)) {
+            toast.error("Organization code must be 3-10 alphanumeric characters with no spaces.");
+            return;
+        }
+        
+        // Validate contact details
+        if (!validateEmail(formData.contact_email)) {
+            toast.error("Please enter a valid contact email address.");
+            return;
+        }
+        if (!validatePhone(formData.contact_phone)) {
+            toast.error("Please enter a valid contact phone number according to the country code.");
+            return;
+        }
+        
+        // Admin details validation (only for new organization creation)
+        if (!selectedOrg) {
+            if (!validateEmail(formData.admin_email)) {
+                toast.error("Please enter a valid admin email address.");
+                return;
+            }
+            if (formData.admin_phone && !validatePhone(formData.admin_phone)) {
+                toast.error("Please enter a valid admin phone number according to the country code.");
+                return;
+            }
+        }
+
         setFormLoading(true);
         try {
             if (!selectedOrg) {
@@ -1119,7 +1199,7 @@ const OrganizationList = () => {
                                                     <div className="space-y-1.5">
                                                         <label className="text-xs font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider">Organization Code</label>
                                                         {isEditing ? (
-                                                            <input required disabled={!!selectedOrg} value={formData.org_code} onChange={(e) => setFormData({ ...formData, org_code: e.target.value.toUpperCase() })} className="w-full px-4 py-2.5 border border-slate-300 dark:border-github-dark-border rounded-lg dark:bg-github-dark-subtle text-slate-900 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 dark:disabled:bg-slate-900 font-mono text-sm" placeholder="e.g. ACM01" />
+                                                            <input required value={formData.org_code} onChange={(e) => { setIsOrgCodeManuallyEdited(true); setFormData({ ...formData, org_code: e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase() }); }} className="w-full px-4 py-2.5 border border-slate-300 dark:border-github-dark-border rounded-lg dark:bg-github-dark-subtle text-slate-900 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors disabled:opacity-60 disabled:bg-slate-100 dark:disabled:bg-slate-900 font-mono text-sm" placeholder="e.g. ACM01" />
                                                         ) : (
                                                             <div className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-github-dark-border/50 rounded-lg text-slate-800 dark:text-github-dark-text font-mono text-sm shadow-sm">{selectedOrg.org_code}</div>
                                                         )}
@@ -1146,7 +1226,11 @@ const OrganizationList = () => {
                                                     <div className="space-y-1.5">
                                                         <label className="text-xs font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider">Contact Phone Number</label>
                                                         {isEditing ? (
-                                                            <input type="tel" value={formData.contact_phone} onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })} className="w-full px-4 py-2.5 border border-slate-300 dark:border-github-dark-border rounded-lg dark:bg-github-dark-subtle text-slate-900 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-sm" placeholder="+1 234 567 8900" />
+                                                            <PhoneInput
+                                                                value={formData.contact_phone}
+                                                                onChange={(val) => setFormData({ ...formData, contact_phone: val })}
+                                                                variant="admin-desktop"
+                                                            />
                                                         ) : (
                                                             <div className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-github-dark-border/50 rounded-lg text-slate-800 dark:text-github-dark-text font-mono text-sm shadow-sm">{selectedOrg.contact_phone || 'N/A'}</div>
                                                         )}
@@ -1273,7 +1357,12 @@ const OrganizationList = () => {
 
                                                         <div className="space-y-1.5">
                                                             <label className="text-xs font-bold text-indigo-900/80 dark:text-indigo-400 uppercase tracking-wider">Admin Phone Number</label>
-                                                            <input type="tel" value={formData.admin_phone} onChange={(e) => setFormData({ ...formData, admin_phone: e.target.value })} className="w-full px-4 py-2.5 border border-slate-300 dark:border-github-dark-border rounded-lg dark:bg-github-dark-subtle text-slate-900 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-sm" placeholder="+1 234 567 8900" />
+                                                            <PhoneInput
+                                                                value={formData.admin_phone}
+                                                                onChange={(val) => setFormData({ ...formData, admin_phone: val })}
+                                                                variant="admin-desktop"
+                                                                placeholder="Admin Phone"
+                                                            />
                                                         </div>
 
                                                         <div className="space-y-1.5 sm:col-span-2">

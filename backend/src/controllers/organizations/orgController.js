@@ -18,11 +18,31 @@ export const createOrganization = catchAsync(async (req, res, next) => {
         throw new AppError("Admin email and password are required to setup the organization", 400);
     }
 
+    const cleanOrgCode = org_code.trim().toUpperCase();
+
+    // Check uniqueness
+    const existingOrg = await attendanceDB('organizations').where('org_code', cleanOrgCode).first();
+    if (existingOrg) {
+        throw new AppError("Organization code is already registered.", 400);
+    }
+
+    const existingUser = await attendanceDB('users').where('email', admin_email.trim().toLowerCase()).first();
+    if (existingUser) {
+        throw new AppError("Administrator email is already registered.", 400);
+    }
+
+    if (admin_phone) {
+        const existingPhone = await attendanceDB('users').where('phone_no', admin_phone.trim()).first();
+        if (existingPhone) {
+            throw new AppError("Administrator phone number is already registered.", 400);
+        }
+    }
+
     // Wrap in transaction to ensure both org and admin user are created or neither
     const insertedId = await attendanceDB.transaction(async (trx) => {
         const [orgId] = await trx('organizations').insert({
             org_name,
-            org_code: org_code.toUpperCase(),
+            org_code: cleanOrgCode,
             contact_name: contact_name || null,
             contact_email: contact_email || null,
             contact_phone: contact_phone || null,
@@ -36,7 +56,7 @@ export const createOrganization = catchAsync(async (req, res, next) => {
 
         // Create the admin user for this organization
         const hashedPassword = await bcrypt.hash(admin_password, 10);
-        const userCode = `${org_code.toUpperCase()}001`;
+        const userCode = `${cleanOrgCode}001`;
 
         await trx('users').insert({
             org_id: orgId,
@@ -74,7 +94,7 @@ export const getOrganizations = catchAsync(async (req, res, next) => {
 export const updateOrganization = catchAsync(async (req, res, next) => {
     const { id } = req.params;
     const {
-        org_name, status, subscription_plan, subscription_expiry, grace_period_days, max_users,
+        org_name, org_code, status, subscription_plan, subscription_expiry, grace_period_days, max_users,
         contact_name, contact_email, contact_phone
     } = req.body;
 
@@ -91,7 +111,41 @@ export const updateOrganization = catchAsync(async (req, res, next) => {
     if (contact_email !== undefined) updates.contact_email = contact_email;
     if (contact_phone !== undefined) updates.contact_phone = contact_phone;
 
-    await attendanceDB('organizations').where('org_id', id).update(updates);
+    if (org_code !== undefined) {
+        const cleanOrgCode = org_code.trim().toUpperCase();
+        if (cleanOrgCode !== org.org_code) {
+            // Check uniqueness of the new code
+            const existingOrg = await attendanceDB('organizations').where('org_code', cleanOrgCode).first();
+            if (existingOrg) {
+                throw new AppError("Organization code is already registered.", 400);
+            }
+            updates.org_code = cleanOrgCode;
+        }
+    }
+
+    if (Object.keys(updates).length > 0) {
+        await attendanceDB.transaction(async (trx) => {
+            if (updates.org_code) {
+                const oldPrefix = org.org_code;
+                const newPrefix = updates.org_code;
+                const users = await trx('users').where('org_id', id);
+                for (const user of users) {
+                    if (user.user_code) {
+                        if (user.user_code.startsWith(oldPrefix + "-")) {
+                            const suffix = user.user_code.substring(oldPrefix.length);
+                            const newUserCode = `${newPrefix}${suffix}`;
+                            await trx('users').where('user_id', user.user_id).update({ user_code: newUserCode });
+                        } else if (user.user_code.startsWith(oldPrefix)) {
+                            const suffix = user.user_code.substring(oldPrefix.length);
+                            const newUserCode = `${newPrefix}${suffix}`;
+                            await trx('users').where('user_id', user.user_id).update({ user_code: newUserCode });
+                        }
+                    }
+                }
+            }
+            await trx('organizations').where('org_id', id).update(updates);
+        });
+    }
 
     res.status(200).json({ success: true, message: "Organization updated successfully" });
 });

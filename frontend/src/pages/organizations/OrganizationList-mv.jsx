@@ -4,6 +4,8 @@ import { Building, Plus, Loader2, Save, X, Search, Calendar, Shield, Activity, C
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
+import PhoneInput from '../../components/PhoneInput';
+import { validatePhone, validateEmail } from '../../utils/validation';
 
 const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -45,6 +47,14 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
   };
 
   const handleSaveAdmin = async (adminId) => {
+    if (!validateEmail(adminFormData.email)) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+    if (adminFormData.phone_no && !validatePhone(adminFormData.phone_no)) {
+      toast.error("Please enter a valid phone number according to the country code.");
+      return;
+    }
     try {
       await api.put(`/organizations/${org.org_id}/admins/${adminId}`, adminFormData);
       toast.success("Admin updated successfully");
@@ -56,6 +66,22 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
 
   const handleSaveOrg = async (e) => {
     e.preventDefault();
+    
+    // Validate organization code
+    const cleanCode = formData.org_code.trim().toUpperCase();
+    if (cleanCode.length < 3 || cleanCode.length > 10 || !/^[A-Z0-9]+$/.test(cleanCode)) {
+      toast.error("Organization code must be 3-10 alphanumeric characters with no spaces.");
+      return;
+    }
+
+    if (!validateEmail(formData.contact_email)) {
+      toast.error("Please enter a valid contact email address.");
+      return;
+    }
+    if (!validatePhone(formData.contact_phone)) {
+      toast.error("Please enter a valid contact phone number according to the country code.");
+      return;
+    }
     setFormLoading(true);
     try {
       await api.put(`/organizations/${org.org_id}`, formData);
@@ -137,6 +163,10 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
                 <input required value={formData.org_name} onChange={(e) => setFormData({ ...formData, org_name: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" />
               </div>
               <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Org Code</label>
+                <input required value={formData.org_code} onChange={(e) => setFormData({ ...formData, org_code: e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase() })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm font-mono" placeholder="Organization Code (e.g. ACM01)" />
+              </div>
+              <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Plan</label>
                 <select value={formData.subscription_plan} onChange={(e) => setFormData({ ...formData, subscription_plan: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm">
                   <option value="Trial">Trial</option>
@@ -162,7 +192,11 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Contact Phone</label>
-                <input value={formData.contact_phone} onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" />
+                <PhoneInput
+                  value={formData.contact_phone}
+                  onChange={(val) => setFormData({ ...formData, contact_phone: val })}
+                  variant="admin-mobile"
+                />
               </div>
             </div>
 
@@ -306,9 +340,72 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
     contact_name: '', contact_email: '', contact_phone: '',
     admin_name: '', admin_email: '', admin_phone: '', admin_password: ''
   });
+  const [isOrgCodeManuallyEdited, setIsOrgCodeManuallyEdited] = useState(false);
+
+  // Auto-generate organization code based on organization name
+  useEffect(() => {
+    if (!isOrgCodeManuallyEdited && formData.org_name) {
+      const name = formData.org_name;
+      const words = name.trim().split(/[\s\-_]+/).map(w => w.replace(/[^a-zA-Z0-9]/g, "")).filter(Boolean);
+      let code = "";
+      if (words.length >= 3) {
+        code = words.map(w => w[0]).join("");
+      } else if (words.length === 2) {
+        const firstWord = words[0];
+        const secondWord = words[1];
+        if (firstWord.length >= 2) {
+          code = firstWord.substring(0, 2) + secondWord.charAt(0);
+        } else {
+          code = firstWord.charAt(0) + secondWord.substring(0, 2);
+        }
+      } else if (words.length === 1) {
+        code = words[0];
+      }
+
+      let cleanCode = code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+      if (cleanCode.length > 10) {
+        cleanCode = cleanCode.substring(0, 10);
+      }
+      if (cleanCode.length < 3 && cleanCode.length > 0) {
+        const originalClean = name.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+        if (originalClean.length >= 3) {
+          cleanCode = originalClean.substring(0, 5);
+        } else {
+          cleanCode = (cleanCode + "ORG").substring(0, 5);
+        }
+      }
+      if (cleanCode) {
+        setFormData(prev => ({ ...prev, org_code: cleanCode }));
+      }
+    }
+  }, [formData.org_name, isOrgCodeManuallyEdited]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate organization code
+    const cleanCode = formData.org_code.trim().toUpperCase();
+    if (cleanCode.length < 3 || cleanCode.length > 10 || !/^[A-Z0-9]+$/.test(cleanCode)) {
+      toast.error("Organization code must be 3-10 alphanumeric characters with no spaces.");
+      return;
+    }
+
+    if (!validateEmail(formData.contact_email)) {
+      toast.error("Please enter a valid contact email address.");
+      return;
+    }
+    if (!validatePhone(formData.contact_phone)) {
+      toast.error("Please enter a valid contact phone number according to the country code.");
+      return;
+    }
+    if (!validateEmail(formData.admin_email)) {
+      toast.error("Please enter a valid admin email address.");
+      return;
+    }
+    if (formData.admin_phone && !validatePhone(formData.admin_phone)) {
+      toast.error("Please enter a valid admin phone number according to the country code.");
+      return;
+    }
     setFormLoading(true);
     try {
       await api.post('/organizations', formData);
@@ -329,7 +426,7 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
         {/* Drag Handle */}
         <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-850 rounded-full mx-auto mb-6" />
 
-        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-650 dark:hover:text-white rounded-full bg-slate-50 dark:bg-white/5"><X size={18} /></button>
+        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-655 dark:hover:text-white rounded-full bg-slate-50 dark:bg-white/5"><X size={18} /></button>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-tight">Onboard New Org</h3>
@@ -340,7 +437,7 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Organization Details</h4>
               <div className="space-y-2">
                 <input required value={formData.org_name} onChange={(e) => setFormData({ ...formData, org_name: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Organization Name" />
-                <input required value={formData.org_code} onChange={(e) => setFormData({ ...formData, org_code: e.target.value.toUpperCase() })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm font-mono" placeholder="Organization Code (e.g. ACM01)" />
+                <input required value={formData.org_code} onChange={(e) => { setIsOrgCodeManuallyEdited(true); setFormData({ ...formData, org_code: e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase() }); }} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm font-mono" placeholder="Organization Code (e.g. ACM01)" />
                 <select value={formData.subscription_plan} onChange={(e) => setFormData({ ...formData, subscription_plan: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm">
                   <option value="Trial">Trial</option>
                   <option value="Basic">Basic</option>
@@ -357,7 +454,12 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
               <div className="space-y-2">
                 <input value={formData.contact_name} onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Contact Name" />
                 <input type="email" value={formData.contact_email} onChange={(e) => setFormData({ ...formData, contact_email: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Contact Email" />
-                <input value={formData.contact_phone} onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Contact Phone" />
+                <PhoneInput
+                  value={formData.contact_phone}
+                  onChange={(val) => setFormData({ ...formData, contact_phone: val })}
+                  variant="admin-mobile"
+                  placeholder="Contact Phone"
+                />
               </div>
             </div>
 
@@ -367,7 +469,12 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
               <div className="space-y-2">
                 <input required value={formData.admin_name} onChange={(e) => setFormData({ ...formData, admin_name: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Admin Name" />
                 <input required type="email" value={formData.admin_email} onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Admin Email" />
-                <input value={formData.admin_phone} onChange={(e) => setFormData({ ...formData, admin_phone: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Admin Phone (optional)" />
+                <PhoneInput
+                  value={formData.admin_phone}
+                  onChange={(val) => setFormData({ ...formData, admin_phone: val })}
+                  variant="admin-mobile"
+                  placeholder="Admin Phone (optional)"
+                />
                 <input required type="password" value={formData.admin_password} onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Secure Password" />
               </div>
             </div>
