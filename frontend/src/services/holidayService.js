@@ -2,21 +2,48 @@ import api from './api';
 
 const API_BASE_URL = "/holiday";
 
+// Client-side memory cache for holiday data
+const cache = {
+    holidays: null
+};
+
+// Synchronous client-side cache for direct component consumption
+export const holidayCacheData = {
+    holidays: null
+};
+
+const clearCache = () => {
+    cache.holidays = null;
+    holidayCacheData.holidays = null;
+};
+
 export const holidayService = {
     // Get all holidays
     async getHolidays() {
-        try {
-            const res = await api.get(API_BASE_URL);
-            return res.data;
-        } catch (error) {
-            throw new Error(error.response?.data?.message || "Failed to fetch holidays");
+        if (cache.holidays) {
+            return cache.holidays;
         }
+
+        const promise = (async () => {
+            try {
+                const res = await api.get(API_BASE_URL);
+                holidayCacheData.holidays = res.data;
+                return res.data;
+            } catch (error) {
+                cache.holidays = null;
+                throw new Error(error.response?.data?.message || "Failed to fetch holidays");
+            }
+        })();
+
+        cache.holidays = promise;
+        return promise;
     },
 
     // Add a new holiday
     async addHoliday(holidayData) {
         try {
             const res = await api.post(API_BASE_URL, holidayData);
+            clearCache();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to add holiday");
@@ -27,6 +54,7 @@ export const holidayService = {
     async updateHoliday(id, holidayData) {
         try {
             const res = await api.put(`${API_BASE_URL}/${id}`, holidayData);
+            clearCache();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to update holiday");
@@ -37,6 +65,7 @@ export const holidayService = {
     async deleteHolidays(ids) {
         try {
             const res = await api.delete(API_BASE_URL, { data: { ids } });
+            clearCache();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to delete holiday(s)");
@@ -57,6 +86,7 @@ export const holidayService = {
     async bulkCreateHolidaysJson(holidaysData) {
         try {
             const res = await api.post(`${API_BASE_URL}/bulk-json`, { holidays: holidaysData });
+            clearCache();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to create holidays");
@@ -73,6 +103,7 @@ export const holidayService = {
                     'Content-Type': 'multipart/form-data'
                 }
             });
+            clearCache();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to upload holidays file");

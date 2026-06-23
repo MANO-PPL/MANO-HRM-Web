@@ -10,6 +10,100 @@ const api = axios.create({
     },
 });
 
+const CACHE_KEY = 'attendance_api_cache';
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+const getCache = () => {
+    try {
+        const cache = sessionStorage.getItem(CACHE_KEY);
+        return cache ? JSON.parse(cache) : {};
+    } catch {
+        return {};
+    }
+};
+
+const saveCache = (cache) => {
+    try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    } catch (e) {
+        console.warn('Failed to write to sessionStorage cache:', e);
+    }
+};
+
+const cleanExpiredCache = (cache) => {
+    const now = Date.now();
+    const cleaned = {};
+    Object.keys(cache).forEach(key => {
+        if (now - cache[key].timestamp < CACHE_TTL) {
+            cleaned[key] = cache[key];
+        }
+    });
+    return cleaned;
+};
+
+export const clearApiCache = () => {
+    try {
+        sessionStorage.removeItem(CACHE_KEY);
+    } catch (e) {
+        console.warn('Failed to clear cache:', e);
+    }
+};
+
+const originalAdapter = api.defaults.adapter || axios.defaults.adapter;
+
+api.defaults.adapter = async (config) => {
+    const isGet = config.method?.toLowerCase() === 'get';
+    const excludeUrls = ['/auth/me', '/auth/refresh', '/auth/logout'];
+    const shouldCache = isGet && !excludeUrls.some(url => config.url?.includes(url));
+
+    const getResolvedAdapter = () => {
+        const targetAdapter = (config.adapter && config.adapter !== api.defaults.adapter)
+            ? config.adapter
+            : originalAdapter;
+        if (typeof axios.getAdapter === 'function') {
+            return axios.getAdapter(targetAdapter);
+        }
+        return targetAdapter;
+    };
+
+    if (shouldCache) {
+        const cacheKey = `${config.url || ''}?${JSON.stringify(config.params || {})}`;
+        const cache = getCache();
+        const cachedItem = cache[cacheKey];
+        const now = Date.now();
+
+        if (cachedItem && (now - cachedItem.timestamp < CACHE_TTL)) {
+            return {
+                ...cachedItem.response,
+                config,
+            };
+        }
+
+        const defaultAdapter = getResolvedAdapter();
+        const response = await defaultAdapter(config);
+
+        const newCache = getCache();
+        newCache[cacheKey] = {
+            timestamp: Date.now(),
+            response: {
+                data: response.data,
+                status: response.status,
+                statusText: response.statusText,
+                headers: response.headers,
+            }
+        };
+        saveCache(cleanExpiredCache(newCache));
+        return response;
+    }
+
+    if (config.method && config.method.toLowerCase() !== 'get') {
+        clearApiCache();
+    }
+
+    const defaultAdapter = getResolvedAdapter();
+    return defaultAdapter(config);
+};
+
 // Request Interceptor
 let accessToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 let isRefreshing = false;
@@ -101,6 +195,15 @@ api.interceptors.response.use(
                 // If it's a 500 error or network timeout, keep the session state intact
                 if (refreshError.response && (refreshError.response.status === 401 || refreshError.response.status === 403)) {
                     setAccessToken(null);
+
+                    // Clear browser caches (preserving themes)
+                    const theme = localStorage.getItem("theme");
+                    const showcaseTheme = localStorage.getItem("showcase-theme");
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    if (theme) localStorage.setItem("theme", theme);
+                    if (showcaseTheme) localStorage.setItem("showcase-theme", showcaseTheme);
+
                     if (window.location.pathname !== '/login') {
                         window.location.href = '/login';
                     }
