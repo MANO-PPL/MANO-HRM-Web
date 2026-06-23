@@ -4,7 +4,7 @@ import {
     getAllLabours, createLabour, updateLabour, deleteLabour,
     getSiteAttendance, saveSiteAttendance,
     getFinancesSummary, logLabourAdvance, getMonthlyGridAttendance,
-    bulkTransferLabours, getLabourWorkHistory, logLabourPayout
+    bulkTransferLabours, bulkCreateLabours, getLabourWorkHistory, logLabourPayout
 } from '../../controllers/labour/labourController.js';
 
 const router = express.Router();
@@ -23,6 +23,7 @@ router.route('/labours')
     .get(getAllLabours)
     .post(createLabour);
 
+router.post('/labours/bulk', bulkCreateLabours);
 router.post('/labours/bulk-transfer', bulkTransferLabours);
 router.get('/labours/:id/history', getLabourWorkHistory);
 

@@ -79,6 +79,15 @@ export const labourService = {
         }
     },
 
+    async bulkCreateLabours(labours) {
+        try {
+            const res = await api.post('/labour/labours/bulk', { labours });
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to bulk create labours');
+        }
+    },
+
     // ==========================================
     // 3. ATTENDANCE SERVICES
     // ==========================================

@@ -301,7 +301,7 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
     // 1. Get all active labours
     const labours = await attendanceDB('labours as l')
         .leftJoin('labour_sites as s', 'l.site_id', 's.site_id')
-        .select('l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.monthly_salary', 'l.allowed_leaves', 's.site_name')
+        .select('l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.monthly_salary', 'l.allowed_leaves', 'l.site_id', 's.site_name')
         .where('l.status', 'Active');
 
     if (labours.length === 0) {
@@ -393,6 +393,7 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
             labour_id: lab.labour_id,
             name: lab.name,
             role: lab.role,
+            site_id: lab.site_id,
             site_name: lab.site_name || 'Unassigned',
             wage_type: lab.wage_type,
             monthly_salary: monthlySalary,
@@ -558,6 +559,61 @@ export const bulkTransferLabours = catchAsync(async (req, res) => {
     res.json({
         success: true,
         message: `Successfully transferred ${labour_ids.length} workers.`
+    });
+});
+
+export const bulkCreateLabours = catchAsync(async (req, res) => {
+    const { labours } = req.body;
+
+    if (!Array.isArray(labours) || labours.length === 0) {
+        throw new AppError('labours array is required', 400);
+    }
+
+    // Retrieve active/completed sites to resolve site_name to site_id if needed
+    const sites = await attendanceDB('labour_sites')
+        .select('site_id', 'site_name')
+        .whereNot('status', 'Inactive');
+    
+    const siteMap = {};
+    sites.forEach(s => {
+        siteMap[s.site_name.trim().toLowerCase()] = s.site_id;
+    });
+
+    const insertData = labours.map(lab => {
+        const { name, phone, sex, role, wage_type, monthly_salary, allowed_leaves, site_id, site_name } = lab;
+
+        if (!name || !role || monthly_salary === undefined) {
+            throw new AppError('Name, role and monthly salary are required for all workers', 400);
+        }
+
+        // Resolve site_id if not explicitly provided but site_name is
+        let resolvedSiteId = null;
+        if (site_id) {
+            resolvedSiteId = Number(site_id);
+        } else if (site_name) {
+            resolvedSiteId = siteMap[site_name.trim().toLowerCase()] || null;
+        }
+
+        return {
+            name,
+            phone: phone || null,
+            sex: sex || 'Male',
+            role,
+            wage_type: wage_type || 'Daily Wage',
+            monthly_salary: Number(monthly_salary),
+            allowed_leaves: Number(allowed_leaves) || 0,
+            site_id: resolvedSiteId,
+            status: 'Active'
+        };
+    });
+
+    await attendanceDB.transaction(async (trx) => {
+        await trx('labours').insert(insertData);
+    });
+
+    res.status(201).json({
+        success: true,
+        message: `Successfully created ${insertData.length} labour profiles`
     });
 });
 
