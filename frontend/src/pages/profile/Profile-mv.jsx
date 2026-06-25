@@ -6,6 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useTour } from '../../context/TourContext';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
+import { compressImage } from '../../utils/imageCompressor';
+import { getErrorMessage } from '../../utils/errorMessage';
 
 const Profile = () => {
     const { user: authUser, fetchUser, setUser, logout } = useAuth();
@@ -113,7 +115,7 @@ const Profile = () => {
 
         // Validation
         if (!file.type.startsWith('image/')) {
-            toast.error('Please select an image file');
+            toast.error('Please select an image file (JPEG, PNG, WebP, GIF)');
             return;
         }
 
@@ -122,11 +124,14 @@ const Profile = () => {
             return;
         }
 
-        const formData = new FormData();
-        formData.append('avatar', file);
-
         setUploading(true);
         try {
+            // Compress image client-side before upload to prevent HTTP 413 Payload Too Large
+            const compressedFile = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.85 });
+
+            const formData = new FormData();
+            formData.append('avatar', compressedFile);
+
             const res = await api.post('/profile', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
@@ -134,7 +139,7 @@ const Profile = () => {
             });
 
             if (res.data.ok) {
-                toast.success('Profile picture updated!');
+                toast.success('Profile picture updated successfully!');
                 setImageTimestamp(Date.now());
                 await fetchUser(); // Refresh global user state
                 setProfileData(prev => ({
@@ -144,9 +149,10 @@ const Profile = () => {
             }
         } catch (error) {
             console.error('Upload Error:', error);
-            toast.error(error.response?.data?.message || 'Failed to upload image');
+            toast.error(getErrorMessage(error, 'Failed to update profile picture'));
         } finally {
             setUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
@@ -167,7 +173,7 @@ const Profile = () => {
             }
         } catch (error) {
             console.error('Delete Error:', error);
-            toast.error(error.response?.data?.message || 'Failed to remove image');
+            toast.error(getErrorMessage(error, 'Failed to remove profile picture'));
         }
     };
 

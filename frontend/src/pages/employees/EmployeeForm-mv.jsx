@@ -19,6 +19,8 @@ import {
 import { adminService } from '../../services/adminService';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
+import { compressImage } from '../../utils/imageCompressor';
+import { getErrorMessage } from '../../utils/errorMessage';
 
 const QuickAddPopover = ({ title, onAdd, onClose, isOpen }) => {
     const [newValue, setNewValue] = useState("");
@@ -314,7 +316,7 @@ const EmployeeForm = () => {
         if (!file) return;
 
         if (!file.type.startsWith('image/')) {
-            toast.error('Please select an image file');
+            toast.error('Please select an image file (JPEG, PNG, WebP, GIF)');
             return;
         }
 
@@ -323,14 +325,17 @@ const EmployeeForm = () => {
             return;
         }
 
-        const formDataPayload = new FormData();
-        formDataPayload.append('avatar', file);
-
         setUploading(true);
         try {
+            // Compress avatar before upload
+            const compressedFile = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.85 });
+
+            const formDataPayload = new FormData();
+            formDataPayload.append('avatar', compressedFile);
+
             const res = await adminService.updateUserAvatar(id, formDataPayload);
             if (res.success) {
-                toast.success('Profile picture updated!');
+                toast.success('Profile picture updated successfully!');
                 setImageTimestamp(Date.now());
                 setFormData(prev => ({
                     ...prev,
@@ -339,9 +344,10 @@ const EmployeeForm = () => {
             }
         } catch (error) {
             console.error('Upload Error:', error);
-            toast.error(error.message || 'Failed to upload image');
+            toast.error(getErrorMessage(error, 'Failed to update user avatar'));
         } finally {
             setUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
