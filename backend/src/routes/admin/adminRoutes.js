@@ -6,10 +6,21 @@ import * as shiftController from '../../controllers/shifts/shiftController.js';
 
 const router = express.Router();
 const upload = multer({
+    storage: multer.memoryStorage(),
     limits: {
         fileSize: 5 * 1024 * 1024 // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Allow image files for user avatar / profile image or excel/csv for bulk import
+        if (file.mimetype.startsWith('image/') || file.mimetype.includes('spreadsheet') || file.mimetype.includes('excel') || file.mimetype.includes('csv') || file.originalname.match(/\.(csv|xlsx|xls|png|jpg|jpeg|webp|gif)$/i)) {
+            cb(null, true);
+        } else {
+            const err = new Error('Invalid file format uploaded.');
+            err.statusCode = 400;
+            cb(err, false);
+        }
     }
-}); // memory storage
+});
 
 // Protected by JWT
 router.use(authenticateJWT, requireActiveOrg);

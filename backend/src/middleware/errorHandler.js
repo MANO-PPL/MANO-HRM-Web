@@ -18,6 +18,10 @@ const errorHandler = (err, req, res, next) => {
         } else {
             err.message = `File upload failed: ${err.message}`;
         }
+    } else if (err.type === 'entity.too.large' || err.statusCode === 413 || err.status === 413) {
+        err.statusCode = 413;
+        err.status = 'fail';
+        err.message = 'The uploaded payload or file size exceeds the server maximum limit (5MB). Please upload a smaller file.';
     }
 
     err.statusCode = err.statusCode || 500;

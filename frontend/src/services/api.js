@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { getErrorMessage } from '../utils/errorMessage';
 
 // Create axios instance
 const api = axios.create({
@@ -218,6 +219,7 @@ api.interceptors.response.use(
             console.error("Server Error:", error.response.data);
         }
 
+        error.userMessage = getErrorMessage(error);
         return Promise.reject(error);
     }
 );
