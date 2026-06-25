@@ -373,47 +373,28 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
 
 // Timezone-aware date/time parser and normalizer
 const parseTimeInTimezone = (r, isOut, orgTimezone) => {
-    let utcStr = null;
     let fallbackStr = isOut ? r.time_out : r.time_in;
+    if (!fallbackStr) return null;
     
-    if (r.metadata) {
-        try {
-            const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata;
-            utcStr = isOut ? meta?.time_out?.timestamp_utc : meta?.time_in?.timestamp_utc;
-        } catch (e) {
-            console.error("Failed to parse metadata", e);
-        }
+    if (fallbackStr instanceof Date) {
+        return fallbackStr;
     }
     
-    // If we have a valid UTC string from metadata, we convert it to the organization's timezone.
-    if (utcStr) {
-        try {
-            const d = new Date(utcStr);
-            if (!isNaN(d.getTime())) {
-                const localStr = d.toLocaleString('en-US', { timeZone: orgTimezone || 'UTC' });
-                const parsed = new Date(localStr);
-                if (!isNaN(parsed.getTime())) return parsed;
-            }
-        } catch (err) {
-            console.error("Error parsing UTC timestamp:", err);
+    try {
+        const parts = String(fallbackStr).split(/[- :T.]/);
+        if (parts.length >= 3) {
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+            const hour = parts[3] ? parseInt(parts[3], 10) : 0;
+            const minute = parts[4] ? parseInt(parts[4], 10) : 0;
+            const second = parts[5] ? parseInt(parts[5], 10) : 0;
+            const parsed = new Date(year, month, day, hour, minute, second);
+            if (!isNaN(parsed.getTime())) return parsed;
         }
+    } catch (err) {
+        console.error("Error parsing timestamp:", err);
     }
-    
-    // Otherwise, fallback to database time_in/time_out.
-    if (fallbackStr) {
-        try {
-            const d = new Date(fallbackStr);
-            if (!isNaN(d.getTime())) {
-                // If it represents local clock time stored as UTC, we treat fallbackStr as UTC to preserve it
-                const localStr = d.toLocaleString('en-US', { timeZone: 'UTC' });
-                const parsed = new Date(localStr);
-                if (!isNaN(parsed.getTime())) return parsed;
-            }
-        } catch (err) {
-            console.error("Error parsing fallback timestamp:", err);
-        }
-    }
-    
     return null;
 };
 
