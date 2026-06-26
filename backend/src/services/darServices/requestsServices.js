@@ -1,4 +1,5 @@
 import { attendanceDB } from '../../config/database.js';
+import EventBus from '../../utils/EventBus.js';
 
 export async function upsertRequest({ org_id, user_id, request_date, original_data, proposed_data, reason }) {
     const existingRequest = await attendanceDB("dar_requests")
@@ -6,6 +7,7 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
         .first();
 
     let request_id;
+    const isUpdate = !!existingRequest;
 
     if (existingRequest) {
         await attendanceDB("dar_requests")
@@ -30,7 +32,33 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
         request_id = id;
     }
 
-    return { request_id, isUpdate: !!existingRequest };
+    // Trigger Admin/HR notifications
+    try {
+        const employee = await attendanceDB('users').where({ user_id }).select('user_name').first();
+        const employeeName = employee?.user_name || 'An employee';
+
+        const admins = await attendanceDB('users')
+            .where({ org_id, is_deleted: 0, is_active: 1 })
+            .whereIn('user_type', ['admin', 'hr'])
+            .select('user_id');
+
+        for (const admin of admins) {
+            if (Number(admin.user_id) === Number(user_id)) continue;
+            EventBus.emitNotification({
+                org_id,
+                user_id: admin.user_id,
+                title: isUpdate ? 'DAR Request Updated' : 'New DAR Request',
+                message: `${employeeName} has submitted a DAR revision request for ${request_date}.`,
+                type: 'INFO',
+                related_entity_type: 'DAR',
+                related_entity_id: request_id
+            });
+        }
+    } catch (err) {
+        console.error('Error sending DAR request notifications:', err);
+    }
+
+    return { request_id, isUpdate };
 }
 
 export async function getPendingRequests({ org_id }) {
@@ -95,10 +123,32 @@ export async function approveRequest({ id, org_id }) {
             .where({ request_id: id })
             .update({ status: 'APPROVED', updated_at: attendanceDB.fn.now() });
     });
+
+    try {
+        EventBus.emitNotification({
+            org_id,
+            user_id: request.user_id,
+            title: 'DAR Request Approved',
+            message: `Your DAR revision request for ${targetDate} has been approved.`,
+            type: 'SUCCESS',
+            related_entity_type: 'DAR',
+            related_entity_id: id
+        });
+    } catch (err) {
+        console.error('Error sending DAR approval notification:', err);
+    }
 }
 
 export async function rejectRequest({ id, org_id, comment }) {
-    const updated = await attendanceDB("dar_requests")
+    const request = await attendanceDB("dar_requests")
+        .select("*", attendanceDB.raw("DATE_FORMAT(request_date, '%Y-%m-%d') as request_date_str"))
+        .where({ request_id: id, org_id })
+        .first();
+
+    if (!request) throw { status: 404, message: "Request not found" };
+    if (request.status !== 'PENDING') throw { status: 400, message: "Request already processed" };
+
+    await attendanceDB("dar_requests")
         .where({ request_id: id, org_id })
         .update({
             status: 'REJECTED',
@@ -106,5 +156,19 @@ export async function rejectRequest({ id, org_id, comment }) {
             updated_at: attendanceDB.fn.now()
         });
 
-    if (!updated) throw { status: 404, message: "Request not found" };
+    const targetDate = request.request_date_str;
+
+    try {
+        EventBus.emitNotification({
+            org_id,
+            user_id: request.user_id,
+            title: 'DAR Request Rejected',
+            message: `Your DAR revision request for ${targetDate} has been rejected.${comment ? ` Reason: ${comment}` : ''}`,
+            type: 'ERROR',
+            related_entity_type: 'DAR',
+            related_entity_id: id
+        });
+    } catch (err) {
+        console.error('Error sending DAR rejection notification:', err);
+    }
 }

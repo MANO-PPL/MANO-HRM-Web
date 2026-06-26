@@ -177,6 +177,14 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
         throw new AppError("Administrator email is already registered.", 400);
     }
 
+    const finalPhone = admin_phone || contact_phone;
+    if (finalPhone) {
+        const existingPhone = await attendanceDB('users').where('phone_no', finalPhone.trim()).first();
+        if (existingPhone) {
+            throw new AppError("Administrator phone number is already registered.", 400);
+        }
+    }
+
     const subscription_expiry = new Date();
     subscription_expiry.setDate(subscription_expiry.getDate() + 30); // 30-day trial
 

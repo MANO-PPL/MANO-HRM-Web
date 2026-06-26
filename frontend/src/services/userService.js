@@ -1,15 +1,45 @@
 import api from './api';
 
+// Client-side memory cache for geofencing / user locations
+const cache = {
+  workLocationUsers: null,
+  locations: null
+};
+
+// Synchronous client-side cache for direct component consumption
+export const userCacheData = {
+  workLocationUsers: null,
+  locations: null
+};
+
+export const clearGeofenceCache = () => {
+  cache.workLocationUsers = null;
+  cache.locations = null;
+  userCacheData.workLocationUsers = null;
+  userCacheData.locations = null;
+};
+
 /**
  * Get all users eligible for geofence assignment
  */
 export const fetchWorkLocationUsers = async () => {
-  try {
-    const res = await api.get('/admin/users?workLocation=true');
-    return res.data;
-  } catch (error) {
-    throw new Error(error.response?.data?.message || "Failed to fetch users");
+  if (cache.workLocationUsers) {
+    return cache.workLocationUsers;
   }
+
+  const promise = (async () => {
+    try {
+      const res = await api.get('/admin/users?workLocation=true');
+      userCacheData.workLocationUsers = res.data;
+      return res.data;
+    } catch (error) {
+      cache.workLocationUsers = null;
+      throw new Error(error.response?.data?.message || "Failed to fetch users");
+    }
+  })();
+
+  cache.workLocationUsers = promise;
+  return promise;
 };
 
 /* ============================
@@ -20,12 +50,23 @@ export const fetchWorkLocationUsers = async () => {
  * Get all active work locations
  */
 export const fetchLocations = async () => {
-  try {
-    const res = await api.get('/locations');
-    return res.data;
-  } catch (error) {
-    throw new Error(error.response?.data?.message || "Failed to fetch locations");
+  if (cache.locations) {
+    return cache.locations;
   }
+
+  const promise = (async () => {
+    try {
+      const res = await api.get('/locations');
+      userCacheData.locations = res.data;
+      return res.data;
+    } catch (error) {
+      cache.locations = null;
+      throw new Error(error.response?.data?.message || "Failed to fetch locations");
+    }
+  })();
+
+  cache.locations = promise;
+  return promise;
 };
 
 /**
@@ -34,6 +75,7 @@ export const fetchLocations = async () => {
 export const createLocation = async (payload) => {
   try {
     const res = await api.post('/locations', payload);
+    clearGeofenceCache();
     return res.data;
   } catch (error) {
     throw new Error(error.response?.data?.message || "Failed to create location");
@@ -46,6 +88,7 @@ export const createLocation = async (payload) => {
 export const updateLocation = async (locationId, payload) => {
   try {
     const res = await api.put(`/locations/${locationId}`, payload);
+    clearGeofenceCache();
     return res.data;
   } catch (error) {
     throw new Error(error.response?.data?.message || "Failed to update location");
@@ -58,6 +101,7 @@ export const updateLocation = async (locationId, payload) => {
 export const updateLocationAssignments = async (assignments) => {
   try {
     const res = await api.post('/locations/assignments', { assignments });
+    clearGeofenceCache();
     return res.data;
   } catch (error) {
     throw new Error(error.response?.data?.message || "Failed to update assignments");

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import { leaveService } from '../../services/leaveService';
 import DatePicker from '../../components/DatePicker';
 import { toast } from 'react-toastify';
 import {
@@ -177,12 +177,11 @@ const LeaveApplication = () => {
         setLoading(true);
         try {
             // Admin: Fetch ALL history to allow filtering
-            const endpoint = isAdmin ? '/leaves/admin/history' : '/leaves/my-history';
-            const res = await api.get(endpoint);
-            if (res.data.ok) {
+            const res = isAdmin ? await leaveService.getAdminLeaves() : await leaveService.getMyLeaves();
+            if (res.ok) {
                 const fetched = isAdmin
-                    ? (res.data.history || res.data.requests || [])
-                    : (res.data.leaves || []);
+                    ? (res.history || res.requests || [])
+                    : (res.leaves || []);
 
                 setLeaves(fetched);
                 // For mobile, do NOT select first item by default to keep list view clean
@@ -209,11 +208,9 @@ const LeaveApplication = () => {
                 });
             }
 
-            const res = await api.post('/leaves/request', data, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
+            const res = await leaveService.applyForLeave(data);
 
-            if (res.data.ok) {
+            if (res.ok) {
                 toast.success("Leave request submitted successfully");
                 setFormData({ leave_type: 'Casual Leave', start_date: '', end_date: '', reason: '', attachments: [] });
                 setShowForm(false);
@@ -222,7 +219,7 @@ const LeaveApplication = () => {
             }
         } catch (error) {
             console.error("Apply error", error);
-            toast.error(error.response?.data?.message || "Failed to submit request");
+            toast.error(error.message || "Failed to submit request");
         }
     };
 
@@ -259,8 +256,8 @@ const LeaveApplication = () => {
             onConfirm: async () => {
                 try {
                     setIsWithdrawing(true);
-                    const res = await api.delete(`/leaves/request/${leaveId}`);
-                    if (res.data.ok) {
+                    const res = await leaveService.withdrawLeave(leaveId);
+                    if (res.ok) {
                         toast.success("Request withdrawn successfully");
                         fetchLeaves();
                         if (selectedLeave?.lr_id === leaveId) setSelectedLeave(null);
@@ -268,7 +265,7 @@ const LeaveApplication = () => {
                     }
                 } catch (error) {
                     console.error("Withdraw error", error);
-                    toast.error(error.response?.data?.message || "Failed to withdraw request");
+                    toast.error(error.message || "Failed to withdraw request");
                 } finally {
                     setIsWithdrawing(false);
                 }
@@ -285,8 +282,8 @@ const LeaveApplication = () => {
                 admin_comment: adminAction.remarks
             };
 
-            const res = await api.put(`/leaves/admin/status/${selectedLeave.lr_id}`, payload);
-            if (res.data.ok) {
+            const res = await leaveService.updateLeaveStatus(selectedLeave.lr_id, payload);
+            if (res.ok) {
                 toast.success(`Leave request ${actionStatus.toLowerCase()} successfully`);
                 const updatedLeaves = leaves.map(l =>
                     l.lr_id === selectedLeave.lr_id
@@ -299,7 +296,7 @@ const LeaveApplication = () => {
             }
         } catch (error) {
             console.error("Action error", error);
-            toast.error(error.response?.data?.message || "Failed to update status");
+            toast.error(error.message || "Failed to update status");
         }
     };
 

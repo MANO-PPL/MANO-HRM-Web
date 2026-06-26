@@ -144,9 +144,34 @@ export async function getFeedbackList({ status, type, limit = 50 } = {}) {
  * Update feedback status.
  */
 export async function updateStatus(id, status) {
+    const feedback = await attendanceDB('feedback')
+        .where('feedback_id', id)
+        .first();
+
+    if (!feedback) return false;
+
     const updated = await attendanceDB('feedback')
         .where('feedback_id', id)
         .update({ status, updated_at: attendanceDB.fn.now() });
+
+    if (updated > 0) {
+        try {
+            const user = await attendanceDB('users').where('user_id', feedback.user_id).first();
+            if (user) {
+                EventBus.emitNotification({
+                    org_id: user.org_id,
+                    user_id: feedback.user_id,
+                    title: 'Feedback Status Updated',
+                    message: `The status of your feedback "${feedback.title}" has been updated to ${status}.`,
+                    type: 'INFO',
+                    related_entity_type: 'FEEDBACK',
+                    related_entity_id: id
+                });
+            }
+        } catch (err) {
+            console.error('Error sending feedback status update notification:', err);
+        }
+    }
 
     return updated > 0;
 }

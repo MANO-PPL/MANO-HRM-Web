@@ -4,6 +4,32 @@ import AppError from '../../utils/AppError.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { cacheService } from '../cache/cacheService.js';
+import EventBus from '../../utils/EventBus.js';
+
+// Helper to notify employees when new holidays are declared
+async function notifyNewHolidays(org_id, holidays) {
+    try {
+        const users = await attendanceDB('users')
+            .where({ org_id, is_deleted: 0, is_active: 1 })
+            .select('user_id');
+
+        for (const h of holidays) {
+            for (const user of users) {
+                EventBus.emitNotification({
+                    org_id,
+                    user_id: user.user_id,
+                    title: 'New Holiday Declared',
+                    message: `A new holiday has been declared: ${h.holiday_name} on ${h.holiday_date}.`,
+                    type: 'INFO',
+                    related_entity_type: 'HOLIDAY',
+                    related_entity_id: null
+                });
+            }
+        }
+    } catch (err) {
+        console.error('Error in notifyNewHolidays:', err);
+    }
+}
 
 //Get All Holidays
 export const getHolidays = async (org_id) => {
@@ -73,6 +99,9 @@ export const createHolidays = async (org_id, holidaysToInsert) => {
 
     // Invalidate Cache
     await cacheService.del(`mano-cache:holidays:org:${org_id}`);
+
+    // Trigger push notifications
+    notifyNewHolidays(org_id, prepareData).catch(console.error);
 
     return prepareData.length;
 
@@ -231,6 +260,9 @@ export const bulkCreateFromJson = async (org_id, holidays) => {
             results.success_count = prepareData.length;
             // Invalidate Cache
             await cacheService.del(`mano-cache:holidays:org:${org_id}`);
+
+            // Trigger push notifications
+            notifyNewHolidays(org_id, prepareData).catch(console.error);
         } catch (error) {
             results.failure_count = prepareData.length;
             results.errors.push(error.message);
@@ -335,6 +367,9 @@ export const bulkUploadFromFile = async (org_id, file) => {
             results.success_count = prepareData.length;
             // Invalidate Cache
             await cacheService.del(`mano-cache:holidays:org:${org_id}`);
+
+            // Trigger push notifications
+            notifyNewHolidays(org_id, prepareData).catch(console.error);
         } catch (error) {
             results.failure_count += prepareData.length;
             results.errors.push(`Batch insert failed: ${error.message}`);

@@ -96,6 +96,16 @@ Dynamic Site Switching for field-based and roving teams
 Client-Site Authorization via biometric & location binding
 Talk to Sales
 
+Chat & Collaboration
+
+Keep your distributed team closely connected. Real-time direct messaging, dedicated department/project channels, emoji reactions, and instant typing cues are built directly into the attendance workflow.
+
+Instant 1-on-1 direct messaging
+Project and department-wide collaboration channels
+Live typing indicators, presence, and read receipts
+High-priority FCM mobile push alerts and in-app notifications
+Talk to Sales
+
 ============================================================
 [ SECTION 3: Impact Snapshot ]
 ============================================================
@@ -378,8 +388,8 @@ Instant Support Channels
 24/5 Response Window
 Connect
 Contact Channels
-Product Support: support@manoattendance.com
-Sales Enquiries: sales@manoattendance.com
+Product Support: support@mano.co.in, support@manoattendance.com
+Sales Enquiries: hr@mano.co.in
 Implementation and onboarding guidance available for new deployments
 Partnership conversations for consulting and channel opportunities
 Availability
@@ -399,8 +409,8 @@ Critical cases are escalated with priority handling
 ============================================================
 Connect
 Contact Channels
-Product Support: support@manoattendance.com
-Sales Enquiries: sales@manoattendance.com
+Product Support: support@mano.co.in, support@manoattendance.com
+Sales Enquiries: hr@mano.co.in
 Implementation and onboarding guidance available for new deployments
 Partnership conversations for consulting and channel opportunities
 
@@ -438,7 +448,7 @@ business@mano.co.in
 B-11, 2nd Floor, West View, 88, L.N Road, Dadar (East), Mumbai - 400014
 
 Our Solutions
-Simple Time In & OutLive Command CenterMatrix Attendance ReportsHoliday & Leave ManagementAI "Ask HR" AssistantGenerative AI Policy Builder
+Simple Time In & OutLive Command CenterMatrix Attendance ReportsHoliday & Leave ManagementAI "Ask HR" AssistantGenerative AI Policy BuilderChat & Collaboration
 Quick Links
 HomeFeaturesPricingContact
 

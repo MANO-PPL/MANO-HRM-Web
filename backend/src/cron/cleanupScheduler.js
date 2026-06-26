@@ -164,10 +164,7 @@ async function cleanupDeletedOrganizations() {
                     .del();
                 await trx('feedback').where('org_id', org.org_id).del();
 
-                await trx('leave_attachments')
-                    .whereIn('leave_id', trx('leave_requests').select('lr_id').where('org_id', org.org_id))
-                    .del();
-                await trx('leave_requests').where('org_id', org.org_id).del();
+                await trx('leave_request').where('org_id', org.org_id).del();
 
                 await trx('attendance_records').where('org_id', org.org_id).del();
                 // Relational chat tables cleanup

@@ -137,8 +137,8 @@ async function runDARReport(type, dateRange) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function initDARReportScheduler() {
-    // Daily: 11:30 PM every day — covers that day's data
-    cron.schedule('30 23 * * *', () => {
+    // Daily: 10:00 AM every day — covers that day's data
+    cron.schedule('0 10 * * *', () => {
         runDARReport('daily', prevDayRange());
     });
 
@@ -152,5 +152,5 @@ export function initDARReportScheduler() {
         runDARReport('monthly', prevMonthRange());
     });
 
-    console.log('📊 DAR Report Scheduler initialised  (daily@23:30 | weekly@Mon 07:00 | monthly@1st 06:00)');
+    console.log('📊 DAR Report Scheduler initialised  (daily@10:00 | weekly@Mon 07:00 | monthly@1st 06:00)');
 }

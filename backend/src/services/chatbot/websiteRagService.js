@@ -384,7 +384,7 @@ function buildPrompt(question, contextBlocks, requestedFeatures = [], isGeneralO
         ...specificFeatureInstructions,
         'Do not use markdown symbols like ** or __ in the final answer. Use clean spacing and CAPITALized headings for visual hierarchy.',
         'Do not use preambles like: "To answer your question", "According to the provided context", "Here is the answer".',
-        'If the answer is not present in the context, do not speculate or hallucinate. Reply exactly: "I do not have that information on the website right now. You can reach out to our team at sales@manoattendance.com or business@mano.co.in for assistance."',
+        'If the answer is not present in the context, do not speculate or hallucinate. Reply exactly: "I do not have that information on the website right now. You can reach out to our team at hr@mano.co.in or business@mano.co.in for assistance."',
         'Keep answers concise, factual, highly professional, and user-friendly.',
         'Never mention internal implementation details or vector databases.',
         '',
@@ -572,7 +572,7 @@ export async function answerWebsiteQuestion(question, history = []) {
 
     if (contextBlocks.length === 0) {
         return {
-            answer: 'I do not have that information on the website right now. You can reach out to our team at sales@manoattendance.com or business@mano.co.in for assistance.',
+            answer: 'I do not have that information on the website right now. You can reach out to our team at hr@mano.co.in or business@mano.co.in for assistance.',
             sources: [],
         };
     }
@@ -625,7 +625,7 @@ export async function answerWebsiteQuestion(question, history = []) {
     let answer = sanitizeModelAnswer(rawAnswer);
     
     if (!answer || answer.includes('I do not have that information')) {
-        answer = 'I do not have that information on the website right now. You can reach out to our team at sales@manoattendance.com or business@mano.co.in for assistance.';
+        answer = 'I do not have that information on the website right now. You can reach out to our team at hr@mano.co.in or business@mano.co.in for assistance.';
     }
 
     const sources = contextBlocks.slice(0, 5).map((item) => ({

@@ -440,7 +440,7 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('attendance_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null });
         await trx('attendance_records').where('altered_by', userId).update({ altered_by: null });
         await trx('daily_attendance').where('adjusted_by', userId).update({ adjusted_by: null });
-        await trx('leave_requests').where('reviewed_by', userId).update({ reviewed_by: null });
+        await trx('leave_request').where('reviewed_by', userId).update({ reviewed_by: null });
 
         await trx('attendance_correction_requests').where('user_id', userId).del();
         await trx('user_work_locations').where('user_id', userId).del();
@@ -479,14 +479,20 @@ export const permanentlyDeleteUser = async (userId) => {
             }
         }
 
-        const leaveRequests = await trx('leave_requests').where('user_id', userId).select('lr_id');
-        const leaveIds = leaveRequests.map(lr => lr.lr_id);
-        if (leaveIds.length > 0) {
-            const leaveAttachments = await trx('leave_attachments').whereIn('leave_id', leaveIds).select('file_key');
-            for (const attachment of leaveAttachments) await safeDeleteS3(attachment.file_key);
-            await trx('leave_attachments').whereIn('leave_id', leaveIds).del();
-            await trx('leave_requests').whereIn('lr_id', leaveIds).del();
+        const leaveRequests = await trx('leave_request').where('user_id', userId).select('lr_id', 'attachments');
+        for (const lr of leaveRequests) {
+            if (lr.attachments) {
+                const atts = typeof lr.attachments === 'string' ? JSON.parse(lr.attachments) : lr.attachments;
+                if (Array.isArray(atts)) {
+                    for (const att of atts) {
+                        if (att.file_key) {
+                            await safeDeleteS3(att.file_key);
+                        }
+                    }
+                }
+            }
         }
+        await trx('leave_request').where('user_id', userId).del();
 
         const feedbacks = await trx('feedback').where('user_id', userId).select('feedback_id');
         const feedbackIds = feedbacks.map(f => f.feedback_id);

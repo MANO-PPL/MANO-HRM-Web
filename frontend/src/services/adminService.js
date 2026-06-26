@@ -8,6 +8,7 @@ const cache = {
     departments: null,
     designations: null,
     shifts: null,
+    shiftUsers: null,
     workLocations: null,
     users: new Map(),
     dashboardStats: new Map()
@@ -18,6 +19,7 @@ export const adminCacheData = {
     departments: null,
     designations: null,
     shifts: null,
+    shiftUsers: null,
     workLocations: null,
     users: {},
     dashboardStats: {}
@@ -32,6 +34,7 @@ const clearCache = () => {
     cache.departments = null;
     cache.designations = null;
     cache.shifts = null;
+    cache.shiftUsers = null;
     cache.workLocations = null;
     cache.dashboardStats.clear();
     clearUserCache();
@@ -39,6 +42,7 @@ const clearCache = () => {
     adminCacheData.departments = null;
     adminCacheData.designations = null;
     adminCacheData.shifts = null;
+    adminCacheData.shiftUsers = null;
     adminCacheData.workLocations = null;
     adminCacheData.dashboardStats = {};
 };
@@ -275,6 +279,9 @@ export const adminService = {
             // Note: Original code used POLICY_API_URL for create/update/delete shift
             const res = await api.post(`${POLICY_API_URL}/shifts`, shiftData);
             cache.shifts = null;
+            adminCacheData.shifts = null;
+            cache.shiftUsers = null;
+            adminCacheData.shiftUsers = null;
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to create shift");
@@ -284,6 +291,9 @@ export const adminService = {
         try {
             const res = await api.put(`${POLICY_API_URL}/shifts/${shiftId}`, shiftData);
             cache.shifts = null;
+            adminCacheData.shifts = null;
+            cache.shiftUsers = null;
+            adminCacheData.shiftUsers = null;
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to update shift");
@@ -293,23 +303,35 @@ export const adminService = {
         try {
             const res = await api.delete(`${POLICY_API_URL}/shifts/${shiftId}`);
             cache.shifts = null;
+            adminCacheData.shifts = null;
+            cache.shiftUsers = null;
+            adminCacheData.shiftUsers = null;
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to delete shift");
         }
     },
     async getShiftUsers() {
-        try {
-            const res = await api.get(`${POLICY_API_URL}/shift-users`);
-            return res.data;
-        } catch (error) {
-            throw new Error(error.response?.data?.message || "Failed to fetch shift users");
-        }
+        if (cache.shiftUsers) return cache.shiftUsers;
+        const promise = (async () => {
+            try {
+                const res = await api.get(`${POLICY_API_URL}/shift-users`);
+                adminCacheData.shiftUsers = res.data;
+                return res.data;
+            } catch (error) {
+                cache.shiftUsers = null;
+                throw new Error(error.response?.data?.message || "Failed to fetch shift users");
+            }
+        })();
+        cache.shiftUsers = promise;
+        return promise;
     },
     async assignUserShift(userId, shiftId) {
         try {
             const res = await api.put(`${POLICY_API_URL}/users/${userId}/shift`, { shift_id: shiftId });
             clearUserCache();
+            cache.shiftUsers = null;
+            adminCacheData.shiftUsers = null;
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to assign shift");

@@ -23,6 +23,7 @@ export const navigation = {
         { label: "Geo Fencing", path: "/features/geo-fencing" },
         { label: "Policy Engine", path: "/features/policy-engine" },
         { label: "Holidays & Leave", path: "/features/holidays-leave" },
+        { label: "Chat & Collaboration", path: "/features/chat-collaboration" },
     ],
     ai: [
         { label: "Ask AI Assistant", path: "/ai/ask-hr-assistant" },
@@ -150,6 +151,18 @@ export const homeData = {
             ],
             image: "/showcase/geo-fencing-new.png",
             link: "/features/geo-fencing"
+        },
+        {
+            title: "Chat & Collaboration",
+            body: "Keep your distributed team closely connected. Real-time direct messaging, dedicated department/project channels, emoji reactions, and instant typing cues are built directly into the attendance workflow.",
+            bullets: [
+                "Instant 1-on-1 direct messaging",
+                "Project and department-wide collaboration channels",
+                "Live typing indicators, presence, and read receipts",
+                "High-priority FCM mobile push alerts and in-app notifications"
+            ],
+            image: "/showcase/chat.png",
+            link: "/features/chat-collaboration"
         }
     ],
     impactStats: [
@@ -907,6 +920,37 @@ export const pageContent = {
         ],
         points: ["Visual calendar", "Accrual tracking", "Multi-tier approvals", "Color-coding", "Quota enforcement"],
     },
+    "/features/chat-collaboration": {
+        title: "Chat & Collaboration",
+        image: "/showcase/chat.png",
+        intro: "Real-time communication and workspace messaging designed for employee collaboration.",
+        body: "Keep teams connected directly within their workflow using secure direct messaging, department group chats, and real-time alerts.",
+        sections: [
+            {
+                title: "Real-Time Direct Messaging",
+                body: "Employees can chat directly, share files, and react with emojis. Real-time typing indicators and online presence keep the workspace alive.",
+                label: "Key Features",
+                bullets: [
+                    "Instant 1-on-1 private messaging",
+                    "Pulsing online/offline presence tracking",
+                    "Live typing indicators and read receipts",
+                    "Rich text and file/image sharing",
+                ],
+            },
+            {
+                title: "Collaboration Channels & Mentions",
+                body: "Create project-based channels or department groups. Keep communication clear and actionable with smart @mentions and notification links.",
+                label: "Capabilities",
+                bullets: [
+                    "Multi-user department and project channels",
+                    "Smart @mentions with automatic in-app alerts",
+                    "FCM high-importance push notifications for mobile",
+                    "Emoji reactions for quick micro-feedbacks",
+                ],
+            },
+        ],
+        points: ["Real-time messaging", "Presence indicators", "Typing indicators", "File sharing", "Department channels", "Smart mentions", "Emoji reactions"],
+    },
     "/pricing": {
         title: "Pricing",
         intro: "Choose a plan that matches your team size and workforce complexity.",
@@ -1031,9 +1075,9 @@ export const pageContent = {
         intro: "For product inquiries, partnerships, or support, reach out to the team.",
         body: "We usually respond within one business day.",
         contactCards: [
-            "Product Support: support@manoattendance.com",
-            "Sales Enquiries: sales@manoattendance.com",
-            "Implementation and onboarding guidance available for new deployments",
+            "Product Support: support@mano.co.in",
+            "Sales Enquiries: hr@mano.co.in",
+            "Implementation and onboarding guidance available for new organisations",
             "Partnership conversations for consulting and channel opportunities",
         ],
         officeHours: [
@@ -1048,8 +1092,8 @@ export const pageContent = {
             "Critical cases are escalated with priority handling",
         ],
         points: [
-            "Email: support@manoattendance.com",
-            "Sales: sales@manoattendance.com",
+            "Email: support@mano.co.in, support@manoattendance.com",
+            "Sales: hr@mano.co.in",
         ],
     },
     "/login": {

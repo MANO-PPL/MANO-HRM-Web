@@ -192,7 +192,11 @@ async function getAdminsAndHrs(orgId) {
  */
 export async function notifyLeaveApplied({ org_id, sender_id, leave_id, attachments = [], io }) {
     try {
-        const leave = await attendanceDB('leave_requests').where({ lr_id: leave_id }).first();
+        const leave = await attendanceDB('leave_request as lr')
+            .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
+            .select('lr.*', 'lpr.name as leave_type')
+            .where({ 'lr.lr_id': leave_id })
+            .first();
         if (!leave) return;
 
         const employee = await attendanceDB('users').where({ user_id: sender_id }).select('user_name').first();
@@ -249,15 +253,19 @@ export async function notifyLeaveApplied({ org_id, sender_id, leave_id, attachme
  */
 export async function notifyLeaveStatusUpdated({ org_id, reviewer_id, leave_id, io }) {
     try {
-        const leave = await attendanceDB('leave_requests').where({ lr_id: leave_id }).first();
+        const leave = await attendanceDB('leave_request as lr')
+            .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
+            .select('lr.*', 'lpr.name as leave_type')
+            .where({ 'lr.lr_id': leave_id })
+            .first();
         if (!leave) return;
 
         const reviewer = await attendanceDB('users').where({ user_id: reviewer_id }).select('user_name').first();
         const reviewerName = reviewer?.user_name || 'Supervisor';
 
         // Load attachments if any
-        const attRecords = await attendanceDB('leave_attachments').where({ leave_id });
-        const formatAttachments = attRecords.map(a => ({
+        const atts = typeof leave.attachments === 'string' ? JSON.parse(leave.attachments) : (leave.attachments || []);
+        const formatAttachments = (atts || []).map(a => ({
             name: a.file_key.split('/').pop() || 'Attachment',
             url: `https://${process.env.S3_BUCKET_NAME || 'mano-attendance'}.s3.amazonaws.com/${a.file_key}`
         }));

@@ -80,9 +80,13 @@ export const requestAndRegisterFCMToken = async () => {
             console.warn('⚠️ Notification permission denied by the user.');
         }
     } catch (error) {
-        console.error('❌ Error getting or registering FCM token:', error);
-        if (error.message && error.message.includes('vapid')) {
-            console.error('💡 TIP: The VAPID key you provided may be invalid or truncated. Firebase Web Push VAPID keys are usually long base64 strings starting with a "B". Please verify the key under Settings > Cloud Messaging > Web Push certificates in the Firebase Console.');
+        if (error.name === 'SecurityError' || error.message?.includes('SSL') || error.message?.includes('certificate')) {
+            console.warn('⚠️ FCM Service Worker registration failed due to local SSL/Security restrictions. Push notifications will not be active on localhost unless you manually trust the SSL certificate (visit https://localhost:5173/firebase-messaging-sw.js and click "Proceed to localhost (unsafe)").', error);
+        } else {
+            console.error('❌ Error getting or registering FCM token:', error);
+            if (error.message && error.message.includes('vapid')) {
+                console.error('💡 TIP: The VAPID key you provided may be invalid or truncated. Firebase Web Push VAPID keys are usually long base64 strings starting with a "B". Please verify the key under Settings > Cloud Messaging > Web Push certificates in the Firebase Console.');
+            }
         }
     }
     return null;

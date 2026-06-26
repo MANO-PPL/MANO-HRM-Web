@@ -37,6 +37,7 @@ import DailyActivity from "./pages/dar/DailyActivity"
 import DARAdmin from "./pages/dar/DARAdmin"
 import LeaveApplication from "./pages/holidays/LeaveApplication"
 import ChatPage from "./pages/collaboration/ChatPage";
+import Documentation from "./pages/documentation/Documentation";
 
 // Organization Pages Imports
 
@@ -304,6 +305,7 @@ function App() {
               <Route path="/daily-activity" element={<ResponsiveRoute DesktopComponent={DailyActivity} MobileComponent={DailyActivityMobile} />} />
               <Route path="/apply-leave" element={<ResponsiveRoute DesktopComponent={LeaveApplication} MobileComponent={MobileLeaveApplication} />} />
               <Route path="/collaboration" element={<ResponsiveRoute DesktopComponent={ChatPage} MobileComponent={MobileChatPage} />} />
+              <Route path="/documentation" element={<Documentation />} />
 
               {/* Mobile-Only Pages fallback */}
               <Route path="/notifications" element={<MobileNotifications />} />

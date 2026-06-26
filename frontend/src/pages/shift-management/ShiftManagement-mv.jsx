@@ -94,17 +94,18 @@ const ShiftManagement = () => {
                     type: 'Shift'
                 }));
                 setShifts(mapped);
-                if (selectedShift) {
-                    const updated = mapped.find(s => s.id === selectedShift.id);
-                    if (updated) setSelectedShift(updated);
-                }
+                setSelectedShift(prev => {
+                    if (!prev) return null;
+                    const updated = mapped.find(s => s.id === prev.id);
+                    return updated || prev;
+                });
             }
         } catch (e) {
             toast.error('Failed to load shifts');
         } finally {
             setIsLoading(false);
         }
-    }, [selectedShift]);
+    }, []);
 
     const loadUsers = useCallback(async () => {
         setLoadingUsers(true);

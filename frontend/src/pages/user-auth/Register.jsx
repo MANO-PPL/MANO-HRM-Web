@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 import api from "../../services/api";
 import LoadingScreen from "../../components/LoadingScreen";
+import PhoneInput from "../../components/PhoneInput";
+import { validatePhone, validateEmail } from "../../utils/validation";
 
 const INDUSTRIES = [
     "Technology & Software",
@@ -113,24 +115,49 @@ const Register = () => {
     // Auto-generate organization code based on organization name
     useEffect(() => {
         if (!isOrgCodeManuallyEdited && formData.org_name) {
-            // Remove non-alphanumeric, spaces, get only letters/numbers
-            let code = formData.org_name.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-            code = code.substring(0, 5);
-            if (code.length >= 3) {
-                setFormData(prev => ({ ...prev, org_code: code }));
-            } else if (code.length > 0) {
-                // Pad if short
-                setFormData(prev => ({ ...prev, org_code: (code + "ORG").substring(0, 5) }));
+            const name = formData.org_name;
+            const words = name.trim().split(/[\s\-_]+/).map(w => w.replace(/[^a-zA-Z0-9]/g, "")).filter(Boolean);
+            let code = "";
+            if (words.length >= 3) {
+                code = words.map(w => w[0]).join("");
+            } else if (words.length === 2) {
+                const firstWord = words[0];
+                const secondWord = words[1];
+                if (firstWord.length >= 2) {
+                    code = firstWord.substring(0, 2) + secondWord.charAt(0);
+                } else {
+                    code = firstWord.charAt(0) + secondWord.substring(0, 2);
+                }
+            } else if (words.length === 1) {
+                code = words[0];
+            }
+
+            let cleanCode = code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+            if (cleanCode.length > 10) {
+                cleanCode = cleanCode.substring(0, 10);
+            }
+            if (cleanCode.length < 3 && cleanCode.length > 0) {
+                const originalClean = name.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+                if (originalClean.length >= 3) {
+                    cleanCode = originalClean.substring(0, 5);
+                } else {
+                    cleanCode = (cleanCode + "ORG").substring(0, 5);
+                }
+            }
+            if (cleanCode) {
+                setFormData(prev => ({ ...prev, org_code: cleanCode }));
             }
         }
     }, [formData.org_name, isOrgCodeManuallyEdited]);
 
     const handleTextChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-
         if (name === "org_code") {
             setIsOrgCodeManuallyEdited(true);
+            const cleaned = value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+            setFormData(prev => ({ ...prev, org_code: cleaned }));
+        } else {
+            setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
 
@@ -162,7 +189,11 @@ const Register = () => {
                 toast.error("Contact phone number is required.");
                 return;
             }
-            if (!formData.contact_email.trim() || !/\S+@\S+\.\S+/.test(formData.contact_email)) {
+            if (!validatePhone(formData.contact_phone)) {
+                toast.error("Please enter a valid primary contact phone number according to the country code.");
+                return;
+            }
+            if (!validateEmail(formData.contact_email)) {
                 toast.error("A valid contact email is required.");
                 return;
             }
@@ -212,8 +243,12 @@ const Register = () => {
                 toast.error("Administrator name is required.");
                 return;
             }
-            if (!formData.admin_email.trim() || !/\S+@\S+\.\S+/.test(formData.admin_email)) {
+            if (!validateEmail(formData.admin_email)) {
                 toast.error("A valid administrator email is required.");
+                return;
+            }
+            if (formData.admin_phone && !validatePhone(formData.admin_phone)) {
+                toast.error("Please enter a valid administrator phone number according to the country code.");
                 return;
             }
         }
@@ -557,18 +592,11 @@ const Register = () => {
                                                     <label className="block text-xs font-normal text-slate-500 dark:text-slate-400 px-1">
                                                         Primary Contact Phone *
                                                     </label>
-                                                    <div className="relative group">
-                                                        <Phone className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-slate-400 group-focus-within:text-indigo-600 dark:group-focus-within:text-indigo-400 transition-colors" />
-                                                        <input
-                                                            type="tel"
-                                                            name="contact_phone"
-                                                            value={formData.contact_phone}
-                                                            onChange={handleTextChange}
-                                                            required
-                                                            className="w-full bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-lg py-4 pl-14 pr-5 text-slate-900 dark:text-white font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm text-sm"
-                                                            placeholder="+1 234 567 8900"
-                                                        />
-                                                    </div>
+                                                    <PhoneInput
+                                                        value={formData.contact_phone}
+                                                        onChange={(val) => setFormData(prev => ({ ...prev, contact_phone: val }))}
+                                                        variant="register-desktop"
+                                                    />
                                                 </div>
                                             </div>
 
@@ -709,17 +737,12 @@ const Register = () => {
                                                             <label className="block text-xs font-normal text-slate-500 dark:text-slate-400 px-1">
                                                                 Administrator Phone
                                                             </label>
-                                                            <div className="relative group">
-                                                                <Phone className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-slate-400" />
-                                                                <input
-                                                                    type="tel"
-                                                                    name="admin_phone"
-                                                                    value={formData.admin_phone}
-                                                                    onChange={handleTextChange}
-                                                                    className="w-full bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-lg py-4 pl-14 pr-5 text-slate-900 dark:text-white font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 text-sm"
-                                                                    placeholder="+1 234 567 8900"
-                                                                />
-                                                            </div>
+                                                            <PhoneInput
+                                                                value={formData.admin_phone}
+                                                                onChange={(val) => setFormData(prev => ({ ...prev, admin_phone: val }))}
+                                                                variant="register-desktop"
+                                                                placeholder="Admin Phone"
+                                                            />
                                                         </div>
                                                     </div>
                                                 </div>

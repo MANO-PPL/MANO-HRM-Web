@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import api, { setAccessToken } from "../services/api";
+import api, { setAccessToken, clearApiCache } from "../services/api";
 
 const AuthContext = createContext({
   user: null,
@@ -77,6 +77,9 @@ export const AuthProvider = ({ children }) => {
       captchaToken, // Backend checks for this key for v2 verification
     };
 
+    // Clear cache on login
+    clearApiCache();
+
     // Axios throws on 4xx/5xx, so we just await the call
     const res = await api.post("/auth/login", loginData);
 
@@ -101,6 +104,7 @@ export const AuthProvider = ({ children }) => {
 
   const superAdminLogin = async (email, password) => {
     const loginData = { email, password };
+    clearApiCache();
     const res = await api.post("/auth/super-admin/login", loginData);
     if (res.data.accessToken) setAccessToken(res.data.accessToken);
     if (res.data.user) {
@@ -115,8 +119,46 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await api.post("/auth/logout");
-    setUser(null);
+    try {
+      await api.post("/auth/logout");
+    } catch (error) {
+      console.error("Logout API failed:", error);
+    } finally {
+      // Preserve theme preferences
+      const theme = localStorage.getItem("theme");
+      const showcaseTheme = localStorage.getItem("showcase-theme");
+
+      // Clear browser storages
+      localStorage.clear();
+      sessionStorage.clear();
+      clearApiCache();
+
+      // Restore theme preferences
+      if (theme) localStorage.setItem("theme", theme);
+      if (showcaseTheme) localStorage.setItem("showcase-theme", showcaseTheme);
+
+      // Clear cookies (excluding HTTP-only cookies which standard JS cannot delete)
+      if (typeof document !== 'undefined') {
+        document.cookie.split(";").forEach((c) => {
+          document.cookie = c
+            .replace(/^ +/, "")
+            .replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
+        });
+      }
+
+      // Clear Cache Storage API if available
+      if (typeof window !== "undefined" && "caches" in window) {
+        try {
+          const cacheKeys = await window.caches.keys();
+          await Promise.all(cacheKeys.map(key => window.caches.delete(key)));
+        } catch (err) {
+          console.error("Failed to clear Cache Storage API:", err);
+        }
+      }
+
+      setUser(null);
+      window.location.href = "/login";
+    }
   };
 
   return (

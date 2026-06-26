@@ -15,7 +15,7 @@
     "source_file": "landing_faq_business.txt",
     "section_num": 2,
     "section_heading": "How to Purchase, Trials & Billing Cycles",
-    "content": "How to Purchase & Sales Channels\nTo purchase a plan, you can click on \"Start Free Trial\" or \"Book a Demo\" directly on the showcase landing page. Alternatively, you can email our business desk at sales@manoattendance.com or business@mano.co.in to get a custom quote and payment link.\n\n14-Day Risk-Free Trial\nWe offer a 14-day fully featured free trial of our Starter and Growth plans. No credit card is required to sign up or start tracking attendance during the trial.\n\nPayment Options\nWe process all payments securely through our integrated Razorpay payment gateway. We accept all major Credit Cards, Debit Cards, Net Banking, UPI, and direct Corporate Bank Transfers (NEFT/RTGS).\n\nBilling Cycles and Discounts\nSubscriptions are available on both Monthly and Annual billing cycles. Choosing an annual plan gets you an automatic 15% discount on the total subscription price.\n\nCancellation and Refund Policies\nYou can cancel your subscription at any time from your billing dashboard. If you cancel, your account remains active until the end of the billing period. For annual plans, we offer a prorated refund if requested within the first 30 days of subscription."
+    "content": "How to Purchase & Sales Channels\nTo purchase a plan, you can click on \"Start Free Trial\" or \"Book a Demo\" directly on the showcase landing page. Alternatively, you can email our business desk at hr@mano.co.in or business@mano.co.in to get a custom quote and payment link.\n\n14-Day Risk-Free Trial\nWe offer a 14-day fully featured free trial of our Starter and Growth plans. No credit card is required to sign up or start tracking attendance during the trial.\n\nPayment Options\nWe process all payments securely through our integrated Razorpay payment gateway. We accept all major Credit Cards, Debit Cards, Net Banking, UPI, and direct Corporate Bank Transfers (NEFT/RTGS).\n\nBilling Cycles and Discounts\nSubscriptions are available on both Monthly and Annual billing cycles. Choosing an annual plan gets you an automatic 15% discount on the total subscription price.\n\nCancellation and Refund Policies\nYou can cancel your subscription at any time from your billing dashboard. If you cancel, your account remains active until the end of the billing period. For annual plans, we offer a prorated refund if requested within the first 30 days of subscription."
   },
   {
     "id": "chunk_0002",
@@ -42,7 +42,7 @@
     "source_file": "landing_faq_business.txt",
     "section_num": 5,
     "section_heading": "Customer SLA, Office Hours & Tech Support",
-    "content": "Product Support Channels\nFor technical questions and help with setup, you can email our support team at support@manoattendance.com. Our support desk operates with a standard response turnaround of under 24 hours.\n\nLIVE Office Hours\nOur customer success team is available for live calls and chats during the following times:\n- Monday to Friday: 9:30 AM to 6:30 PM\n- Saturday: 10:00 AM to 2:00 PM\n- Sunday: Closed\n\nEnterprise Priority SLA\nEnterprise subscribers receive premium SLA-backed priority support. Critical cases and high-priority system bugs are guaranteed to have a response and active resolution updates in under 4 hours."
+    "content": "Product Support Channels\nFor technical questions and help with setup, you can email our support team at support@mano.co.in or support@manoattendance.com. Our support desk operates with a standard response turnaround of under 24 hours.\n\nLIVE Office Hours\nOur customer success team is available for live calls and chats during the following times:\n- Monday to Friday: 9:30 AM to 6:30 PM\n- Saturday: 10:00 AM to 2:00 PM\n- Sunday: Closed\n\nEnterprise Priority SLA\nEnterprise subscribers receive premium SLA-backed priority support. Critical cases and high-priority system bugs are guaranteed to have a response and active resolution updates in under 4 hours."
   },
   {
     "id": "chunk_0005",
@@ -240,7 +240,7 @@
     "source_file": "landing_home.txt",
     "section_num": 21,
     "section_heading": "Talk To The Team",
-    "content": "Talk To The Team\n\nChoose the right channel based on your need and we will route it to the relevant team quickly.\n\nMANO\nLet's build a smarter workforce together.\n\nJoin hundreds of forward-thinking companies using AI to transform their attendance and productivity management.\n\nInstant Support Channels\n24/5 Response Window\nConnect\nContact Channels\nProduct Support: support@manoattendance.com\nSales Enquiries: sales@manoattendance.com\nImplementation and onboarding guidance available for new deployments\nPartnership conversations for consulting and channel opportunities\nAvailability\nOffice Hours LIVE\nMonday to Friday: 9:30 AM - 6:30 PM\nSaturday: 10:00 AM - 2:00 PM\nSunday: Closed\nSuccess\nSupport Journey\nShare your requirement or issue with key details\nOur team acknowledges and assigns ownership\nYou receive updates until closure\nCritical cases are escalated with priority handling"
+    "content": "Talk To The Team\n\nChoose the right channel based on your need and we will route it to the relevant team quickly.\n\nMANO\nLet's build a smarter workforce together.\n\nJoin hundreds of forward-thinking companies using AI to transform their attendance and productivity management.\n\nInstant Support Channels\n24/5 Response Window\nConnect\nContact Channels\nProduct Support: support@mano.co.in, support@manoattendance.com\nSales Enquiries: hr@mano.co.in\nImplementation and onboarding guidance available for new deployments\nPartnership conversations for consulting and channel opportunities\nAvailability\nOffice Hours LIVE\nMonday to Friday: 9:30 AM - 6:30 PM\nSaturday: 10:00 AM - 2:00 PM\nSunday: Closed\nSuccess\nSupport Journey\nShare your requirement or issue with key details\nOur team acknowledges and assigns ownership\nYou receive updates until closure\nCritical cases are escalated with priority handling"
   },
   {
     "id": "chunk_0027",
@@ -249,7 +249,7 @@
     "source_file": "landing_home.txt",
     "section_num": 22,
     "section_heading": "Contact Channels",
-    "content": "Connect\nContact Channels\nProduct Support: support@manoattendance.com\nSales Enquiries: sales@manoattendance.com\nImplementation and onboarding guidance available for new deployments\nPartnership conversations for consulting and channel opportunities"
+    "content": "Connect\nContact Channels\nProduct Support: support@mano.co.in, support@manoattendance.com\nSales Enquiries: hr@mano.co.in\nImplementation and onboarding guidance available for new deployments\nPartnership conversations for consulting and channel opportunities"
   },
   {
     "id": "chunk_0028",
@@ -394,5 +394,14 @@
     "section_num": 14,
     "section_heading": "Subscription Pricing & Plans",
     "content": "Pricing Models Billed Monthly or Annually\nMANO-Attendance offers tiered packages with a 15% discount for annual billing:\n- Starter Plan ($0 / month): Best for small teams up to 20 employees. Covers Time In & Out tracking, basic leave balances, standard reports, and standard email support.\n- Growth Plan ($29 / month): Recommended for 20-150 employees. Includes analytics dashboard, geofencing location tracking, correction workflows, and enhanced role permissions.\n- Enterprise Plan ($99 / month): Designed for 150+ employees or multi-site teams. Includes custom shifts and rosters, custom API sync integrations, priority support with under-4-hour SLA response, and a dedicated onboarding success manager."
+  },
+  {
+    "id": "chunk_0044",
+    "page_name": "MANO-Attendance Detailed Features",
+    "url": "https://localhost:5173/features",
+    "source_file": "product_features_detail.txt",
+    "section_num": 15,
+    "section_heading": "Chat and Collaboration Workspace",
+    "content": "Chat and Collaboration Channels\nMANO-Attendance includes a built-in messaging platform to help teams coordinate seamlessly without leaving the workspace:\n- Real-time Direct Messaging: Chat 1-on-1 privately, share files/documents, and react with emojis.\n- Active Presence Tracking: Pulsing indicators show who is online or offline in real-time.\n- Typing Cues and Read Receipts: Know when teammates are typing and when messages are delivered.\n- Project and Department Channels: Create multi-user channels for department updates or specific project coordinates.\n- Mobile Push Alerts: High-importance FCM push notifications ensure critical messages reach mobile devices instantly."
   }
 ]

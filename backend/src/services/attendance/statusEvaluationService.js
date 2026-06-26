@@ -550,13 +550,15 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
             .where('org_id', org_id)
             .where('holiday_date', '>=', date_from)
             .where('holiday_date', '<=', date_to),
-        attendanceDB('leave_requests')
-            .where('status', 'Approved')
-            .where('start_date', '<=', date_to)
-            .where('end_date', '>=', date_from)
+        attendanceDB('leave_request as lr')
+            .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
+            .select('lr.*', 'lpr.name as leave_type')
+            .where('lr.status', 'Approved')
+            .where('lr.start_date', '<=', date_to)
+            .where('lr.end_date', '>=', date_from)
             .modify(qb => {
-                if (user_id) qb.where('user_id', user_id);
-                else qb.whereIn('user_id', users.map(u => u.user_id));
+                if (user_id) qb.where('lr.user_id', user_id);
+                else qb.whereIn('lr.user_id', users.map(u => u.user_id));
             })
     ]);
 
