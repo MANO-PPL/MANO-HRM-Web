@@ -12,7 +12,9 @@ import {
     Plus,
     ChevronDown,
     Camera,
-    Loader2
+    Loader2,
+    Eye,
+    EyeOff
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { toast } from 'react-toastify';
@@ -103,6 +105,7 @@ const EmployeeForm = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [errors, setErrors] = useState({});
     const [touched, setTouched] = useState({});
+    const [showPassword, setShowPassword] = useState(false);
     
     // Custom Dropdown & Quick Add state variables
     const [isShiftOpen, setIsShiftOpen] = useState(false);
@@ -509,19 +512,28 @@ const EmployeeForm = () => {
                             {/* Password */}
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Password</label>
-                                <input
-                                    type="password"
-                                    name="user_password"
-                                    placeholder="Enter password"
-                                    value={formData.user_password}
-                                    onChange={handleChange}
-                                    onBlur={handleBlur}
-                                    className={`w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle/50 border ${
-                                        touched.user_password && errors.user_password 
-                                            ? 'border-rose-500 focus:ring-rose-500/20' 
-                                            : 'border-slate-100 dark:border-github-dark-border focus:ring-indigo-500/20'
-                                    } rounded-xl focus:outline-none focus:ring-2 text-sm text-slate-800 dark:text-github-dark-text transition-all`}
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        name="user_password"
+                                        placeholder="Enter password"
+                                        value={formData.user_password}
+                                        onChange={handleChange}
+                                        onBlur={handleBlur}
+                                        className={`w-full pl-3 pr-10 py-2.5 bg-slate-50 dark:bg-github-dark-subtle/50 border ${
+                                            touched.user_password && errors.user_password 
+                                                ? 'border-rose-500 focus:ring-rose-500/20' 
+                                                : 'border-slate-100 dark:border-github-dark-border focus:ring-indigo-500/20'
+                                        } rounded-xl focus:outline-none focus:ring-2 text-sm text-slate-800 dark:text-github-dark-text transition-all`}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                                    >
+                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
                                 {touched.user_password && errors.user_password && (
                                     <p className="text-[10px] text-rose-500 mt-1 ml-1 animate-in fade-in duration-200">
                                         {errors.user_password}

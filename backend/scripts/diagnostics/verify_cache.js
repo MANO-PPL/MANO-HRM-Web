@@ -1,8 +1,27 @@
-import { attendanceDB } from '../src/config/database.js';
-import { cacheService } from '../src/services/cache/cacheService.js';
-import { getShiftsForOrg } from '../src/services/shifts/shiftService.js';
-import { getAllLocations } from '../src/services/workLocations/workLocationsServices.js';
-import { getHolidays } from '../src/services/holiday/holidayService.js';
+/**
+ * Cache Verification Diagnostic Script
+ * 
+ * Description:
+ * Verifies that the Redis cache layer is correctly working with MySQL,
+ * measuring latency differences and confirming resiliency fallbacks when Redis is offline.
+ * 
+ * How to Run:
+ * Make sure you are in the project root directory (e.g. MANO-Attendance) or backend directory.
+ * Run the following command:
+ * 
+ *   node backend/scripts/diagnostics/verify_cache.js
+ * 
+ * Expectations:
+ * - Phase 1-3 should show Speedup Factors (Redis reads should be significantly faster than DB queries).
+ * - Phase 4 should verify manual invalidation (deleting a cache key makes the next read fetch from DB again).
+ * - Phase 5 should verify database fallback when Redis is mocked offline (the script should complete successfully).
+ */
+
+import { attendanceDB } from '../../src/config/database.js';
+import { cacheService } from '../../src/services/cache/cacheService.js';
+import { getShiftsForOrg } from '../../src/services/shifts/shiftService.js';
+import { getAllLocations } from '../../src/services/workLocations/workLocationsServices.js';
+import { getHolidays } from '../../src/services/holiday/holidayService.js';
 
 async function measureTime(fn, ...args) {
   const start = process.hrtime.bigint();

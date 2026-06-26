@@ -23,5 +23,6 @@ router.post('/logout', authController.logout);
 
 // Protected Auth Details
 router.get('/me', authenticateJWT, authController.getCurrentUser);
+router.post('/change-password', authenticateJWT, authController.changePassword);
 
 export default router;

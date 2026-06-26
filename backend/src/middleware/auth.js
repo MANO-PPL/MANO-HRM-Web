@@ -72,13 +72,36 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
             return res.status(403).json({ message: "Access Denied: Your account has been deleted. Please contact HR for more information." });
         }
 
+        const isForcePasswordChange = user.force_password_change === 1 || user.force_password_change === true || user.force_password_change === 'true';
+
         // Standardize req.user
         req.user = {
             ...decoded,
             id: user.user_id || user.id, // standardized ID accessor
             user_type: user.user_type ? user.user_type.toLowerCase() : 'employee',
-            org_id: user.org_id || null
+            org_id: user.org_id || null,
+            force_password_change: isForcePasswordChange
         };
+
+        // Intercept requests if the user is forced to change their password
+        if (isForcePasswordChange) {
+            const fullPath = (req.baseUrl + req.path).replace(/\/+/g, '/').toLowerCase();
+            const allowedPaths = [
+                '/auth/change-password',
+                '/auth/logout',
+                '/auth/me',
+                '/health'
+            ];
+            const isAllowed = allowedPaths.some(p => fullPath.endsWith(p));
+
+            if (!isAllowed) {
+                return res.status(403).json({
+                    success: false,
+                    forcePasswordChange: true,
+                    message: "Password change is required before using the platform."
+                });
+            }
+        }
 
         next();
 

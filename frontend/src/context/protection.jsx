@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useAuth } from "./AuthContext.jsx";
 import LoadingScreen from "../components/LoadingScreen.jsx";
 
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { user, authChecked } = useAuth();
+  const location = useLocation();
   const [showRedirect, setShowRedirect] = useState(false);
 
   useEffect(() => {
@@ -34,6 +35,11 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
   if (!authChecked) {
     return <LoadingScreen message="Verifying session security..." />;
+  }
+
+  // Enforce password change before any other route is rendered
+  if (user && user.force_password_change && location.pathname.toLowerCase() !== "/change-password") {
+    return <Navigate to="/change-password" replace />;
   }
 
   if (showRedirect) {

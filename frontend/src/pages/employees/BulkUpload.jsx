@@ -72,6 +72,9 @@ const BulkUpload = () => {
                         errorMsg = 'HR cannot create HR/Admin';
                     }
 
+                    const forcePassVal = row['Force Password Change'] || row['force_password_change'] || row['Force change on first login'] || '';
+                    const force_password_change = forcePassVal.toString().toLowerCase().trim() === 'true' || forcePassVal.toString().trim() === '1';
+
                     return {
                         ...row,
                         name,
@@ -79,6 +82,7 @@ const BulkUpload = () => {
                         phone,
                         dept: dept || '-',
                         desg: desg || '-',
+                        force_password_change,
                         status,
                         errorMsg
                     };
@@ -197,7 +201,10 @@ const BulkUpload = () => {
     };
 
     const downloadSample = () => {
-        const csvContent = "Name,Email,Phone,Department,Designation,Password \n John Doe,john@example.com,9876543210,Sales,Sales Exec,Pass@123";
+        const csvContent = "Name,Email,Phone,Department,Designation,Password,Force Password Change\n" +
+            "John Doe,john@example.com,9876543210,Sales,Sales Exec,Pass@123,TRUE\n" +
+            "Jane Smith,jane@example.com,9876543211,Marketing,Marketing Exec,Pass@456,FALSE";
+        
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);

@@ -1,0 +1,7 @@
+new,old
+chat_conversations,conversations
+chat_conversation_members,conversation_members
+chat_messages,messages
+chat_message_attachments,message_attachments
+chat_message_mentions,message_mentions
+chat_message_reactions,message_reactions

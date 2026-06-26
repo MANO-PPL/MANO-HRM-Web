@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, X, User, Mail, Phone, Briefcase, Clock, Camera, Plus, ChevronDown } from 'lucide-react';
+import { Save, X, User, Mail, Phone, Briefcase, Clock, Camera, Plus, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { adminService, adminCacheData } from '../../services/adminService';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
@@ -73,8 +73,11 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
         shift_id: '',
         user_type: 'employee',
         status: true,
-        profile_image: null
+        profile_image: null,
+        force_password_change: false
     });
+
+    const [showPassword, setShowPassword] = useState(false);
 
     const [departments, setDepartments] = useState(() => adminCacheData.departments?.departments || []);
     const [designations, setDesignations] = useState(() => adminCacheData.designations?.designations || []);
@@ -181,7 +184,8 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                             shift_id: u.shift_id || '',
                             user_type: u.user_type,
                             status: true,
-                            profile_image: u.profile_image_url || null
+                            profile_image: u.profile_image_url || null,
+                            force_password_change: u.force_password_change === 1 || u.force_password_change === true || u.force_password_change === 'true'
                         });
                     }
                 }
@@ -307,7 +311,8 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                 desg_id: formData.desg_id,
                 dept_id: formData.dept_id,
                 shift_id: formData.shift_id,
-                user_type: formData.user_type
+                user_type: formData.user_type,
+                force_password_change: formData.force_password_change
             };
 
             if (formData.user_password) {
@@ -439,25 +444,47 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Password</label>
-                                    <input
-                                        type="password"
-                                        name="user_password"
-                                        value={formData.user_password}
-                                        onChange={handleChange}
-                                        onBlur={handleBlur}
-                                        placeholder={isEditMode ? "Leave blank to keep" : "Enter password"}
-                                        className={`w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${
-                                            touched.user_password && errors.user_password 
-                                                ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' 
-                                                : 'border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 focus:ring-indigo-500/20 focus:border-indigo-500'
-                                        } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
-                                        required={!isEditMode}
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type={showPassword ? "text" : "password"}
+                                            name="user_password"
+                                            value={formData.user_password}
+                                            onChange={handleChange}
+                                            onBlur={handleBlur}
+                                            placeholder={isEditMode ? "Leave blank to keep" : "Enter password"}
+                                            className={`w-full pl-4 pr-12 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${
+                                                touched.user_password && errors.user_password 
+                                                    ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' 
+                                                    : 'border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 focus:ring-indigo-500/20 focus:border-indigo-500'
+                                            } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
+                                            required={!isEditMode}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1"
+                                        >
+                                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
                                     {touched.user_password && errors.user_password && (
                                         <p className="text-[10px] text-rose-500 mt-1 ml-1 animate-in fade-in slide-in-from-top-1 duration-200">
                                             {errors.user_password}
                                         </p>
                                     )}
+                                    <div className="flex items-center gap-2 mt-2 px-1">
+                                        <input
+                                            type="checkbox"
+                                            id="force_password_change"
+                                            name="force_password_change"
+                                            checked={formData.force_password_change}
+                                            onChange={handleChange}
+                                            className="w-4 h-4 text-indigo-600 border-slate-300 dark:border-slate-700 rounded focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                        <label htmlFor="force_password_change" className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer select-none">
+                                            Force change on first login
+                                        </label>
+                                    </div>
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Email</label>

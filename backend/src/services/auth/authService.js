@@ -17,7 +17,7 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
         .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
         .select(
             'users.user_id', 'users.user_code', 'users.user_name', 'users.user_password', 'users.email', 'users.phone_no', 'users.org_id', 'users.user_type',
-            'users.profile_image_url', 'users.is_active', 'users.is_deleted',
+            'users.profile_image_url', 'users.is_active', 'users.is_deleted', 'users.force_password_change',
             'departments.dept_name', 'designations.desg_name', 'shifts.shift_name', 'shifts.shift_id',
             'organizations.status as org_status', 'organizations.max_users as org_max_users'
         )
@@ -43,13 +43,16 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
     const isMatch = await bcrypt.compare(password, user.user_password);
     if (!isMatch) throw new AppError('Incorrect Password', 401);
 
+    const isForcePasswordChange = user.force_password_change === 1 || user.force_password_change === '1' || user.force_password_change === true || user.force_password_change === 'true';
+
     const tokenPayload = {
         user_id: user.user_id,
         user_name: user.user_name,
         email: user.email,
         user_type: user.user_type,
         org_id: user.org_id,
-        profile_image_url: user.profile_image_url
+        profile_image_url: user.profile_image_url,
+        force_password_change: isForcePasswordChange
     };
 
     const accessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
@@ -87,7 +90,8 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
             department: user.dept_name,
             org_id: user.org_id,
             profile_image_url: user.profile_image_url,
-            org_max_users: user.org_max_users
+            org_max_users: user.org_max_users,
+            force_password_change: isForcePasswordChange
         }
     };
 };
@@ -195,15 +199,16 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
         email: user.email,
         user_type: user.user_type,
         org_id: user.org_id,
-        profile_image_url: user.profile_image_url
+        profile_image_url: user.profile_image_url,
+        force_password_change: user.force_password_change === 1 || user.force_password_change === '1' || user.force_password_change === true || user.force_password_change === 'true'
     };
 
     const newAccessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 
-    return { 
-        accessToken: newAccessToken, 
-        refreshToken: newRefreshToken, 
-        rememberMe: refreshTokenRecord?.remember_me === 1 
+    return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        rememberMe: refreshTokenRecord?.remember_me === 1
     };
 };
 
@@ -225,14 +230,18 @@ export const getCurrentUser = async (userId, userType) => {
         .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
         .where('users.user_id', userId)
         .select(
-            'users.user_code', 'users.user_name', 'users.email', 'users.user_type', 'users.org_id', 'users.profile_image_url',
+            'users.user_code', 'users.user_name', 'users.email', 'users.user_type', 'users.org_id', 'users.profile_image_url', 'users.force_password_change',
             'organizations.max_users as org_max_users'
         )
         .first();
 
     if (!user) throw new AppError("User not found", 404);
 
-    return { ...user, user_id: userId };
+    return {
+        ...user,
+        user_id: userId,
+        force_password_change: user.force_password_change === 1 || user.force_password_change === '1' || user.force_password_change === true || user.force_password_change === 'true'
+    };
 };
 
 export const logoutUser = async (refreshToken) => {
@@ -306,4 +315,16 @@ export const executePasswordReset = async (resetToken, newPassword) => {
         }
         throw new AppError("Invalid or expired reset token", 403);
     }
+};
+
+export const changePassword = async (userId, newPassword) => {
+    if (!newPassword || newPassword.length < 6) {
+        throw new AppError("Password must be at least 6 characters long", 400);
+    }
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await attendanceDB("users").where({ user_id: userId }).update({
+        user_password: hashedPassword,
+        force_password_change: false
+    });
+    return true;
 };

@@ -239,3 +239,19 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
         email: finalAdminEmail.trim().toLowerCase()
     });
 });
+
+export const changePassword = catchAsync(async (req, res, next) => {
+    const { newPassword } = req.body;
+    const userId = req.user.user_id || req.user.id;
+
+    if (!newPassword) {
+        throw new AppError("New password is required", 400);
+    }
+
+    await authService.changePassword(userId, newPassword);
+
+    res.status(200).json({
+        success: true,
+        message: "Password changed successfully."
+    });
+});
