@@ -1,6 +1,8 @@
 import { attendanceDB } from '../../config/database.js';
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
+import { PassThrough } from 'stream';
+import ExcelJS from 'exceljs';
 
 // Helper to get start and end dates of a month, and number of days
 const getMonthDetails = (dateStr) => {
@@ -891,4 +893,216 @@ export const logLabourPayout = catchAsync(async (req, res) => {
             payout_id
         });
     }
+});
+
+export const downloadBulkTemplate = catchAsync(async (req, res) => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Template');
+
+    worksheet.columns = [
+        { header: 'Name', key: 'name', width: 25 },
+        { header: 'Phone', key: 'phone', width: 15 },
+        { header: 'Sex', key: 'sex', width: 10 },
+        { header: 'Role', key: 'role', width: 15 },
+        { header: 'Wage Type', key: 'wage_type', width: 15 },
+        { header: 'Monthly Salary', key: 'monthly_salary', width: 18 },
+        { header: 'Site Name', key: 'site_name', width: 20 }
+    ];
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4F46E5' }
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 25;
+
+    worksheet.addRow({
+        name: 'Ramesh Kumar',
+        phone: '9876543210',
+        sex: 'Male',
+        role: 'Mason',
+        wage_type: 'Daily Wage',
+        monthly_salary: 15000,
+        site_name: ''
+    });
+
+    const sites = await attendanceDB('labour_sites')
+        .select('site_name')
+        .whereNot('status', 'Inactive');
+    
+    for (let i = 2; i <= 100; i++) {
+        worksheet.getCell(`C${i}`).dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: ['"Male,Female,Other"']
+        };
+        worksheet.getCell(`E${i}`).dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: ['"Daily Wage,Fixed Salary"']
+        };
+        
+        if (sites.length > 0) {
+            const siteListStr = sites.map(s => s.site_name.replace(/"/g, '""')).join(',');
+            if (siteListStr.length < 250) {
+                worksheet.getCell(`G${i}`).dataValidation = {
+                    type: 'list',
+                    allowBlank: true,
+                    formulae: [`"${siteListStr}"`]
+                };
+            }
+        }
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=labour_bulk_upload_template.xlsx');
+
+    await workbook.xlsx.write(res);
+    res.end();
+});
+
+export const parseBulkLabours = catchAsync(async (req, res) => {
+    if (!req.file) {
+        throw new AppError('Please upload a CSV or Excel file', 400);
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const buffer = req.file.buffer;
+    const mimeType = req.file.mimetype;
+    const originalName = req.file.originalname.toLowerCase();
+
+    if (mimeType.includes('csv') || originalName.endsWith('.csv')) {
+        const bufferStream = new PassThrough();
+        bufferStream.end(buffer);
+        await workbook.csv.read(bufferStream);
+    } else {
+        await workbook.xlsx.load(buffer);
+    }
+
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) {
+        throw new AppError('Invalid or empty file', 400);
+    }
+
+    const headerMap = {};
+    const headerRow = worksheet.getRow(1);
+    headerRow.eachCell((cell, colNumber) => {
+        const val = cell.value ? cell.value.toString().toLowerCase().trim() : '';
+        headerMap[val] = colNumber;
+    });
+
+    const nameCol = headerMap['name'];
+    const roleCol = headerMap['role'];
+    const salaryCol = headerMap['monthly salary'] || headerMap['salary'];
+
+    if (!nameCol || !roleCol || !salaryCol) {
+        throw new AppError('Missing required columns: Name, Role, and Monthly Salary must be defined in the header row.', 400);
+    }
+
+    const getVal = (row, colIndex) => {
+        if (!colIndex) return null;
+        const cell = row.getCell(colIndex);
+        if (!cell || cell.value === undefined || cell.value === null) return '';
+        if (cell.value && typeof cell.value === 'object' && cell.value.result !== undefined) {
+            return cell.value.result.toString().trim();
+        }
+        return cell.value.toString().trim();
+    };
+
+    const rowsData = [];
+    worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        rowsData.push({ row, rowNumber });
+    });
+
+    const sites = await attendanceDB('labour_sites')
+        .select('site_id', 'site_name')
+        .whereNot('status', 'Inactive');
+    
+    const siteMap = {};
+    sites.forEach(s => {
+        siteMap[s.site_name.trim().toLowerCase()] = s.site_id;
+    });
+
+    const existingLabours = await attendanceDB('labours').select('phone');
+    const existingPhones = new Set(existingLabours.map(l => l.phone).filter(Boolean));
+    const phonesInBatch = new Set();
+
+    const sexCol = headerMap['sex'] || headerMap['gender'];
+    const phoneCol = headerMap['phone'] || headerMap['mobile'];
+    const wageTypeCol = headerMap['wage type'] || headerMap['wage_type'];
+    const siteNameCol = headerMap['site name'] || headerMap['site_name'];
+
+    const parsed = [];
+
+    for (const { row, rowNumber } of rowsData) {
+        const name = getVal(row, nameCol);
+        const role = getVal(row, roleCol);
+        const salaryVal = getVal(row, salaryCol);
+        
+        if (!name && !role && !salaryVal) continue;
+
+        const monthly_salary = salaryVal ? Number(salaryVal) : NaN;
+        const sex = sexCol ? (getVal(row, sexCol) || 'Male') : 'Male';
+        const phone = phoneCol ? getVal(row, phoneCol) : '';
+        const wage_type = wageTypeCol ? (getVal(row, wageTypeCol) || 'Daily Wage') : 'Daily Wage';
+        const site_name = siteNameCol ? getVal(row, siteNameCol) : '';
+
+        let isValid = true;
+        let error = '';
+
+        if (!name) {
+            isValid = false;
+            error += 'Name is required. ';
+        }
+        if (!role) {
+            isValid = false;
+            error += 'Role is required. ';
+        }
+        if (isNaN(monthly_salary)) {
+            isValid = false;
+            error += 'Valid Monthly Salary is required. ';
+        }
+
+        const cleanPhone = phone ? phone.trim() : '';
+        if (cleanPhone) {
+            if (existingPhones.has(cleanPhone) || phonesInBatch.has(cleanPhone)) {
+                isValid = false;
+                error += `Phone number ${cleanPhone} already exists. `;
+            }
+            phonesInBatch.add(cleanPhone);
+        }
+
+        let site_id = null;
+        if (site_name) {
+            const cleanSiteName = site_name.trim().toLowerCase();
+            if (siteMap[cleanSiteName] !== undefined) {
+                site_id = siteMap[cleanSiteName];
+            } else {
+                isValid = false;
+                error += `Construction site "${site_name}" does not exist or is inactive. `;
+            }
+        }
+
+        parsed.push({
+            name,
+            phone: cleanPhone,
+            sex,
+            role,
+            wage_type,
+            monthly_salary: isNaN(monthly_salary) ? '' : monthly_salary,
+            site_id,
+            site_name,
+            isValid,
+            error: error.trim()
+        });
+    }
+
+    res.json({
+        success: true,
+        parsed
+    });
 });

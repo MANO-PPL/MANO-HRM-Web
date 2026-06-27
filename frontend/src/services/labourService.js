@@ -88,6 +88,26 @@ export const labourService = {
         }
     },
 
+    async downloadBulkTemplate() {
+        try {
+            const res = await api.get('/labour/labours/bulk/template', { responseType: 'blob' });
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to download template');
+        }
+    },
+
+    async parseBulkLabours(formData) {
+        try {
+            const res = await api.post('/labour/labours/bulk/parse', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            return res.data.parsed || [];
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to parse template');
+        }
+    },
+
     // ==========================================
     // 3. ATTENDANCE SERVICES
     // ==========================================

@@ -7,19 +7,41 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Hammer, Plus, Search, Building, Calendar, DollarSign, Clock,
     UserPlus, Edit2, Trash2, Save, AlertTriangle, CheckCircle,
-    XCircle, Info, HelpCircle, ChevronRight, User, Phone, Briefcase, X, Upload
+    XCircle, Info, HelpCircle, ChevronRight, User, Phone, Briefcase, X, Upload, Users
 } from 'lucide-react';
+import MinimalSelect from '../../components/MinimalSelect';
+import DatePicker from '../../components/DatePicker';
+import MonthPicker from '../../components/MonthPicker';
 
-const getInitialsAvatarStyle = (name) => {
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const h = Math.abs(hash) % 360;
-    return {
-        backgroundColor: `hsl(${h}, 75%, 92%)`,
-        color: `hsl(${h}, 80%, 25%)`
-    };
+
+const getStatusColor = (status) => {
+    const s = status || '';
+    if (!s || s === '-') return 'bg-slate-50 text-slate-300 dark:bg-slate-900 dark:text-slate-700 border border-slate-200 dark:border-slate-800';
+    if (s === 'Present' || s.includes('Present')) return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/50';
+    if (s === 'Absent') return 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400 ring-1 ring-rose-200 dark:ring-rose-800/50';
+    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) return 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-800/50';
+    if (s.toLowerCase().includes('late')) return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 ring-1 ring-amber-200 dark:ring-amber-800/50';
+    if (s.toLowerCase().includes('overtime')) return 'bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400 ring-1 ring-purple-200 dark:ring-purple-800/50';
+    if (s === 'Sun' || s === 'Sat' || s === 'SU' || s === 'SA' || s === 'Sunday' || s === 'Saturday') return 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500';
+    if (s.toLowerCase() === 'on leave' || s.toLowerCase() === 'paid leave') return 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400 ring-1 ring-sky-200 dark:ring-sky-800/50';
+    if (s.toLowerCase() === 'half day') return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800/50';
+    return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+};
+
+const getStatusLabel = (status) => {
+    const s = status || '';
+    if (!s || s === '-') return '·';
+    if (s === 'Present') return 'P';
+    if (s === 'Absent') return 'A';
+    if (s === 'Sun' || s === 'SU' || s === 'Sunday') return 'Su';
+    if (s === 'Sat' || s === 'SA' || s === 'Saturday') return 'Sa';
+    if (s.toLowerCase() === 'on leave') return 'L';
+    if (s.toLowerCase() === 'paid leave') return 'PL';
+    if (s.toLowerCase() === 'half day') return 'HD';
+    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) return 'LO';
+    if (s.toLowerCase().includes('late')) return 'Lt';
+    if (s.toLowerCase().includes('overtime')) return 'OT';
+    return s.slice(0, 2);
 };
 
 const LabourManagement = () => {
@@ -45,7 +67,6 @@ const LabourManagement = () => {
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
     const [attendanceRoster, setAttendanceRoster] = useState([]);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
-    const [attendanceSearchQuery, setAttendanceSearchQuery] = useState('');
 
     // Monthly Grid States
     const [gridSiteId, setGridSiteId] = useState('');
@@ -53,12 +74,11 @@ const LabourManagement = () => {
     const [gridData, setGridData] = useState([]);
     const [gridLoading, setGridLoading] = useState(false);
     const [gridMonthDetails, setGridMonthDetails] = useState(null);
-    const [showAllSitesAttendance, setShowAllSitesAttendance] = useState(false);
 
     // Modal Control States
     const [showSiteModal, setShowSiteModal] = useState(false);
     const [editingSite, setEditingSite] = useState(null);
-    const [siteForm, setSiteForm] = useState({ site_name: '', location_details: '', status: 'Active', end_date: '' });
+    const [siteForm, setSiteForm] = useState({ site_name: '', location_details: '', status: 'Active' });
 
     const [showLabourModal, setShowLabourModal] = useState(false);
     const [editingLabour, setEditingLabour] = useState(null);
@@ -75,6 +95,7 @@ const LabourManagement = () => {
     const [bulkSourceSiteId, setBulkSourceSiteId] = useState('All');
     const [bulkDestinationSiteId, setBulkDestinationSiteId] = useState('');
     const [selectedLabourIds, setSelectedLabourIds] = useState([]);
+    const [bulkRoleFilter, setBulkRoleFilter] = useState('All');
 
     const [showBorrowModal, setShowBorrowModal] = useState(false);
     const [borrowSearchQuery, setBorrowSearchQuery] = useState('');
@@ -93,6 +114,10 @@ const LabourManagement = () => {
     });
 
     const [financeMonth, setFinanceMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [financeRoleFilter, setFinanceRoleFilter] = useState('');
+    const [gridRoleFilter, setGridRoleFilter] = useState('');
+    const [labourRoleFilter, setLabourRoleFilter] = useState('');
+    const [attendanceRoleFilter, setAttendanceRoleFilter] = useState('');
 
     const [showSiteClosurePrompt, setShowSiteClosurePrompt] = useState(false);
     const [closureSiteId, setClosureSiteId] = useState('');
@@ -107,6 +132,14 @@ const LabourManagement = () => {
     const [parsedLabours, setParsedLabours] = useState([]);
     const [csvPreviewError, setCsvPreviewError] = useState('');
     const [isUploadingBulk, setIsUploadingBulk] = useState(false);
+
+    // Custom Confirmation Dialog State
+    const [confirmDialog, setConfirmDialog] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: null
+    });
 
     // ==========================================
     // DATA FETCHING HANDLERS
@@ -144,7 +177,7 @@ const LabourManagement = () => {
         if (!gridSiteId || !gridMonth) return;
         setGridLoading(true);
         try {
-            const res = await labourService.getMonthlyGridAttendance(gridSiteId, gridMonth, showAllSitesAttendance);
+            const res = await labourService.getMonthlyGridAttendance(gridSiteId, gridMonth, false);
             setGridData(res.grid || []);
             setGridMonthDetails(res.monthDetails || null);
         } catch (err) {
@@ -197,95 +230,28 @@ const LabourManagement = () => {
                 fetchFinances();
             }
         }
-    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, showAllSitesAttendance, financeMonth, activeTab, selectedSite, subTab]);
-
-    // Bulk upload CSV handlers
-    const handleCSVUpload = (e) => {
+    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, financeMonth, activeTab, selectedSite, subTab]);
+    // Bulk upload CSV/Excel handlers
+    const handleCSVUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const text = event.target.result;
-            try {
-                const parsed = parseLabourCSV(text);
-                if (parsed.length === 0) {
-                    toast.error("The CSV file seems to be empty or invalid.");
-                    return;
-                }
-                setParsedLabours(parsed);
-                setCsvPreviewError('');
-            } catch (err) {
-                toast.error("Failed to parse CSV file. Please check template format.");
-                setCsvPreviewError(err.message);
+        const formData = new FormData();
+        formData.append('file', file);
+        setIsUploadingBulk(true);
+        try {
+            const parsed = await labourService.parseBulkLabours(formData);
+            if (parsed.length === 0) {
+                toast.error("The file seems to be empty or invalid.");
+                return;
             }
-        };
-        reader.readAsText(file);
-    };
-
-    const parseLabourCSV = (text) => {
-        const lines = text.split(/\r?\n/);
-        if (lines.length === 0) return [];
-
-        const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-        const nameIdx = headers.findIndex(h => h.toLowerCase() === 'name');
-        const roleIdx = headers.findIndex(h => h.toLowerCase() === 'role');
-        const salaryIdx = headers.findIndex(h => h.toLowerCase() === 'monthly salary' || h.toLowerCase() === 'salary');
-        const sexIdx = headers.findIndex(h => h.toLowerCase() === 'sex' || h.toLowerCase() === 'gender');
-        const phoneIdx = headers.findIndex(h => h.toLowerCase() === 'phone' || h.toLowerCase() === 'mobile');
-        const wageTypeIdx = headers.findIndex(h => h.toLowerCase() === 'wage type' || h.toLowerCase() === 'wage_type');
-        const siteNameIdx = headers.findIndex(h => h.toLowerCase() === 'site name' || h.toLowerCase() === 'site_name');
-
-        if (nameIdx === -1 || roleIdx === -1 || salaryIdx === -1) {
-            throw new Error("Missing required columns: Name, Role, and Monthly Salary must be defined in the header row.");
+            setParsedLabours(parsed);
+            setCsvPreviewError('');
+        } catch (err) {
+            toast.error(err.message || "Failed to parse file. Please check template format.");
+            setCsvPreviewError(err.message);
         }
-
-        const results = [];
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
-
-            // Handle quotes and commas correctly
-            const values = [];
-            let inQuotes = false;
-            let currentVal = '';
-            for (let c = 0; c < line.length; c++) {
-                const char = line[c];
-                if (char === '"' || char === "'") {
-                    inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
-                    values.push(currentVal.trim());
-                    currentVal = '';
-                } else {
-                    currentVal += char;
-                }
-            }
-            values.push(currentVal.trim());
-
-            if (values.length === 0 || (values.length === 1 && !values[0])) continue;
-
-            const name = values[nameIdx] || '';
-            const role = values[roleIdx] || '';
-            const monthly_salary = values[salaryIdx] ? Number(values[salaryIdx]) : NaN;
-            const sex = sexIdx !== -1 ? (values[sexIdx] || 'Male') : 'Male';
-            const phone = phoneIdx !== -1 ? (values[phoneIdx] || '') : '';
-            const wage_type = wageTypeIdx !== -1 ? (values[wageTypeIdx] || 'Daily Wage') : 'Daily Wage';
-            const site_name = siteNameIdx !== -1 ? (values[siteNameIdx] || '') : '';
-
-            const isValid = name && role && !isNaN(monthly_salary);
-
-            results.push({
-                name,
-                role,
-                monthly_salary,
-                sex,
-                phone,
-                wage_type,
-                site_name,
-                isValid
-            });
-        }
-        return results;
+        setIsUploadingBulk(false);
     };
 
     const handleSaveBulkLabours = async () => {
@@ -308,19 +274,20 @@ const LabourManagement = () => {
         setIsUploadingBulk(false);
     };
 
-    const downloadCSVTemplate = () => {
-        const headers = ['Name', 'Phone', 'Sex', 'Role', 'Wage Type', 'Monthly Salary', 'Site Name'];
-        const sampleRow = ['Ramesh Kumar', '9876543210', 'Male', 'Mason', 'Daily Wage', '15000', ''];
-        const csvContent = "data:text/csv;charset=utf-8,"
-            + [headers.join(','), sampleRow.join(',')].join('\n');
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "labour_bulk_upload_template.csv");
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
+    const downloadCSVTemplate = async () => {
+        try {
+            const data = await labourService.downloadBulkTemplate();
+            const url = window.URL.createObjectURL(new Blob([data]));
+            const link = document.createElement("a");
+            link.href = url;
+            link.setAttribute("download", "labour_bulk_upload_template.xlsx");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            toast.error(err.message || "Failed to download template.");
+        }
+    };;
 
     // ==========================================
     // SITE HANDLERS
@@ -354,7 +321,7 @@ const LabourManagement = () => {
             }
             setShowSiteModal(false);
             setEditingSite(null);
-            setSiteForm({ site_name: '', location_details: '', status: 'Active', end_date: '' });
+            setSiteForm({ site_name: '', location_details: '', status: 'Active' });
             fetchSites();
         } catch (err) {
             toast.error(err.message || 'Failed to save site');
@@ -375,7 +342,7 @@ const LabourManagement = () => {
             toast.success(`Site status updated. Transferred ${labourIdsToTransfer.length} workers.`);
             setShowSiteClosurePrompt(false);
             setEditingSite(null);
-            setSiteForm({ site_name: '', location_details: '', status: 'Active', end_date: '' });
+            setSiteForm({ site_name: '', location_details: '', status: 'Active' });
             fetchSites();
             fetchLabours();
         } catch (err) {
@@ -440,21 +407,26 @@ const LabourManagement = () => {
         setSiteForm({
             site_name: site.site_name,
             location_details: site.location_details || '',
-            status: site.status,
-            end_date: site.end_date ? site.end_date.split('T')[0] : ''
+            status: site.status
         });
         setShowSiteModal(true);
     };
 
-    const handleDeleteSite = async (siteId) => {
-        if (!window.confirm('Are you sure you want to delete this site? assigned labours will be unassigned.')) return;
-        try {
-            await labourService.deleteSite(siteId);
-            toast.success('Site deleted successfully');
-            fetchSites();
-        } catch (err) {
-            toast.error(err.message || 'Failed to delete site');
-        }
+    const handleDeleteSite = (siteId) => {
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Delete Construction Site',
+            message: 'Are you sure you want to delete this site? Assigned workers will be unassigned.',
+            onConfirm: async () => {
+                try {
+                    await labourService.deleteSite(siteId);
+                    toast.success('Site deleted successfully');
+                    fetchSites();
+                } catch (err) {
+                    toast.error(err.message || 'Failed to delete site');
+                }
+            }
+        });
     };
 
     // ==========================================
@@ -464,8 +436,18 @@ const LabourManagement = () => {
     const handleSaveLabour = async (e) => {
         e.preventDefault();
         try {
+            const cleanPhone = labourForm.phone ? labourForm.phone.trim().replace(/[\s\-()]/g, '') : '';
+            if (cleanPhone) {
+                const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
+                if (!phoneRegex.test(cleanPhone)) {
+                    toast.error('Please enter a valid 10-digit contact number (e.g. 9876543210)');
+                    return;
+                }
+            }
+
             const payload = {
                 ...labourForm,
+                phone: cleanPhone || null,
                 monthly_salary: Number(labourForm.monthly_salary),
                 allowed_leaves: 0,
                 site_id: labourForm.site_id ? Number(labourForm.site_id) : null
@@ -505,15 +487,21 @@ const LabourManagement = () => {
         setShowLabourModal(true);
     };
 
-    const handleDeleteLabour = async (labourId) => {
-        if (!window.confirm('Are you sure you want to delete this labour worker? All history will be deleted.')) return;
-        try {
-            await labourService.deleteLabour(labourId);
-            toast.success('Labour deleted successfully');
-            fetchLabours();
-        } catch (err) {
-            toast.error(err.message || 'Failed to delete labour worker');
-        }
+    const handleDeleteLabour = (labourId) => {
+        setConfirmDialog({
+            isOpen: true,
+            title: 'Delete Worker Profile',
+            message: 'Are you sure you want to delete this labour worker? All history and data will be permanently deleted.',
+            onConfirm: async () => {
+                try {
+                    await labourService.deleteLabour(labourId);
+                    toast.success('Labour worker deleted successfully');
+                    fetchLabours();
+                } catch (err) {
+                    toast.error(err.message || 'Failed to delete labour worker');
+                }
+            }
+        });
     };
 
     // ==========================================
@@ -522,12 +510,7 @@ const LabourManagement = () => {
 
     const handleStatusChange = (labourId, newStatus) => {
         setAttendanceRoster(prev =>
-            prev.map(item => {
-                if (item.labour_id === labourId) {
-                    return { ...item, status: item.status === newStatus ? '' : newStatus };
-                }
-                return item;
-            })
+            prev.map(item => item.labour_id === labourId ? { ...item, status: newStatus } : item)
         );
     };
 
@@ -659,30 +642,87 @@ const LabourManagement = () => {
 
     return (
         <DashboardLayout title="Labour Management">
-            <div className="space-y-6">
+            <div className="space-y-3">
 
-                {/* Upper tab switcher */}
-                <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-xl border border-[#d0d7de] dark:border-[#30363d] w-fit select-none">
-                    {[
-                        { id: 'sites', label: 'Sites Overview', icon: <Building size={14} /> },
-                        { id: 'directory', label: 'Labour Force Directory', icon: <User size={14} /> }
-                    ].map((tab) => {
-                        const isSelected = activeTab === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isSelected
+                {/* Upper tab switcher row */}
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
+                    <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-xl border border-[#d0d7de] dark:border-[#30363d] w-fit select-none">
+                        {[
+                            { id: 'sites', label: 'Sites Overview', icon: <Building size={14} /> },
+                            { id: 'directory', label: 'Labour Force Directory', icon: <User size={14} /> }
+                        ].map((tab) => {
+                            const isSelected = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isSelected
                                         ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
                                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                    }`}
+                                        }`}
+                                >
+                                    {tab.icon}
+                                    <span>{tab.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Action buttons aligned in the same row as the tab bar */}
+                    {activeTab === 'directory' && (
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => {
+                                    setSelectedLabourIds([]);
+                                    setBulkSourceSiteId('All');
+                                    setBulkDestinationSiteId(selectedSite ? String(selectedSite.site_id) : '');
+                                    setBulkRoleFilter('All');
+                                    setShowBulkTransferModal(true);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all border border-[#d0d7de] dark:border-[#30363d] cursor-pointer"
                             >
-                                {tab.icon}
-                                <span>{tab.label}</span>
+                                <Building size={14} />
+                                <span>Bulk Transfer</span>
                             </button>
-                        );
-                    })}
+                            <button
+                                onClick={() => {
+                                    setParsedLabours([]);
+                                    setCsvPreviewError('');
+                                    setShowBulkLabourModal(true);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer"
+                            >
+                                <Upload size={14} />
+                                <span>Bulk Add Labours</span>
+                            </button>
+                            <button
+                                onClick={() => { setEditingLabour(null); setLabourForm({ name: '', phone: '', sex: 'Male', role: '', wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '' }); setShowLabourModal(true); }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer"
+                            >
+                                <UserPlus size={14} />
+                                <span>Add Labour Worker</span>
+                            </button>
+                        </div>
+                    )}
+
+                    {activeTab === 'sites' && selectedSite === null && (
+                        <button
+                            onClick={() => { setEditingSite(null); setSiteForm({ site_name: '', location_details: '', status: 'Active' }); setShowSiteModal(true); }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer"
+                        >
+                            <Plus size={14} />
+                            <span>Create Site</span>
+                        </button>
+                    )}
                 </div>
+
+                {activeTab === 'sites' && selectedSite !== null && (
+                    <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-450 dark:text-slate-500 select-none animate-in fade-in duration-200">
+                        <span className="hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => setSelectedSite(null)}>Sites Overview</span>
+                        <ChevronRight size={12} className="text-slate-350 dark:text-slate-700" />
+                        <span className="text-slate-700 dark:text-github-dark-text font-bold">{selectedSite.site_name}</span>
+                    </div>
+                )}
 
                 {/* Main Content Pane */}
                 {loading ? (
@@ -701,187 +741,211 @@ const LabourManagement = () => {
                                     <div className="flex justify-between items-center bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
                                         <div>
                                             <h3 className="font-bold text-sm text-slate-800 dark:text-github-dark-text">Project Construction Sites</h3>
-                                            <p className="text-slate-450 dark:text-github-dark-muted text-[11px] mt-0.5">Manage building sites and click a site to access its daily attendance roll call, matrix grid, and salary ledger.</p>
+                                            <p className="text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted text-[11px] mt-0.5">Manage building sites and click a site to access its daily attendance roll call, matrix grid, and salary ledger.</p>
                                         </div>
-                                        <button
-                                            onClick={() => { setEditingSite(null); setSiteForm({ site_name: '', location_details: '', status: 'Active', end_date: '' }); setShowSiteModal(true); }}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
-                                        >
-                                            <Plus size={14} />
-                                            <span>Create Site</span>
-                                        </button>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {/* Sites Table */}
+                                    <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
                                         {sites.length === 0 ? (
-                                            <div className="col-span-full border border-dashed border-slate-300 dark:border-github-dark-border rounded-xl p-10 text-center">
+                                            <div className="border border-dashed border-slate-300 dark:border-github-dark-border rounded-xl p-10 text-center m-4">
                                                 <Building className="mx-auto text-slate-300 dark:text-slate-700 mb-2" size={32} />
                                                 <h4 className="text-xs font-bold text-slate-500">No Construction Sites Found</h4>
                                                 <p className="text-[10px] text-slate-400 mt-1">Create a site first to start assigning labour forces.</p>
                                             </div>
                                         ) : (
-                                            sites.map(site => (
-                                                <div
-                                                    key={site.site_id}
-                                                    onClick={() => setSelectedSite(site)}
-                                                    className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl p-4 shadow-sm hover:shadow hover:border-indigo-500 transition-all flex flex-col justify-between h-40 cursor-pointer group"
-                                                >
-                                                    <div>
-                                                        <div className="flex justify-between items-start">
-                                                            <h4 className="font-bold text-sm text-slate-800 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{site.site_name}</h4>
-                                                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full uppercase ${site.status === 'Active'
-                                                                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                                    : site.status === 'Completed'
-                                                                        ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
-                                                                        : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                                                                }`}>
-                                                                {site.status}
-                                                            </span>
-                                                        </div>
-                                                        <p className="text-[11px] text-slate-505 dark:text-github-dark-muted mt-2 min-h-[3em] line-clamp-2">
-                                                            {site.location_details || 'No location details registered.'}
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-github-dark-border/40 text-xs">
-                                                        <div className="flex flex-col gap-1.5">
-                                                            <span className="text-slate-400 dark:text-github-dark-muted text-[10px]">
-                                                                {site.status === 'Completed' && site.end_date 
-                                                                    ? `Completed ${new Date(site.end_date).toLocaleDateString()}` 
-                                                                    : `Created ${new Date(site.created_at).toLocaleDateString()}`
-                                                                }
-                                                            </span>
-                                                            {(() => {
-                                                                const assignedLabours = labours.filter(l => l.site_ids && l.site_ids.includes(site.site_id));
-                                                                const displayLabours = assignedLabours.slice(0, 3);
-                                                                const remainingCount = assignedLabours.length - 3;
-                                                                return (
-                                                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                                                        {assignedLabours.length > 0 ? (
-                                                                            <div className="flex -space-x-1.5 overflow-hidden">
-                                                                                {displayLabours.map((lab) => {
-                                                                                    const initials = lab.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                                                                                    const avatarStyle = getInitialsAvatarStyle(lab.name);
-                                                                                    return (
-                                                                                        <div
-                                                                                            key={lab.labour_id}
-                                                                                            className="inline-flex items-center justify-center w-5 h-5 rounded-full border border-white dark:border-slate-900 text-[8px] font-black shadow-sm"
-                                                                                            style={avatarStyle}
-                                                                                            title={`${lab.name} (${lab.role})`}
-                                                                                        >
-                                                                                            {initials}
-                                                                                        </div>
-                                                                                    );
-                                                                                })}
-                                                                                {remainingCount > 0 && (
-                                                                                    <div className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 border border-white dark:border-slate-900 text-slate-500 dark:text-slate-400 text-[8px] font-bold shadow-sm">
-                                                                                        +{remainingCount}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        ) : null}
-                                                                        <span className="text-[10px] font-extrabold text-indigo-650 dark:text-indigo-400">
-                                                                            {assignedLabours.length} {assignedLabours.length === 1 ? 'Worker' : 'Workers'}
+                                            <table className="w-full text-left border-collapse text-xs">
+                                                <thead>
+                                                    <tr className="bg-slate-50 dark:bg-github-dark-border/40 text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
+                                                        <th className="p-3">Site Name</th>
+                                                        <th className="p-3">Location</th>
+                                                        <th className="p-3 text-center">Status</th>
+                                                        <th className="p-3 text-center">Workers Assigned</th>
+                                                        <th className="p-3">Created On</th>
+                                                        <th className="p-3 text-right">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {sites.map(site => {
+                                                        const assignedCount = labours.filter(l =>
+                                                            (l.site_ids && Array.isArray(l.site_ids) && l.site_ids.includes(site.site_id)) ||
+                                                            l.site_id === site.site_id
+                                                        ).length;
+                                                        return (
+                                                            <tr
+                                                                key={site.site_id}
+                                                                onClick={() => setSelectedSite(site)}
+                                                                className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/10 cursor-pointer transition-colors group"
+                                                            >
+                                                                <td className="p-3">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-center shrink-0">
+                                                                            <Building size={13} className="text-indigo-500" />
+                                                                        </div>
+                                                                        <span className="font-bold text-slate-800 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                                                            {site.site_name}
                                                                         </span>
                                                                     </div>
-                                                                );
-                                                            })()}
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleEditSite(site); }}
-                                                                className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-github-dark-border"
-                                                            >
-                                                                <Edit2 size={12} />
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleDeleteSite(site.site_id); }}
-                                                                className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 rounded border border-slate-200 dark:border-github-dark-border"
-                                                            >
-                                                                <Trash2 size={12} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))
+                                                                </td>
+                                                                <td className="p-3 text-slate-500 dark:text-github-dark-muted max-w-[200px]">
+                                                                    <span className="line-clamp-1">{site.location_details || <span className="italic text-slate-400">No details</span>}</span>
+                                                                </td>
+                                                                <td className="p-3 text-center">
+                                                                    <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${site.status === 'Active'
+                                                                            ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                                                            : site.status === 'Completed'
+                                                                                ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
+                                                                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                                                        }`}>
+                                                                        {site.status}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="p-3 text-center">
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 font-bold text-[11px]">
+                                                                        <Users size={11} />
+                                                                        {assignedCount}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="p-3 text-slate-400 dark:text-github-dark-muted">
+                                                                    {new Date(site.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                                </td>
+                                                                <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
+                                                                    <div className="flex justify-end gap-1.5">
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); handleEditSite(site); }}
+                                                                            className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-github-dark-border transition-colors"
+                                                                            title="Edit site"
+                                                                        >
+                                                                            <Edit2 size={12} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); handleDeleteSite(site.site_id); }}
+                                                                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 rounded border border-slate-200 dark:border-github-dark-border transition-colors"
+                                                                            title="Delete site"
+                                                                        >
+                                                                            <Trash2 size={12} />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
                                         )}
                                     </div>
                                 </div>
                             ) : (
                                 /* Click-to-drill-down site details dashboard */
                                 <div className="space-y-6 animate-in fade-in duration-200">
-                                    <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                        <div>
-                                            <button
-                                                onClick={() => setSelectedSite(null)}
-                                                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 mb-1.5"
-                                            >
-                                                &larr; Back to Sites Overview
-                                            </button>
-                                            <div className="flex items-center gap-3">
-                                                <h3 className="font-extrabold text-base text-slate-800 dark:text-github-dark-text">{selectedSite.site_name}</h3>
-                                                <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full uppercase ${selectedSite.status === 'Active'
-                                                        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                        : 'bg-slate-100 text-slate-500'
-                                                    }`}>
-                                                    {selectedSite.status}
-                                                </span>
-                                            </div>
-                                            <p className="text-slate-450 dark:text-github-dark-muted text-[11px] mt-0.5">{selectedSite.location_details || 'No location details registered.'}</p>
+                                    <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border px-4 py-3 rounded-xl shadow-sm flex items-center justify-between gap-3 flex-wrap">
+                                        {/* Left: site name + status */}
+                                        <div className="flex items-center gap-2.5 shrink-0">
+                                            <h3 className="font-extrabold text-sm text-slate-800 dark:text-github-dark-text">{selectedSite.site_name}</h3>
+                                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full uppercase ${selectedSite.status === 'Active'
+                                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                                : 'bg-slate-100 text-slate-500'
+                                                }`}>
+                                                {selectedSite.status}
+                                            </span>
                                         </div>
-                                        <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-0.5 rounded-lg border border-[#d0d7de]/70 dark:border-[#30363d]/60 w-fit select-none shrink-0 shadow-inner">
-                                            {[
-                                                { id: 'attendance', label: 'Daily Roll Call', icon: <Calendar size={13} /> },
-                                                { id: 'grid', label: 'Monthly Matrix', icon: <Calendar size={13} /> },
-                                                { id: 'finances', label: 'Salary Ledger', icon: <DollarSign size={13} /> }
-                                            ].map((tab) => {
-                                                const isSelected = subTab === tab.id;
-                                                return (
-                                                    <button
-                                                        key={tab.id}
-                                                        onClick={() => setSubTab(tab.id)}
-                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-200 cursor-pointer ${isSelected
+
+                                        {/* Right: filters + tab switcher in one aligned row */}
+                                        <div className="flex items-center gap-2 flex-wrap ml-auto">
+                                            {/* Context-sensitive filters — same height as tabs (py-1.5) */}
+                                            {subTab === 'attendance' && (
+                                                <>
+                                                    <MinimalSelect
+                                                        value={attendanceRoleFilter}
+                                                        onChange={(val) => setAttendanceRoleFilter(val)}
+                                                        options={[
+                                                            { value: '', label: 'All Roles' },
+                                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                                        ]}
+                                                        size="sm"
+                                                        triggerClassName="bg-[#f6f8fa] dark:bg-[#161b22] border-[#d0d7de]/70 dark:border-[#30363d]/60 text-slate-700 dark:text-github-dark-text cursor-pointer h-[30px] text-[11px]"
+                                                        variant="input"
+                                                    />
+                                                    <DatePicker
+                                                        value={attendanceDate}
+                                                        onChange={(val) => setAttendanceDate(val)}
+                                                        compact={true}
+                                                    />
+                                                </>
+                                            )}
+                                            {subTab === 'grid' && (
+                                                <>
+                                                    <MinimalSelect
+                                                        value={gridRoleFilter}
+                                                        onChange={(val) => setGridRoleFilter(val)}
+                                                        options={[
+                                                            { value: '', label: 'All Roles' },
+                                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                                        ]}
+                                                        size="sm"
+                                                        triggerClassName="bg-[#f6f8fa] dark:bg-[#161b22] border-[#d0d7de]/70 dark:border-[#30363d]/60 text-slate-700 dark:text-github-dark-text cursor-pointer h-[30px] text-[11px]"
+                                                        variant="input"
+                                                    />
+                                                    <MonthPicker
+                                                        value={gridMonth}
+                                                        onChange={(val) => setGridMonth(val)}
+                                                        compact={true}
+                                                    />
+                                                </>
+                                            )}
+                                            {subTab === 'finances' && (
+                                                <>
+                                                    <MinimalSelect
+                                                        value={financeRoleFilter}
+                                                        onChange={(val) => setFinanceRoleFilter(val)}
+                                                        options={[
+                                                            { value: '', label: 'All Roles' },
+                                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                                        ]}
+                                                        size="sm"
+                                                        triggerClassName="bg-[#f6f8fa] dark:bg-[#161b22] border-[#d0d7de]/70 dark:border-[#30363d]/60 text-slate-700 dark:text-github-dark-text cursor-pointer h-[30px] text-[11px]"
+                                                        variant="input"
+                                                    />
+                                                    <MonthPicker
+                                                        value={financeMonth}
+                                                        onChange={(val) => setFinanceMonth(val)}
+                                                        compact={true}
+                                                    />
+                                                </>
+                                            )}
+
+                                            {/* Divider between filters and tabs */}
+                                            <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d] shrink-0" />
+
+                                            {/* Tab switcher */}
+                                            <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-0.5 rounded-lg border border-[#d0d7de]/70 dark:border-[#30363d]/60 select-none shrink-0 shadow-inner">
+                                                {[
+                                                    { id: 'attendance', label: 'Daily Roll Call', icon: <Calendar size={12} /> },
+                                                    { id: 'grid', label: 'Monthly Matrix', icon: <Calendar size={12} /> },
+                                                    { id: 'finances', label: 'Salary Ledger', icon: <DollarSign size={12} /> }
+                                                ].map((tab) => {
+                                                    const isSelected = subTab === tab.id;
+                                                    return (
+                                                        <button
+                                                            key={tab.id}
+                                                            onClick={() => setSubTab(tab.id)}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-200 cursor-pointer ${isSelected
                                                                 ? 'bg-white dark:bg-slate-800 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                                                : 'text-slate-505 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                                            }`}
-                                                    >
-                                                        {tab.icon}
-                                                        <span>{tab.label}</span>
-                                                    </button>
-                                                );
-                                            })}
+                                                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                                                }`}
+                                                        >
+                                                            {tab.icon}
+                                                            <span>{tab.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                     </div>
 
                                     {/* Component Renders (filtered for this site) */}
                                     {subTab === 'attendance' && (
                                         <div className="space-y-4 animate-in fade-in duration-150">
-                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
-                                                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full">
-                                                     <div className="flex flex-col gap-1 w-full sm:w-48">
-                                                         <label className="text-[10px] uppercase font-bold text-slate-400">Roster Attendance Date</label>
-                                                         <input
-                                                             type="date"
-                                                             value={attendanceDate}
-                                                             onChange={(e) => setAttendanceDate(e.target.value)}
-                                                             className="px-3 py-1.5 bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none"
-                                                         />
-                                                     </div>
-                                                     <div className="flex flex-col gap-1 flex-1">
-                                                         <label className="text-[10px] uppercase font-bold text-slate-400">Search Workers</label>
-                                                         <div className="relative w-full">
-                                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                                             <input
-                                                                 type="text"
-                                                                 placeholder="Search worker by name or designation..."
-                                                                 value={attendanceSearchQuery}
-                                                                 onChange={(e) => setAttendanceSearchQuery(e.target.value)}
-                                                                 className="pl-9 pr-4 py-1.5 w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-700 dark:text-github-dark-text focus:outline-none"
-                                                             />
-                                                         </div>
-                                                     </div>
-                                                 </div>
-                                            </div>
 
                                             {attendanceLoading ? (
                                                 <div className="flex justify-center py-20">
@@ -892,17 +956,22 @@ const LabourManagement = () => {
                                                     <div className="p-4 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-center bg-slate-50/50 dark:bg-github-dark-border/10">
                                                         <div>
                                                             <span className="font-bold text-xs text-slate-800 dark:text-github-dark-text">Daily Roll Call Checklist</span>
-                                                            <span className="ml-2 text-[10px] text-slate-450 dark:text-github-dark-muted font-mono">
-                                                                {attendanceSearchQuery
-                                                                    ? `${attendanceRoster.filter(item => {
-                                                                        const q = attendanceSearchQuery.toLowerCase().trim();
-                                                                        return item.name.toLowerCase().includes(q) || item.role.toLowerCase().includes(q);
-                                                                      }).length} shown of ${attendanceRoster.length} registered`
-                                                                    : `${attendanceRoster.length} workers registered`
-                                                                }
-                                                            </span>
+                                                            <span className="ml-2 text-[10px] text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted font-mono">{attendanceRoster.length} workers registered</span>
                                                         </div>
                                                         <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedLabourIds([]);
+                                                                    setBulkSourceSiteId('All');
+                                                                    setBulkDestinationSiteId(selectedSite ? String(selectedSite.site_id) : '');
+                                                                    setBulkRoleFilter('All');
+                                                                    setShowBulkTransferModal(true);
+                                                                }}
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer border border-[#d0d7de] dark:border-[#30363d]"
+                                                            >
+                                                                <Building size={14} />
+                                                                <span>Bulk Import</span>
+                                                            </button>
                                                             <button
                                                                 onClick={() => setShowBorrowModal(true)}
                                                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer border border-[#d0d7de] dark:border-[#30363d]"
@@ -921,73 +990,58 @@ const LabourManagement = () => {
                                                         </div>
                                                     </div>
 
-                                                    <div className="overflow-x-auto">
+                                                    <motion.div
+                                                        key={`attendance-${attendanceRoleFilter}-${attendanceDate}`}
+                                                        initial={{ opacity: 0, y: 8 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                                                        className="overflow-x-auto"
+                                                    >
                                                         <table className="w-full text-left border-collapse text-xs">
                                                             <thead>
-                                                                <tr className="bg-slate-50/50 dark:bg-github-dark-border/20 text-slate-450 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
+                                                                <tr className="bg-slate-50/50 dark:bg-github-dark-border/20 text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
                                                                     <th className="p-3">Worker Name</th>
-                                                                    <th className="p-3">Role / Designation</th>
+                                                                    <th className="p-3">Role</th>
                                                                     <th className="p-3">Wage Model</th>
                                                                     <th className="p-3 text-center">Status Assignment</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                {attendanceRoster.filter(item => {
-                                                                    const q = attendanceSearchQuery.toLowerCase().trim();
-                                                                    if (!q) return true;
-                                                                    return item.name.toLowerCase().includes(q) || item.role.toLowerCase().includes(q);
-                                                                }).length === 0 ? (
+                                                                {attendanceRoster.filter(r => !attendanceRoleFilter || r.role.toLowerCase() === attendanceRoleFilter.toLowerCase()).length === 0 ? (
                                                                     <tr>
-                                                                        <td colSpan="4" className="p-10 text-center text-slate-400 italic">
-                                                                            {attendanceSearchQuery ? "No matching workers found." : "No labours assigned to this site. Assign labours in Labour Force Directory."}
-                                                                        </td>
+                                                                        <td colSpan="4" className="p-10 text-center text-slate-400 italic">No labours assigned to this site or matching the role filter.</td>
                                                                     </tr>
                                                                 ) : (
                                                                     attendanceRoster
-                                                                        .filter(item => {
-                                                                            const q = attendanceSearchQuery.toLowerCase().trim();
-                                                                            if (!q) return true;
-                                                                            return item.name.toLowerCase().includes(q) || item.role.toLowerCase().includes(q);
-                                                                        })
+                                                                        .filter(r => !attendanceRoleFilter || r.role.toLowerCase() === attendanceRoleFilter.toLowerCase())
                                                                         .map(item => (
                                                                             <tr key={item.labour_id} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/20 dark:hover:bg-slate-800/10 relative">
                                                                                 <td className="p-3 font-semibold text-slate-800 dark:text-github-dark-text">
                                                                                     <div className="flex items-center gap-2">
                                                                                         <span>{item.name}</span>
-                                                                                        {item.frequent_count > 0 && (
-                                                                                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 font-extrabold text-[8px] uppercase tracking-wider" title={`${item.frequent_count} days present in last 30 days`}>★ Frequent</span>
-                                                                                        )}
                                                                                         {item.is_borrowed && (
-                                                                                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-extrabold text-[8px] uppercase tracking-wider">Borrowed</span>
+                                                                                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-extrabold text-[8px] uppercase tracking-wider">Added</span>
                                                                                         )}
                                                                                     </div>
                                                                                 </td>
-                                                                            <td className="p-3 text-slate-650 dark:text-slate-400">{item.role}</td>
-                                                                            <td className="p-3">
-                                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.wage_type === 'Fixed Salary'
+                                                                                <td className="p-3 text-slate-650 dark:text-slate-400">{item.role}</td>
+                                                                                <td className="p-3">
+                                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.wage_type === 'Fixed Salary'
                                                                                         ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
                                                                                         : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                                                    }`}>
-                                                                                    {item.wage_type}
-                                                                                </span>
-                                                                            </td>
-                                                                            <td className="p-3">
-                                                                                {item.already_marked_at ? (
-                                                                                    <div className="flex justify-center items-center">
-                                                                                        <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-black border border-amber-300/40">
-                                                                                            <AlertTriangle size={12} className="text-amber-500 shrink-0" />
-                                                                                            <span>Already marked "{item.already_marked_at.status}" at "{item.already_marked_at.site_name}"</span>
-                                                                                        </span>
-                                                                                    </div>
-                                                                                ) : (
-                                                                                     <div className="flex justify-center items-center gap-2">
-                                                                                         {[
-                                                                                             { id: 'Present', label: 'Present (Full Day)', activeColor: 'bg-emerald-500 text-white dark:bg-emerald-600', inactiveColor: 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
-                                                                                             { id: 'Half Day', label: 'Half Day', activeColor: 'bg-amber-500 text-white dark:bg-amber-600', inactiveColor: 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
-                                                                                             { id: 'Absent', label: 'Absent', activeColor: 'bg-rose-500 text-white dark:bg-rose-600', inactiveColor: 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
-                                                                                             { id: 'Paid Leave', label: 'Paid Leave', activeColor: 'bg-indigo-500 text-white dark:bg-indigo-600', inactiveColor: 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' }
-                                                                                         ].filter(opt => opt.id !== 'Paid Leave' || item.wage_type === 'Fixed Salary').map(statusOpt => {
-                                                                                             const isSelected = item.status === statusOpt.id;
+                                                                                        }`}>
+                                                                                        {item.wage_type}
+                                                                                    </span>
+                                                                                </td>
+                                                                                <td className="p-3">
+                                                                                    <div className="flex justify-center items-center gap-2">
+                                                                                        {[
+                                                                                            { id: 'Present', label: 'Present (Full Day)', activeColor: 'bg-emerald-500 text-white dark:bg-emerald-600', inactiveColor: 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
+                                                                                            { id: 'Half Day', label: 'Half Day', activeColor: 'bg-amber-500 text-white dark:bg-amber-600', inactiveColor: 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
+                                                                                            { id: 'Absent', label: 'Absent', activeColor: 'bg-rose-500 text-white dark:bg-rose-600', inactiveColor: 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
+                                                                                            ...(item.wage_type === 'Fixed Salary' ? [{ id: 'Paid Leave', label: 'Paid Leave', activeColor: 'bg-indigo-500 text-white dark:bg-indigo-600', inactiveColor: 'bg-slate-50 dark:bg-slate-800 text-slate-600 border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' }] : [])
+                                                                                        ].map(statusOpt => {
+                                                                                            const isSelected = item.status === statusOpt.id;
                                                                                             return (
                                                                                                 <button
                                                                                                     key={statusOpt.id}
@@ -1000,14 +1054,13 @@ const LabourManagement = () => {
                                                                                             );
                                                                                         })}
                                                                                     </div>
-                                                                                )}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))
+                                                                                </td>
+                                                                            </tr>
+                                                                        ))
                                                                 )}
                                                             </tbody>
                                                         </table>
-                                                    </div>
+                                                    </motion.div>
                                                 </div>
                                             )}
                                         </div>
@@ -1015,36 +1068,13 @@ const LabourManagement = () => {
 
                                     {subTab === 'grid' && (
                                         <div className="space-y-4 animate-in fade-in duration-150">
-                                            <div className="flex flex-col sm:flex-row gap-4 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
-                                                <div className="flex-1 flex flex-col gap-1">
-                                                    <label className="text-[10px] uppercase font-bold text-slate-400">Roster Month</label>
-                                                    <input
-                                                        type="month"
-                                                        value={gridMonth}
-                                                        onChange={(e) => setGridMonth(e.target.value)}
-                                                        className="px-3 py-1.5 bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none"
-                                                    />
-                                                </div>
-                                                <div className="flex-1 flex items-center pt-4">
-                                                    <label className="relative inline-flex items-center cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={showAllSitesAttendance}
-                                                            onChange={(e) => setShowAllSitesAttendance(e.target.checked)}
-                                                            className="sr-only peer"
-                                                        />
-                                                        <div className="w-9 h-5 bg-slate-200 dark:bg-github-dark-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 dark:after:border-none after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                                                        <span className="ml-3 text-xs font-semibold text-slate-600 dark:text-github-dark-text">Include attendance logged for other sites</span>
-                                                    </label>
-                                                </div>
-                                            </div>
 
                                             {gridLoading ? (
                                                 <div className="flex justify-center py-20">
                                                     <Clock className="animate-spin text-indigo-500" size={28} />
                                                 </div>
                                             ) : (
-                                                <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
+                                                <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
                                                     <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-[#010409]/40 flex justify-between items-center">
                                                         <span className="font-bold text-xs text-slate-800 dark:text-github-dark-text uppercase tracking-wider">Attendance Grid Matrix</span>
                                                         {gridMonthDetails && (
@@ -1054,100 +1084,83 @@ const LabourManagement = () => {
                                                         )}
                                                     </div>
 
-                                                    <div className="overflow-x-auto custom-scrollbar">
-                                                        <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
-                                                            <thead>
-                                                                <tr className="bg-slate-50/40 dark:bg-github-dark-border/20 border-b border-slate-200 dark:border-github-dark-border font-bold text-slate-400">
-                                                                    <th className="p-3 sticky left-0 bg-white dark:bg-[#0d1117] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] border-r border-slate-200 dark:border-github-dark-border">Worker Name / Designation</th>
-                                                                    {getDaysInMonthArray().map(day => (
-                                                                        <th key={day.dateStr} className="p-2 text-center min-w-[36px]">
-                                                                            <div className="flex flex-col items-center">
-                                                                                <span className="text-[8px] font-bold text-slate-400">{day.dayName}</span>
-                                                                                <span className="text-[9px] font-black text-slate-700 dark:text-github-dark-text mt-0.5">{day.dayNum}</span>
-                                                                            </div>
-                                                                        </th>
-                                                                    ))}
+                                                    <motion.div
+                                                        key={`grid-${gridRoleFilter}-${gridMonth}`}
+                                                        initial={{ opacity: 0, y: 8 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                                                        className="overflow-x-auto no-scrollbar" style={{ isolation: 'isolate' }}
+                                                    >
+                                                        <table className="w-full text-left border-collapse text-xs whitespace-nowrap" style={{ minWidth: 'max-content' }}>
+                                                            <thead className="sticky top-0 z-30">
+                                                                <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
+                                                                    <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-[#161b22] z-40 min-w-[230px] border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.10)' }}>Worker Name / Designation</th>
+                                                                    {getDaysInMonthArray().map(day => {
+                                                                        const d = new Date(day.dateStr + 'T00:00:00Z');
+                                                                        return (
+                                                                            <th key={day.dateStr} className="py-2 px-1 text-center min-w-[52px]">
+                                                                                <div className="text-[8px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { month: 'short' })}</div>
+                                                                                <div className="text-sm font-black text-slate-700 dark:text-white leading-tight">{d.getUTCDate()}</div>
+                                                                                <div className="text-[8px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
+                                                                            </th>
+                                                                        );
+                                                                    })}
                                                                 </tr>
                                                             </thead>
-                                                            <tbody>
-                                                                {gridData.length === 0 ? (
+                                                            <tbody className="divide-y divide-slate-100 dark:divide-github-dark-border">
+                                                                {gridData.filter(row => !gridRoleFilter || row.role.toLowerCase() === gridRoleFilter.toLowerCase()).length === 0 ? (
                                                                     <tr>
-                                                                        <td colSpan={getDaysInMonthArray().length + 1} className="p-10 text-center text-slate-400 italic">No attendance matrix records found for this site.</td>
+                                                                        <td colSpan={getDaysInMonthArray().length + 1} className="p-10 text-center text-slate-400 italic bg-white dark:bg-dark-card">No attendance matrix records found matching the filter.</td>
                                                                     </tr>
                                                                 ) : (
-                                                                    gridData.map(row => (
-                                                                        <tr key={row.labour_id} className="border-b border-slate-150 dark:border-github-dark-border/40">
-                                                                            <td className="p-3 sticky left-0 bg-white dark:bg-[#0d1117] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] border-r border-slate-200 dark:border-github-dark-border">
-                                                                                <div className="font-bold text-slate-800 dark:text-github-dark-text text-[11px]">{row.name}</div>
-                                                                                <div className="text-[9px] text-slate-400 dark:text-github-dark-muted font-mono mt-0.5">{row.role}</div>
-                                                                            </td>
-                                                                            {getDaysInMonthArray().map(day => {
-                                                                                const attObj = row.attendance[day.dateStr];
-                                                                                const statusStr = attObj && typeof attObj === 'object' ? attObj.status : attObj;
-                                                                                const attSiteId = attObj && typeof attObj === 'object' ? attObj.site_id : null;
-                                                                                const attSiteName = attObj && typeof attObj === 'object' ? attObj.site_name : null;
-
-                                                                                const isOtherSite = attSiteId !== null && Number(attSiteId) !== Number(selectedSite.site_id);
-                                                                                const tooltipText = isOtherSite
-                                                                                    ? `${statusStr} (at ${attSiteName})`
-                                                                                    : (attSiteName ? `${statusStr} (at ${attSiteName})` : statusStr);
-
-                                                                                const dateObj = new Date(day.dateStr);
-                                                                                const dayNum = dateObj.getDay();
-                                                                                let cellContent = null;
-
-                                                                                if (statusStr === 'Present') {
-                                                                                    cellContent = isOtherSite ? (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-455 border border-emerald-300 dark:border-emerald-850/50 text-[8px] font-black shadow-sm" title={tooltipText}>P</span>
-                                                                                    ) : (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-emerald-500 text-white text-[8px] font-black shadow-sm" title={tooltipText}>P</span>
-                                                                                    );
-                                                                                } else if (statusStr === 'Half Day') {
-                                                                                    cellContent = isOtherSite ? (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-50/90 dark:bg-amber-950/40 text-amber-600 dark:text-amber-455 border border-amber-300 dark:border-amber-850/50 text-[8px] font-black shadow-sm" title={tooltipText}>HD</span>
-                                                                                    ) : (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-500 text-white text-[8px] font-black shadow-sm" title={tooltipText}>HD</span>
-                                                                                    );
-                                                                                } else if (statusStr === 'Absent') {
-                                                                                    cellContent = isOtherSite ? (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-rose-50/90 dark:bg-rose-950/40 text-rose-600 dark:text-rose-455 border border-rose-300 dark:border-rose-850/50 text-[8px] font-black shadow-sm" title={tooltipText}>A</span>
-                                                                                    ) : (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-rose-500 text-white text-[8px] font-black shadow-sm" title={tooltipText}>A</span>
-                                                                                    );
-                                                                                } else if (statusStr === 'Paid Leave') {
-                                                                                    cellContent = isOtherSite ? (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-indigo-50/90 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-455 border border-indigo-300 dark:border-indigo-850/50 text-[8px] font-black shadow-sm" title={tooltipText}>PL</span>
-                                                                                    ) : (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-indigo-500 text-white text-[8px] font-black shadow-sm" title={tooltipText}>PL</span>
-                                                                                    );
-                                                                                } else if (dayNum === 6) { // Saturday
-                                                                                    cellContent = (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-[8px] font-bold">SA</span>
-                                                                                    );
-                                                                                } else if (dayNum === 0) { // Sunday
-                                                                                    cellContent = (
-                                                                                        <span className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-200 dark:bg-[#161b22] text-slate-500 dark:text-slate-400 text-[8px] font-bold">SU</span>
-                                                                                    );
-                                                                                } else {
-                                                                                    cellContent = (
-                                                                                        <span className="text-slate-350 dark:text-slate-650">-</span>
-                                                                                    );
-                                                                                }
-
-                                                                                return (
-                                                                                    <td key={day.dateStr} className="p-2 text-center align-middle">
-                                                                                        <div className="flex justify-center items-center">
-                                                                                            {cellContent}
+                                                                    gridData
+                                                                        .filter(row => !gridRoleFilter || row.role.toLowerCase() === gridRoleFilter.toLowerCase())
+                                                                        .map(row => {
+                                                                            const initials = row.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                                                                            return (
+                                                                                <tr key={row.labour_id} className="hover:bg-slate-50 dark:hover:bg-[#1c2128] transition-colors group">
+                                                                                    <td className="px-5 py-3.5 sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-[#1c2128] transition-colors z-10 border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.08)' }}>
+                                                                                        <div className="flex items-center gap-3">
+                                                                                            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shadow-inner shrink-0">
+                                                                                                {initials || <User size={14} />}
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span className="block font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{row.name}</span>
+                                                                                                <span className="block text-[10px] font-medium text-slate-400 dark:text-github-dark-muted mt-0.5">{row.role}</span>
+                                                                                            </div>
                                                                                         </div>
                                                                                     </td>
-                                                                                );
-                                                                            })}
-                                                                        </tr>
-                                                                    ))
+                                                                                    {getDaysInMonthArray().map(day => {
+                                                                                        const attObj = row.attendance[day.dateStr];
+                                                                                        let status = attObj && typeof attObj === 'object' ? attObj.status : (attObj || '-');
+
+                                                                                        if (status === '-' || !status) {
+                                                                                            const dateObj = new Date(day.dateStr);
+                                                                                            const dayNum = dateObj.getDay();
+                                                                                            if (dayNum === 6) status = 'Sat';
+                                                                                            else if (dayNum === 0) status = 'Sun';
+                                                                                        }
+
+                                                                                        return (
+                                                                                            <td key={day.dateStr} className="px-1 py-3 text-center align-middle">
+                                                                                                <div className="flex justify-center items-center">
+                                                                                                    <span
+                                                                                                        className={`w-8 h-8 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${getStatusColor(status)}`}
+                                                                                                        title={status !== '-' ? status : undefined}
+                                                                                                    >
+                                                                                                        {getStatusLabel(status)}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                        );
+                                                                                    })}
+                                                                                </tr>
+                                                                            );
+                                                                        })
                                                                 )}
                                                             </tbody>
                                                         </table>
-                                                    </div>
+                                                    </motion.div>
                                                 </div>
                                             )}
                                         </div>
@@ -1155,119 +1168,130 @@ const LabourManagement = () => {
 
                                     {subTab === 'finances' && (
                                         <div className="space-y-4 animate-in fade-in duration-150">
-                                            <div className="flex flex-col sm:flex-row gap-4 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm justify-between items-center">
-                                                <div className="flex flex-col gap-1 w-full sm:w-auto">
-                                                    <label className="text-[10px] uppercase font-bold text-slate-400">Payroll Month</label>
-                                                    <input
-                                                        type="month"
-                                                        value={financeMonth}
-                                                        onChange={(e) => setFinanceMonth(e.target.value)}
-                                                        className="px-3 py-1.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-bold text-slate-700 dark:text-github-dark-text focus:outline-none"
-                                                    />
-                                                </div>
-                                                {monthDetails && (
-                                                    <div className="bg-slate-100 dark:bg-github-dark-border/40 p-2.5 rounded-lg border border-slate-200/50 dark:border-[#30363d] text-[10px] font-bold text-slate-600 dark:text-[#f0f6fc] font-mono">
-                                                        🗓️ {getMonthNameAndYear(monthDetails.start)} PERIOD | DAYS ELAPSED {monthDetails.elapsedDays} OF {monthDetails.totalDays}
-                                                    </div>
-                                                )}
-                                            </div>
 
                                             <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
                                                 <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-[#010409]/40 flex justify-between items-center">
-                                                    <span className="font-bold text-xs text-slate-800 dark:text-github-dark-text uppercase tracking-wider">Salary credit Ledger (Filtered for {selectedSite.site_name})</span>
+                                                    <span className="font-bold text-xs text-slate-800 dark:text-github-dark-text uppercase tracking-wider">Salary Ledger — {getMonthNameAndYear(financeMonth + '-01')}</span>
                                                 </div>
 
-                                                <div className="overflow-x-auto">
+                                                <motion.div
+                                                    key={`finances-${financeRoleFilter}-${financeMonth}`}
+                                                    initial={{ opacity: 0, y: 8 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                                                    className="overflow-x-auto"
+                                                >
                                                     <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
                                                         <thead>
-                                                            <tr className="bg-slate-50/50 dark:bg-github-dark-border/20 text-slate-450 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
-                                                                <th className="p-3">Worker Details</th>
-                                                                <th className="p-3">Wage Type</th>
-                                                                <th className="p-3 text-center">Attendance Counts</th>
-                                                                <th className="p-3">Accrued Credit</th>
-                                                                <th className="p-3">Advances Taken</th>
-                                                                <th className="p-3">Net Payable</th>
+                                                            <tr className="bg-slate-50/50 dark:bg-github-dark-border/20 text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border text-[11px]">
+                                                                <th className="p-3 text-left">Worker Name</th>
+                                                                <th className="p-3 text-left">Role</th>
+                                                                <th className="p-3 text-left">Wage Type</th>
+                                                                <th className="p-3 text-left">Attendance</th>
+                                                                <th className="p-3 text-right">Amount Earned</th>
+                                                                <th className="p-3 text-right">Advances Taken</th>
+                                                                <th className="p-3 text-right">Net Payable</th>
                                                                 <th className="p-3 text-right">Actions</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
-                                                            {financeSummary.filter(row => row.site_ids && row.site_ids.includes(selectedSite.site_id)).length === 0 ? (
+                                                            {financeSummary.filter(row => {
+                                                                const matchesSite = (row.site_ids && Array.isArray(row.site_ids) && row.site_ids.includes(selectedSite.site_id)) || row.site_id === selectedSite.site_id;
+                                                                const matchesRole = !financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase();
+                                                                return matchesSite && matchesRole;
+                                                            }).length === 0 ? (
                                                                 <tr>
-                                                                    <td colSpan="7" className="p-10 text-center text-slate-400 italic">No salary ledger details for workers on this site this month.</td>
+                                                                    <td colSpan="8" className="p-10 text-center text-slate-400 italic">No salary ledger details for workers assigned to this site this month.</td>
                                                                 </tr>
                                                             ) : (
                                                                 financeSummary
-                                                                    .filter(row => row.site_ids && row.site_ids.includes(selectedSite.site_id))
+                                                                    .filter(row => {
+                                                                        const matchesSite = (row.site_ids && Array.isArray(row.site_ids) && row.site_ids.includes(selectedSite.site_id)) || row.site_id === selectedSite.site_id;
+                                                                        const matchesRole = !financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase();
+                                                                        return matchesSite && matchesRole;
+                                                                    })
                                                                     .map(row => {
                                                                         const advanceAlert = row.advances_taken > row.accrued_credit;
                                                                         return (
-                                                                            <tr key={row.labour_id} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/20 dark:hover:bg-slate-800/10">
+                                                                            <tr key={row.labour_id} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/20 dark:hover:bg-slate-800/10 align-middle">
+                                                                                <td className="p-3 font-bold text-slate-800 dark:text-github-dark-text whitespace-nowrap">{row.name}</td>
                                                                                 <td className="p-3">
-                                                                                    <div className="font-bold text-slate-800 dark:text-github-dark-text">{row.name}</div>
-                                                                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">{row.role}</div>
+                                                                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 whitespace-nowrap">{row.role}</span>
                                                                                 </td>
                                                                                 <td className="p-3">
-                                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.wage_type === 'Fixed Salary'
+                                                                                    <div className="flex flex-col items-start gap-1">
+                                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${row.wage_type === 'Fixed Salary'
                                                                                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
                                                                                             : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                                                        }`}>
-                                                                                        {row.wage_type}
-                                                                                    </span>
-                                                                                    <div className="text-[10px] text-slate-450 dark:text-slate-400 mt-1">Base: ₹{row.monthly_salary.toLocaleString()}</div>
-                                                                                </td>
-                                                                                <td className="p-3 text-center font-bold text-slate-655 dark:text-slate-350">
-                                                                                    <div className="flex items-center justify-center gap-1.5 font-mono text-[10px]">
-                                                                                        <span className="text-emerald-600 dark:text-emerald-400" title="Present">{row.attendance.present}P</span>
-                                                                                        <span>/</span>
-                                                                                        <span className="text-amber-500" title="Half Days">{row.attendance.half_day}HD</span>
-                                                                                        <span>/</span>
-                                                                                        {row.wage_type === 'Fixed Salary' && (
-                                                                                            <>
-                                                                                                <span className="text-indigo-500" title="Paid Leaves">{row.attendance.paid_leave}PL</span>
-                                                                                                <span>/</span>
-                                                                                            </>
-                                                                                        )}
-                                                                                        <span className="text-rose-500" title="Absent">{row.attendance.absent}A</span>
+                                                                                            }`}>
+                                                                                            {row.wage_type}
+                                                                                        </span>
+                                                                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Base: ₹{row.monthly_salary.toLocaleString()}</span>
                                                                                     </div>
                                                                                 </td>
-                                                                                <td className="p-3 font-semibold text-slate-700 dark:text-slate-300">₹{row.accrued_credit.toLocaleString()}</td>
-                                                                                <td className={`p-3 font-semibold ${advanceAlert ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                                                                                    <div className="flex items-center gap-1">
+                                                                                <td className="p-3">
+                                                                                    <div className="flex flex-wrap gap-1 min-w-[140px]">
+                                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 whitespace-nowrap">
+                                                                                            {row.attendance.present} Present
+                                                                                        </span>
+                                                                                        {row.attendance.half_day > 0 && (
+                                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 whitespace-nowrap">
+                                                                                                {row.attendance.half_day} Half Day
+                                                                                            </span>
+                                                                                        )}
+                                                                                        {row.attendance.paid_leave > 0 && (
+                                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50 whitespace-nowrap">
+                                                                                                {row.attendance.paid_leave} Paid Leave
+                                                                                            </span>
+                                                                                        )}
+                                                                                        {row.attendance.absent > 0 && (
+                                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50 whitespace-nowrap">
+                                                                                                {row.attendance.absent} Absent
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td className="p-3 font-semibold text-slate-700 dark:text-slate-300 text-right whitespace-nowrap">₹{row.accrued_credit.toLocaleString()}</td>
+                                                                                <td className={`p-3 font-semibold text-right whitespace-nowrap ${advanceAlert ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                                                    <div className="flex items-center justify-end gap-1">
                                                                                         <span>₹{row.advances_taken.toLocaleString()}</span>
                                                                                         {advanceAlert && <AlertTriangle size={12} className="text-rose-500 animate-pulse" title="Advances exceed earned credit" />}
                                                                                     </div>
                                                                                 </td>
-                                                                                <td className={`p-3 font-extrabold text-xs ${row.net_payable < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-650 dark:text-indigo-400'}`}>
+                                                                                <td className={`p-3 font-extrabold text-xs text-right whitespace-nowrap ${row.net_payable < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
                                                                                     ₹{row.net_payable.toLocaleString()}
                                                                                 </td>
                                                                                 <td className="p-3 text-right">
-                                                                                    <div className="flex justify-end items-center gap-2">
+                                                                                    <div className="flex justify-end items-center gap-2 flex-nowrap">
                                                                                         {row.payout ? (
-                                                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${row.payout.status === 'Paid'
-                                                                                                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-450 border border-emerald-250/30'
-                                                                                                    : 'bg-amber-50 text-amber-600 dark:bg-amber-955/20 dark:text-amber-450 border border-amber-250/30'
+                                                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${row.payout.status === 'Paid'
+                                                                                                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-500/30'
+                                                                                                    : 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-500/30'
                                                                                                 }`}>
-                                                                                                <span>{row.payout.status}</span>
+                                                                                                {row.payout.status === 'Paid'
+                                                                                                    ? <CheckCircle size={10} />
+                                                                                                    : <Clock size={10} />}
+                                                                                                {row.payout.status}
                                                                                             </span>
                                                                                         ) : (
-                                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-205">
-                                                                                                <span>Unprocessed</span>
+                                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 whitespace-nowrap">
+                                                                                                <XCircle size={10} /> Not Paid
                                                                                             </span>
                                                                                         )}
                                                                                         <button
                                                                                             onClick={() => handleOpenAdvance(row)}
-                                                                                            className="px-2.5 py-1 text-[10px] font-black bg-amber-50 dark:bg-amber-955/20 border border-amber-200 dark:border-amber-900/35 text-amber-705 dark:text-amber-400 hover:bg-amber-100 rounded transition-all cursor-pointer"
+                                                                                            className="px-2.5 py-1 text-[10px] font-black bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 rounded transition-all cursor-pointer whitespace-nowrap"
                                                                                         >
                                                                                             Advance
                                                                                         </button>
                                                                                         <button
                                                                                             onClick={() => handleOpenPayout(row)}
-                                                                                            className={`px-2.5 py-1 text-[10px] font-black rounded border transition-all cursor-pointer ${row.payout
-                                                                                                    ? 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                                                                                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent'
+                                                                                            className={`px-2.5 py-1 text-[10px] font-black rounded border transition-all cursor-pointer whitespace-nowrap ${row.payout
+                                                                                                ? 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                                                                                                : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent'
                                                                                                 }`}
                                                                                         >
-                                                                                            {row.payout ? 'Payout Rec' : 'Release Salary'}
+                                                                                            {row.payout ? 'View Payout' : 'Release Salary'}
                                                                                         </button>
                                                                                     </div>
                                                                                 </td>
@@ -1277,7 +1301,7 @@ const LabourManagement = () => {
                                                             )}
                                                         </tbody>
                                                     </table>
-                                                </div>
+                                                </motion.div>
                                             </div>
                                         </div>
                                     )}
@@ -1293,71 +1317,52 @@ const LabourManagement = () => {
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
                                     <div>
                                         <h3 className="font-bold text-sm text-slate-800 dark:text-github-dark-text">Labour Force Directory</h3>
-                                        <p className="text-slate-450 dark:text-github-dark-muted text-[11px] mt-0.5">Manage details, site assignments, monthly payouts, and logs for construction workers.</p>
+                                        <p className="text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted text-[11px] mt-0.5">Manage details, site assignments, monthly payouts, and logs for construction workers.</p>
                                     </div>
                                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                                        <div className="relative w-full sm:w-64">
+                                        <div className="relative w-full sm:w-52">
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                             <input
                                                 type="text"
-                                                placeholder="Search labour by name or role..."
+                                                placeholder="Search by name..."
                                                 value={labourSearch}
                                                 onChange={(e) => setLabourSearch(e.target.value)}
                                                 className="pl-9 pr-4 py-1.5 w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-700 dark:text-github-dark-text focus:outline-none"
                                             />
                                         </div>
-                                        <select
+                                        <MinimalSelect
+                                            value={labourRoleFilter}
+                                            onChange={(val) => setLabourRoleFilter(val)}
+                                            options={[
+                                                { value: '', label: 'All Roles' },
+                                                ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                            ]}
+                                            size="sm"
+                                            triggerClassName="bg-slate-50 dark:bg-github-dark-subtle/50 border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-github-dark-text cursor-pointer"
+                                            variant="input"
+                                        />
+                                        <MinimalSelect
                                             value={labourSiteFilter}
-                                            onChange={(e) => setLabourSiteFilter(e.target.value)}
-                                            className="px-3 py-1.5 bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-700 dark:text-github-dark-text cursor-pointer"
-                                        >
-                                            <option value="All">All Sites</option>
-                                            <option value="Unassigned">Unassigned</option>
-                                            {sites.map(s => (
-                                                <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => {
-                                                setSelectedLabourIds([]);
-                                                setBulkSourceSiteId('All');
-                                                setBulkDestinationSiteId('');
-                                                setShowBulkTransferModal(true);
-                                            }}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all border border-[#d0d7de] dark:border-[#30363d]"
-                                        >
-                                            <Building size={14} />
-                                            <span>Bulk Transfer</span>
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setParsedLabours([]);
-                                                setCsvPreviewError('');
-                                                setShowBulkLabourModal(true);
-                                            }}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-650 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer"
-                                        >
-                                            <Upload size={14} />
-                                            <span>Bulk Add Labours</span>
-                                        </button>
-                                        <button
-                                            onClick={() => { setEditingLabour(null); setLabourForm({ name: '', phone: '', sex: 'Male', role: '', wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '' }); setShowLabourModal(true); }}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all"
-                                        >
-                                            <UserPlus size={14} />
-                                            <span>Add Labour Worker</span>
-                                        </button>
+                                            onChange={(val) => setLabourSiteFilter(val)}
+                                            options={[
+                                                { value: 'All', label: 'All Sites' },
+                                                { value: 'Unassigned', label: 'Unassigned' },
+                                                ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                            ]}
+                                            size="sm"
+                                            triggerClassName="bg-slate-50 dark:bg-github-dark-subtle/50 border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-github-dark-text cursor-pointer"
+                                            variant="input"
+                                        />
                                     </div>
                                 </div>
 
                                 <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
                                     <table className="w-full text-left border-collapse text-xs">
                                         <thead>
-                                            <tr className="bg-slate-50 dark:bg-github-dark-border/40 text-slate-450 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
+                                            <tr className="bg-slate-50 dark:bg-github-dark-border/40 text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
                                                 <th className="p-3">Labour Name</th>
+                                                <th className="p-3">Phone Number</th>
+                                                <th className="p-3">Gender</th>
                                                 <th className="p-3">Role / Designation</th>
                                                 <th className="p-3">Assigned Site</th>
                                                 <th className="p-3">Wage Model</th>
@@ -1368,60 +1373,79 @@ const LabourManagement = () => {
                                         <tbody>
                                             {labours
                                                 .filter(lab => {
-                                                    const matchesSearch = lab.name.toLowerCase().includes(labourSearch.toLowerCase()) ||
-                                                        lab.role.toLowerCase().includes(labourSearch.toLowerCase());
+                                                    const matchesSearch = lab.name.toLowerCase().includes(labourSearch.toLowerCase());
+                                                    const matchesRole = !labourRoleFilter || lab.role.toLowerCase() === labourRoleFilter.toLowerCase();
 
                                                     let matchesSite = true;
                                                     if (labourSiteFilter === 'Unassigned') {
-                                                        matchesSite = !lab.site_ids || lab.site_ids.length === 0;
+                                                        const hasNoSites = (!lab.site_ids || lab.site_ids.length === 0) && lab.site_id === null;
+                                                        matchesSite = hasNoSites;
                                                     } else if (labourSiteFilter !== 'All') {
-                                                        matchesSite = lab.site_ids && lab.site_ids.includes(Number(labourSiteFilter));
+                                                        const siteIdNum = Number(labourSiteFilter);
+                                                        matchesSite = (lab.site_ids && Array.isArray(lab.site_ids) && lab.site_ids.includes(siteIdNum)) ||
+                                                            lab.site_id === siteIdNum;
                                                     }
 
-                                                    return matchesSearch && matchesSite;
+                                                    return matchesSearch && matchesRole && matchesSite;
                                                 })
                                                 .map(lab => (
                                                     <tr key={lab.labour_id} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/10">
-                                                        <td className="p-3 font-semibold text-slate-800 dark:text-github-dark-text cursor-pointer hover:text-indigo-650 dark:hover:text-indigo-400" onClick={() => handleViewHistory(lab)}>
+                                                        <td className="p-3 font-semibold text-slate-800 dark:text-github-dark-text cursor-pointer hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-400" onClick={() => handleViewHistory(lab)}>
                                                             <div className="flex items-center gap-1.5">
                                                                 <span>{lab.name}</span>
                                                                 <Info size={12} className="text-slate-400" />
                                                             </div>
-                                                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">{lab.phone || 'No phone'} | {lab.sex}</div>
                                                         </td>
+                                                        <td className="p-3 text-slate-655 dark:text-slate-400 font-mono">{lab.phone || 'No phone'}</td>
+                                                        <td className="p-3 text-slate-655 dark:text-slate-400">{lab.sex}</td>
                                                         <td className="p-3 text-slate-650 dark:text-slate-400">{lab.role}</td>
                                                         <td className="p-3 text-slate-650 dark:text-slate-400">
-                                                            {lab.site_name ? (
-                                                                <span className="flex items-center gap-1">
-                                                                    <Building size={12} className="text-slate-400" />
-                                                                    {lab.site_name}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-amber-500 italic">Unassigned</span>
-                                                            )}
+                                                            {(() => {
+                                                                // Build list of assigned site names
+                                                                const assignedSites = lab.site_ids && Array.isArray(lab.site_ids) && lab.site_ids.length > 0
+                                                                    ? lab.site_ids.map(sid => {
+                                                                        const found = sites.find(s => s.site_id === sid);
+                                                                        return found ? found.site_name : null;
+                                                                    }).filter(Boolean)
+                                                                    : (lab.site_name ? [lab.site_name] : []);
+
+                                                                if (assignedSites.length === 0) {
+                                                                    return <span className="text-amber-500 italic">Unassigned</span>;
+                                                                }
+                                                                return (
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {assignedSites.map((sn, i) => (
+                                                                            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-medium">
+                                                                                <Building size={10} className="text-slate-400" />
+                                                                                {sn}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </td>
                                                         <td className="p-3">
                                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${lab.wage_type === 'Fixed Salary'
-                                                                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
-                                                                    : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-955/20 dark:text-emerald-400'
+                                                                ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
+                                                                : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
                                                                 }`}>
                                                                 {lab.wage_type}
                                                             </span>
                                                         </td>
-                                                        <td className="p-3 font-medium text-slate-705 dark:text-slate-300">
+                                                        <td className="p-3 font-medium text-slate-700 dark:text-github-dark-text dark:text-slate-300">
                                                             ₹{Number(lab.monthly_salary).toLocaleString()}
                                                         </td>
                                                         <td className="p-3 text-right">
                                                             <div className="flex justify-end gap-1.5">
                                                                 <button
                                                                     onClick={() => handleEditLabour(lab)}
-                                                                    className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-505 rounded border border-slate-200 dark:border-github-dark-border"
+                                                                    className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-github-dark-border"
                                                                 >
                                                                     <Edit2 size={12} />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDeleteLabour(lab.labour_id)}
-                                                                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-955/20 text-red-500 rounded border border-slate-202 dark:border-github-dark-border"
+                                                                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-955/20 text-red-500 rounded border border-slate-200 dark:border-github-dark-border/40 dark:border-github-dark-border"
                                                                 >
                                                                     <Trash2 size={12} />
                                                                 </button>
@@ -1440,938 +1464,842 @@ const LabourManagement = () => {
                 {/* ==========================================
                     SLIDE-OVER DRAWERS (PORTALS)
                     ========================================== */}
-                    {/* DRAWERS: SITE FORM */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showSiteModal && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowSiteModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
-                                    <div>
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
-                                            {editingSite ? 'Edit Construction Site' : 'Create Construction Site'}
-                                        </h4>
-                                        <p className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted mt-0.5 tracking-wider uppercase">Site Configuration Profile</p>
-                                    </div>
-                                    <button onClick={() => setShowSiteModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
-                                </div>
-                                <form onSubmit={handleSaveSite} className="flex-1 overflow-y-auto p-6 space-y-6 text-xs custom-scrollbar">
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-2">Site Name</label>
-                                        <input
-                                            type="text"
-                                            value={siteForm.site_name}
-                                            onChange={(e) => setSiteForm({ ...siteForm, site_name: e.target.value })}
-                                            className="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            required
-                                            placeholder="e.g., Phoenix Mall Project"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-2">Location Details / Address</label>
-                                        <textarea
-                                            value={siteForm.location_details}
-                                            onChange={(e) => setSiteForm({ ...siteForm, location_details: e.target.value })}
-                                            className="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            rows={4}
-                                            placeholder="Site physical address, gate number, coordinates, or notes."
-                                        />
-                                    </div>
-                                    {editingSite && (
+                {/* DRAWERS: SITE FORM */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showSiteModal && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowSiteModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
+                                >
+                                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
                                         <div>
-                                            <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-2">Status</label>
-                                            <select
-                                                value={siteForm.status}
-                                                onChange={(e) => setSiteForm({ ...siteForm, status: e.target.value })}
-                                                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500 cursor-pointer"
-                                            >
-                                                <option value="Active">Active</option>
-                                                <option value="Completed">Completed</option>
-                                                <option value="Inactive">Inactive</option>
-                                            </select>
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
+                                                {editingSite ? 'Edit Construction Site' : 'Create Construction Site'}
+                                            </h4>
+                                            <p className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted mt-0.5 tracking-wider uppercase">Site Configuration Profile</p>
                                         </div>
-                                    )}
-
-                                    {siteForm.status === 'Completed' && (
-                                        <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                                            <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-2">Completion End Date</label>
+                                        <button onClick={() => setShowSiteModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
+                                    </div>
+                                    <form onSubmit={handleSaveSite} className="flex-1 overflow-y-auto p-6 space-y-6 text-xs custom-scrollbar">
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-2">Site Name</label>
                                             <input
-                                                type="date"
-                                                value={siteForm.end_date || ''}
-                                                onChange={(e) => setSiteForm({ ...siteForm, end_date: e.target.value })}
-                                                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
+                                                type="text"
+                                                value={siteForm.site_name}
+                                                onChange={(e) => setSiteForm({ ...siteForm, site_name: e.target.value })}
+                                                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
                                                 required
+                                                placeholder="e.g., Phoenix Mall Project"
                                             />
                                         </div>
-                                    )}
-
-                                    <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowSiteModal(false)}
-                                            className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
-                                        >
-                                            Save
-                                        </button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: LABOUR FORM */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showLabourModal && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowLabourModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
-                                    <div>
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
-                                            {editingLabour ? 'Edit Labour Profile' : 'Add New Labour Worker'}
-                                        </h4>
-                                        <p className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted mt-0.5 tracking-wider uppercase">Worker Configuration Profile</p>
-                                    </div>
-                                    <button onClick={() => setShowLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
-                                </div>
-                                <form onSubmit={handleSaveLabour} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Labour Full Name</label>
-                                        <input
-                                            type="text"
-                                            value={labourForm.name}
-                                            onChange={(e) => setLabourForm({ ...labourForm, name: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            required
-                                            placeholder="e.g., Ramesh Kumar"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Contact Phone</label>
-                                        <input
-                                            type="tel"
-                                            value={labourForm.phone}
-                                            onChange={(e) => setLabourForm({ ...labourForm, phone: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            placeholder="10-digit mobile number"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Sex</label>
-                                        <select
-                                            value={labourForm.sex}
-                                            onChange={(e) => setLabourForm({ ...labourForm, sex: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none cursor-pointer focus:border-indigo-500"
-                                        >
-                                            <option value="Male">Male</option>
-                                            <option value="Female">Female</option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Role</label>
-                                        <input
-                                            type="text"
-                                            value={labourForm.role}
-                                            onChange={(e) => setLabourForm({ ...labourForm, role: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            required
-                                            placeholder="e.g., Mason, Carpenter, Helper"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Assign Construction Site</label>
-                                        <select
-                                            value={labourForm.site_id}
-                                            onChange={(e) => setLabourForm({ ...labourForm, site_id: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none cursor-pointer focus:border-indigo-500"
-                                        >
-                                            <option value="">Unassigned / Independent</option>
-                                            {sites.map(s => (
-                                                <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Wage Model</label>
-                                        <select
-                                            value={labourForm.wage_type}
-                                            onChange={(e) => setLabourForm({ ...labourForm, wage_type: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none cursor-pointer focus:border-indigo-500"
-                                        >
-                                            <option value="Daily Wage">Daily Wage (strictly pro-rated)</option>
-                                            <option value="Fixed Salary">Fixed Monthly Salary</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">{labourForm.wage_type === 'Fixed Salary' ? 'Monthly Salary (INR)' : 'Daily Wage (INR)'}</label>
-                                        <input
-                                            type="number"
-                                            value={labourForm.monthly_salary}
-                                            onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            required
-                                            min="0"
-                                            placeholder={labourForm.wage_type === 'Fixed Salary' ? 'e.g., 25000' : 'e.g., 600'}
-                                        />
-                                    </div>
-                                    {editingLabour && (
                                         <div>
-                                            <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Status</label>
-                                            <select
-                                                value={labourForm.status}
-                                                onChange={(e) => setLabourForm({ ...labourForm, status: e.target.value })}
-                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-205 dark:border-github-dark-border rounded-lg focus:outline-none cursor-pointer focus:border-indigo-500"
-                                            >
-                                                <option value="Active">Active</option>
-                                                <option value="Inactive">Inactive</option>
-                                            </select>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-2">Location Details / Address</label>
+                                            <textarea
+                                                value={siteForm.location_details}
+                                                onChange={(e) => setSiteForm({ ...siteForm, location_details: e.target.value })}
+                                                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                rows={4}
+                                                placeholder="Site physical address, gate number, coordinates, or notes."
+                                            />
                                         </div>
-                                    )}
-
-                                    <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowLabourModal(false)}
-                                            className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-205 dark:bg-slate-800 text-slate-505 rounded-lg font-bold transition-all"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
-                                        >
-                                            Save
-                                        </button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: LOG ADVANCE */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showAdvanceModal && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowAdvanceModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
-                                    <div className="flex items-center gap-1.5">
-                                        <DollarSign size={16} className="text-amber-500" />
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Log Salary Advance</h4>
-                                    </div>
-                                    <button onClick={() => setShowAdvanceModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
-                                </div>
-                                <form onSubmit={handleSaveAdvance} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-                                    <div className="bg-amber-50 dark:bg-amber-955/20 border border-amber-200 dark:border-amber-900/40 p-3 rounded-lg text-slate-600 dark:text-slate-350">
-                                        Logging salary advance for <strong>{advanceForm.name}</strong>. This amount will be automatically deducted from their next payroll payout credit.
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Advance Amount (INR)</label>
-                                        <input
-                                            type="number"
-                                            value={advanceForm.amount}
-                                            onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            required
-                                            min="1"
-                                            placeholder="e.g., 2000"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Logging Date</label>
-                                        <input
-                                            type="date"
-                                            value={advanceForm.date}
-                                            onChange={(e) => setAdvanceForm({ ...advanceForm, date: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-slate-455 font-semibold mb-1">Notes / Description</label>
-                                        <input
-                                            type="text"
-                                            value={advanceForm.notes}
-                                            onChange={(e) => setAdvanceForm({ ...advanceForm, notes: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            placeholder="e.g., Festival Advance, Medical emergency"
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowAdvanceModal(false)}
-                                            className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-sm transition-all"
-                                        >
-                                            Record Payment
-                                        </button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: LOG PAYOUT */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showPayoutModal && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowPayoutModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
-                                    <div className="flex items-center gap-1.5">
-                                        <DollarSign size={16} className="text-indigo-500" />
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">{payoutForm.payout_id ? 'Update Monthly Payout' : 'Process Monthly Payout'}</h4>
-                                    </div>
-                                    <button onClick={() => setShowPayoutModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
-                                </div>
-                                <form onSubmit={handleSavePayout} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-                                    <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 dark:border-indigo-900/40 p-3 rounded-lg text-slate-600 dark:text-slate-350 space-y-1">
-                                        <div>Processing salary payout for <strong>{payoutForm.name}</strong></div>
-                                        <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase">Wage Type: {payoutForm.wage_type} | Month: {payoutForm.month}</div>
-                                    </div>
-
-                                    {/* Earnings Summary Grid */}
-                                    <div className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-[#161b22] p-3 rounded-lg border border-slate-150 dark:border-github-dark-border text-[11px]">
-                                        <div className="space-y-0.5">
-                                            <div className="text-slate-400">Attendance:</div>
-                                            <div className="font-bold text-slate-700 dark:text-slate-300">
-                                                {payoutForm.wage_type === 'Daily Wage'
-                                                    ? `${payoutForm.present_days}P / ${payoutForm.half_days}HD / ${payoutForm.absent_days}A`
-                                                    : `${payoutForm.present_days}P / ${payoutForm.half_days}HD / ${payoutForm.absent_days}A / ${payoutForm.paid_leaves}PL`
-                                                }
+                                        {editingSite && (
+                                            <div>
+                                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-2">Status</label>
+                                                <MinimalSelect
+                                                    value={siteForm.status}
+                                                    onChange={(val) => setSiteForm({ ...siteForm, status: val })}
+                                                    options={[
+                                                        { value: 'Active', label: 'Active' },
+                                                        { value: 'Completed', label: 'Completed' },
+                                                        { value: 'Inactive', label: 'Inactive' }
+                                                    ]}
+                                                    triggerClassName="w-full justify-between"
+                                                    variant="input"
+                                                />
                                             </div>
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <div className="text-slate-405">Accrued Credit:</div>
-                                            <div className="font-bold text-slate-700 dark:text-slate-300">₹{payoutForm.accrued_credit.toLocaleString()}</div>
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <div className="text-slate-405">Advances Taken:</div>
-                                            <div className="font-bold text-amber-600 dark:text-amber-505">-₹{payoutForm.advances_taken.toLocaleString()}</div>
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <div className="text-slate-455 font-bold">Net Payable:</div>
-                                            <div className="font-extrabold text-indigo-650 dark:text-indigo-400 text-xs">₹{payoutForm.net_payable.toLocaleString()}</div>
-                                        </div>
-                                    </div>
+                                        )}
 
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Paid Amount (INR)</label>
-                                            <input
-                                                type="number"
-                                                value={payoutForm.paid_amount}
-                                                onChange={(e) => setPayoutForm({ ...payoutForm, paid_amount: e.target.value })}
-                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-205 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                                required
-                                                min="0"
-                                                placeholder="e.g. 15000"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Payout Status</label>
-                                            <select
-                                                value={payoutForm.status}
-                                                onChange={(e) => setPayoutForm({ ...payoutForm, status: e.target.value })}
-                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500 cursor-pointer"
-                                            >
-                                                <option value="Paid">Paid</option>
-                                                <option value="Pending">Pending</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">Payment Date</label>
-                                        <input
-                                            type="date"
-                                            value={payoutForm.payment_date}
-                                            onChange={(e) => setPayoutForm({ ...payoutForm, payment_date: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-205 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            required
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-slate-455 font-semibold mb-1">Notes / Payment Details</label>
-                                        <input
-                                            type="text"
-                                            value={payoutForm.notes}
-                                            onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:border-indigo-500"
-                                            placeholder="e.g. Paid via Bank Transfer, Ref# 9812739"
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPayoutModal(false)}
-                                            className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
-                                        >
-                                            {payoutForm.payout_id ? 'Update Payout' : 'Release Payment'}
-                                        </button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: BULK TRANSFER */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showBulkTransferModal && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowBulkTransferModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
-                                    <div className="flex items-center gap-1.5">
-                                        <Building size={16} className="text-indigo-500" />
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Bulk Transfer Workers</h4>
-                                    </div>
-                                    <button onClick={() => setShowBulkTransferModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
-                                </div>
-                                <form onSubmit={handleExecuteBulkTransfer} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="block text-slate-455 font-semibold mb-1">Source Site (Filter)</label>
-                                            <select
-                                                value={bulkSourceSiteId}
-                                                onChange={(e) => {
-                                                    setBulkSourceSiteId(e.target.value);
-                                                    setSelectedLabourIds([]); // reset selection
-                                                }}
-                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-205 dark:border-github-dark-border rounded-lg focus:outline-none cursor-pointer focus:border-indigo-500"
-                                            >
-                                                <option value="All">All Sites</option>
-                                                <option value="Unassigned">Unassigned</option>
-                                                {sites.map(s => (
-                                                    <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-slate-455 font-semibold mb-1">Destination Site</label>
-                                            <select
-                                                value={bulkDestinationSiteId}
-                                                onChange={(e) => setBulkDestinationSiteId(e.target.value)}
-                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-205 dark:border-github-dark-border rounded-lg focus:outline-none cursor-pointer focus:border-indigo-500"
-                                                required
-                                            >
-                                                <option value="">-- Choose New Project Site --</option>
-                                                <option value="Unassigned">Unassigned / Independent</option>
-                                                {sites.map(s => (
-                                                    <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2 pt-2">
-                                        <div className="flex justify-between items-center text-slate-600 dark:text-slate-300 font-semibold">
-                                            <span>Select Workers to Move</span>
+                                        <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    const filtered = labours.filter(lab => {
-                                                        if (bulkSourceSiteId === 'Unassigned') return lab.site_id === null;
-                                                        if (bulkSourceSiteId !== 'All') return lab.site_id === Number(bulkSourceSiteId);
-                                                        return true;
-                                                    });
-                                                    if (selectedLabourIds.length === filtered.length) {
-                                                        setSelectedLabourIds([]);
-                                                    } else {
-                                                        setSelectedLabourIds(filtered.map(l => l.labour_id));
-                                                    }
-                                                }}
-                                                className="text-indigo-650 hover:underline font-bold"
+                                                onClick={() => setShowSiteModal(false)}
+                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
                                             >
-                                                Select / Deselect All
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
+                                            >
+                                                Save
                                             </button>
                                         </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
 
-                                        <div className="border border-slate-200 dark:border-github-dark-border rounded-lg max-h-56 overflow-y-auto p-2.5 bg-slate-50 dark:bg-[#161b22]/40 divide-y divide-slate-100 dark:divide-github-dark-border/40 custom-scrollbar">
-                                            {labours
-                                                .filter(lab => {
-                                                    if (bulkSourceSiteId === 'Unassigned') return lab.site_id === null;
-                                                    if (bulkSourceSiteId !== 'All') return lab.site_id === Number(bulkSourceSiteId);
-                                                    return true;
-                                                })
-                                                .map(lab => (
-                                                    <label key={lab.labour_id} className="flex items-center gap-2 py-2 cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/20 px-1">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={selectedLabourIds.includes(lab.labour_id)}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) {
-                                                                    setSelectedLabourIds(prev => [...prev, lab.labour_id]);
-                                                                } else {
-                                                                    setSelectedLabourIds(prev => prev.filter(id => id !== lab.labour_id));
-                                                                }
-                                                            }}
-                                                            className="rounded text-indigo-650 cursor-pointer"
-                                                        />
-                                                        <div>
-                                                            <span className="font-semibold text-slate-800 dark:text-[#f0f6fc]">{lab.name}</span>
-                                                            <span className="ml-2 text-[10px] text-slate-450 font-mono">({lab.role} | {lab.site_name || 'Unassigned'})</span>
-                                                        </div>
-                                                    </label>
-                                                ))}
+                {/* DRAWERS: LABOUR FORM */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showLabourModal && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowLabourModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
+                                >
+                                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
+                                        <div>
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
+                                                {editingLabour ? 'Edit Labour Profile' : 'Add New Labour Worker'}
+                                            </h4>
+                                            <p className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted mt-0.5 tracking-wider uppercase">Worker Configuration Profile</p>
                                         </div>
+                                        <button onClick={() => setShowLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
                                     </div>
-
-                                    <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowBulkTransferModal(false)}
-                                            className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-505 rounded-lg font-bold transition-all"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            disabled={selectedLabourIds.length === 0}
-                                            className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-sm transition-all"
-                                        >
-                                            Transfer {selectedLabourIds.length} Workers
-                                        </button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: BORROW WORKER */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showBorrowModal && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowBorrowModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-202 dark:border-[#30363d] z-10"
-                            >
-                                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
-                                    <div className="flex items-center gap-1.5">
-                                        <Plus size={16} className="text-indigo-500" />
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Add Worker for Today</h4>
-                                    </div>
-                                    <button onClick={() => setShowBorrowModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                        <input
-                                            type="text"
-                                            placeholder="Search worker by name or designation..."
-                                            value={borrowSearchQuery}
-                                            onChange={(e) => setBorrowSearchQuery(e.target.value)}
-                                            className="pl-9 pr-4 py-2 w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-700 dark:text-github-dark-text focus:outline-none focus:border-indigo-500"
-                                        />
-                                    </div>
-
-                                    <div className="border border-slate-200 dark:border-github-dark-border rounded-lg max-h-[60vh] overflow-y-auto p-1 bg-slate-50 dark:bg-[#161b22]/40 divide-y divide-slate-100 dark:divide-github-dark-border/40 custom-scrollbar">
-                                        {labours
-                                            .filter(lab => {
-                                                const isAlreadyInRoster = attendanceRoster.some(r => r.labour_id === lab.labour_id);
-                                                const matchesSearch = lab.name.toLowerCase().includes(borrowSearchQuery.toLowerCase()) ||
-                                                    lab.role.toLowerCase().includes(borrowSearchQuery.toLowerCase());
-                                                return !isAlreadyInRoster && matchesSearch && lab.status === 'Active';
-                                            })
-                                            .map(lab => (
-                                                <div
-                                                    key={lab.labour_id}
-                                                    onClick={() => handleBorrowLabour(lab)}
-                                                    className="flex justify-between items-center p-3 cursor-pointer hover:bg-indigo-50 dark:hover:bg-[#161b22] transition-colors"
-                                                >
-                                                    <div>
-                                                        <span className="font-bold text-slate-805 dark:text-[#f0f6fc] block">{lab.name}</span>
-                                                        <span className="text-[10px] text-slate-400 font-mono">{lab.role} | Default: {lab.site_name || 'Independent'}</span>
-                                                    </div>
-                                                    <button className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/35 text-indigo-650 dark:text-indigo-400 rounded text-[10px] font-black cursor-pointer">
-                                                        Select
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        {labours.filter(lab => {
-                                            const isAlreadyInRoster = attendanceRoster.some(r => r.labour_id === lab.labour_id);
-                                            const matchesSearch = lab.name.toLowerCase().includes(borrowSearchQuery.toLowerCase()) ||
-                                                lab.role.toLowerCase().includes(borrowSearchQuery.toLowerCase());
-                                            return !isAlreadyInRoster && matchesSearch && lab.status === 'Active';
-                                        }).length === 0 && (
-                                                <div className="p-8 text-center text-slate-400 italic">No workers found to add.</div>
-                                            )}
-                                    </div>
-                                </div>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: SITE CLOSURE REASSIGNMENT PROMPT */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showSiteClosurePrompt && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowSiteClosurePrompt(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-github-dark-border bg-amber-500/10 text-amber-800 dark:text-amber-450">
-                                    <div className="flex items-center gap-1.5">
-                                        <AlertTriangle size={18} />
-                                        <h4 className="font-bold text-sm uppercase tracking-wider">Site Closure Reassignment</h4>
-                                    </div>
-                                    <button onClick={() => setShowSiteClosurePrompt(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
-                                </div>
-                                <form onSubmit={handleConfirmSiteClosure} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-                                    <div className="text-slate-600 dark:text-slate-350 space-y-2">
-                                        <p>
-                                            You are marking the site <strong>{closureSiteName}</strong> as <strong>{siteStatusToSave}</strong>.
-                                        </p>
-                                        <p>
-                                            There are currently <strong>{closureLabours.length} active workers</strong> assigned to this site. Please choose a new construction site to transfer them to:
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-slate-455 font-semibold mb-1">Select Destination Site</label>
-                                        <select
-                                            value={closureDestinationSiteId}
-                                            onChange={(e) => setClosureDestinationSiteId(e.target.value)}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-205 dark:border-github-dark-border rounded-lg focus:outline-none cursor-pointer focus:border-indigo-500"
-                                        >
-                                            <option value="">Leave Unassigned / Independent</option>
-                                            {sites
-                                                .filter(s => s.site_id !== Number(closureSiteId) && s.status === 'Active')
-                                                .map(s => (
-                                                    <option key={s.site_id} value={s.site_id}>{s.site_name}</option>
-                                                ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="border border-slate-200 dark:border-github-dark-border rounded-lg max-h-36 overflow-y-auto p-2 bg-slate-50 dark:bg-[#161b22]/40 custom-scrollbar">
-                                        <span className="block text-[9px] font-bold text-slate-455 uppercase mb-1">Affected Workers:</span>
-                                        <ul className="list-disc pl-4 space-y-1 font-semibold">
-                                            {closureLabours.map(l => (
-                                                <li key={l.labour_id} className="text-slate-700 dark:text-slate-300">{l.name} <span className="text-[10px] text-slate-400 font-normal">({l.role})</span></li>
-                                            ))}
-                                        </ul>
-                                    </div>
-
-                                    <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowSiteClosurePrompt(false)}
-                                            className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-505 rounded-lg font-bold transition-all"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
-                                        >
-                                            Transfer & Complete
-                                        </button>
-                                    </div>
-                                </form>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>,
-                    document.body
-                )}
-
-                    {/* DRAWERS: WORK HISTORY & INSIGHTS */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {selectedHistoryLabour && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setSelectedHistoryLabour(null)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-lg h-full bg-white dark:bg-[#0d1117] border-l border-slate-200 dark:border-github-dark-border shadow-2xl flex flex-col justify-between z-10"
-                            >
-                                <div className="p-5 border-b border-slate-100 dark:border-github-dark-border flex justify-between items-center bg-slate-50/30 dark:bg-[#010409]/40">
-                                    <div>
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-github-dark-text">{selectedHistoryLabour.name}</h4>
-                                        <p className="text-[10px] text-slate-450 dark:text-github-dark-muted font-mono uppercase mt-0.5">Work History & Insights | {selectedHistoryLabour.role}</p>
-                                    </div>
-                                    <button onClick={() => setSelectedHistoryLabour(null)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={20} /></button>
-                                </div>
-
-                                <div className="flex-1 p-5 overflow-y-auto space-y-6 text-xs custom-scrollbar">
-                                    {historyLoading ? (
-                                        <div className="flex flex-col items-center justify-center py-20 gap-2">
-                                            <Clock className="animate-spin text-indigo-500" size={24} />
-                                            <span className="text-[10px] text-slate-400">Loading history...</span>
+                                    <form onSubmit={handleSaveLabour} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Labour Full Name</label>
+                                            <input
+                                                type="text"
+                                                value={labourForm.name}
+                                                onChange={(e) => setLabourForm({ ...labourForm, name: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                required
+                                                placeholder="e.g., Ramesh Kumar"
+                                            />
                                         </div>
-                                    ) : labourHistoryData.length === 0 ? (
-                                        <div className="text-center py-10 text-slate-400 italic">No historical attendance logged for this worker.</div>
-                                    ) : (
-                                        <>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="bg-slate-50 dark:bg-github-dark-border/20 p-3 rounded-xl border border-slate-100 dark:border-github-dark-border/40">
-                                                    <span className="block text-[10px] text-slate-405 uppercase font-bold mb-1">Total Engagements</span>
-                                                    <span className="text-lg font-black text-slate-800 dark:text-github-dark-text">{labourHistoryData.length} Sites</span>
-                                                </div>
-                                                <div className="bg-slate-50 dark:bg-github-dark-border/20 p-3 rounded-xl border border-slate-100 dark:border-github-dark-border/40">
-                                                    <span className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Total Days Logged</span>
-                                                    <span className="text-lg font-black text-indigo-650 dark:text-indigo-400">
-                                                        {labourHistoryData.reduce((acc, curr) => acc + curr.total_days, 0)} Days
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Contact Phone</label>
+                                            <input
+                                                type="tel"
+                                                value={labourForm.phone}
+                                                onChange={(e) => setLabourForm({ ...labourForm, phone: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                placeholder="10-digit mobile number"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Sex</label>
+                                            <MinimalSelect
+                                                value={labourForm.sex}
+                                                onChange={(val) => setLabourForm({ ...labourForm, sex: val })}
+                                                options={[
+                                                    { value: 'Male', label: 'Male' },
+                                                    { value: 'Female', label: 'Female' },
+                                                    { value: 'Other', label: 'Other' }
+                                                ]}
+                                                triggerClassName="w-full justify-between"
+                                                variant="input"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Role</label>
+                                            <input
+                                                type="text"
+                                                value={labourForm.role}
+                                                onChange={(e) => setLabourForm({ ...labourForm, role: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                required
+                                                placeholder="e.g., Mason, Carpenter, Helper"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Assign Construction Site</label>
+                                            <MinimalSelect
+                                                value={labourForm.site_id}
+                                                onChange={(val) => setLabourForm({ ...labourForm, site_id: val })}
+                                                options={[
+                                                    { value: '', label: 'Unassigned / Independent' },
+                                                    ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                                ]}
+                                                triggerClassName="w-full justify-between"
+                                                variant="input"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Wage Model</label>
+                                            <MinimalSelect
+                                                value={labourForm.wage_type}
+                                                onChange={(val) => setLabourForm({ ...labourForm, wage_type: val })}
+                                                options={[
+                                                    { value: 'Daily Wage', label: 'Daily Wage (strictly pro-rated)' },
+                                                    { value: 'Fixed Salary', label: 'Fixed Monthly Salary' }
+                                                ]}
+                                                triggerClassName="w-full justify-between"
+                                                variant="input"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Monthly Salary (INR)</label>
+                                            <input
+                                                type="number"
+                                                value={labourForm.monthly_salary}
+                                                onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                required
+                                                min="0"
+                                                placeholder="e.g., 25000"
+                                            />
+                                        </div>
+                                        {editingLabour && (
+                                            <div>
+                                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Status</label>
+                                                <MinimalSelect
+                                                    value={labourForm.status}
+                                                    onChange={(val) => setLabourForm({ ...labourForm, status: val })}
+                                                    options={[
+                                                        { value: 'Active', label: 'Active' },
+                                                        { value: 'Inactive', label: 'Inactive' }
+                                                    ]}
+                                                    triggerClassName="w-full justify-between"
+                                                    variant="input"
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowLabourModal(false)}
+                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-205 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* DRAWERS: LOG ADVANCE */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showAdvanceModal && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowAdvanceModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
+                                >
+                                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
+                                        <div className="flex items-center gap-1.5">
+                                            <DollarSign size={16} className="text-amber-500" />
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Log Salary Advance</h4>
+                                        </div>
+                                        <button onClick={() => setShowAdvanceModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
+                                    </div>
+                                    <form onSubmit={handleSaveAdvance} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
+                                        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/40 p-3 rounded-lg text-slate-600 dark:text-slate-350">
+                                            Logging salary advance for <strong>{advanceForm.name}</strong>. This amount will be automatically deducted from their next payroll payroll payout credit.
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Advance Amount (INR)</label>
+                                            <input
+                                                type="number"
+                                                value={advanceForm.amount}
+                                                onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                required
+                                                min="1"
+                                                placeholder="e.g., 2000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Logging Date</label>
+                                            <input
+                                                type="date"
+                                                value={advanceForm.date}
+                                                onChange={(e) => setAdvanceForm({ ...advanceForm, date: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg focus:outline-none focus:border-indigo-500"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Notes / Description</label>
+                                            <input
+                                                type="text"
+                                                value={advanceForm.notes}
+                                                onChange={(e) => setAdvanceForm({ ...advanceForm, notes: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                placeholder="e.g., Festival Advance, Medical emergency"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAdvanceModal(false)}
+                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-sm transition-all"
+                                            >
+                                                Record Payment
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* DRAWERS: LOG PAYOUT */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showPayoutModal && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowPayoutModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
+                                >
+                                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
+                                        <div className="flex items-center gap-1.5">
+                                            <DollarSign size={16} className="text-indigo-500" />
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">{payoutForm.payout_id ? 'Update Monthly Payout' : 'Process Monthly Payout'}</h4>
+                                        </div>
+                                        <button onClick={() => setShowPayoutModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
+                                    </div>
+                                    <form onSubmit={handleSavePayout} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
+                                        <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 dark:border-indigo-900/40 p-3 rounded-lg text-slate-600 dark:text-slate-500 dark:text-github-dark-muted space-y-1">
+                                            <div>Processing salary payout for <strong>{payoutForm.name}</strong></div>
+                                            <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase">Wage Type: {payoutForm.wage_type} | Month: {payoutForm.month}</div>
+                                        </div>
+
+                                        {/* Earnings Summary Grid */}
+                                        <div className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-[#161b22] p-3 rounded-lg border border-slate-200 dark:border-github-dark-border text-[11px]">
+                                            <div className="space-y-1 col-span-2">
+                                                <div className="text-slate-400 mb-1">Attendance:</div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
+                                                        {payoutForm.present_days} Present
                                                     </span>
+                                                    {payoutForm.half_days > 0 && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
+                                                            {payoutForm.half_days} Half Day
+                                                        </span>
+                                                    )}
+                                                    {payoutForm.paid_leaves > 0 && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50">
+                                                            {payoutForm.paid_leaves} Paid Leave
+                                                        </span>
+                                                    )}
+                                                    {payoutForm.absent_days > 0 && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
+                                                            {payoutForm.absent_days} Absent
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
+                                            <div className="space-y-0.5">
+                                                <div className="text-slate-500">Amount Earned:</div>
+                                                <div className="font-bold text-slate-700 dark:text-slate-300">₹{payoutForm.accrued_credit.toLocaleString()}</div>
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                <div className="text-slate-500">Advances Taken:</div>
+                                                <div className="font-bold text-amber-600 dark:text-amber-505">-₹{payoutForm.advances_taken.toLocaleString()}</div>
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                <div className="text-slate-500 dark:text-slate-400 font-bold">Net Payable:</div>
+                                                <div className="font-extrabold text-indigo-600 dark:text-indigo-400 dark:text-indigo-400 text-xs">₹{payoutForm.net_payable.toLocaleString()}</div>
+                                            </div>
+                                        </div>
 
-                                            <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-lg border border-[#d0d7de] dark:border-[#30363d] select-none">
+                                        {/* Net Payable — locked, read-only */}
+                                        <div className="rounded-xl border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-0.5">Amount to Release</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">Auto-calculated: Earned − Advances</p>
+                                                </div>
+                                                <div className={`text-xl font-black ${payoutForm.net_payable < 0
+                                                        ? 'text-rose-600 dark:text-rose-400'
+                                                        : 'text-indigo-600 dark:text-indigo-400'
+                                                    }`}>
+                                                    ₹{payoutForm.net_payable.toLocaleString()}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Negative balance warning */}
+                                        {payoutForm.net_payable < 0 && (
+                                            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/40">
+                                                <AlertTriangle size={14} className="text-rose-500 flex-shrink-0 mt-0.5" />
+                                                <p className="text-[11px] text-rose-700 dark:text-rose-400 font-medium">
+                                                    Advance taken (₹{payoutForm.advances_taken.toLocaleString()}) exceeds earned credit (₹{payoutForm.accrued_credit.toLocaleString()}). Salary cannot be released until the balance is cleared.
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        <div className="grid grid-cols-1 gap-3">
+                                            <div>
+                                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Payout Status</label>
+                                                <MinimalSelect
+                                                    value={payoutForm.status}
+                                                    onChange={(val) => setPayoutForm({ ...payoutForm, status: val })}
+                                                    options={[
+                                                        { value: 'Paid', label: 'Paid' },
+                                                        { value: 'Pending', label: 'Pending' }
+                                                    ]}
+                                                    triggerClassName="w-full justify-between"
+                                                    variant="input"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Payment Date</label>
+                                            <input
+                                                type="date"
+                                                value={payoutForm.payment_date}
+                                                onChange={(e) => setPayoutForm({ ...payoutForm, payment_date: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg focus:outline-none focus:border-indigo-500 dark:[color-scheme:dark]"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Notes / Payment Details</label>
+                                            <input
+                                                type="text"
+                                                value={payoutForm.notes}
+                                                onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                placeholder="e.g. Paid via Bank Transfer, Ref# 9812739"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPayoutModal(false)}
+                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={payoutForm.net_payable < 0}
+                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-sm transition-all"
+                                            >
+                                                {payoutForm.payout_id ? 'Update Payout' : 'Release Payment'}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* DRAWERS: BULK TRANSFER */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showBulkTransferModal && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowBulkTransferModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-xl h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#21262d] z-10"
+                                >
+                                    {/* ── Header ── */}
+                                    <div className="flex-shrink-0">
+                                        <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100 dark:border-[#21262d]">
+                                            <div>
+                                                <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc]">Move Workers</h4>
+                                                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Reassign workers to a different site</p>
+                                            </div>
+                                            <button
+                                                onClick={() => setShowBulkTransferModal(false)}
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <form onSubmit={handleExecuteBulkTransfer} className="flex-1 overflow-y-auto custom-scrollbar">
+                                        {/* ── Site Selector Cards ── */}
+                                        <div className="p-5 space-y-3">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {/* From Site — dynamic dropdown, excludes current site */}
+                                                <div className="rounded-xl border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] p-3 space-y-1.5">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-4 h-4 rounded-full bg-slate-400/20 dark:bg-slate-600/40 flex items-center justify-center">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                                                        </div>
+                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">From Site</span>
+                                                    </div>
+                                                    <MinimalSelect
+                                                        value={bulkSourceSiteId}
+                                                        onChange={(val) => {
+                                                            setBulkSourceSiteId(val);
+                                                            setSelectedLabourIds([]);
+                                                        }}
+                                                        options={[
+                                                            { value: 'All', label: 'All Sites' },
+                                                            { value: 'Unassigned', label: 'Unassigned' },
+                                                            ...sites
+                                                                .filter(s => !selectedSite || s.site_id !== selectedSite.site_id)
+                                                                .map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                                        ]}
+                                                        triggerClassName="w-full justify-between text-[11px]"
+                                                        variant="input"
+                                                    />
+                                                </div>
+                                                {/* Move To — locked to current site if on site view, otherwise free dropdown */}
+                                                <div className="rounded-xl border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/10 p-3 space-y-1.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className="w-4 h-4 rounded-full bg-indigo-400/20 dark:bg-indigo-600/30 flex items-center justify-center">
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                                            </div>
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400">Move To</span>
+                                                        </div>
+                                                        {selectedSite && (
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-500 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50">Locked</span>
+                                                        )}
+                                                    </div>
+                                                    {selectedSite ? (
+                                                        <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-indigo-100/60 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/40">
+                                                            <Building size={11} className="text-indigo-500 flex-shrink-0" />
+                                                            <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 truncate">{selectedSite.site_name}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <MinimalSelect
+                                                            value={bulkDestinationSiteId}
+                                                            onChange={(val) => setBulkDestinationSiteId(val)}
+                                                            options={[
+                                                                { value: '', label: '-- Select a Site --' },
+                                                                { value: 'Unassigned', label: 'No Site (Independent)' },
+                                                                ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                                            ]}
+                                                            triggerClassName="w-full justify-between text-[11px]"
+                                                            variant="input"
+                                                        />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* ── Divider ── */}
+                                        <div className="mx-5 h-px bg-slate-100 dark:bg-[#21262d]" />
+
+                                        {/* ── Role filter + worker list ── */}
+                                        <div className="p-5 space-y-3">
+                                            {/* Role pills */}
+                                            {(() => {
+                                                const sourcedLabours = labours.filter(lab => {
+                                                    if (bulkSourceSiteId === 'Unassigned') return !lab.site_id;
+                                                    if (bulkSourceSiteId !== 'All') return (lab.site_ids && lab.site_ids.includes(Number(bulkSourceSiteId))) || lab.site_id === Number(bulkSourceSiteId);
+                                                    return true;
+                                                });
+                                                const roles = [...new Map(sourcedLabours.map(l => [(l.role || '').trim().toLowerCase(), (l.role || '').trim()]).filter(([k]) => k)).values()];
+                                                return (
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setBulkRoleFilter('All')}
+                                                            className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${bulkRoleFilter === 'All'
+                                                                    ? 'bg-indigo-600 text-white border-transparent shadow-sm shadow-indigo-500/30'
+                                                                    : 'bg-white dark:bg-[#21262d] text-slate-500 dark:text-slate-400 border-slate-200 dark:border-[#30363d] hover:border-indigo-300 dark:hover:border-indigo-700'
+                                                                }`}
+                                                        >
+                                                            All &nbsp;<span className="opacity-70">{sourcedLabours.length}</span>
+                                                        </button>
+                                                        {roles.sort().map(role => {
+                                                            const count = sourcedLabours.filter(l => (l.role || '').trim().toLowerCase() === role.toLowerCase()).length;
+                                                            const isActive = bulkRoleFilter === role;
+                                                            return (
+                                                                <button
+                                                                    key={role}
+                                                                    type="button"
+                                                                    onClick={() => setBulkRoleFilter(isActive ? 'All' : role)}
+                                                                    className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${isActive
+                                                                            ? 'bg-indigo-600 text-white border-transparent shadow-sm shadow-indigo-500/30'
+                                                                            : 'bg-white dark:bg-[#21262d] text-slate-500 dark:text-slate-400 border-slate-200 dark:border-[#30363d] hover:border-indigo-300 dark:hover:border-indigo-700'
+                                                                        }`}
+                                                                >
+                                                                    {role} &nbsp;<span className="opacity-70">{count}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* List header */}
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Choose workers to move</span>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setHistoryTab('sites')}
-                                                    className={`flex-1 text-center py-1.5 font-bold rounded-md transition-all cursor-pointer ${historyTab === 'sites'
-                                                            ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-github-dark-text shadow-sm'
-                                                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                                                        }`}
+                                                    onClick={() => {
+                                                        const filtered = labours.filter(lab => {
+                                                            const siteMatch = bulkSourceSiteId === 'Unassigned' ? !lab.site_id
+                                                                : bulkSourceSiteId !== 'All' ? ((lab.site_ids && lab.site_ids.includes(Number(bulkSourceSiteId))) || lab.site_id === Number(bulkSourceSiteId))
+                                                                    : true;
+                                                            const roleMatch = bulkRoleFilter === 'All' || (lab.role || '').trim().toLowerCase() === bulkRoleFilter.toLowerCase();
+                                                            return siteMatch && roleMatch;
+                                                        });
+                                                        const allSelected = filtered.every(l => selectedLabourIds.includes(l.labour_id));
+                                                        if (allSelected) {
+                                                            setSelectedLabourIds(prev => prev.filter(id => !filtered.map(l => l.labour_id).includes(id)));
+                                                        } else {
+                                                            setSelectedLabourIds(prev => [...new Set([...prev, ...filtered.map(l => l.labour_id)])]);
+                                                        }
+                                                    }}
+                                                    className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold"
                                                 >
-                                                    Site Timeline
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setHistoryTab('payouts')}
-                                                    className={`flex-1 text-center py-1.5 font-bold rounded-md transition-all cursor-pointer ${historyTab === 'payouts'
-                                                            ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-github-dark-text shadow-sm'
-                                                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                                                        }`}
-                                                >
-                                                    Salary & Payout History
+                                                    {bulkRoleFilter === 'All' ? 'Select / Remove All' : `Select All ${bulkRoleFilter}s`}
                                                 </button>
                                             </div>
 
-                                            {historyTab === 'sites' ? (
-                                                <div className="space-y-4">
-                                                    <h5 className="font-bold text-slate-700 dark:text-github-dark-text uppercase tracking-wider text-[10px]">Site Wise Timeline</h5>
-                                                    <div className="space-y-3">
-                                                        {labourHistoryData.map((siteLog) => {
-                                                            const attendanceRate = siteLog.total_days > 0
-                                                                ? Math.round(((siteLog.present_days + siteLog.paid_leave_days + (0.5 * siteLog.half_day_days)) / siteLog.total_days) * 100)
-                                                                : 0;
+                                            {/* Worker list */}
+                                            {(() => {
+                                                const filtered = labours.filter(lab => {
+                                                    const siteMatch = bulkSourceSiteId === 'Unassigned' ? !lab.site_id
+                                                        : bulkSourceSiteId !== 'All' ? ((lab.site_ids && lab.site_ids.includes(Number(bulkSourceSiteId))) || lab.site_id === Number(bulkSourceSiteId))
+                                                            : true;
+                                                    const roleMatch = bulkRoleFilter === 'All' || (lab.role || '').trim().toLowerCase() === bulkRoleFilter.toLowerCase();
+                                                    return siteMatch && roleMatch;
+                                                });
 
+                                                if (filtered.length === 0) {
+                                                    return (
+                                                        <div className="rounded-xl border border-dashed border-slate-200 dark:border-[#30363d] p-8 text-center">
+                                                            <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-[#21262d] flex items-center justify-center mx-auto mb-2">
+                                                                <Building size={18} className="text-slate-400" />
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-400 dark:text-slate-500">No workers found for the selected site / job type.</p>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                const grouped = filtered.reduce((acc, lab) => {
+                                                    const role = (lab.role || '').trim() || 'No Role';
+                                                    if (!acc[role]) acc[role] = [];
+                                                    acc[role].push(lab);
+                                                    return acc;
+                                                }, {});
+
+                                                const roleColorMap = {};
+                                                const roleColors = [
+                                                    'indigo', 'violet', 'emerald', 'amber', 'rose', 'sky', 'teal', 'orange'
+                                                ];
+                                                Object.keys(grouped).sort().forEach((role, i) => {
+                                                    roleColorMap[role] = roleColors[i % roleColors.length];
+                                                });
+
+                                                const colorClasses = {
+                                                    indigo: { badge: 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/50', header: 'from-indigo-500/10 to-transparent dark:from-indigo-500/8', dot: 'bg-indigo-500', avatar: 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300' },
+                                                    violet: { badge: 'bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-800/50', header: 'from-violet-500/10 to-transparent dark:from-violet-500/8', dot: 'bg-violet-500', avatar: 'bg-violet-100 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300' },
+                                                    emerald: { badge: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50', header: 'from-emerald-500/10 to-transparent dark:from-emerald-500/8', dot: 'bg-emerald-500', avatar: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300' },
+                                                    amber: { badge: 'bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/50', header: 'from-amber-500/10 to-transparent dark:from-amber-500/8', dot: 'bg-amber-500', avatar: 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-300' },
+                                                    rose: { badge: 'bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/50', header: 'from-rose-500/10 to-transparent dark:from-rose-500/8', dot: 'bg-rose-500', avatar: 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300' },
+                                                    sky: { badge: 'bg-sky-100 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800/50', header: 'from-sky-500/10 to-transparent dark:from-sky-500/8', dot: 'bg-sky-500', avatar: 'bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-300' },
+                                                    teal: { badge: 'bg-teal-100 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-800/50', header: 'from-teal-500/10 to-transparent dark:from-teal-500/8', dot: 'bg-teal-500', avatar: 'bg-teal-100 dark:bg-teal-950/60 text-teal-600 dark:text-teal-300' },
+                                                    orange: { badge: 'bg-orange-100 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800/50', header: 'from-orange-500/10 to-transparent dark:from-orange-500/8', dot: 'bg-orange-500', avatar: 'bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-300' },
+                                                };
+
+                                                return (
+                                                    <div className="space-y-2">
+                                                        {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([role, workers]) => {
+                                                            const allRoleSelected = workers.every(w => selectedLabourIds.includes(w.labour_id));
+                                                            const someRoleSelected = workers.some(w => selectedLabourIds.includes(w.labour_id));
+                                                            const clr = colorClasses[roleColorMap[role]] || colorClasses.indigo;
+                                                            const selectedCount = workers.filter(w => selectedLabourIds.includes(w.labour_id)).length;
                                                             return (
-                                                                <div key={siteLog.site_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm hover:border-slate-350 dark:hover:border-github-dark-border-strong transition-all">
-                                                                    <div className="flex justify-between items-start mb-2">
-                                                                        <div>
-                                                                            <h6 className="font-bold text-xs text-slate-805 dark:text-github-dark-text">{siteLog.site_name || 'Unassigned'}</h6>
-                                                                            <span className="text-[9px] text-slate-400 font-mono">
-                                                                                {new Date(siteLog.first_date).toLocaleDateString()} to {new Date(siteLog.last_date).toLocaleDateString()}
-                                                                            </span>
-                                                                        </div>
-                                                                        <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full">{attendanceRate}% Active</span>
-                                                                    </div>
-
-                                                                    <div className={`grid ${selectedHistoryLabour?.wage_type === 'Daily Wage' ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5 text-center mt-3 pt-3 border-t border-slate-100 dark:border-github-dark-border/40 text-[9px] font-bold`}>
-                                                                        <div className="bg-emerald-50 dark:bg-emerald-955/10 p-1.5 rounded-lg text-emerald-600 dark:text-emerald-400">
-                                                                            <span className="block text-[8px] uppercase text-slate-400 font-medium">Present</span>
-                                                                            {siteLog.present_days}
-                                                                        </div>
-                                                                        <div className="bg-amber-50 dark:bg-amber-955/10 p-1.5 rounded-lg text-amber-600 dark:text-amber-550 font-bold">
-                                                                            <span className="block text-[8px] uppercase text-slate-400 font-medium">Half Day</span>
-                                                                            {siteLog.half_day_days}
-                                                                        </div>
-                                                                        {selectedHistoryLabour?.wage_type !== 'Daily Wage' && (
-                                                                            <div className="bg-indigo-50 dark:bg-indigo-955/10 p-1.5 rounded-lg text-indigo-650 dark:text-indigo-400">
-                                                                                <span className="block text-[8px] uppercase text-slate-400 font-medium">Paid L.</span>
-                                                                                {siteLog.paid_leave_days}
+                                                                <div key={role} className="rounded-xl border border-slate-200 dark:border-[#21262d] overflow-hidden">
+                                                                    {/* Role group header */}
+                                                                    <div className={`flex items-center justify-between px-3 py-2 bg-gradient-to-r ${clr.header} bg-slate-50 dark:bg-[#161b22] border-b border-slate-100 dark:border-[#21262d]`}>
+                                                                        <label className="flex items-center gap-2.5 cursor-pointer">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={allRoleSelected}
+                                                                                ref={el => { if (el) el.indeterminate = !allRoleSelected && someRoleSelected; }}
+                                                                                onChange={() => {
+                                                                                    if (allRoleSelected) {
+                                                                                        setSelectedLabourIds(prev => prev.filter(id => !workers.map(w => w.labour_id).includes(id)));
+                                                                                    } else {
+                                                                                        setSelectedLabourIds(prev => [...new Set([...prev, ...workers.map(w => w.labour_id)])]);
+                                                                                    }
+                                                                                }}
+                                                                                className="w-3.5 h-3.5 rounded text-indigo-600 cursor-pointer"
+                                                                            />
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <div className={`w-1.5 h-1.5 rounded-full ${clr.dot}`} />
+                                                                                <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{role}</span>
+                                                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${clr.badge}`}>{workers.length}</span>
                                                                             </div>
+                                                                        </label>
+                                                                        {selectedCount > 0 && (
+                                                                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white">
+                                                                                {selectedCount} chosen
+                                                                            </span>
                                                                         )}
-                                                                        <div className="bg-rose-50 dark:bg-rose-955/10 p-1.5 rounded-lg text-rose-600 dark:text-rose-455">
-                                                                            <span className="block text-[8px] uppercase text-slate-400 font-medium">Absent</span>
-                                                                            {siteLog.absent_days}
-                                                                        </div>
+                                                                    </div>
+                                                                    {/* Workers in this role */}
+                                                                    <div className="divide-y divide-slate-100 dark:divide-[#21262d]/80 bg-white dark:bg-[#0d1117]">
+                                                                        {workers.map(lab => {
+                                                                            const isChecked = selectedLabourIds.includes(lab.labour_id);
+                                                                            const initials = (lab.name || '').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                                                                            return (
+                                                                                <label
+                                                                                    key={lab.labour_id}
+                                                                                    className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all ${isChecked
+                                                                                            ? 'bg-indigo-50/70 dark:bg-indigo-950/15'
+                                                                                            : 'hover:bg-slate-50 dark:hover:bg-[#161b22]/60'
+                                                                                        }`}
+                                                                                >
+                                                                                    {/* Custom checkbox */}
+                                                                                    <div className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 border transition-all ${isChecked
+                                                                                            ? 'bg-indigo-600 border-indigo-600 shadow-sm shadow-indigo-500/30'
+                                                                                            : 'border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22]'
+                                                                                        }`}>
+                                                                                        <input
+                                                                                            type="checkbox"
+                                                                                            checked={isChecked}
+                                                                                            onChange={(e) => {
+                                                                                                if (e.target.checked) {
+                                                                                                    setSelectedLabourIds(prev => [...prev, lab.labour_id]);
+                                                                                                } else {
+                                                                                                    setSelectedLabourIds(prev => prev.filter(id => id !== lab.labour_id));
+                                                                                                }
+                                                                                            }}
+                                                                                            className="sr-only"
+                                                                                        />
+                                                                                        {isChecked && (
+                                                                                            <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                                                                                                <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                                                            </svg>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    {/* Avatar */}
+                                                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0 ${clr.avatar}`}>
+                                                                                        {initials}
+                                                                                    </div>
+                                                                                    {/* Info */}
+                                                                                    <div className="flex-1 min-w-0">
+                                                                                        <p className={`text-xs font-semibold truncate transition-colors ${isChecked ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-[#f0f6fc]'
+                                                                                            }`}>{lab.name}</p>
+                                                                                        <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{lab.site_name || 'No Site Assigned'}</p>
+                                                                                    </div>
+                                                                                    {isChecked && (
+                                                                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                                                                                    )}
+                                                                                </label>
+                                                                            );
+                                                                        })}
                                                                     </div>
                                                                 </div>
                                                             );
                                                         })}
                                                     </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    </form>
+
+                                    {/* ── Sticky Action Bar ── */}
+                                    <div className="flex-shrink-0 p-4 border-t border-slate-100 dark:border-[#21262d] bg-white/90 dark:bg-[#0d1117]/90 backdrop-blur-sm">
+                                        {selectedLabourIds.length > 0 && (
+                                            <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
+                                                <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
+                                                    <span className="text-[9px] font-black text-white">{selectedLabourIds.length}</span>
                                                 </div>
-                                            ) : (
-                                                <div className="space-y-4">
-                                                    <h5 className="font-bold text-slate-705 dark:text-github-dark-text uppercase tracking-wider text-[10px]">Logged Payroll Payouts</h5>
-                                                    <div className="space-y-3">
-                                                        {labourPayoutHistory.length === 0 ? (
-                                                            <div className="text-center py-10 text-slate-400 italic text-[11px]">No logged salary payouts found.</div>
-                                                        ) : (
-                                                            labourPayoutHistory.map((payout) => (
-                                                                <div key={payout.payout_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm hover:border-slate-350 dark:hover:border-github-dark-border-strong transition-all space-y-2">
-                                                                    <div className="flex justify-between items-center">
-                                                                        <span className="font-bold text-xs text-indigo-600 dark:text-indigo-400">{getMonthNameAndYear(payout.month + "-01")}</span>
-                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${payout.status === 'Paid'
-                                                                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                                                : 'bg-amber-50 text-amber-600 dark:bg-[#2c1f00] dark:text-amber-400'
-                                                                            }`}>
-                                                                            {payout.status}
-                                                                        </span>
-                                                                    </div>
-
-                                                                    <div className="grid grid-cols-3 gap-2 py-2 border-t border-b border-slate-100 dark:border-github-dark-border/40 text-[10px] font-mono">
-                                                                        <div>
-                                                                            <span className="text-slate-400 block text-[9px] uppercase font-bold">Earned</span>
-                                                                            ₹{payout.accrued_credit}
-                                                                        </div>
-                                                                        <div>
-                                                                            <span className="text-slate-400 block text-[9px] uppercase font-bold">Deductions</span>
-                                                                            -₹{payout.advances_taken}
-                                                                        </div>
-                                                                        <div>
-                                                                            <span className="text-slate-455 block text-[9px] uppercase font-bold">Paid Sum</span>
-                                                                            ₹{payout.paid_amount}
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
-                                                                        <span>Method: {payout.notes || 'Unspecified'}</span>
-                                                                        <span>{new Date(payout.payment_date).toLocaleDateString()}</span>
-                                                                    </div>
-                                                                </div>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-
-                                <div className="p-5 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-[#010409]/40 flex justify-end shrink-0">
-                                    <button onClick={() => setSelectedHistoryLabour(null)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold">Close Insights</button>
-                                </div>
+                                                <p className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
+                                                    {selectedLabourIds.length} worker{selectedLabourIds.length !== 1 ? 's' : ''} selected to move
+                                                </p>
+                                            </div>
+                                        )}
+                                        <div className="flex gap-2.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowBulkTransferModal(false)}
+                                                className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-[#30363d] transition-all"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                form="bulk-transfer-form"
+                                                disabled={selectedLabourIds.length === 0}
+                                                onClick={handleExecuteBulkTransfer}
+                                                className="flex-[2] px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <Building size={13} />
+                                                Move {selectedLabourIds.length > 0 ? `${selectedLabourIds.length} ` : ''}Workers
+                                            </button>
+                                        </div>
+                                    </div>
                                 </motion.div>
                             </div>
                         )}
@@ -2379,150 +2307,542 @@ const LabourManagement = () => {
                     document.body
                 )}
 
-                    {/* DRAWERS: BULK LABOUR UPLOAD */}
-                    {createPortal(
-                        <AnimatePresence>
-                            {showBulkLabourModal && (
-                                <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                onClick={() => setShowBulkLabourModal(false)}
-                                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                            />
-                            <motion.div
-                                initial={{ x: '100%' }}
-                                animate={{ x: 0 }}
-                                exit={{ x: '100%' }}
-                                transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-                                className="relative w-full max-w-2xl h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
-                            >
-                                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
-                                    <div className="flex items-center gap-1.5">
-                                        <Upload size={16} className="text-indigo-500" />
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Bulk Add Labours</h4>
+                {/* DRAWERS: BORROW WORKER */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showBorrowModal && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowBorrowModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-github-dark-border/40 dark:border-[#30363d] z-10"
+                                >
+                                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
+                                        <div className="flex items-center gap-1.5">
+                                            <Plus size={16} className="text-indigo-500" />
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Add Worker from Master Data</h4>
+                                        </div>
+                                        <button onClick={() => setShowBorrowModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
                                     </div>
-                                    <button onClick={() => setShowBulkLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
-                                </div>
+                                    <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                            <input
+                                                type="text"
+                                                placeholder="Search worker by name or designation..."
+                                                value={borrowSearchQuery}
+                                                onChange={(e) => setBorrowSearchQuery(e.target.value)}
+                                                className="pl-9 pr-4 py-2 w-full bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                            />
+                                        </div>
 
-                                <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs custom-scrollbar">
-                                    {parsedLabours.length === 0 ? (
-                                        <div className="space-y-4">
-                                            <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 dark:border-indigo-900/40 p-4 rounded-xl text-slate-600 dark:text-slate-350 space-y-2">
-                                                <h5 className="font-bold text-slate-850 dark:text-white">Instructions & Template</h5>
-                                                <p>Upload a CSV file containing your labour profiles. The columns must include:</p>
-                                                <ul className="list-disc pl-4 space-y-1 font-mono text-[10px]">
-                                                    <li><strong>Name</strong> (Required)</li>
-                                                    <li><strong>Role</strong> (Required, e.g. Mason, Carpenter)</li>
-                                                    <li><strong>Monthly Salary</strong> (Required, e.g. 15000)</li>
-                                                    <li><strong>Phone</strong> (Optional, 10 digit number)</li>
-                                                    <li><strong>Sex</strong> (Optional, Male/Female, defaults to Male)</li>
-                                                    <li><strong>Wage Type</strong> (Optional, "Daily Wage" or "Fixed Salary")</li>
-                                                    <li><strong>Site Name</strong> (Optional, matches existing construction site name)</li>
-                                                </ul>
-                                                <div className="pt-2">
+                                        <div className="border border-slate-200 dark:border-github-dark-border rounded-lg max-h-[60vh] overflow-y-auto p-1 bg-slate-50 dark:bg-[#161b22]/40 divide-y divide-slate-100 dark:divide-github-dark-border/40 custom-scrollbar">
+                                            {labours
+                                                .filter(lab => {
+                                                    const isAlreadyInRoster = attendanceRoster.some(r => r.labour_id === lab.labour_id);
+                                                    const matchesSearch = lab.name.toLowerCase().includes(borrowSearchQuery.toLowerCase()) ||
+                                                        lab.role.toLowerCase().includes(borrowSearchQuery.toLowerCase());
+                                                    return !isAlreadyInRoster && matchesSearch && lab.status === 'Active';
+                                                })
+                                                .map(lab => (
+                                                    <div
+                                                        key={lab.labour_id}
+                                                        onClick={() => handleBorrowLabour(lab)}
+                                                        className="flex justify-between items-center p-3 cursor-pointer hover:bg-indigo-50 dark:hover:bg-[#161b22] transition-colors"
+                                                    >
+                                                        <div>
+                                                            <span className="font-bold text-slate-800 dark:text-github-dark-text dark:text-[#f0f6fc] block">{lab.name}</span>
+                                                            <span className="text-[10px] text-slate-400 font-mono">{lab.role} | Default: {lab.site_name || 'Independent'}</span>
+                                                        </div>
+                                                        <button className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 dark:text-indigo-400 rounded text-[10px] font-black cursor-pointer">
+                                                            Select
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            {labours.filter(lab => {
+                                                const isAlreadyInRoster = attendanceRoster.some(r => r.labour_id === lab.labour_id);
+                                                const matchesSearch = lab.name.toLowerCase().includes(borrowSearchQuery.toLowerCase()) ||
+                                                    lab.role.toLowerCase().includes(borrowSearchQuery.toLowerCase());
+                                                return !isAlreadyInRoster && matchesSearch && lab.status === 'Active';
+                                            }).length === 0 && (
+                                                    <div className="p-8 text-center text-slate-400 italic">No workers found.</div>
+                                                )}
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* DRAWERS: SITE CLOSURE REASSIGNMENT PROMPT */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showSiteClosurePrompt && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowSiteClosurePrompt(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
+                                >
+                                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-github-dark-border bg-amber-500/10 text-amber-800 dark:text-amber-400">
+                                        <div className="flex items-center gap-1.5">
+                                            <AlertTriangle size={18} />
+                                            <h4 className="font-bold text-sm uppercase tracking-wider">Site Closure Reassignment</h4>
+                                        </div>
+                                        <button onClick={() => setShowSiteClosurePrompt(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
+                                    </div>
+                                    <form onSubmit={handleConfirmSiteClosure} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
+                                        <div className="text-slate-600 dark:text-slate-500 dark:text-github-dark-muted space-y-2">
+                                            <p>
+                                                You are marking the site <strong>{closureSiteName}</strong> as <strong>{siteStatusToSave}</strong>.
+                                            </p>
+                                            <p>
+                                                There are currently <strong>{closureLabours.length} active workers</strong> assigned to this site. Please choose a new construction site to transfer them to:
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-slate-505 dark:text-slate-300 font-semibold mb-1">Select Destination Site</label>
+                                            <MinimalSelect
+                                                value={closureDestinationSiteId}
+                                                onChange={(val) => setClosureDestinationSiteId(val)}
+                                                options={[
+                                                    { value: '', label: 'Leave Unassigned / Independent' },
+                                                    ...sites
+                                                        .filter(s => s.site_id !== Number(closureSiteId) && s.status === 'Active')
+                                                        .map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                                ]}
+                                                triggerClassName="w-full justify-between"
+                                                variant="input"
+                                            />
+                                        </div>
+
+                                        <div className="border border-slate-200 dark:border-github-dark-border rounded-lg max-h-36 overflow-y-auto p-2 bg-slate-50 dark:bg-[#161b22]/40 custom-scrollbar">
+                                            <span className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Affected Workers:</span>
+                                            <ul className="list-disc pl-4 space-y-1 font-semibold">
+                                                {closureLabours.map(l => (
+                                                    <li key={l.labour_id} className="text-slate-700 dark:text-slate-300">{l.name} <span className="text-[10px] text-slate-400 font-normal">({l.role})</span></li>
+                                                ))}
+                                            </ul>
+                                        </div>
+
+                                        <div className="flex gap-3 pt-6 border-t border-slate-100 dark:border-[#30363d]">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowSiteClosurePrompt(false)}
+                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
+                                            >
+                                                Transfer & Complete
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* DRAWERS: WORK HISTORY & INSIGHTS */}
+                {createPortal(
+                    <AnimatePresence>
+                        {selectedHistoryLabour && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setSelectedHistoryLabour(null)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-lg h-full bg-white dark:bg-[#0d1117] border-l border-slate-200 dark:border-github-dark-border shadow-2xl flex flex-col justify-between z-10"
+                                >
+                                    <div className="p-5 border-b border-slate-100 dark:border-github-dark-border flex justify-between items-center bg-slate-50/30 dark:bg-[#010409]/40">
+                                        <div>
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-github-dark-text">{selectedHistoryLabour.name}</h4>
+                                            <p className="text-[10px] text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted font-mono uppercase mt-0.5">Work History & Insights | {selectedHistoryLabour.role}</p>
+                                        </div>
+                                        <button onClick={() => setSelectedHistoryLabour(null)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={20} /></button>
+                                    </div>
+
+                                    <div className="flex-1 p-5 overflow-y-auto space-y-6 text-xs custom-scrollbar">
+                                        {historyLoading ? (
+                                            <div className="flex flex-col items-center justify-center py-20 gap-2">
+                                                <Clock className="animate-spin text-indigo-500" size={24} />
+                                                <span className="text-[10px] text-slate-400">Loading history...</span>
+                                            </div>
+                                        ) : labourHistoryData.length === 0 ? (
+                                            <div className="text-center py-10 text-slate-400 italic">No historical attendance logged for this worker.</div>
+                                        ) : (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="bg-slate-50 dark:bg-github-dark-border/20 p-3 rounded-xl border border-slate-100 dark:border-github-dark-border/40">
+                                                        <span className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Total Engagements</span>
+                                                        <span className="text-lg font-black text-slate-800 dark:text-github-dark-text">{labourHistoryData.length} Sites</span>
+                                                    </div>
+                                                    <div className="bg-slate-50 dark:bg-github-dark-border/20 p-3 rounded-xl border border-slate-100 dark:border-github-dark-border/40">
+                                                        <span className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Total Days Logged</span>
+                                                        <span className="text-lg font-black text-indigo-600 dark:text-indigo-400 dark:text-indigo-400">
+                                                            {labourHistoryData.reduce((acc, curr) => acc + curr.total_days, 0)} Days
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-lg border border-[#d0d7de] dark:border-[#30363d] select-none">
                                                     <button
                                                         type="button"
-                                                        onClick={downloadCSVTemplate}
-                                                        className="px-3 py-1.5 bg-indigo-650 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors"
+                                                        onClick={() => setHistoryTab('sites')}
+                                                        className={`flex-1 text-center py-1.5 font-bold rounded-md transition-all cursor-pointer ${historyTab === 'sites'
+                                                            ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-github-dark-text shadow-sm'
+                                                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                                                            }`}
                                                     >
-                                                        Download CSV Template
+                                                        Site Timeline
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setHistoryTab('payouts')}
+                                                        className={`flex-1 text-center py-1.5 font-bold rounded-md transition-all cursor-pointer ${historyTab === 'payouts'
+                                                            ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-github-dark-text shadow-sm'
+                                                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                                                            }`}
+                                                    >
+                                                        Salary & Payout History
+                                                    </button>
+                                                </div>
+
+                                                {historyTab === 'sites' ? (
+                                                    <div className="space-y-4">
+                                                        <h5 className="font-bold text-slate-700 dark:text-github-dark-text uppercase tracking-wider text-[10px]">Site Wise Timeline</h5>
+                                                        <div className="space-y-3">
+                                                            {labourHistoryData.map((siteLog) => {
+                                                                const attendanceRate = siteLog.total_days > 0
+                                                                    ? Math.round(((siteLog.present_days + siteLog.paid_leave_days + (0.5 * siteLog.half_day_days)) / siteLog.total_days) * 100)
+                                                                    : 0;
+
+                                                                return (
+                                                                    <div key={siteLog.site_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm hover:border-slate-350 dark:hover:border-github-dark-border-strong transition-all">
+                                                                        <div className="flex justify-between items-start mb-2">
+                                                                            <div>
+                                                                                <h6 className="font-bold text-xs text-slate-800 dark:text-github-dark-text dark:text-github-dark-text">{siteLog.site_name || 'Unassigned'}</h6>
+                                                                                <span className="text-[9px] text-slate-400 font-mono">
+                                                                                    {new Date(siteLog.first_date).toLocaleDateString()} to {new Date(siteLog.last_date).toLocaleDateString()}
+                                                                                </span>
+                                                                            </div>
+                                                                            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full">{attendanceRate}% Active</span>
+                                                                        </div>
+
+                                                                        <div className="grid grid-cols-4 gap-1.5 text-center mt-3 pt-3 border-t border-slate-100 dark:border-github-dark-border/40 text-[9px] font-bold">
+                                                                            <div className="bg-emerald-50 dark:bg-emerald-950/10 p-1.5 rounded-lg text-emerald-600 dark:text-emerald-400">
+                                                                                <span className="block text-[8px] uppercase text-slate-400 font-medium">Present</span>
+                                                                                {siteLog.present_days}
+                                                                            </div>
+                                                                            <div className="bg-amber-50 dark:bg-amber-500/10 p-1.5 rounded-lg text-amber-600 dark:text-amber-550 font-bold">
+                                                                                <span className="block text-[8px] uppercase text-slate-400 font-medium">Half Day</span>
+                                                                                {siteLog.half_day_days}
+                                                                            </div>
+                                                                            <div className="bg-indigo-50 dark:bg-indigo-950/10 p-1.5 rounded-lg text-indigo-600 dark:text-indigo-400 dark:text-indigo-400">
+                                                                                <span className="block text-[8px] uppercase text-slate-400 font-medium">Paid L.</span>
+                                                                                {siteLog.paid_leave_days}
+                                                                            </div>
+                                                                            <div className="bg-rose-50 dark:bg-rose-950/10 p-1.5 rounded-lg text-rose-600 dark:text-rose-455">
+                                                                                <span className="block text-[8px] uppercase text-slate-400 font-medium">Absent</span>
+                                                                                {siteLog.absent_days}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        <h5 className="font-bold text-slate-700 dark:text-github-dark-text dark:text-github-dark-text uppercase tracking-wider text-[10px]">Logged Payroll Payouts</h5>
+                                                        <div className="space-y-3">
+                                                            {labourPayoutHistory.length === 0 ? (
+                                                                <div className="text-center py-10 text-slate-400 italic text-[11px]">No logged salary payouts found.</div>
+                                                            ) : (
+                                                                labourPayoutHistory.map((payout) => (
+                                                                    <div key={payout.payout_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm hover:border-slate-350 dark:hover:border-github-dark-border-strong transition-all space-y-2">
+                                                                        <div className="flex justify-between items-center">
+                                                                            <span className="font-bold text-xs text-indigo-600 dark:text-indigo-400">{getMonthNameAndYear(payout.month + "-01")}</span>
+                                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${payout.status === 'Paid'
+                                                                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-500/30'
+                                                                                : 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-500/30'
+                                                                                }`}>
+                                                                                {payout.status === 'Paid' ? <CheckCircle size={10} /> : <Clock size={10} />} {payout.status}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <div className="grid grid-cols-3 gap-2 py-2 border-t border-b border-slate-100 dark:border-github-dark-border/40 text-[10px] font-mono">
+                                                                            <div>
+                                                                                <span className="text-slate-400 block text-[9px] uppercase font-bold">Earned</span>
+                                                                                ₹{payout.accrued_credit}
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-slate-400 block text-[9px] uppercase font-bold">Deductions</span>
+                                                                                -₹{payout.advances_taken}
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-slate-500 dark:text-slate-400 block text-[9px] uppercase font-bold">Paid Sum</span>
+                                                                                ₹{payout.paid_amount}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                                                                            <span>Method: {payout.notes || 'Unspecified'}</span>
+                                                                            <span>{new Date(payout.payment_date).toLocaleDateString()}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+
+                                    <div className="p-5 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-[#010409]/40 flex justify-end shrink-0">
+                                        <button onClick={() => setSelectedHistoryLabour(null)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold">Close Insights</button>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+
+                {/* DRAWERS: BULK LABOUR UPLOAD */}
+                {createPortal(
+                    <AnimatePresence>
+                        {showBulkLabourModal && (
+                            <div className="fixed inset-0 z-[1000] flex justify-end overflow-hidden">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setShowBulkLabourModal(false)}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+                                    className="relative w-full max-w-2xl h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
+                                >
+                                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
+                                        <div className="flex items-center gap-1.5">
+                                            <Upload size={16} className="text-indigo-500" />
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Bulk Add Labours</h4>
+                                        </div>
+                                        <button onClick={() => setShowBulkLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs custom-scrollbar">
+                                        {parsedLabours.length === 0 ? (
+                                            <div className="space-y-4">
+                                                <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 dark:border-indigo-900/40 p-4 rounded-xl text-slate-600 dark:text-slate-500 dark:text-github-dark-muted space-y-2">
+                                                    <h5 className="font-bold text-slate-850 dark:text-white">Instructions & Template</h5>
+                                                    <p>Upload a CSV or Excel file containing your labour profiles. The columns must include:</p>
+                                                    <ul className="list-disc pl-4 space-y-1 font-mono text-[10px]">
+                                                        <li><strong>Name</strong> (Required)</li>
+                                                        <li><strong>Role</strong> (Required, e.g. Mason, Carpenter)</li>
+                                                        <li><strong>Monthly Salary</strong> (Required, e.g. 15000)</li>
+                                                        <li><strong>Phone</strong> (Optional, 10 digit number)</li>
+                                                        <li><strong>Sex</strong> (Optional, Male/Female, defaults to Male)</li>
+                                                        <li><strong>Wage Type</strong> (Optional, "Daily Wage" or "Fixed Salary")</li>
+                                                        <li><strong>Site Name</strong> (Optional, matches existing construction site name)</li>
+                                                    </ul>
+                                                    <div className="pt-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={downloadCSVTemplate}
+                                                            className="px-3 py-1.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors"
+                                                        >
+                                                            Download Excel Template
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="border-2 border-dashed border-slate-300 dark:border-github-dark-border rounded-xl p-8 text-center bg-slate-50 dark:bg-[#161b22]/30 flex flex-col items-center justify-center gap-3">
+                                                    <Upload className="text-slate-400" size={32} />
+                                                    <div>
+                                                        <label className="cursor-pointer text-indigo-600 dark:text-indigo-400 dark:text-indigo-400 hover:underline font-bold">
+                                                            Upload Excel or CSV File
+                                                            <input
+                                                                type="file"
+                                                                accept=".csv,.xlsx"
+                                                                onChange={handleCSVUpload}
+                                                                className="hidden"
+                                                            />
+                                                        </label>
+                                                        <p className="text-[10px] text-slate-400 mt-1">Accepts .xlsx or .csv format up to 5MB</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between items-center bg-slate-50 dark:bg-[#161b22] p-3 rounded-lg border border-slate-200 dark:border-github-dark-border">
+                                                    <div>
+                                                        <span className="font-bold text-slate-800 dark:text-github-dark-text dark:text-white">Parsed Workers Preview</span>
+                                                        <p className="text-[10px] text-slate-500 dark:text-github-dark-muted dark:text-slate-400 mt-0.5">
+                                                            Found {parsedLabours.length} rows. {parsedLabours.filter(l => l.isValid).length} are valid and ready to import.
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setParsedLabours([])}
+                                                        className="text-slate-500 hover:text-red-500 hover:underline font-bold"
+                                                    >
+                                                        Clear & Upload New
+                                                    </button>
+                                                </div>
+
+                                                <div className="border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm">
+                                                    <div className="overflow-x-auto max-h-96 custom-scrollbar">
+                                                        <table className="w-full text-left border-collapse text-[11px]">
+                                                            <thead>
+                                                                <tr className="bg-slate-50 dark:bg-github-dark-border/40 text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
+                                                                    <th className="p-2.5">Status</th>
+                                                                    <th className="p-2.5">Name</th>
+                                                                    <th className="p-2.5">Role</th>
+                                                                    <th className="p-2.5">Salary (INR)</th>
+                                                                    <th className="p-2.5">Wage Type</th>
+                                                                    <th className="p-2.5">Site Name</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {parsedLabours.map((row, idx) => (
+                                                                    <tr key={idx} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/10">
+                                                                        <td className="p-2.5">
+                                                                            {row.isValid ? (
+                                                                                <CheckCircle size={14} className="text-emerald-500" />
+                                                                            ) : (
+                                                                                <AlertTriangle size={14} className="text-rose-500" title="Missing required fields" />
+                                                                            )}
+                                                                        </td>
+                                                                        <td className={`p-2.5 font-bold ${row.isValid ? 'text-slate-800 dark:text-github-dark-text' : 'text-slate-400 line-through'}`}>{row.name || 'Unnamed'}</td>
+                                                                        <td className="p-2.5 text-slate-600 dark:text-slate-400">{row.role || <span className="text-rose-500">Missing</span>}</td>
+                                                                        <td className="p-2.5 text-slate-600 dark:text-slate-400">
+                                                                            {isNaN(row.monthly_salary) ? <span className="text-rose-500">Missing</span> : `₹${row.monthly_salary}`}
+                                                                        </td>
+                                                                        <td className="p-2.5 text-slate-500">{row.wage_type}</td>
+                                                                        <td className="p-2.5 text-slate-500">{row.site_name || <span className="italic text-slate-400">Unassigned</span>}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex gap-3 pt-4">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setParsedLabours([])}
+                                                        className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSaveBulkLabours}
+                                                        disabled={isUploadingBulk || parsedLabours.filter(l => l.isValid).length === 0}
+                                                        className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-sm transition-all"
+                                                    >
+                                                        {isUploadingBulk ? 'Importing...' : `Import ${parsedLabours.filter(l => l.isValid).length} Workers`}
                                                     </button>
                                                 </div>
                                             </div>
-
-                                            <div className="border-2 border-dashed border-slate-300 dark:border-github-dark-border rounded-xl p-8 text-center bg-slate-50 dark:bg-[#161b22]/30 flex flex-col items-center justify-center gap-3">
-                                                <Upload className="text-slate-400" size={32} />
-                                                <div>
-                                                    <label className="cursor-pointer text-indigo-650 dark:text-indigo-400 hover:underline font-bold">
-                                                        Upload CSV File
-                                                        <input
-                                                            type="file"
-                                                            accept=".csv"
-                                                            onChange={handleCSVUpload}
-                                                            className="hidden"
-                                                        />
-                                                    </label>
-                                                    <p className="text-[10px] text-slate-400 mt-1">Accepts .csv format up to 5MB</p>
-                                                </div>
-                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )}
+                {/* CUSTOM CONFIRMATION MODAL */}
+                {createPortal(
+                    <AnimatePresence>
+                        {confirmDialog.isOpen && (
+                            <div className="fixed inset-0 z-[2000] flex items-center justify-center overflow-hidden p-4">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                                    className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                                />
+                                <motion.div
+                                    initial={{ scale: 0.95, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    exit={{ scale: 0.95, opacity: 0 }}
+                                    transition={{ duration: 0.15 }}
+                                    className="relative w-full max-w-md bg-white dark:bg-[#0d1117] rounded-2xl shadow-2xl flex flex-col border border-slate-200 dark:border-[#30363d] overflow-hidden z-10"
+                                >
+                                    <div className="p-6">
+                                        <div className="flex items-center gap-3 mb-3 text-red-500">
+                                            <AlertTriangle size={20} />
+                                            <h4 className="font-bold text-slate-900 dark:text-[#f0f6fc] text-sm">
+                                                {confirmDialog.title}
+                                            </h4>
                                         </div>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center bg-slate-50 dark:bg-[#161b22] p-3 rounded-lg border border-slate-200 dark:border-github-dark-border">
-                                                <div>
-                                                    <span className="font-bold text-slate-805 dark:text-white">Parsed Workers Preview</span>
-                                                    <p className="text-[10px] text-slate-450 dark:text-slate-400 mt-0.5">
-                                                        Found {parsedLabours.length} rows. {parsedLabours.filter(l => l.isValid).length} are valid and ready to import.
-                                                    </p>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setParsedLabours([])}
-                                                    className="text-slate-500 hover:text-red-500 hover:underline font-bold"
-                                                >
-                                                    Clear & Upload New
-                                                </button>
-                                            </div>
-
-                                            <div className="border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm">
-                                                <div className="overflow-x-auto max-h-96 custom-scrollbar">
-                                                    <table className="w-full text-left border-collapse text-[11px]">
-                                                        <thead>
-                                                            <tr className="bg-slate-50 dark:bg-github-dark-border/40 text-slate-450 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
-                                                                <th className="p-2.5">Status</th>
-                                                                <th className="p-2.5">Name</th>
-                                                                <th className="p-2.5">Role</th>
-                                                                <th className="p-2.5">Salary (INR)</th>
-                                                                <th className="p-2.5">Wage Type</th>
-                                                                <th className="p-2.5">Site Name</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {parsedLabours.map((row, idx) => (
-                                                                <tr key={idx} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/10">
-                                                                    <td className="p-2.5">
-                                                                        {row.isValid ? (
-                                                                            <CheckCircle size={14} className="text-emerald-500" />
-                                                                        ) : (
-                                                                            <AlertTriangle size={14} className="text-rose-500" title="Missing required fields" />
-                                                                        )}
-                                                                    </td>
-                                                                    <td className={`p-2.5 font-bold ${row.isValid ? 'text-slate-800 dark:text-github-dark-text' : 'text-slate-400 line-through'}`}>{row.name || 'Unnamed'}</td>
-                                                                    <td className="p-2.5 text-slate-600 dark:text-slate-400">{row.role || <span className="text-rose-500">Missing</span>}</td>
-                                                                    <td className="p-2.5 text-slate-600 dark:text-slate-400">
-                                                                        {isNaN(row.monthly_salary) ? <span className="text-rose-500">Missing</span> : `₹${row.monthly_salary}`}
-                                                                    </td>
-                                                                    <td className="p-2.5 text-slate-500">{row.wage_type}</td>
-                                                                    <td className="p-2.5 text-slate-500">{row.site_name || <span className="italic text-slate-400">Unassigned</span>}</td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex gap-3 pt-4">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setParsedLabours([])}
-                                                    className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-505 rounded-lg font-bold transition-all"
-                                                >
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleSaveBulkLabours}
-                                                    disabled={isUploadingBulk || parsedLabours.filter(l => l.isValid).length === 0}
-                                                    className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-sm transition-all"
-                                                >
-                                                    {isUploadingBulk ? 'Importing...' : `Import ${parsedLabours.filter(l => l.isValid).length} Workers`}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
+                                        <p className="text-slate-600 dark:text-github-dark-muted text-[11px] leading-relaxed">
+                                            {confirmDialog.message}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2.5 p-4 bg-slate-50 dark:bg-[#010409]/40 border-t border-slate-100 dark:border-[#30363d]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                                            className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-505 dark:text-[#c9d1d9] rounded-xl font-bold transition-all text-xs border border-slate-200 dark:border-github-dark-border"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (confirmDialog.onConfirm) confirmDialog.onConfirm();
+                                                setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                                            }}
+                                            className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition-all text-xs shadow-sm"
+                                        >
+                                            Confirm
+                                        </button>
+                                    </div>
                                 </motion.div>
                             </div>
                         )}
