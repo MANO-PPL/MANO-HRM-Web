@@ -10,7 +10,12 @@ import { validatePhone, validateEmail } from '../../utils/validation';
 const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-  const [formData, setFormData] = useState({ ...org, subscription_expiry: org.subscription_expiry ? new Date(org.subscription_expiry).toISOString().split('T')[0] : '' });
+  const [formData, setFormData] = useState({ 
+    ...org, 
+    gst_number: org.gst_number || '',
+    pan_number: org.pan_number || '',
+    subscription_expiry: org.subscription_expiry ? new Date(org.subscription_expiry).toISOString().split('T')[0] : '' 
+  });
   
   // Admins state
   const [orgAdmins, setOrgAdmins] = useState([]);
@@ -82,9 +87,40 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
       toast.error("Please enter a valid contact phone number according to the country code.");
       return;
     }
+
+    // GST & PAN validation
+    const gst = (formData.gst_number || '').trim().toUpperCase();
+    const pan = (formData.pan_number || '').trim().toUpperCase();
+
+    if ((gst && !pan) || (!gst && pan)) {
+      toast.error("Please enter both GST and PAN, or leave both fields blank.");
+      return;
+    }
+
+    if (gst && pan) {
+      const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+      const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+
+      if (!gstRegex.test(gst)) {
+        toast.error("Please enter a valid GST number.");
+        return;
+      }
+      if (!panRegex.test(pan)) {
+        toast.error("Please enter a valid PAN number.");
+        return;
+      }
+    }
+
+    const payload = {
+      ...formData,
+      org_code: cleanCode,
+      gst_number: gst || null,
+      pan_number: pan || null
+    };
+
     setFormLoading(true);
     try {
-      await api.put(`/organizations/${org.org_id}`, formData);
+      await api.put(`/organizations/${org.org_id}`, payload);
       toast.success('Organization updated successfully');
       setIsEditing(false);
       onRefresh();
@@ -198,6 +234,14 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
                   variant="admin-mobile"
                 />
               </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">GST Number</label>
+                <input value={formData.gst_number || ''} onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm uppercase font-mono" placeholder="GST Number" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">PAN Number</label>
+                <input value={formData.pan_number || ''} onChange={(e) => setFormData({ ...formData, pan_number: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm uppercase font-mono" placeholder="PAN Number" />
+              </div>
             </div>
 
             <div className="flex gap-3 pt-3">
@@ -246,6 +290,14 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
               <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl border border-slate-100 dark:border-white/5">
                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Contact Email</span>
                 <span className="text-xs font-bold text-slate-800 dark:text-white truncate block">{org.contact_email || 'N/A'}</span>
+              </div>
+              <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl border border-slate-100 dark:border-white/5">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">GST Number</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-white font-mono truncate block">{org.gst_number || 'N/A'}</span>
+              </div>
+              <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl border border-slate-100 dark:border-white/5">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">PAN Number</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-white font-mono truncate block">{org.pan_number || 'N/A'}</span>
               </div>
             </div>
 
@@ -338,7 +390,8 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
   const [formData, setFormData] = useState({
     org_name: '', org_code: '', status: 'active', subscription_plan: 'Trial', subscription_expiry: '', grace_period_days: 0, max_users: 50,
     contact_name: '', contact_email: '', contact_phone: '',
-    admin_name: '', admin_email: '', admin_phone: '', admin_password: ''
+    admin_name: '', admin_email: '', admin_phone: '', admin_password: '',
+    gst_number: '', pan_number: ''
   });
   const [isOrgCodeManuallyEdited, setIsOrgCodeManuallyEdited] = useState(false);
 
@@ -406,9 +459,40 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
       toast.error("Please enter a valid admin phone number according to the country code.");
       return;
     }
+
+    // GST & PAN validation
+    const gst = (formData.gst_number || '').trim().toUpperCase();
+    const pan = (formData.pan_number || '').trim().toUpperCase();
+
+    if ((gst && !pan) || (!gst && pan)) {
+      toast.error("Please enter both GST and PAN, or leave both fields blank.");
+      return;
+    }
+
+    if (gst && pan) {
+      const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+      const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+
+      if (!gstRegex.test(gst)) {
+        toast.error("Please enter a valid GST number.");
+        return;
+      }
+      if (!panRegex.test(pan)) {
+        toast.error("Please enter a valid PAN number.");
+        return;
+      }
+    }
+
+    const payload = {
+      ...formData,
+      org_code: cleanCode,
+      gst_number: gst || null,
+      pan_number: pan || null
+    };
+
     setFormLoading(true);
     try {
-      await api.post('/organizations', formData);
+      await api.post('/organizations', payload);
       toast.success('Organization created successfully');
       onRefresh();
       onClose();
@@ -445,6 +529,8 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
                 </select>
                 <input type="date" value={formData.subscription_expiry} onChange={(e) => setFormData({ ...formData, subscription_expiry: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Subscription Expiry" />
                 <input type="number" value={formData.max_users} onChange={(e) => setFormData({ ...formData, max_users: Number(e.target.value) })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm" placeholder="Max Users limit (default 50)" />
+                <input value={formData.gst_number || ''} onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm uppercase font-mono" placeholder="GST Number (Optional)" />
+                <input value={formData.pan_number || ''} onChange={(e) => setFormData({ ...formData, pan_number: e.target.value })} className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-sm uppercase font-mono" placeholder="PAN Number (Optional)" />
               </div>
             </div>
 

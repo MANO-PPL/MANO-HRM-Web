@@ -141,7 +141,7 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
     const {
         org_name, org_code, contact_name, contact_email, contact_phone,
         admin_name, admin_email, admin_phone, admin_password,
-        address, industry, tax_identity, tax_code, max_users
+        gst_number, pan_number, max_users
     } = req.body;
 
     if (!org_name || !org_code) {
@@ -188,15 +188,6 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
     const subscription_expiry = new Date();
     subscription_expiry.setDate(subscription_expiry.getDate() + 30); // 30-day trial
 
-    const notesObj = {
-        address: address || null,
-        industry: industry || null,
-        tax_identity: tax_identity || null,
-        tax_code: tax_code || null,
-        onboarded_via: 'showcase_self_onboarding',
-        onboarded_at: new Date().toISOString()
-    };
-
     const insertedId = await attendanceDB.transaction(async (trx) => {
         const [orgId] = await trx('organizations').insert({
             org_name: org_name.trim(),
@@ -210,7 +201,8 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
             status: 'active',
             max_users: max_users || 50,
             last_user_number: 1,
-            notes: JSON.stringify(notesObj)
+            gst_number: gst_number || null,
+            pan_number: pan_number || null
         });
 
         const hashedPassword = await bcrypt.hash(finalAdminPassword, 10);

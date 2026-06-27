@@ -88,8 +88,8 @@ const MobileRegisterPage = () => {
         contact_name: "",
         contact_phone: "",
         contact_email: "",
-        tax_identity: "Neither",
-        tax_code: "",
+        gst_number: "",
+        pan_number: "",
         max_users: 50,
 
         isAdminSameAsPoc: true,
@@ -188,27 +188,32 @@ const MobileRegisterPage = () => {
                 toast.error("A valid contact email is required.");
                 return;
             }
-            if (formData.tax_identity !== "Neither") {
-                if (!formData.tax_code.trim()) {
-                    toast.error(`Please enter your ${formData.tax_identity} identification code.`);
+            const hasGst = !!formData.gst_number?.trim();
+            const hasPan = !!formData.pan_number?.trim();
+
+            if ((hasGst && !hasPan) || (!hasGst && hasPan)) {
+                toast.error("Please enter both GST and PAN, or leave both fields blank.");
+                return;
+            }
+
+            if (hasGst && hasPan) {
+                const upperGst = formData.gst_number.trim().toUpperCase();
+                const upperPan = formData.pan_number.trim().toUpperCase();
+
+                const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+                const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+
+                if (!gstRegex.test(upperGst)) {
+                    toast.error("Invalid GST format. It must be in the format: 27ABCDE1234F1Z5.");
                     return;
                 }
-                const upperTaxCode = formData.tax_code.trim().toUpperCase();
-                if (formData.tax_identity === "PAN") {
-                    const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-                    if (!panRegex.test(upperTaxCode)) {
-                        toast.error("Invalid PAN format. It must be in the format: ABCDE1234F (5 letters, 4 digits, 1 letter).");
-                        return;
-                    }
-                } else if (formData.tax_identity === "GST") {
-                    const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-                    if (!gstRegex.test(upperTaxCode)) {
-                        toast.error("Invalid GST format. It must be in the format: 27ABCDE1234F1Z5.");
-                        return;
-                    }
+                if (!panRegex.test(upperPan)) {
+                    toast.error("Invalid PAN format. It must be in the format: ABCDE1234F (5 letters, 4 digits, 1 letter).");
+                    return;
                 }
-                // Automatically save the upper-cased code back to state
-                setFormData(prev => ({ ...prev, tax_code: upperTaxCode }));
+
+                // Update to uppercase
+                setFormData(prev => ({ ...prev, gst_number: upperGst, pan_number: upperPan }));
             }
         }
 
@@ -223,6 +228,11 @@ const MobileRegisterPage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (step < 3) {
+            nextStep();
+            return;
+        }
 
         const finalAdminEmail = formData.isAdminSameAsPoc ? formData.contact_email : formData.admin_email;
         const finalAdminName = formData.isAdminSameAsPoc ? formData.contact_name : formData.admin_name;
@@ -268,8 +278,8 @@ const MobileRegisterPage = () => {
                 admin_password: formData.admin_password,
                 address: formData.address,
                 industry: formData.industry,
-                tax_identity: formData.tax_identity,
-                tax_code: formData.tax_identity === "Neither" ? null : formData.tax_code,
+                gst_number: formData.gst_number || null,
+                pan_number: formData.pan_number || null,
                 max_users: Number(formData.max_users)
             };
 
@@ -517,45 +527,37 @@ const MobileRegisterPage = () => {
 
                                         <div className="space-y-2">
                                             <label className="block text-xs font-normal text-slate-500 dark:text-slate-400 px-1">
-                                                Tax Identity
+                                                GST Number (Optional)
                                             </label>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                {["GST", "PAN", "Neither"].map(type => (
-                                                    <button
-                                                        key={type}
-                                                        type="button"
-                                                        onClick={() => setFormData(prev => ({ ...prev, tax_identity: type }))}
-                                                        className={`py-2.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-all ${
-                                                            formData.tax_identity === type
-                                                                ? "bg-indigo-600 border-indigo-600 text-white"
-                                                                : "bg-white dark:bg-[#0d1117] border-slate-200 dark:border-[#30363d] text-slate-500 dark:text-slate-400"
-                                                        }`}
-                                                    >
-                                                        {type}
-                                                    </button>
-                                                ))}
+                                            <div className="relative group">
+                                                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    name="gst_number"
+                                                    value={formData.gst_number || ""}
+                                                    onChange={handleTextChange}
+                                                    className="w-full bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-lg py-3.5 pl-12 pr-5 text-slate-900 dark:text-white font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 text-sm shadow-sm"
+                                                    placeholder="Enter GST (e.g. 27ABCDE1234F1Z5)"
+                                                />
                                             </div>
                                         </div>
 
-                                        {formData.tax_identity !== "Neither" && (
-                                            <div className="space-y-2">
-                                                <label className="block text-xs font-normal text-slate-500 dark:text-slate-400 px-1">
-                                                    {formData.tax_identity} ID Value *
-                                                </label>
-                                                <div className="relative group">
-                                                    <FileText className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-slate-400" />
-                                                    <input
-                                                        type="text"
-                                                        name="tax_code"
-                                                        value={formData.tax_code}
-                                                        onChange={handleTextChange}
-                                                        required
-                                                        className="w-full bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-lg py-3.5 pl-12 pr-5 text-slate-900 dark:text-white font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 text-sm shadow-sm"
-                                                        placeholder={`Enter ${formData.tax_identity} code`}
-                                                    />
-                                                </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-xs font-normal text-slate-500 dark:text-slate-400 px-1">
+                                                PAN Number (Optional)
+                                            </label>
+                                            <div className="relative group">
+                                                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    name="pan_number"
+                                                    value={formData.pan_number || ""}
+                                                    onChange={handleTextChange}
+                                                    className="w-full bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-lg py-3.5 pl-12 pr-5 text-slate-900 dark:text-white font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 text-sm shadow-sm"
+                                                    placeholder="Enter PAN (e.g. ABCDE1234F)"
+                                                />
                                             </div>
-                                        )}
+                                        </div>
                                     </>
                                 )}
 

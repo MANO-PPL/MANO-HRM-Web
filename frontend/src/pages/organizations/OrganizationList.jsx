@@ -40,7 +40,8 @@ const OrganizationList = () => {
     const [formData, setFormData] = useState({
         org_name: '', org_code: '', status: 'active', subscription_plan: 'Trial', subscription_expiry: '', grace_period_days: 0, max_users: 50,
         contact_name: '', contact_email: '', contact_phone: '',
-        admin_name: '', admin_email: '', admin_phone: '', admin_password: ''
+        admin_name: '', admin_email: '', admin_phone: '', admin_password: '',
+        gst_number: '', pan_number: ''
     });
     const [formLoading, setFormLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -115,6 +116,8 @@ const OrganizationList = () => {
         setSelectedOrg(org);
         setFormData({
             ...org,
+            gst_number: org.gst_number || '',
+            pan_number: org.pan_number || '',
             subscription_expiry: org.subscription_expiry ? new Date(org.subscription_expiry).toISOString().split('T')[0] : ''
         });
         setIsEditing(false); // Mode: View existing
@@ -222,7 +225,8 @@ const OrganizationList = () => {
         setFormData({
             org_name: '', org_code: '', status: 'active', subscription_plan: 'Trial', subscription_expiry: '', grace_period_days: 0, max_users: 50,
             contact_name: '', contact_email: '', contact_phone: '',
-            admin_name: '', admin_email: '', admin_phone: '', admin_password: ''
+            admin_name: '', admin_email: '', admin_phone: '', admin_password: '',
+            gst_number: '', pan_number: ''
         });
         setIsOrgCodeManuallyEdited(false);
         setIsEditing(true); // Mode: Create new
@@ -260,22 +264,52 @@ const OrganizationList = () => {
             }
         }
 
+        // GST & PAN validation
+        const gst = (formData.gst_number || '').trim().toUpperCase();
+        const pan = (formData.pan_number || '').trim().toUpperCase();
+
+        if ((gst && !pan) || (!gst && pan)) {
+            toast.error("Please enter both GST and PAN, or leave both fields blank.");
+            return;
+        }
+
+        if (gst && pan) {
+            const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+            const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+
+            if (!gstRegex.test(gst)) {
+                toast.error("Please enter a valid GST number.");
+                return;
+            }
+            if (!panRegex.test(pan)) {
+                toast.error("Please enter a valid PAN number.");
+                return;
+            }
+        }
+
+        const payload = {
+            ...formData,
+            org_code: cleanCode,
+            gst_number: gst || null,
+            pan_number: pan || null
+        };
+
         setFormLoading(true);
         try {
             if (!selectedOrg) {
                 // Create
-                const res = await api.post('/organizations', formData);
+                const res = await api.post('/organizations', payload);
                 toast.success('Organization created successfully');
                 await fetchOrganizations();
                 // Select the newly created one (assuming backend returns org_id, but fetch gets the list anyway)
                 setIsEditing(false);
             } else {
                 // Update
-                await api.put(`/organizations/${selectedOrg.org_id}`, formData);
+                await api.put(`/organizations/${selectedOrg.org_id}`, payload);
                 toast.success('Organization updated successfully');
 
                 // Update local state to avoid full refetch if you want, but fetch is safer
-                const updatedOrg = { ...selectedOrg, ...formData };
+                const updatedOrg = { ...selectedOrg, ...payload };
                 setOrganizations(organizations.map(o => o.org_id === updatedOrg.org_id ? updatedOrg : o));
                 setSelectedOrg(updatedOrg);
                 setIsEditing(false);
@@ -1233,6 +1267,34 @@ const OrganizationList = () => {
                                                             />
                                                         ) : (
                                                             <div className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-github-dark-border/50 rounded-lg text-slate-800 dark:text-github-dark-text font-mono text-sm shadow-sm">{selectedOrg.contact_phone || 'N/A'}</div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider">GST Number</label>
+                                                        {isEditing ? (
+                                                            <input 
+                                                                value={formData.gst_number || ''} 
+                                                                onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })} 
+                                                                className="w-full px-4 py-2.5 border border-slate-300 dark:border-github-dark-border rounded-lg dark:bg-github-dark-subtle text-slate-900 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-sm font-mono uppercase" 
+                                                                placeholder="e.g. 22AAAAA0000A1Z5" 
+                                                            />
+                                                        ) : (
+                                                            <div className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-github-dark-border/50 rounded-lg text-slate-800 dark:text-github-dark-text font-mono text-sm shadow-sm">{selectedOrg.gst_number || 'N/A'}</div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-1.5">
+                                                        <label className="text-xs font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider">PAN Number</label>
+                                                        {isEditing ? (
+                                                            <input 
+                                                                value={formData.pan_number || ''} 
+                                                                onChange={(e) => setFormData({ ...formData, pan_number: e.target.value })} 
+                                                                className="w-full px-4 py-2.5 border border-slate-300 dark:border-github-dark-border rounded-lg dark:bg-github-dark-subtle text-slate-900 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-sm font-mono uppercase" 
+                                                                placeholder="e.g. ABCDE1234F" 
+                                                            />
+                                                        ) : (
+                                                            <div className="px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-github-dark-border/50 rounded-lg text-slate-800 dark:text-github-dark-text font-mono text-sm shadow-sm">{selectedOrg.pan_number || 'N/A'}</div>
                                                         )}
                                                     </div>
                                                 </div>
