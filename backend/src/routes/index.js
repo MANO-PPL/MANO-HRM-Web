@@ -22,7 +22,7 @@ import systemMonitorRoutes from './admin/systemMonitorRoutes.js';
 import superAdminRoutes from './superAdmin/superAdminRoutes.js';
 import chatbotRoutes from './chatbot/chatbotRoutes.js';
 import chatRoutes from './collaboration/chatRoutes.js';
-import geoLocationRoutes from './locations/Locations.js';
+import geoLocationRoutes from './locations/locations.js';
 
 import { requireActiveOrg } from '../middleware/auth.js';
 
