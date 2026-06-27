@@ -65,6 +65,41 @@ import {
 // --- MAP HELPER COMPONENTS ---
 const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
     const map = useMap();
+
+    // Dynamically calculate and enforce minZoom to fit the panel width
+    useEffect(() => {
+        const updateMinZoom = () => {
+            const container = map.getContainer();
+            if (container) {
+                const containerWidth = container.clientWidth;
+                if (containerWidth) {
+                    // Min zoom is calculated so that the map width (256 * 2^zoom) is >= container width
+                    const calculatedMinZoom = Math.max(3, Math.ceil(Math.log2(containerWidth / 256)));
+                    map.setMinZoom(calculatedMinZoom);
+                    
+                    if (map.getZoom() < calculatedMinZoom) {
+                        map.setZoom(calculatedMinZoom);
+                    }
+                }
+            }
+        };
+
+        updateMinZoom();
+
+        const resizeObserver = new ResizeObserver(() => {
+            updateMinZoom();
+        });
+        
+        const container = map.getContainer();
+        if (container) {
+            resizeObserver.observe(container);
+        }
+
+        return () => {
+            resizeObserver.disconnect();
+        };
+    }, [map]);
+
     useEffect(() => {
         if (!data || data.length === 0) return;
 
@@ -80,7 +115,8 @@ const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
         if (points.length > 0) {
             map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
         }
-    }, [searchTerm, departmentFilter, data.length > 0, map]);
+    }, [searchTerm, departmentFilter, data, map]);
+
     return null;
 };
 
@@ -1086,6 +1122,24 @@ const AttendanceMonitoring = () => {
         <>
             <style>
                 {`
+                .leaflet-container {
+                    background-color: ${
+                        activeTheme === 'dark' ? '#0f0f11' : 
+                        activeTheme === 'voyager' ? '#cadbe3' : 
+                        activeTheme === 'streets' ? '#aad3df' : 
+                        activeTheme === 'satellite' ? '#040810' : 
+                        '#e4edf2'
+                    } !important;
+                }
+                .leaflet-tile-pane {
+                    will-change: auto !important;
+                }
+                .leaflet-tile {
+                    image-rendering: -webkit-optimize-contrast;
+                    -webkit-backface-visibility: hidden;
+                    backface-visibility: hidden;
+                    transform: scale(1.002);
+                }
                 .user-marker-in, .user-marker-out, .user-marker-combined {
                     z-index: 500 !important;
                 }
@@ -1174,7 +1228,7 @@ const AttendanceMonitoring = () => {
                 `}
             </style>
             <DashboardLayout title="Live Attendance" noPadding={true}>
-                <div className={`${activeTab === 'requests' ? 'h-[calc(100vh-64px)] overflow-hidden' : ''} p-4 flex flex-col space-y-4`}>
+                <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'h-[calc(100vh-64px)] overflow-hidden' : ''} p-4 flex flex-col space-y-4`}>
                     {/* Tabs */}
                     <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         <button
@@ -1198,7 +1252,7 @@ const AttendanceMonitoring = () => {
                         </button>
                     </div>
 
-                    <div className={`${activeTab === 'requests' ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`} style={{ zoom: 0.8 }}>
+                    <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`} style={{ zoom: 0.8 }}>
 
                     {activeTab === 'live' ? (
                         <>
@@ -1766,7 +1820,7 @@ const AttendanceMonitoring = () => {
                                         </div>
                                     ) : activeView === 'map' ? (
                                         /* Map View Layout */
-                                        <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]">
+                                        <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]" style={{ zoom: 1.25 }}>
                                             <div className="flex-1 h-full relative">
                                                 <MapContainer
                                                     center={[20, 78]}

@@ -1865,6 +1865,41 @@ const MobileClusterDrawer = ({ selectedCluster, onClose, avatarTimestamp }) => {
 
 const MapRecenter = ({ data, searchTerm, selectedDept }) => {
     const map = useMap();
+
+    // Dynamically calculate and enforce minZoom to fit the panel width
+    useEffect(() => {
+        const updateMinZoom = () => {
+            const container = map.getContainer();
+            if (container) {
+                const containerWidth = container.clientWidth;
+                if (containerWidth) {
+                    // Min zoom is calculated so that the map width (256 * 2^zoom) is >= container width
+                    const calculatedMinZoom = Math.max(3, Math.ceil(Math.log2(containerWidth / 256)));
+                    map.setMinZoom(calculatedMinZoom);
+                    
+                    if (map.getZoom() < calculatedMinZoom) {
+                        map.setZoom(calculatedMinZoom);
+                    }
+                }
+            }
+        };
+
+        updateMinZoom();
+
+        const resizeObserver = new ResizeObserver(() => {
+            updateMinZoom();
+        });
+        
+        const container = map.getContainer();
+        if (container) {
+            resizeObserver.observe(container);
+        }
+
+        return () => {
+            resizeObserver.disconnect();
+        };
+    }, [map]);
+
     useEffect(() => {
         if (!data || data.length === 0) return;
 
@@ -1880,7 +1915,8 @@ const MapRecenter = ({ data, searchTerm, selectedDept }) => {
         if (points.length > 0) {
             map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
         }
-    }, [searchTerm, selectedDept, data.length > 0, map]);
+    }, [searchTerm, selectedDept, data, map]);
+
     return null;
 };
 
@@ -1933,6 +1969,24 @@ const MapView = ({ data, searchTerm, selectedDept, activeTheme, MAP_THEMES, isTh
         <div className="space-y-4 animate-in fade-in duration-500">
             <style>
                 {`
+                .leaflet-container {
+                    background-color: ${
+                        activeTheme === 'dark' ? '#0f0f11' : 
+                        activeTheme === 'voyager' ? '#cadbe3' : 
+                        activeTheme === 'streets' ? '#aad3df' : 
+                        activeTheme === 'satellite' ? '#040810' : 
+                        '#e4edf2'
+                    } !important;
+                }
+                .leaflet-tile-pane {
+                    will-change: auto !important;
+                }
+                .leaflet-tile {
+                    image-rendering: -webkit-optimize-contrast;
+                    -webkit-backface-visibility: hidden;
+                    backface-visibility: hidden;
+                    transform: scale(1.002);
+                }
                 .user-marker-in, .user-marker-out, .user-marker-combined {
                     z-index: 500 !important;
                 }
