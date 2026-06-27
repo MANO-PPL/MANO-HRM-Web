@@ -209,7 +209,7 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
             subscription_plan: 'Trial',
             subscription_expiry,
             is_trial: 1,
-            status: 'active',
+            status: 'pending_approval',
             max_users: max_users || 50,
             last_user_number: 1,
             gst_number: gst_number || null,

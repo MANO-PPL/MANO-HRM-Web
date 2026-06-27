@@ -367,10 +367,17 @@ export const attendanceService = {
 
         const promise = (async () => {
             try {
-                const res = await this.getMyRecords(today, today);
+                const res = await this.getDailySummary(today, today);
+                const dayData = (res.data && res.data.length > 0) ? res.data[0] : null;
+                const mappedData = dayData ? {
+                    ...dayData,
+                    time_in: dayData.first_in,
+                    time_out: dayData.last_out,
+                    duration: dayData.total_hours !== undefined ? `${dayData.total_hours}h` : null
+                } : null;
                 const result = {
                     success: true,
-                    data: (res.data && res.data.length > 0) ? res.data[0] : null
+                    data: mappedData
                 };
                 attendanceCacheData.todayStatus[today] = result;
                 return result;

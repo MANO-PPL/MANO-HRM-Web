@@ -43,19 +43,24 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
     return <Navigate to="/change-password" replace />;
   }
 
-  // Enforce subscription expiry page for organization admins
-  if (user && user.user_type === "admin" && (user.isOrgExpired || user.org_status !== "active")) {
+  // Enforce subscription expiry or pending approval page for organization admins
+  if (user && user.user_type === "admin" && (user.org_status === "pending_approval" || user.isOrgExpired || user.org_status !== "active")) {
+    const isPendingApproval = user.org_status === "pending_approval";
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-slate-800 border border-slate-700/60 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center space-y-6">
-          <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
+          <div className={`w-16 h-16 ${isPendingApproval ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'} rounded-full flex items-center justify-center mx-auto border`}>
             <AlertTriangle className="size-8" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-black text-white tracking-tight uppercase">Subscription Expired</h2>
+            <h2 className="text-2xl font-black text-white tracking-tight uppercase">
+              {isPendingApproval ? "Approval Pending" : "Subscription Expired"}
+            </h2>
             <p className="text-slate-400 text-sm leading-relaxed">
-              Your organization's subscription has expired and access has been suspended. 
-              Please contact the system administrator team to renew your subscription.
+              {isPendingApproval 
+                ? "Your organization registration is currently pending approval by the Super Admin. You will receive access once the registration is approved."
+                : "Your organization's subscription has expired and access has been suspended. Please contact the system administrator team to renew your subscription."
+              }
             </p>
           </div>
           <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-700/30 text-left space-y-3">

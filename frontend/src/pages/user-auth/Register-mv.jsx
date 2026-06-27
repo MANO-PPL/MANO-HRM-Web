@@ -905,7 +905,7 @@ const MobileRegisterPage = () => {
                                                 Workspace Ready
                                             </h3>
                                             <p className="text-slate-500 dark:text-slate-400 text-xs max-w-[280px] mx-auto leading-relaxed">
-                                                Your organization has been successfully registered on the platform. Use these credentials to login.
+                                                Your organization has been registered and is pending approval from the Super Admin. Use these credentials to log in once approved.
                                             </p>
                                         </div>
 

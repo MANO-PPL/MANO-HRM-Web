@@ -1029,7 +1029,7 @@ const Register = () => {
                                                     Registration Successful
                                                 </h3>
                                                 <p className="text-slate-500 dark:text-slate-400 text-sm max-w-sm">
-                                                    Your organization workspace has been created. Use the generated credentials below to log into the main application.
+                                                    Your organization workspace has been registered and is pending approval from the Super Admin. Use the credentials below to log in once approved.
                                                 </p>
                                             </div>
 

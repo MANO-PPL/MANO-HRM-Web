@@ -349,6 +349,35 @@ const OrganizationList = () => {
         }
     };
 
+    const handleApprove = async () => {
+        if (!selectedOrg) return;
+        try {
+            await api.put(`/organizations/${selectedOrg.org_id}`, { status: 'active' });
+            toast.success('Organization approved successfully');
+            await fetchOrganizations();
+            const updatedOrg = { ...selectedOrg, status: 'active' };
+            setSelectedOrg(updatedOrg);
+            setFormData(updatedOrg);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Approval failed');
+        }
+    };
+
+    const handleReject = async () => {
+        if (!selectedOrg) return;
+        if (window.confirm("Are you sure you want to reject and delete this organization?")) {
+            try {
+                const res = await api.delete(`/organizations/${selectedOrg.org_id}`);
+                toast.success(res.data.message || 'Organization rejected successfully');
+                setSelectedOrg(null);
+                setIsEditing(false);
+                await fetchOrganizations();
+            } catch (error) {
+                toast.error(error.response?.data?.message || 'Rejection failed');
+            }
+        }
+    };
+
     const handleDeleteOrg = async () => {
         if (!deleteConfirmOrg) return;
         setDeleteLoading(true);
@@ -389,14 +418,16 @@ const OrganizationList = () => {
         o.org_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         o.org_code.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const activeOrgs  = organizations.filter(o => !isPendingDeletion(o) && matchesSearch(o));
+    const activeOrgs  = organizations.filter(o => o.status !== 'pending_approval' && !isPendingDeletion(o) && matchesSearch(o));
+    const approvalOrgs = organizations.filter(o => o.status === 'pending_approval' && !isPendingDeletion(o) && matchesSearch(o));
     const pendingOrgs = organizations.filter(o =>  isPendingDeletion(o) && matchesSearch(o));
-    const displayedOrgs = listTab === 'active' ? activeOrgs : pendingOrgs;
+    const displayedOrgs = listTab === 'active' ? activeOrgs : listTab === 'approval' ? approvalOrgs : pendingOrgs;
 
     const renderHubDashboard = () => {
         // Dynamic aggregations
         const totalOrgs = organizations.length;
         const activeOrgsCount = organizations.filter(o => o.status === 'active' && !isPendingDeletion(o)).length;
+        const pendingApprovalOrgsCount = organizations.filter(o => o.status === 'pending_approval' && !isPendingDeletion(o)).length;
         const suspendedOrgsCount = organizations.filter(o => o.status === 'suspended' && !isPendingDeletion(o)).length;
         const pendingDeletionOrgsCount = organizations.filter(o => isPendingDeletion(o)).length;
         
@@ -414,6 +445,7 @@ const OrganizationList = () => {
         // Status grouping
         const statusDistribution = [
             { name: 'Active', value: activeOrgsCount, color: '#10b981' },
+            { name: 'Pending Approval', value: pendingApprovalOrgsCount, color: '#8b5cf6' },
             { name: 'Suspended', value: suspendedOrgsCount, color: '#f59e0b' },
             { name: 'Pending Deletion', value: pendingDeletionOrgsCount, color: '#ef4444' }
         ].filter(item => item.value > 0);
@@ -434,7 +466,7 @@ const OrganizationList = () => {
                 </div>
 
                 {/* KPI Cards Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 shrink-0">
                      {/* Total Organizations */}
                      <div className="bg-white dark:bg-dark-card p-5 rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm flex items-center justify-between">
                          <div>
@@ -571,7 +603,9 @@ const OrganizationList = () => {
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                                         selectedOrg.status === 'active' 
                                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
-                                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                            : selectedOrg.status === 'pending_approval'
+                                                ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
+                                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                                     }`}>
                                         {selectedOrg.status}
                                     </span>
@@ -994,14 +1028,14 @@ const OrganizationList = () => {
                                 <button
                                     type="button"
                                     onClick={() => { setListTab('active'); setSelectedOrg(null); setIsEditing(false); }}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
                                         listTab === 'active'
                                             ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
                                             : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'
                                     }`}
                                 >
                                     <span>Active</span>
-                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
                                         listTab === 'active'
                                             ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300'
                                             : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
@@ -1009,15 +1043,31 @@ const OrganizationList = () => {
                                 </button>
                                 <button
                                     type="button"
+                                    onClick={() => { setListTab('approval'); setSelectedOrg(null); setIsEditing(false); }}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                                        listTab === 'approval'
+                                            ? 'bg-white dark:bg-slate-700 text-violet-600 dark:text-violet-400 shadow-sm'
+                                            : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'
+                                    }`}
+                                >
+                                    <span>Approval</span>
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                                        listTab === 'approval'
+                                            ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300'
+                                            : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                    }`}>{approvalOrgs.length}</span>
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={() => { setListTab('deleted'); setSelectedOrg(null); setIsEditing(false); }}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 ${
+                                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
                                         listTab === 'deleted'
                                             ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm'
                                             : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-200'
                                     }`}
                                 >
                                     <span>Deleted</span>
-                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
                                         listTab === 'deleted'
                                             ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300'
                                             : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
@@ -1034,35 +1084,50 @@ const OrganizationList = () => {
                                 <div className="flex flex-col items-center justify-center p-8 text-slate-400 dark:text-github-dark-muted gap-2">
                                     {listTab === 'deleted'
                                         ? <><AlertTriangle size={28} className="text-amber-300" /><span className="text-sm">No deleted organizations.</span></>
-                                        : <><Building size={28} className="text-slate-300" /><span className="text-sm">No organizations found.</span></>
+                                        : listTab === 'approval'
+                                            ? <><Shield size={28} className="text-violet-400" /><span className="text-sm">No organizations pending approval.</span></>
+                                            : <><Building size={28} className="text-slate-300" /><span className="text-sm">No organizations found.</span></>
                                     }
                                 </div>
-                            ) : listTab === 'active' ? (
-                                displayedOrgs.map((org) => (
-                                    <div
-                                        key={org.org_id}
-                                        onClick={() => handleSelectOrg(org)}
-                                        className={`p-4 rounded-xl cursor-pointer transition-all duration-200 border ${selectedOrg?.org_id === org.org_id
-                                                ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-500/30'
-                                                : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                            }`}
-                                    >
-                                        <div className="flex justify-between items-start mb-1">
-                                            <h3 className={`font-semibold text-sm ${selectedOrg?.org_id === org.org_id ? 'text-indigo-900 dark:text-indigo-300' : 'text-slate-800 dark:text-github-dark-text'}`}>
-                                                {org.org_name}
-                                            </h3>
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${org.status === 'active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                                                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                                }`}>
-                                                {org.status}
-                                            </span>
+                            ) : listTab === 'active' || listTab === 'approval' ? (
+                                displayedOrgs.map((org) => {
+                                    const isPendingApproval = org.status === 'pending_approval';
+                                    return (
+                                        <div
+                                            key={org.org_id}
+                                            onClick={() => handleSelectOrg(org)}
+                                            className={`p-4 rounded-xl cursor-pointer transition-all duration-200 border ${selectedOrg?.org_id === org.org_id
+                                                    ? isPendingApproval
+                                                        ? 'bg-violet-50 border-violet-200 dark:bg-violet-900/20 dark:border-violet-500/30'
+                                                        : 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-500/30'
+                                                    : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                }`}
+                                        >
+                                            <div className="flex justify-between items-start mb-1">
+                                                <h3 className={`font-semibold text-sm ${selectedOrg?.org_id === org.org_id 
+                                                    ? isPendingApproval 
+                                                        ? 'text-violet-900 dark:text-violet-300' 
+                                                        : 'text-indigo-900 dark:text-indigo-300' 
+                                                    : 'text-slate-800 dark:text-github-dark-text'}`}>
+                                                    {org.org_name}
+                                                </h3>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                                    org.status === 'active' 
+                                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                                                        : org.status === 'pending_approval'
+                                                            ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
+                                                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                    }`}>
+                                                    {org.status}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted">
+                                                <span>Code: <span className="font-mono">{org.org_code}</span></span>
+                                                <span className="flex items-center gap-1"><Shield size={12} /> {org.subscription_plan}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted">
-                                            <span>Code: <span className="font-mono">{org.org_code}</span></span>
-                                            <span className="flex items-center gap-1"><Shield size={12} /> {org.subscription_plan}</span>
-                                        </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             ) : (
                                 displayedOrgs.map((org) => (
                                     <div
@@ -1161,7 +1226,25 @@ const OrganizationList = () => {
                                                 <RotateCcw size={14} /> Recover Organization
                                             </button>
                                         )}
-                                        {!isEditing && selectedOrg && selectedOrg.status !== 'suspended' && selectedOrg.status !== 'pending_deletion' && (
+                                        {!isEditing && selectedOrg && selectedOrg.status === 'pending_approval' && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleApprove}
+                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold transition-all duration-200 flex items-center gap-2 text-sm ml-2 shadow-sm active:scale-[0.98]"
+                                                >
+                                                    Approve
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleReject}
+                                                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all duration-200 flex items-center gap-2 text-sm ml-2 shadow-sm active:scale-[0.98]"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </>
+                                        )}
+                                        {!isEditing && selectedOrg && selectedOrg.status !== 'suspended' && selectedOrg.status !== 'pending_deletion' && selectedOrg.status !== 'pending_approval' && (
                                             <button
                                                 type="button"
                                                 onClick={handleDeactivate}
@@ -1179,7 +1262,7 @@ const OrganizationList = () => {
                                                 Reactivate
                                             </button>
                                         )}
-                                        {!isEditing && selectedOrg && selectedOrg.status !== 'pending_deletion' && (
+                                        {!isEditing && selectedOrg && selectedOrg.status !== 'pending_deletion' && selectedOrg.status !== 'pending_approval' && (
                                             <button
                                                 type="button"
                                                 onClick={() => setDeleteConfirmOrg(selectedOrg)}

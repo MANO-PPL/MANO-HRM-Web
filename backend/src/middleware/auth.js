@@ -160,6 +160,10 @@ export const requireActiveOrg = catchAsync(async (req, res, next) => {
 
         const orgStatus = isOrgExpired ? 'inactive' : org.status;
 
+        if (orgStatus === 'pending_approval') {
+            return res.status(403).json({ message: "Action Denied: Your organization is pending approval by the Super Admin." });
+        }
+
         if (orgStatus !== 'active' && req.user.user_type !== 'admin') {
             return res.status(403).json({ message: `Action Denied: Your organization account is inactive or expired. Please renew your subscription to restore access.` });
         }

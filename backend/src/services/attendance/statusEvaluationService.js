@@ -25,6 +25,33 @@ export function calculateDurationHours(start, end) {
     return parseFloat((diff / (1000 * 60 * 60)).toFixed(2));
 }
 
+export function getLocalNow(timezone = 'UTC') {
+    const now = new Date();
+    try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        const parts = formatter.formatToParts(now);
+        const year = parts.find(p => p.type === 'year').value;
+        const month = parts.find(p => p.type === 'month').value;
+        const day = parts.find(p => p.type === 'day').value;
+        let hour = parts.find(p => p.type === 'hour').value;
+        const minute = parts.find(p => p.type === 'minute').value;
+        const second = parts.find(p => p.type === 'second').value;
+        if (hour === '24') hour = '00';
+        return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`);
+    } catch (e) {
+        return now;
+    }
+}
+
 //  Late Arrival
 /**
  * Calculate late arrival and grace period compliance.
@@ -328,7 +355,7 @@ function normalizeDate(d) {
  * Evaluate the attendance status for a single user on a single date.
  * Uses cron-processed daily_attendance when available, otherwise derives dynamically.
  */
-function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules }) {
+function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone = 'UTC' }) {
     let status = null;
     let totalHours = 0;
     let firstIn = null;
@@ -353,12 +380,14 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         const hasOpenSession = dayRecords.some(r => !r.time_out && r.status !== 'MISSED_PUNCH');
         const hasMissedPunch = dayRecords.some(r => r.status === 'MISSED_PUNCH');
 
+        const localNow = getLocalNow(timezone);
+
         for (const r of dayRecords) {
             if (r.time_in && r.time_out) {
                 totalHours += calculateDurationHours(r.time_in, r.time_out);
             } else if (r.time_in && !r.time_out && r.status !== 'MISSED_PUNCH') {
-                // Active session – count running hours
-                totalHours += calculateDurationHours(r.time_in, new Date());
+                // Active session – count running hours using local time
+                totalHours += calculateDurationHours(r.time_in, localNow);
             }
         }
         totalHours = parseFloat(totalHours.toFixed(2));
@@ -636,7 +665,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                 return dateStr >= s && dateStr <= e;
             });
 
-            const result = evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules });
+            const result = evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone });
             // Serialize time fields to plain strings (prevent UTC shift from JS Date serialization)
             const serializedSessions = dayRecords.map(r => ({
                 ...r,
