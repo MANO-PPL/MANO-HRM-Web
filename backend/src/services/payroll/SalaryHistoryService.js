@@ -17,14 +17,16 @@ export class SalaryHistoryService {
     static async getActiveSalary(employeeId, date) {
         const queryDate = typeof date === 'string' ? date : date.toISOString().split('T')[0];
         
-        const salaryRecord = await attendanceDB('payroll_salary_history')
-            .where('employee_id', employeeId)
-            .where('effective_from', '<=', queryDate)
+        const salaryRecord = await attendanceDB('payroll_salary_history as s')
+            .leftJoin('payroll_package_groups as pg', 's.package_group_id', 'pg.package_group_id')
+            .where('s.employee_id', employeeId)
+            .where('s.effective_from', '<=', queryDate)
             .andWhere(function() {
-                this.whereNull('effective_to')
-                    .orWhere('effective_to', '>=', queryDate);
+                this.whereNull('s.effective_to')
+                    .orWhere('s.effective_to', '>=', queryDate);
             })
-            .orderBy('effective_from', 'desc')
+            .select('s.*', 'pg.package_name')
+            .orderBy('s.effective_from', 'desc')
             .first();
             
         return salaryRecord || null;
@@ -108,8 +110,10 @@ export class SalaryHistoryService {
      * @returns {Promise<Array>} List of salary history records
      */
     static async getSalaryHistory(employeeId) {
-        return await attendanceDB('payroll_salary_history')
-            .where('employee_id', employeeId)
-            .orderBy('effective_from', 'desc');
+        return await attendanceDB('payroll_salary_history as s')
+            .leftJoin('payroll_package_groups as pg', 's.package_group_id', 'pg.package_group_id')
+            .select('s.*', 'pg.package_name')
+            .where('s.employee_id', employeeId)
+            .orderBy('s.effective_from', 'desc');
     }
 }

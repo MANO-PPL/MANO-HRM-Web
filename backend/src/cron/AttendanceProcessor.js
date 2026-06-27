@@ -4,6 +4,7 @@ import { syncDailyAttendance } from '../services/attendance/attendanceService.js
 import * as ShiftService from '../services/attendance/shiftManagementService.js';
 import { resolveNoShowStatus } from '../services/attendance/statusEvaluationService.js';
 import EventBus from '../utils/EventBus.js';
+import { PayrollCalculationService } from '../services/payroll/PayrollCalculationService.js';
 
 // Grace period (in days) before an uncorrected MISSED_PUNCH becomes ABSENT
 const MISSED_PUNCH_GRACE_DAYS = 2;
@@ -191,6 +192,11 @@ async function processUserAttendanceForDate(user, dateStr) {
         });
 
         console.log(`📝 Marked User ${user.user_id} as ${status} for ${dateStr}`);
+
+        // Trigger background payroll recalculation
+        PayrollCalculationService.triggerRecalculation(user.user_id, dateStr).catch(err => {
+            console.error("Failed to trigger background payroll calculation in processUserAttendanceForDate:", err);
+        });
     }
 }
 
@@ -251,6 +257,11 @@ async function escalateExpiredMissedPunches() {
                     status: 'ABSENT',
                     updated_at: attendanceDB.fn.now()
                 });
+
+            // Trigger background payroll recalculation
+            PayrollCalculationService.triggerRecalculation(record.user_id, record.date).catch(err => {
+                console.error("Failed to trigger background payroll calculation in escalateMissedPunches:", err);
+            });
 
             // Also update the attendance_records status
             await attendanceDB('attendance_records')

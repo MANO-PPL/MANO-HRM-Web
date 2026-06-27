@@ -18,7 +18,8 @@ import {
     MessageSquare,
     Code,
     X,
-    Hammer
+    Hammer,
+    Layers
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -61,6 +62,7 @@ const MobileSidebar = ({ isOpen, onClose }) => {
         { icon: <MapPin size={18} />, text: "Geo Fencing", to: "/geofencing", roles: ['admin', 'hr'] },
         { icon: <Settings size={18} />, text: "Shift Management", to: "/shift-management", roles: ['admin', 'hr'] },
         { icon: <Calendar size={18} />, text: "Holidays and Leave", to: "/holidays", roles: ['admin', 'hr', 'employee'] },
+        { icon: <Layers size={18} />, text: "Salary Packages", to: "/payroll-packages", roles: ['admin', 'hr'] },
         { icon: <Bug size={18} />, text: "Bugs & Feedback", to: "/feedback", roles: ['admin', 'hr', 'employee', 'super_admin'] },
     ];
 

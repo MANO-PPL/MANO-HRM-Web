@@ -24,7 +24,6 @@ import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmployeeFormContent from '../../components/employees/EmployeeFormContent';
-import CompensationTab from '../../components/employees/CompensationTab';
 import ConfirmationModal from '../../components/modals/ConfirmationModal';
 
 const EmployeeList = () => {
@@ -38,7 +37,6 @@ const EmployeeList = () => {
     const [statusFilter, setStatusFilter] = useState('Active');
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [sidebarMode, setSidebarMode] = useState('view'); // 'view' | 'edit'
-    const [drawerTab, setDrawerTab] = useState('details'); // 'details' | 'compensation'
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
         title: '',
@@ -210,7 +208,6 @@ const EmployeeList = () => {
     const handleOpenSidebar = (employee, mode = 'view') => {
         setSelectedEmployee(employee);
         setSidebarMode(mode);
-        setDrawerTab('details');
     };
 
     const handleCloseSidebar = () => {
@@ -457,7 +454,7 @@ const EmployeeList = () => {
                                 <>
                                     {/* View Mode Header */}
                                     <div className="flex flex-col border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
-                                        <div className="flex items-center justify-between p-5 pb-3">
+                                        <div className="flex items-center justify-between p-5 pb-5">
                                             <div className="flex items-center gap-3">
                                                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
                                                     <User size={20} />
@@ -471,99 +468,67 @@ const EmployeeList = () => {
                                                 <X size={20} />
                                             </button>
                                         </div>
-                                        
-                                        {/* Tab Selectors */}
-                                        <div className="flex border-t border-slate-100 dark:border-github-dark-border/40 px-5">
-                                            <button
-                                                type="button"
-                                                onClick={() => setDrawerTab('details')}
-                                                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer ${
-                                                    drawerTab === 'details'
-                                                        ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
-                                                        : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-github-dark-muted'
-                                                }`}
-                                            >
-                                                Info
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setDrawerTab('compensation')}
-                                                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer ${
-                                                    drawerTab === 'compensation'
-                                                        ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
-                                                        : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-github-dark-muted'
-                                                }`}
-                                            >
-                                                Compensation
-                                            </button>
-                                        </div>
                                     </div>
 
                                     {/* View Mode Body */}
-                                    {drawerTab === 'details' ? (
-                                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-8">
-                                            {/* Profile Card */}
-                                            <div className="flex flex-col items-center gap-4 text-center">
-                                                <div className="relative">
-                                                    <div className="absolute inset-0 bg-indigo-500 blur-2xl opacity-10 rounded-full"></div>
-                                                    <div className="relative w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-3xl overflow-hidden border-4 border-white dark:border-github-dark-border shadow-lg">
-                                                        {selectedEmployee.profile_image_url ? (
-                                                            <img src={`${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`} alt={selectedEmployee.name} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            selectedEmployee.name.charAt(0)
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-xl font-black text-slate-900 dark:text-github-dark-text tracking-tight">{selectedEmployee.name}</h4>
-                                                    <p className="text-sm font-medium text-slate-500 dark:text-github-dark-muted">{selectedEmployee.email}</p>
-                                                    <div className={`mt-3 inline-flex items-center px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border ${getStatusColor(selectedEmployee.status)} shadow-sm`}>
-                                                        {selectedEmployee.status}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Details Grid */}
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
-                                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Role</span>
-                                                    <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{selectedEmployee.role}</span>
-                                                </div>
-                                                <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
-                                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Department</span>
-                                                    <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{selectedEmployee.department}</span>
-                                                </div>
-                                                <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
-                                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Phone</span>
-                                                    <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{selectedEmployee.phone}</span>
-                                                </div>
-                                                <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
-                                                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Shift</span>
-                                                    <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{selectedEmployee.shift}</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Geofences Section */}
-                                            <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50">
-                                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 opacity-60">Allowed Geofences</span>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {selectedEmployee.workLocations && selectedEmployee.workLocations.filter(loc => loc.is_active).length > 0 ? (
-                                                        selectedEmployee.workLocations.filter(loc => loc.is_active).map((loc, i) => (
-                                                            <span key={i} className="px-3 py-2 text-[11px] font-bold bg-white dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50 rounded-xl shadow-sm">
-                                                                {loc.loc_name}
-                                                            </span>
-                                                        ))
+                                    <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-8">
+                                        {/* Profile Card */}
+                                        <div className="flex flex-col items-center gap-4 text-center">
+                                            <div className="relative">
+                                                <div className="absolute inset-0 bg-indigo-500 blur-2xl opacity-10 rounded-full"></div>
+                                                <div className="relative w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-3xl overflow-hidden border-4 border-white dark:border-github-dark-border shadow-lg">
+                                                    {selectedEmployee.profile_image_url ? (
+                                                        <img src={`${selectedEmployee.profile_image_url}?t=${avatarTimestamp}`} alt={selectedEmployee.name} className="w-full h-full object-cover" />
                                                     ) : (
-                                                        <span className="text-xs text-slate-400 font-medium italic py-2">No assigned geofences</span>
+                                                        selectedEmployee.name.charAt(0)
                                                     )}
                                                 </div>
                                             </div>
+                                            <div>
+                                                <h4 className="text-xl font-black text-slate-900 dark:text-github-dark-text tracking-tight">{selectedEmployee.name}</h4>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-github-dark-muted">{selectedEmployee.email}</p>
+                                                <div className={`mt-3 inline-flex items-center px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border ${getStatusColor(selectedEmployee.status)} shadow-sm`}>
+                                                    {selectedEmployee.status}
+                                                </div>
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                                            <CompensationTab employeeId={selectedEmployee.id} />
+
+                                        {/* Details Grid */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
+                                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Role</span>
+                                                <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{selectedEmployee.role}</span>
+                                            </div>
+                                            <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
+                                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Department</span>
+                                                <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{selectedEmployee.department}</span>
+                                            </div>
+                                            <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
+                                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Phone</span>
+                                                <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{selectedEmployee.phone}</span>
+                                            </div>
+                                            <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
+                                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Shift</span>
+                                                <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{selectedEmployee.shift}</span>
+                                            </div>
                                         </div>
-                                    )}
+
+                                        {/* Geofences Section */}
+                                        <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50">
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 opacity-60">Allowed Geofences</span>
+                                            <div className="flex flex-wrap gap-2">
+                                                {selectedEmployee.workLocations && selectedEmployee.workLocations.filter(loc => loc.is_active).length > 0 ? (
+                                                    selectedEmployee.workLocations.filter(loc => loc.is_active).map((loc, i) => (
+                                                        <span key={i} className="px-3 py-2 text-[11px] font-bold bg-white dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50 rounded-xl shadow-sm">
+                                                            {loc.loc_name}
+                                                        </span>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-xs text-slate-400 font-medium italic py-2">No assigned geofences</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
 
                                     {/* View Mode Footer Actions */}
                                     <div className="p-5 border-t border-slate-100 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 flex gap-3">

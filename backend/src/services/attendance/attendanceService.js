@@ -4,6 +4,7 @@ import * as S3Service from "../s3/s3Service.js";
 import EventBus from "../../utils/EventBus.js";
 import * as ShiftService from "./shiftManagementService.js";
 import * as StatusService from "./statusEvaluationService.js";
+import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 
 /**
  * Fetch User Shift
@@ -403,6 +404,11 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     await attendanceDB("daily_attendance")
       .where({ user_id, date: dateStr })
       .update(updateData);
+
+    // Trigger background payroll recalculation for the affected month
+    PayrollCalculationService.triggerRecalculation(user_id, dateStr).catch(err => {
+      console.error("Failed to trigger background payroll recalculation in syncDailyAttendance:", err);
+    });
 
   } catch (err) {
     console.error("Sync Daily Attendance Error:", err);

@@ -1,6 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 // S3 helper lives in the top-level services/s3 folder
 import * as S3Service from '../s3/s3Service.js';
+import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 
 export async function getMyHistory({ user_id, org_id }) {
     const leaves = await attendanceDB('leave_requests as lr')
@@ -226,5 +227,12 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
     }
 
     const request = await attendanceDB('leave_requests').where({ lr_id: id }).first();
+
+    if (request) {
+        PayrollCalculationService.triggerLeaveRecalculation(request).catch(err => {
+            console.error("Failed to trigger background payroll recalculation for leave review:", err);
+        });
+    }
+
     return request;
 }

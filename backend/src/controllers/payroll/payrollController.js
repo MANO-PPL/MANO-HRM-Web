@@ -5,6 +5,7 @@ import { SalaryHistoryService } from '../../services/payroll/SalaryHistoryServic
 import { PayrollCalculationService } from '../../services/payroll/PayrollCalculationService.js';
 import { PayrollFinalizationService } from '../../services/payroll/PayrollFinalizationService.js';
 import { PayslipService } from '../../services/payroll/PayslipService.js';
+import { PackageService } from '../../services/payroll/PackageService.js';
 
 /**
  * Controller to handle payroll operations.
@@ -62,6 +63,18 @@ export const updateEmployeeSalary = catchAsync(async (req, res, next) => {
         createdBy
     });
 
+    // Recalculate cached payroll entries for the affected month in the background
+    try {
+        const parts = effectiveFrom.split('-');
+        const year = Number(parts[0]);
+        const monthNum = Number(parts[1]);
+        PayrollCalculationService.updateDraftEntry(orgId, year, monthNum, employeeId).catch(err => {
+            console.error("Failed to update draft payroll after salary revision:", err);
+        });
+    } catch (e) {
+        console.error("Failed to trigger background payroll calculation for salary revision:", e);
+    }
+
     res.status(200).json({
         status: 'success',
         message: 'Salary revision saved successfully.',
@@ -107,17 +120,104 @@ export const getPayrollDashboard = catchAsync(async (req, res, next) => {
             status: 'success',
             isFinalized: true,
             run,
-            data: entries
+            data: entries.map(e => ({ ...e, status: e.status || run.status }))
         });
     }
 
-    // Else calculate projected realtime payroll
-    const projections = await PayrollCalculationService.calculateProjectedPayroll(orgId, year, monthNum);
+    // Ensure payroll run exists in Live status for caching
+    let activeRun = run;
+    if (!activeRun) {
+        const [newRunId] = await attendanceDB('payroll_runs').insert({
+            org_id: orgId,
+            year,
+            month: monthNum,
+            status: 'Live'
+        });
+        activeRun = await attendanceDB('payroll_runs').where('run_id', newRunId).first();
+    }
+
+    // Get all eligible employees for this month
+    const activeSalaryDate = `${year}-${String(monthNum).padStart(2, '0')}-01`;
+    const employees = await attendanceDB('users as u')
+        .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
+        .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+        .where('u.org_id', orgId)
+        .where('u.is_deleted', 0)
+        .where('s.effective_from', '<=', activeSalaryDate)
+        .andWhere(function() {
+            this.whereNull('s.effective_to')
+                .orWhere('s.effective_to', '>=', activeSalaryDate);
+        })
+        .select(
+            'u.user_id',
+            'u.user_name',
+            'u.email',
+            'sh.policy_rules',
+            's.salary_history_id',
+            's.gross_monthly_salary',
+            's.overtime_enabled as employee_ot_enabled',
+            's.overtime_rate'
+        );
+
+    // Fetch existing entries from database
+    const existingEntries = await PayrollFinalizationService.getRunEntries(activeRun.run_id);
+    const entriesMap = new Map(existingEntries.map(e => [e.employee_id, e]));
+
+    const mergedData = [];
+    for (const emp of employees) {
+        if (entriesMap.has(emp.user_id)) {
+            const entry = entriesMap.get(emp.user_id);
+            mergedData.push({
+                employee_id: emp.user_id,
+                user_name: emp.user_name,
+                email: emp.email,
+                ...entry,
+                status: entry.status || 'Draft'
+            });
+        } else {
+            // Lazy load / calculate on-the-fly and cache it in the database
+            const record = await PayrollCalculationService.calculateEmployeePayroll(emp, year, monthNum, orgId);
+            
+            await attendanceDB('payroll_entries').insert({
+                run_id: activeRun.run_id,
+                employee_id: emp.user_id,
+                gross_salary: record.gross_salary,
+                present_days: record.present_days,
+                half_days: record.half_days,
+                absent_days: record.absent_days,
+                paid_leave_days: record.paid_leave_days,
+                holiday_days: record.holiday_days,
+                weekly_off_days: record.weekly_off_days,
+                overtime_hours: record.overtime_hours,
+                overtime_amount: record.overtime_amount,
+                lop_days: record.lop_days,
+                lop_deduction: record.lop_deduction,
+                net_salary: record.net_salary,
+                status: 'Draft',
+                salary_snapshot_json: JSON.stringify(record.salary_snapshot),
+                attendance_snapshot_json: JSON.stringify(record.attendance_snapshot),
+                calculation_snapshot_json: JSON.stringify(record.calculation_snapshot)
+            });
+
+            const insertedEntry = await attendanceDB('payroll_entries')
+                .where({ run_id: activeRun.run_id, employee_id: emp.user_id })
+                .first();
+
+            mergedData.push({
+                employee_id: emp.user_id,
+                user_name: emp.user_name,
+                email: emp.email,
+                ...insertedEntry,
+                status: 'Draft'
+            });
+        }
+    }
+
     res.status(200).json({
         status: 'success',
         isFinalized: false,
-        run: run || { org_id: orgId, year, month: monthNum, status: 'Live' },
-        data: projections
+        run: activeRun,
+        data: mergedData
     });
 });
 
@@ -137,22 +237,22 @@ export const getEmployeeProjectedDetails = catchAsync(async (req, res, next) => 
         monthNum = now.getMonth() + 1;
     }
 
-    // Check if finalized
+    // Check if finalized/locked or draft-cached
     const run = await PayrollFinalizationService.getRunByMonth(orgId, year, monthNum);
-    if (run && run.status !== 'Live') {
-        const entry = await attendanceDB('payroll_entries')
+    let entry = null;
+    if (run) {
+        entry = await attendanceDB('payroll_entries')
             .where({ run_id: run.run_id, employee_id: employeeId })
             .first();
+    }
 
-        if (!entry) {
-            return next(new AppError('No payroll entry found for this employee in the finalized run.', 404));
-        }
-
+    if (entry) {
         return res.status(200).json({
             status: 'success',
-            isFinalized: true,
+            isFinalized: entry.status !== 'Draft',
             data: {
                 ...entry,
+                status: entry.status || 'Draft',
                 salary_snapshot: typeof entry.salary_snapshot_json === 'string' ? JSON.parse(entry.salary_snapshot_json) : entry.salary_snapshot_json,
                 attendance_snapshot: typeof entry.attendance_snapshot_json === 'string' ? JSON.parse(entry.attendance_snapshot_json) : entry.attendance_snapshot_json,
                 calculation_snapshot: typeof entry.calculation_snapshot_json === 'string' ? JSON.parse(entry.calculation_snapshot_json) : entry.calculation_snapshot_json
@@ -160,7 +260,7 @@ export const getEmployeeProjectedDetails = catchAsync(async (req, res, next) => 
         });
     }
 
-    // Realtime projection
+    // Realtime projection (fallback if no run or entry was seeded/precalculated)
     const activeSalaryDate = `${year}-${String(monthNum).padStart(2, '0')}-01`;
     const emp = await attendanceDB('users as u')
         .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
@@ -273,3 +373,331 @@ export const getPayslip = catchAsync(async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename=payslip-${entryId}.pdf`);
     res.send(pdfBuffer);
 });
+
+export const finalizeEmployeePayroll = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const employeeId = Number(req.params.employeeId);
+    const { month } = req.body; // YYYY-MM
+    const finalizedBy = req.user.id;
+
+    if (!month) {
+        return next(new AppError('Month parameter is required (format: YYYY-MM).', 400));
+    }
+
+    const parts = month.split('-');
+    const year = Number(parts[0]);
+    const monthNum = Number(parts[1]);
+
+    const entry = await PayrollFinalizationService.finalizeEmployee(orgId, year, monthNum, employeeId, finalizedBy);
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Employee payroll locked successfully.',
+        data: entry
+    });
+});
+
+export const payEmployeePayroll = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const employeeId = Number(req.params.employeeId);
+    const { month } = req.body; // YYYY-MM
+    const paidBy = req.user.id;
+
+    if (!month) {
+        return next(new AppError('Month parameter is required (format: YYYY-MM).', 400));
+    }
+
+    const parts = month.split('-');
+    const year = Number(parts[0]);
+    const monthNum = Number(parts[1]);
+
+    const entry = await PayrollFinalizationService.payEmployee(orgId, year, monthNum, employeeId, paidBy);
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Employee payroll marked as Paid.',
+        data: entry
+    });
+});
+
+export const updateEntryAdjustments = catchAsync(async (req, res, next) => {
+    const entryId = Number(req.params.entryId);
+    const orgId = req.user.org_id;
+    const { adjustments } = req.body; // Array of adjustments: [ { type, label, amount, reason } ]
+    const adderName = req.user.user_name || 'Admin';
+
+    if (!Array.isArray(adjustments)) {
+        return next(new AppError('Adjustments must be an array.', 400));
+    }
+
+    // Validate adjustments
+    for (const adj of adjustments) {
+        if (!adj.type || !['addition', 'deduction'].includes(adj.type)) {
+            return next(new AppError('Each adjustment must have a type of "addition" or "deduction".', 400));
+        }
+        if (!adj.label || typeof adj.label !== 'string' || adj.label.trim() === '') {
+            return next(new AppError('Each adjustment must have a valid label.', 400));
+        }
+        const amount = Number(adj.amount);
+        if (isNaN(amount) || amount <= 0) {
+            return next(new AppError('Adjustment amount must be a positive number.', 400));
+        }
+        if (!adj.reason || typeof adj.reason !== 'string' || adj.reason.trim() === '') {
+            return next(new AppError('Each adjustment must have a valid reason.', 400));
+        }
+    }
+
+    const entry = await attendanceDB('payroll_entries as pe')
+        .join('payroll_runs as pr', 'pe.run_id', 'pr.run_id')
+        .where({ 'pe.entry_id': entryId, 'pr.org_id': orgId })
+        .select('pe.*')
+        .first();
+
+    if (!entry) {
+        return next(new AppError('Payroll entry not found.', 404));
+    }
+
+    if (entry.status !== 'Draft') {
+        return next(new AppError('Adjustments can only be updated for draft entries.', 400));
+    }
+
+    // Map new and stamp with audit info
+    const stampedAdjustments = adjustments.map(adj => ({
+        id: adj.id || `adj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: adj.type,
+        label: adj.label.trim(),
+        amount: Number(Number(adj.amount).toFixed(2)),
+        reason: adj.reason.trim(),
+        added_by: adj.added_by || adderName,
+        added_at: adj.added_at || new Date().toISOString()
+    }));
+
+    // Calculate adjusted net salary
+    const baseNetSalary = Number(entry.gross_salary) - Number(entry.lop_deduction) + Number(entry.overtime_amount);
+
+    const additionsSum = stampedAdjustments.filter(a => a.type === 'addition').reduce((sum, a) => sum + a.amount, 0);
+    const deductionsSum = stampedAdjustments.filter(a => a.type === 'deduction').reduce((sum, a) => sum + a.amount, 0);
+    
+    const finalNetSalary = Number((baseNetSalary + additionsSum - deductionsSum).toFixed(2));
+
+    await attendanceDB('payroll_entries')
+        .where({ entry_id: entryId })
+        .update({
+            adjustments_json: JSON.stringify(stampedAdjustments),
+            net_salary: finalNetSalary,
+            updated_at: attendanceDB.fn.now()
+        });
+
+    const updatedEntry = await attendanceDB('payroll_entries').where({ entry_id: entryId }).first();
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Adjustments updated successfully.',
+        data: {
+            ...updatedEntry,
+            adjustments: stampedAdjustments
+        }
+    });
+});
+
+export const getPackageGroups = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const packages = await PackageService.getPackageGroups(orgId);
+    res.status(200).json({
+        status: 'success',
+        data: packages
+    });
+});
+
+export const createPackageGroup = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const { packageName, grossSalary, overtimeEnabled, overtimeRate, effectiveFrom } = req.body;
+    const newGroup = await PackageService.createPackageGroup({
+        orgId,
+        packageName,
+        grossSalary,
+        overtimeEnabled,
+        overtimeRate,
+        effectiveFrom
+    });
+    res.status(201).json({
+        status: 'success',
+        data: newGroup
+    });
+});
+
+export const getPackageRevisions = catchAsync(async (req, res, next) => {
+    const { packageGroupId } = req.params;
+    const revisions = await PackageService.getPackageRevisions(Number(packageGroupId));
+    res.status(200).json({
+        status: 'success',
+        data: revisions
+    });
+});
+
+export const createPackageRevision = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const { packageGroupId } = req.params;
+    const { grossSalary, overtimeEnabled, overtimeRate, effectiveFrom } = req.body;
+    const newRevision = await PackageService.createPackageRevision({
+        orgId,
+        packageGroupId: Number(packageGroupId),
+        grossSalary,
+        overtimeEnabled,
+        overtimeRate,
+        effectiveFrom
+    });
+    res.status(201).json({
+        status: 'success',
+        data: newRevision
+    });
+});
+
+export const updatePackageGroup = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const { packageGroupId } = req.params;
+    const { packageName, isActive } = req.body;
+    const updated = await PackageService.updatePackageGroup(Number(packageGroupId), orgId, {
+        packageName,
+        isActive
+    });
+    res.status(200).json({
+        status: 'success',
+        data: updated
+    });
+});
+
+export const deletePackageGroup = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const { packageGroupId } = req.params;
+    await PackageService.deletePackageGroup(Number(packageGroupId), orgId);
+    res.status(200).json({
+        status: 'success',
+        message: 'Package group deleted successfully.'
+    });
+});
+
+export const getEmployeesWithPackages = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const employees = await PackageService.getEmployeesWithPackages(orgId);
+    res.status(200).json({
+        status: 'success',
+        data: employees
+    });
+});
+
+export const assignPackageToEmployee = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const { employeeId } = req.params;
+    const { packageGroupId, effectiveFrom } = req.body;
+    const createdBy = req.user.id;
+    
+    const assigned = await PackageService.assignPackageToEmployee({
+        orgId,
+        employeeId: Number(employeeId),
+        packageGroupId: Number(packageGroupId),
+        effectiveFrom,
+        createdBy
+    });
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Package assigned successfully.',
+        data: assigned
+    });
+});
+
+export const unassignPackageFromEmployee = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const { employeeId } = req.params;
+    const { grossMonthlySalary, overtimeEnabled, overtimeRate, effectiveFrom } = req.body;
+    const createdBy = req.user.id;
+
+    const unassigned = await PackageService.unassignPackageFromEmployee({
+        orgId,
+        employeeId: Number(employeeId),
+        grossMonthlySalary,
+        overtimeEnabled,
+        overtimeRate,
+        effectiveFrom,
+        createdBy
+    });
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Package unassigned successfully.',
+        data: unassigned
+    });
+});
+
+export const getPayrollSettings = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    let settings = await attendanceDB('payroll_settings').where('org_id', orgId).first();
+    if (!settings) {
+        await attendanceDB('payroll_settings').insert({
+            org_id: orgId,
+            overtime_enabled: 1,
+            overtime_requires_approval: 0,
+            lop_calculation_method: 'calendar_days',
+            lop_fixed_days_value: 30,
+            lop_factor_present: 1.00,
+            lop_factor_half_day: 0.50,
+            lop_factor_absent: 0.00
+        });
+        settings = await attendanceDB('payroll_settings').where('org_id', orgId).first();
+    }
+    res.status(200).json({
+        status: 'success',
+        data: settings
+    });
+});
+
+export const updatePayrollSettings = catchAsync(async (req, res, next) => {
+    const orgId = req.user.org_id;
+    const { 
+        overtimeEnabled, 
+        overtimeRequiresApproval, 
+        lopCalculationMethod, 
+        lopFixedDaysValue,
+        lopFactorPresent,
+        lopFactorHalfDay,
+        lopFactorAbsent
+    } = req.body;
+    
+    const updates = {};
+    if (overtimeEnabled !== undefined) updates.overtime_enabled = overtimeEnabled ? 1 : 0;
+    if (overtimeRequiresApproval !== undefined) updates.overtime_requires_approval = overtimeRequiresApproval ? 1 : 0;
+    if (lopCalculationMethod !== undefined) updates.lop_calculation_method = lopCalculationMethod;
+    if (lopFixedDaysValue !== undefined) updates.lop_fixed_days_value = Number(lopFixedDaysValue);
+    if (lopFactorPresent !== undefined) updates.lop_factor_present = Number(lopFactorPresent);
+    if (lopFactorHalfDay !== undefined) updates.lop_factor_half_day = Number(lopFactorHalfDay);
+    if (lopFactorAbsent !== undefined) updates.lop_factor_absent = Number(lopFactorAbsent);
+
+    await attendanceDB('payroll_settings')
+        .where('org_id', orgId)
+        .update(updates);
+
+    const updatedSettings = await attendanceDB('payroll_settings').where('org_id', orgId).first();
+
+    // Invalidate/Recalculate draft payroll for all users for current month in background
+    try {
+        const now = new Date();
+        const year = now.getFullYear();
+        const monthNum = now.getMonth() + 1;
+        PayrollCalculationService.updateDraftEntriesForOrg(orgId, year, monthNum).catch(err => {
+            console.error("Failed to update draft entries after global settings update:", err);
+        });
+    } catch (e) {
+        console.error("Failed to trigger background calculation for global settings update:", e);
+    }
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Payroll settings updated successfully.',
+        data: updatedSettings
+    });
+});
+
+
+
+

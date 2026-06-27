@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { 
-    Calendar, DollarSign, Clock, CheckCircle, CreditCard, Lock, 
-    ArrowRight, Download, Search, AlertCircle, Eye, X, HelpCircle
+    Calendar, DollarSign, Clock, CheckCircle, CreditCard, Lock, Unlock,
+    ArrowRight, Download, Search, AlertCircle, Eye, X, HelpCircle,
+    Sliders, Plus, Trash2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import payrollService from '../../services/payrollService';
@@ -19,11 +20,104 @@ const PayrollDashboard = () => {
     const [payrollData, setPayrollData] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isFinalizing, setIsFinalizing] = useState(false);
+
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const isRunningPeriod = month >= currentMonthStr;
     
     // Details drawer state
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailData, setDetailData] = useState(null);
+
+    // Adjustments modal state
+    const [isAdjustmentsModalOpen, setIsAdjustmentsModalOpen] = useState(false);
+    const [adjustmentsEmployee, setAdjustmentsEmployee] = useState(null);
+    const [adjustmentsList, setAdjustmentsList] = useState([]);
+    const [newAdjustment, setNewAdjustment] = useState({ type: 'addition', label: '', amount: '', reason: '' });
+    const [savingAdjustments, setSavingAdjustments] = useState(false);
+
+    const handleOpenAdjustments = (record) => {
+        setAdjustmentsEmployee(record);
+        const adjs = record.adjustments_json 
+            ? (typeof record.adjustments_json === 'string' ? JSON.parse(record.adjustments_json) : record.adjustments_json) 
+            : [];
+        setAdjustmentsList(adjs);
+        setNewAdjustment({ type: 'addition', label: '', amount: '', reason: '' });
+        setIsAdjustmentsModalOpen(true);
+    };
+
+    const handleAddAdjustment = async (e) => {
+        e.preventDefault();
+        if (!newAdjustment.label.trim() || !newAdjustment.amount || !newAdjustment.reason.trim()) {
+            toast.error('Please fill in all fields.');
+            return;
+        }
+        const amount = parseFloat(newAdjustment.amount);
+        if (isNaN(amount) || amount <= 0) {
+            toast.error('Amount must be a positive number.');
+            return;
+        }
+
+        const updatedList = [
+            ...adjustmentsList,
+            {
+                type: newAdjustment.type,
+                label: newAdjustment.label.trim(),
+                amount: amount,
+                reason: newAdjustment.reason.trim()
+            }
+        ];
+
+        setSavingAdjustments(true);
+        try {
+            const res = await payrollService.updateAdjustments(adjustmentsEmployee.entry_id, updatedList);
+            if (res.status === 'success') {
+                toast.success('Adjustment added successfully.');
+                setAdjustmentsList(res.data.adjustments || []);
+                setNewAdjustment({ type: 'addition', label: '', amount: '', reason: '' });
+                setAdjustmentsEmployee({
+                    ...adjustmentsEmployee,
+                    adjustments_json: res.data.adjustments,
+                    net_salary: res.data.net_salary
+                });
+                fetchDashboardData();
+            }
+        } catch (err) {
+            console.error('Error adding adjustment:', err);
+            toast.error(err.response?.data?.message || 'Failed to add adjustment.');
+        } finally {
+            setSavingAdjustments(false);
+        }
+    };
+
+    const handleDeleteAdjustment = async (id) => {
+        if (!window.confirm('Are you sure you want to remove this adjustment?')) {
+            return;
+        }
+
+        const updatedList = adjustmentsList.filter(a => a.id !== id);
+
+        setSavingAdjustments(true);
+        try {
+            const res = await payrollService.updateAdjustments(adjustmentsEmployee.entry_id, updatedList);
+            if (res.status === 'success') {
+                toast.success('Adjustment removed successfully.');
+                setAdjustmentsList(res.data.adjustments || []);
+                setAdjustmentsEmployee({
+                    ...adjustmentsEmployee,
+                    adjustments_json: res.data.adjustments,
+                    net_salary: res.data.net_salary
+                });
+                fetchDashboardData();
+            }
+        } catch (err) {
+            console.error('Error removing adjustment:', err);
+            toast.error(err.response?.data?.message || 'Failed to remove adjustment.');
+        } finally {
+            setSavingAdjustments(false);
+        }
+    };
 
     useEffect(() => {
         fetchDashboardData();
@@ -82,6 +176,40 @@ const PayrollDashboard = () => {
             toast.error(err.response?.data?.message || 'Failed to record payment.');
         }
     };
+
+    const handleFinalizeEmployee = async (employee) => {
+        if (!window.confirm(`Lock/Finalize payroll for ${employee.user_name} for ${month}? This will freeze their attendance and salary snapshot data.`)) {
+            return;
+        }
+        try {
+            const res = await payrollService.finalizeEmployee(employee.employee_id, month);
+            if (res.status === 'success') {
+                toast.success(`Payroll locked for ${employee.user_name}.`);
+                fetchDashboardData();
+            }
+        } catch (err) {
+            console.error('Error locking employee payroll:', err);
+            toast.error(err.response?.data?.message || 'Failed to lock employee payroll.');
+        }
+    };
+
+    const handlePayEmployee = async (employee) => {
+        if (!window.confirm(`Mark payroll as Paid for ${employee.user_name}?`)) {
+            return;
+        }
+        try {
+            const res = await payrollService.payEmployee(employee.employee_id, month);
+            if (res.status === 'success') {
+                toast.success(`Payroll paid for ${employee.user_name}.`);
+                fetchDashboardData();
+            }
+        } catch (err) {
+            console.error('Error paying employee payroll:', err);
+            toast.error(err.response?.data?.message || 'Failed to pay employee payroll.');
+        }
+    };
+
+
 
     const handleViewDetails = async (employee) => {
         setSelectedEmployee(employee);
@@ -155,10 +283,17 @@ const PayrollDashboard = () => {
                     <div className="flex items-center gap-3">
                         {!isFinalized ? (
                             <div className="flex items-center gap-3">
-                                <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50 rounded-lg">
-                                    <Clock size={14} className="animate-pulse" />
-                                    Live Projection
-                                </span>
+                                {isRunningPeriod ? (
+                                    <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/50 rounded-lg">
+                                        <Clock size={14} className="animate-pulse" />
+                                        Running Month (Projected)
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50 rounded-lg">
+                                        <Clock size={14} className="animate-pulse" />
+                                        Live Projection
+                                    </span>
+                                )}
                                 <button
                                     onClick={handleFinalize}
                                     disabled={isFinalizing || payrollData.length === 0}
@@ -195,6 +330,16 @@ const PayrollDashboard = () => {
                     </div>
                 </div>
 
+                {isRunningPeriod && !isFinalized && (
+                    <div className="bg-indigo-50/50 dark:bg-indigo-950/15 border border-indigo-100/50 dark:border-indigo-900/40 p-4 rounded-2xl flex items-start gap-3 text-xs text-indigo-700 dark:text-indigo-300">
+                        <HelpCircle size={16} className="shrink-0 mt-0.5 text-indigo-500" />
+                        <div>
+                            <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">Running Month Active Projection</p>
+                            <p className="font-medium opacity-90">This payroll period is currently active. Today and future days are projected as worked with no LOP deductions. LOP deductions are calculated dynamically from past absences up to yesterday.</p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Summary Metrics */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     {/* Gross */}
@@ -217,6 +362,9 @@ const PayrollDashboard = () => {
                             <span className="text-xl font-black text-rose-600 dark:text-rose-400">
                                 ₹{totalLOP.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                             </span>
+                            {isRunningPeriod && !isFinalized && (
+                                <span className="text-[8px] font-bold text-slate-400 block mt-1">(Accumulated to date)</span>
+                            )}
                         </div>
                         <div className="p-3 bg-rose-50 dark:bg-rose-950/20 text-rose-500 rounded-xl">
                             <AlertCircle size={20} />
@@ -243,6 +391,9 @@ const PayrollDashboard = () => {
                             <span className="text-xl font-black">
                                 ₹{totalNet.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                             </span>
+                            {isRunningPeriod && !isFinalized && (
+                                <span className="text-[8px] font-bold text-indigo-200/80 block mt-1">(Projected for full month)</span>
+                            )}
                         </div>
                         <div className="p-3 bg-white/10 text-white rounded-xl">
                             <DollarSign size={20} />
@@ -280,13 +431,14 @@ const PayrollDashboard = () => {
                                     <th className="px-6 py-3.5 text-center">Overtime Amount</th>
                                     <th className="px-6 py-3.5 text-center font-bold text-slate-800 dark:text-github-dark-text">Net salary</th>
                                     <th className="px-6 py-3.5 text-center">Details</th>
-                                    {isFinalized && <th className="px-6 py-3.5 text-center">Payslip</th>}
+                                    <th className="px-6 py-3.5 text-center">Status & Actions</th>
+                                    <th className="px-6 py-3.5 text-center">Payslip</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={isFinalized ? 7 : 6} className="px-6 py-12 text-center text-slate-400 dark:text-github-dark-muted italic">
+                                        <td colSpan={8} className="px-6 py-12 text-center text-slate-400 dark:text-github-dark-muted italic">
                                             Loading payroll records...
                                         </td>
                                     </tr>
@@ -317,16 +469,67 @@ const PayrollDashboard = () => {
                                                 ₹{Number(record.net_salary).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <button
-                                                    onClick={() => handleViewDetails(record)}
-                                                    className="inline-flex items-center justify-center p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors cursor-pointer"
-                                                    title="Breakdown details"
-                                                >
-                                                    <Eye size={18} />
-                                                </button>
+                                                <div className="flex justify-center gap-1">
+                                                    <button
+                                                        onClick={() => handleViewDetails(record)}
+                                                        className="inline-flex items-center justify-center p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors cursor-pointer"
+                                                        title="Breakdown details"
+                                                    >
+                                                        <Eye size={18} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleOpenAdjustments(record)}
+                                                        className="inline-flex items-center justify-center p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors cursor-pointer relative"
+                                                        title="Manual adjustments & audit"
+                                                    >
+                                                        <Sliders size={18} />
+                                                        {record.adjustments_json && (() => {
+                                                            const adjs = typeof record.adjustments_json === 'string' ? JSON.parse(record.adjustments_json) : record.adjustments_json;
+                                                            if (adjs && adjs.length > 0) {
+                                                                return (
+                                                                    <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[7px] font-black bg-amber-500 text-white rounded-full leading-none">
+                                                                        {adjs.length}
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </button>
+                                                </div>
                                             </td>
-                                            {isFinalized && (
-                                                <td className="px-6 py-4 text-center">
+                                            <td className="px-6 py-4 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    {(record.status === 'Draft' || !record.status) && (
+                                                        <>
+                                                            <span className="px-2 py-1 text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 rounded">Live</span>
+                                                            <button
+                                                                onClick={() => handleFinalizeEmployee(record)}
+                                                                className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded transition-colors cursor-pointer"
+                                                                title="Lock & Freeze"
+                                                            >
+                                                                <Lock size={15} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    {record.status === 'Finalized' && (
+                                                        <>
+                                                            <span className="px-2 py-1 text-[10px] font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded">Locked</span>
+                                                            <button
+                                                                onClick={() => handlePayEmployee(record)}
+                                                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors cursor-pointer"
+                                                                title="Mark as Paid"
+                                                            >
+                                                                <CreditCard size={15} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    {record.status === 'Paid' && (
+                                                        <span className="px-2 py-1 text-[10px] font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded">Paid</span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                {record.entry_id ? (
                                                     <button
                                                         onClick={() => handleDownloadPayslip(record.entry_id, record.user_name)}
                                                         className="inline-flex items-center justify-center p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
@@ -334,13 +537,15 @@ const PayrollDashboard = () => {
                                                     >
                                                         <Download size={18} />
                                                     </button>
-                                                </td>
-                                            )}
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400 italic">Not Frozen</span>
+                                                )}
+                                            </td>
                                         </tr>
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={isFinalized ? 7 : 6} className="px-6 py-12 text-center text-slate-400 dark:text-github-dark-muted italic">
+                                        <td colSpan={8} className="px-6 py-12 text-center text-slate-400 dark:text-github-dark-muted italic">
                                             No payroll records found.
                                         </td>
                                     </tr>
@@ -379,6 +584,11 @@ const PayrollDashboard = () => {
                                     </div>
                                 ) : detailData ? (
                                     <div className="space-y-6">
+                                        {detailData.is_running_month && (
+                                            <div className="bg-indigo-50/50 dark:bg-indigo-950/15 border border-indigo-100 dark:border-indigo-900/40 p-3 rounded-xl text-[10px] text-indigo-700 dark:text-indigo-300 font-medium">
+                                                Active Running Month Projection: Future days and today are assumed worked without LOP. LOP deduction is computed up to yesterday.
+                                            </div>
+                                        )}
                                         {/* Attendance Summary */}
                                         <div className="bg-slate-50/70 dark:bg-github-dark-subtle/30 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 space-y-3">
                                             <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Attendance Summary</h5>
@@ -464,6 +674,33 @@ const PayrollDashboard = () => {
                                             </div>
                                         </div>
 
+                                        {/* Manual Adjustments List inside Details Drawer */}
+                                        {(() => {
+                                            const adjs = detailData.adjustments_json 
+                                                ? (typeof detailData.adjustments_json === 'string' ? JSON.parse(detailData.adjustments_json) : detailData.adjustments_json) 
+                                                : [];
+                                            if (adjs.length === 0) return null;
+                                            return (
+                                                <div className="bg-slate-50/70 dark:bg-github-dark-subtle/30 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 space-y-3">
+                                                    <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Manual Adjustments</h5>
+                                                    <div className="space-y-3">
+                                                        {adjs.map(a => (
+                                                            <div key={a.id} className="text-xs space-y-0.5 border-l-2 border-amber-400 pl-3">
+                                                                <div className="flex justify-between font-semibold">
+                                                                    <span className="text-slate-700 dark:text-github-dark-text">{a.label}</span>
+                                                                    <span className={a.type === 'addition' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                                                                        {a.type === 'addition' ? '+' : '-'}₹{Number(a.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-slate-500 dark:text-slate-400 italic font-medium">"{a.reason}"</p>
+                                                                <div className="text-[9px] text-slate-400 dark:text-github-dark-muted font-bold">Added by {a.added_by}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
                                         {/* Final Calculation summary */}
                                         <div className="bg-indigo-600 text-white p-5 rounded-2xl space-y-2">
                                             <div className="flex justify-between text-xs font-semibold text-indigo-200">
@@ -478,6 +715,33 @@ const PayrollDashboard = () => {
                                                 <span>Allowance (OT)</span>
                                                 <span>+₹{Number(detailData.overtime_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                                             </div>
+
+                                            {/* Dynamic rendering of adjustments inside the details card */}
+                                            {(() => {
+                                                const adjs = detailData.adjustments_json 
+                                                    ? (typeof detailData.adjustments_json === 'string' ? JSON.parse(detailData.adjustments_json) : detailData.adjustments_json) 
+                                                    : [];
+                                                const additions = adjs.filter(a => a.type === 'addition');
+                                                const deductions = adjs.filter(a => a.type === 'deduction');
+                                                
+                                                return (
+                                                    <>
+                                                        {additions.map(a => (
+                                                            <div key={a.id} className="flex justify-between text-xs font-semibold text-emerald-300">
+                                                                <span>{a.label}</span>
+                                                                <span>+₹{Number(a.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                                            </div>
+                                                        ))}
+                                                        {deductions.map(d => (
+                                                            <div key={d.id} className="flex justify-between text-xs font-semibold text-rose-300">
+                                                                <span>{d.label}</span>
+                                                                <span>-₹{Number(d.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                                            </div>
+                                                        ))}
+                                                    </>
+                                                );
+                                            })()}
+
                                             <div className="flex justify-between font-black text-base border-t border-indigo-500 pt-2 mt-2">
                                                 <span>Net Payable Salary</span>
                                                 <span>₹{Number(detailData.net_salary).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
@@ -498,6 +762,162 @@ const PayrollDashboard = () => {
                                     className="w-full px-4 py-2.5 text-xs font-bold uppercase tracking-widest bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-github-dark-muted rounded-xl transition-all cursor-pointer"
                                 >
                                     Dismiss details
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {/* Manual Adjustments Modal */}
+                {isAdjustmentsModalOpen && adjustmentsEmployee && (
+                    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+                        <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
+                                <div>
+                                    <h4 className="text-sm font-black uppercase tracking-[0.2em] text-slate-800 dark:text-github-dark-text">Manual Adjustments & Audit</h4>
+                                    <p className="text-xs text-slate-400 dark:text-github-dark-muted mt-0.5">Edit additions/deductions for {adjustmentsEmployee.user_name}</p>
+                                </div>
+                                <button
+                                    onClick={() => setIsAdjustmentsModalOpen(false)}
+                                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+                                {/* Form: Add Adjustment (Only if Draft) */}
+                                {(adjustmentsEmployee.status === 'Draft' || !adjustmentsEmployee.status) ? (
+                                    <form onSubmit={handleAddAdjustment} className="bg-slate-50/70 dark:bg-github-dark-subtle/30 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 space-y-4">
+                                        <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Add Addition / Deduction</h5>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">Adjustment Type</label>
+                                                <select
+                                                    value={newAdjustment.type}
+                                                    onChange={(e) => setNewAdjustment({ ...newAdjustment, type: e.target.value })}
+                                                    className="w-full bg-white dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3 py-2 rounded-lg text-xs text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500/25"
+                                                >
+                                                    <option value="addition">Addition (+)</option>
+                                                    <option value="deduction">Deduction (-)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">Label</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. Bonus, Tax, Advance"
+                                                    value={newAdjustment.label}
+                                                    onChange={(e) => setNewAdjustment({ ...newAdjustment, label: e.target.value })}
+                                                    className="w-full bg-white dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3 py-2 rounded-lg text-xs text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500/25"
+                                                    required
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">Amount (₹)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    placeholder="Amount"
+                                                    value={newAdjustment.amount}
+                                                    onChange={(e) => setNewAdjustment({ ...newAdjustment, amount: e.target.value })}
+                                                    className="w-full bg-white dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3 py-2 rounded-lg text-xs text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500/25"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1">Audit Reason / Description</label>
+                                            <textarea
+                                                rows="2"
+                                                placeholder="Please explain the reason for this manual salary adjustment..."
+                                                value={newAdjustment.reason}
+                                                onChange={(e) => setNewAdjustment({ ...newAdjustment, reason: e.target.value })}
+                                                className="w-full bg-white dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border px-3 py-2 rounded-lg text-xs text-slate-700 dark:text-github-dark-text outline-none resize-none focus:ring-2 focus:ring-indigo-500/25"
+                                                required
+                                            ></textarea>
+                                        </div>
+                                        <div className="flex justify-end">
+                                            <button
+                                                type="submit"
+                                                disabled={savingAdjustments}
+                                                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-[10px] uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
+                                            >
+                                                <Plus size={12} />
+                                                {savingAdjustments ? 'Saving...' : 'Add Adjustment'}
+                                            </button>
+                                        </div>
+                                    </form>
+                                ) : (
+                                    <div className="bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 p-4 rounded-2xl text-xs text-blue-700 dark:text-blue-300 font-medium">
+                                        🔒 This employee's payroll status is <strong>{adjustmentsEmployee.status}</strong>. Manual adjustments are frozen and cannot be modified.
+                                    </div>
+                                )}
+
+                                {/* Adjustments List & Audit Logs */}
+                                <div className="space-y-3">
+                                    <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Adjustment Audit Log</h5>
+                                    {adjustmentsList.length > 0 ? (
+                                        <div className="border border-slate-100 dark:border-github-dark-border rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+                                            {adjustmentsList.map((adj) => (
+                                                <div key={adj.id} className="p-4 flex items-start justify-between gap-4 bg-white dark:bg-dark-card hover:bg-slate-50/30 transition-colors">
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-wider rounded ${
+                                                                adj.type === 'addition' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400'
+                                                            }`}>
+                                                                {adj.type === 'addition' ? 'Addition (+)' : 'Deduction (-)'}
+                                                            </span>
+                                                            <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text">{adj.label}</span>
+                                                            <span className={`text-xs font-black ${adj.type === 'addition' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                                {adj.type === 'addition' ? '+' : '-'}₹{Number(adj.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-600 dark:text-slate-400 font-medium italic">"{adj.reason}"</p>
+                                                        <div className="text-[9px] text-slate-400 font-bold">
+                                                            Added by {adj.added_by} on {new Date(adj.added_at).toLocaleString()}
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Delete Action (Only if Draft) */}
+                                                    {(adjustmentsEmployee.status === 'Draft' || !adjustmentsEmployee.status) && (
+                                                        <button
+                                                            onClick={() => handleDeleteAdjustment(adj.id)}
+                                                            disabled={savingAdjustments}
+                                                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded transition-colors cursor-pointer"
+                                                            title="Delete Adjustment"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-slate-400 italic text-xs py-8">
+                                            No manual adjustments recorded.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="p-5 border-t border-slate-100 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 flex items-center justify-between">
+                                <div className="text-xs font-bold text-slate-500">
+                                    Total Adjustments:{' '}
+                                    <span className="text-slate-700 dark:text-github-dark-text font-black">
+                                        ₹{(
+                                            adjustmentsList.filter(a => a.type === 'addition').reduce((sum, a) => sum + a.amount, 0) -
+                                            adjustmentsList.filter(a => a.type === 'deduction').reduce((sum, a) => sum + a.amount, 0)
+                                        ).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => setIsAdjustmentsModalOpen(false)}
+                                    className="px-5 py-2.5 text-xs font-bold uppercase tracking-widest bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition-all cursor-pointer"
+                                >
+                                    Close
                                 </button>
                             </div>
                         </div>

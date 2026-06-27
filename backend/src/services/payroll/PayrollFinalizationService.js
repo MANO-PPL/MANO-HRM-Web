@@ -172,4 +172,276 @@ export class PayrollFinalizationService {
             .where({ org_id: orgId, year, month })
             .first();
     }
+
+    /**
+     * Finalize (lock) payroll for an individual employee.
+     */
+    static async finalizeEmployee(orgId, year, month, employeeId, finalizedBy) {
+        return await attendanceDB.transaction(async (trx) => {
+            // Ensure payroll run exists in Live status
+            let run = await trx('payroll_runs')
+                .where({ org_id: orgId, year, month })
+                .first();
+
+            if (!run) {
+                const [newRunId] = await trx('payroll_runs').insert({
+                    org_id: orgId,
+                    year,
+                    month,
+                    status: 'Live'
+                });
+                run = await trx('payroll_runs').where('run_id', newRunId).first();
+            } else if (run.status !== 'Live') {
+                throw new AppError(`Cannot lock individual employee payroll. The entire payroll run for ${year}-${String(month).padStart(2, '0')} is already ${run.status.toLowerCase()}.`, 400);
+            }
+
+            // Check if entry already exists
+            const existingEntry = await trx('payroll_entries')
+                .where({ run_id: run.run_id, employee_id: employeeId })
+                .first();
+
+            if (existingEntry && existingEntry.status === 'Paid') {
+                throw new AppError('This employee\'s payroll is already paid and locked.', 400);
+            }
+
+            // Get employee active salary config
+            const activeSalaryDate = `${year}-${String(month).padStart(2, '0')}-01`;
+            const emp = await trx('users as u')
+                .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
+                .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+                .leftJoin('payroll_packages as p', function() {
+                    this.on('s.package_group_id', '=', 'p.package_group_id')
+                        .andOn('p.effective_from', '<=', trx.raw('?', [activeSalaryDate]))
+                        .andOn(function() {
+                            this.onNull('p.effective_to')
+                                .orOn('p.effective_to', '>=', trx.raw('?', [activeSalaryDate]));
+                        });
+                })
+                .where('u.user_id', employeeId)
+                .where('s.effective_from', '<=', activeSalaryDate)
+                .andWhere(function() {
+                    this.whereNull('s.effective_to')
+                        .orWhere('s.effective_to', '>=', activeSalaryDate);
+                })
+                .select(
+                    'u.user_id',
+                    'u.user_name',
+                    'u.email',
+                    'sh.policy_rules',
+                    's.salary_history_id',
+                    's.package_group_id',
+                    's.gross_monthly_salary as history_gross_salary',
+                    's.overtime_enabled as history_ot_enabled',
+                    's.overtime_rate as history_ot_rate',
+                    'p.gross_salary as package_gross_salary',
+                    'p.overtime_enabled as package_overtime_enabled',
+                    'p.overtime_rate as package_overtime_rate'
+                )
+                .first();
+
+            if (!emp) {
+                throw new AppError('Employee has no active salary configuration for this period.', 400);
+            }
+
+            const resolvedEmp = {
+                ...emp,
+                gross_monthly_salary: emp.package_group_id !== null && emp.package_gross_salary !== null
+                    ? Number(emp.package_gross_salary)
+                    : Number(emp.history_gross_salary),
+                employee_ot_enabled: emp.package_group_id !== null && emp.package_overtime_enabled !== null
+                    ? emp.package_overtime_enabled === 1
+                    : emp.history_ot_enabled === 1,
+                overtime_rate: emp.package_group_id !== null && emp.package_overtime_rate !== null
+                    ? Number(emp.package_overtime_rate)
+                    : Number(emp.history_ot_rate)
+            };
+
+            // Calculate payroll
+            const record = await PayrollCalculationService.calculateEmployeePayroll(resolvedEmp, year, month, orgId);
+
+            let finalNetSalary = record.net_salary;
+            let adjustments = [];
+            if (existingEntry && existingEntry.adjustments_json) {
+                adjustments = typeof existingEntry.adjustments_json === 'string'
+                    ? JSON.parse(existingEntry.adjustments_json)
+                    : existingEntry.adjustments_json;
+                
+                const additionsSum = adjustments.filter(a => a.type === 'addition').reduce((sum, a) => sum + Number(a.amount), 0);
+                const deductionsSum = adjustments.filter(a => a.type === 'deduction').reduce((sum, a) => sum + Number(a.amount), 0);
+                finalNetSalary = Number((finalNetSalary + additionsSum - deductionsSum).toFixed(2));
+            }
+
+            if (existingEntry) {
+                // Update
+                await trx('payroll_entries')
+                    .where({ run_id: run.run_id, employee_id: employeeId })
+                    .update({
+                        gross_salary: record.gross_salary,
+                        present_days: record.present_days,
+                        half_days: record.half_days,
+                        absent_days: record.absent_days,
+                        paid_leave_days: record.paid_leave_days,
+                        holiday_days: record.holiday_days,
+                        weekly_off_days: record.weekly_off_days,
+                        overtime_hours: record.overtime_hours,
+                        overtime_amount: record.overtime_amount,
+                        lop_days: record.lop_days,
+                        lop_deduction: record.lop_deduction,
+                        net_salary: finalNetSalary,
+                        status: 'Finalized',
+                        salary_snapshot_json: JSON.stringify(record.salary_snapshot),
+                        attendance_snapshot_json: JSON.stringify(record.attendance_snapshot),
+                        calculation_snapshot_json: JSON.stringify(record.calculation_snapshot),
+                        updated_at: trx.fn.now()
+                    });
+            } else {
+                // Insert
+                await trx('payroll_entries').insert({
+                    run_id: run.run_id,
+                    employee_id: employeeId,
+                    gross_salary: record.gross_salary,
+                    present_days: record.present_days,
+                    half_days: record.half_days,
+                    absent_days: record.absent_days,
+                    paid_leave_days: record.paid_leave_days,
+                    holiday_days: record.holiday_days,
+                    weekly_off_days: record.weekly_off_days,
+                    overtime_hours: record.overtime_hours,
+                    overtime_amount: record.overtime_amount,
+                    lop_days: record.lop_days,
+                    lop_deduction: record.lop_deduction,
+                    net_salary: record.net_salary,
+                    status: 'Finalized',
+                    salary_snapshot_json: JSON.stringify(record.salary_snapshot),
+                    attendance_snapshot_json: JSON.stringify(record.attendance_snapshot),
+                    calculation_snapshot_json: JSON.stringify(record.calculation_snapshot)
+                });
+            }
+
+            return await trx('payroll_entries')
+                .where({ run_id: run.run_id, employee_id: employeeId })
+                .first();
+        });
+    }
+
+    /**
+     * Mark payroll for an individual employee as Paid.
+     */
+    static async payEmployee(orgId, year, month, employeeId, paidBy) {
+        return await attendanceDB.transaction(async (trx) => {
+            // Ensure payroll run exists in Live status
+            let run = await trx('payroll_runs')
+                .where({ org_id: orgId, year, month })
+                .first();
+
+            if (!run) {
+                const [newRunId] = await trx('payroll_runs').insert({
+                    org_id: orgId,
+                    year,
+                    month,
+                    status: 'Live'
+                });
+                run = await trx('payroll_runs').where('run_id', newRunId).first();
+            } else if (run.status !== 'Live') {
+                throw new AppError(`Cannot pay individual employee payroll. The entire payroll run for ${year}-${String(month).padStart(2, '0')} is already ${run.status.toLowerCase()}.`, 400);
+            }
+
+            const existingEntry = await trx('payroll_entries')
+                .where({ run_id: run.run_id, employee_id: employeeId })
+                .first();
+
+            if (existingEntry) {
+                if (existingEntry.status === 'Paid') {
+                    throw new AppError('This employee\'s payroll is already marked as paid.', 400);
+                }
+                
+                await trx('payroll_entries')
+                    .where({ run_id: run.run_id, employee_id: employeeId })
+                    .update({
+                        status: 'Paid',
+                        updated_at: trx.fn.now()
+                    });
+            } else {
+                // If they haven't been locked yet, we run calculations and lock/pay them
+                const activeSalaryDate = `${year}-${String(month).padStart(2, '0')}-01`;
+                const emp = await trx('users as u')
+                    .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
+                    .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+                    .leftJoin('payroll_packages as p', function() {
+                        this.on('s.package_group_id', '=', 'p.package_group_id')
+                            .andOn('p.effective_from', '<=', trx.raw('?', [activeSalaryDate]))
+                            .andOn(function() {
+                                this.onNull('p.effective_to')
+                                    .orOn('p.effective_to', '>=', trx.raw('?', [activeSalaryDate]));
+                            });
+                    })
+                    .where('u.user_id', employeeId)
+                    .where('s.effective_from', '<=', activeSalaryDate)
+                    .andWhere(function() {
+                        this.whereNull('s.effective_to')
+                            .orWhere('s.effective_to', '>=', activeSalaryDate);
+                    })
+                    .select(
+                        'u.user_id',
+                        'u.user_name',
+                        'u.email',
+                        'sh.policy_rules',
+                        's.salary_history_id',
+                        's.package_group_id',
+                        's.gross_monthly_salary as history_gross_salary',
+                        's.overtime_enabled as history_ot_enabled',
+                        's.overtime_rate as history_ot_rate',
+                        'p.gross_salary as package_gross_salary',
+                        'p.overtime_enabled as package_overtime_enabled',
+                        'p.overtime_rate as package_overtime_rate'
+                    )
+                    .first();
+
+                if (!emp) {
+                    throw new AppError('Employee has no active salary configuration for this period.', 400);
+                }
+
+                const resolvedEmp = {
+                    ...emp,
+                    gross_monthly_salary: emp.package_group_id !== null && emp.package_gross_salary !== null
+                        ? Number(emp.package_gross_salary)
+                        : Number(emp.history_gross_salary),
+                    employee_ot_enabled: emp.package_group_id !== null && emp.package_overtime_enabled !== null
+                        ? emp.package_overtime_enabled === 1
+                        : emp.history_ot_enabled === 1,
+                    overtime_rate: emp.package_group_id !== null && emp.package_overtime_rate !== null
+                        ? Number(emp.package_overtime_rate)
+                        : Number(emp.history_ot_rate)
+                };
+
+                const record = await PayrollCalculationService.calculateEmployeePayroll(resolvedEmp, year, month, orgId);
+
+                await trx('payroll_entries').insert({
+                    run_id: run.run_id,
+                    employee_id: employeeId,
+                    gross_salary: record.gross_salary,
+                    present_days: record.present_days,
+                    half_days: record.half_days,
+                    absent_days: record.absent_days,
+                    paid_leave_days: record.paid_leave_days,
+                    holiday_days: record.holiday_days,
+                    weekly_off_days: record.weekly_off_days,
+                    overtime_hours: record.overtime_hours,
+                    overtime_amount: record.overtime_amount,
+                    lop_days: record.lop_days,
+                    lop_deduction: record.lop_deduction,
+                    net_salary: record.net_salary,
+                    status: 'Paid',
+                    salary_snapshot_json: JSON.stringify(record.salary_snapshot),
+                    attendance_snapshot_json: JSON.stringify(record.attendance_snapshot),
+                    calculation_snapshot_json: JSON.stringify(record.calculation_snapshot)
+                });
+            }
+
+            return await trx('payroll_entries')
+                .where({ run_id: run.run_id, employee_id: employeeId })
+                .first();
+        });
+    }
+
 }

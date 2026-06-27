@@ -4,6 +4,7 @@ import AppError from '../../utils/AppError.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { cacheService } from '../cache/cacheService.js';
+import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 
 //Get All Holidays
 export const getHolidays = async (org_id) => {
@@ -74,6 +75,25 @@ export const createHolidays = async (org_id, holidaysToInsert) => {
     // Invalidate Cache
     await cacheService.del(`mano-cache:holidays:org:${org_id}`);
 
+    // Trigger organization-wide draft payroll updates in the background
+    try {
+        const uniquePeriods = new Set();
+        for (const h of prepareData) {
+            const date = new Date(h.holiday_date);
+            if (!isNaN(date.getTime())) {
+                uniquePeriods.add(`${date.getFullYear()}-${date.getMonth() + 1}`);
+            }
+        }
+        for (const period of uniquePeriods) {
+            const [year, month] = period.split('-').map(Number);
+            PayrollCalculationService.updateDraftEntriesForOrg(org_id, year, month).catch(err => {
+                console.error("Failed to update draft entries for org after holiday creation:", err);
+            });
+        }
+    } catch (e) {
+        console.error("Failed to trigger background payroll calculation for holiday creation:", e);
+    }
+
     return prepareData.length;
 
 };
@@ -97,6 +117,8 @@ export const updateHoliday = async (id, org_id, data) => {
             JSON.stringify(data.applicable_json);
 
 
+    const holiday = await attendanceDB('holidays').where({ holiday_id: id, org_id }).first();
+
     const count = await attendanceDB('holidays')
         .where({
             holiday_id: id,
@@ -107,12 +129,38 @@ export const updateHoliday = async (id, org_id, data) => {
     // Invalidate Cache
     await cacheService.del(`mano-cache:holidays:org:${org_id}`);
 
+    if (count > 0 && holiday) {
+        try {
+            const datesToProcess = [holiday.holiday_date];
+            if (updates.holiday_date) datesToProcess.push(updates.holiday_date);
+            
+            const uniquePeriods = new Set();
+            for (const d of datesToProcess) {
+                const date = new Date(d);
+                if (!isNaN(date.getTime())) {
+                    uniquePeriods.add(`${date.getFullYear()}-${date.getMonth() + 1}`);
+                }
+            }
+
+            for (const period of uniquePeriods) {
+                const [year, month] = period.split('-').map(Number);
+                PayrollCalculationService.updateDraftEntriesForOrg(org_id, year, month).catch(err => {
+                    console.error("Failed to update draft entries for org after holiday update:", err);
+                });
+            }
+        } catch (e) {
+            console.error("Failed to trigger background payroll calculation for holiday update:", e);
+        }
+    }
+
     return count;
 
 };
 
 //Delete Holidays
 export const deleteHolidays = async (org_id, ids) => {
+
+    const holidays = await attendanceDB('holidays').whereIn('holiday_id', ids).andWhere({ org_id }).select('holiday_date');
 
     const count = await attendanceDB('holidays')
         .whereIn('holiday_id', ids)
@@ -121,6 +169,27 @@ export const deleteHolidays = async (org_id, ids) => {
 
     // Invalidate Cache
     await cacheService.del(`mano-cache:holidays:org:${org_id}`);
+
+    if (count > 0 && holidays.length > 0) {
+        try {
+            const uniquePeriods = new Set();
+            for (const h of holidays) {
+                const date = new Date(h.holiday_date);
+                if (!isNaN(date.getTime())) {
+                    uniquePeriods.add(`${date.getFullYear()}-${date.getMonth() + 1}`);
+                }
+            }
+
+            for (const period of uniquePeriods) {
+                const [year, month] = period.split('-').map(Number);
+                PayrollCalculationService.updateDraftEntriesForOrg(org_id, year, month).catch(err => {
+                    console.error("Failed to update draft entries for org after holiday deletion:", err);
+                });
+            }
+        } catch (e) {
+            console.error("Failed to trigger background payroll calculation for holiday deletion:", e);
+        }
+    }
 
     return count;
 

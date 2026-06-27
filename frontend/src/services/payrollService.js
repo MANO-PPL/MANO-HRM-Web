@@ -67,6 +67,81 @@ const payrollService = {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    },
+    // Finalize payroll for a single employee
+    finalizeEmployee: async (employeeId, month) => {
+        const response = await api.post(`/payroll/employees/${employeeId}/finalize`, { month });
+        return response.data;
+    },
+
+    // Pay payroll for a single employee
+    payEmployee: async (employeeId, month) => {
+        const response = await api.post(`/payroll/employees/${employeeId}/pay`, { month });
+        return response.data;
+    },
+
+    // Update adjustments list for a payroll entry
+    updateAdjustments: async (entryId, adjustments) => {
+        const response = await api.put(`/payroll/entries/${entryId}/adjustments`, { adjustments });
+        return response.data;
+    },
+
+    // Package APIs
+    getPackageGroups: async () => {
+        const response = await api.get('/payroll/packages');
+        return response.data;
+    },
+
+    createPackageGroup: async (data) => {
+        const response = await api.post('/payroll/packages', data);
+        return response.data;
+    },
+
+    getPackageRevisions: async (packageGroupId) => {
+        const response = await api.get(`/payroll/packages/${packageGroupId}/revisions`);
+        return response.data;
+    },
+
+    createPackageRevision: async (packageGroupId, data) => {
+        const response = await api.post(`/payroll/packages/${packageGroupId}/revisions`, data);
+        return response.data;
+    },
+
+    updatePackageGroup: async (packageGroupId, data) => {
+        const response = await api.put(`/payroll/packages/${packageGroupId}`, data);
+        return response.data;
+    },
+
+    deletePackageGroup: async (packageGroupId) => {
+        const response = await api.delete(`/payroll/packages/${packageGroupId}`);
+        return response.data;
+    },
+
+    // Package Assignment APIs
+    getEmployeesWithPackages: async () => {
+        const response = await api.get('/payroll/employees/packages');
+        return response.data;
+    },
+
+    assignPackageToEmployee: async (employeeId, packageGroupId, effectiveFrom) => {
+        const response = await api.post(`/payroll/employees/${employeeId}/assign-package`, { packageGroupId, effectiveFrom });
+        return response.data;
+    },
+
+    unassignPackageFromEmployee: async (employeeId, data) => {
+        const response = await api.post(`/payroll/employees/${employeeId}/unassign-package`, data);
+        return response.data;
+    },
+
+    // Payroll Settings APIs
+    getPayrollSettings: async () => {
+        const response = await api.get('/payroll/settings');
+        return response.data;
+    },
+
+    updatePayrollSettings: async (data) => {
+        const response = await api.put('/payroll/settings', data);
+        return response.data;
     }
 };
 

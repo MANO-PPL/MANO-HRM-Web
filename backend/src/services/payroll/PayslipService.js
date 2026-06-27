@@ -77,7 +77,7 @@ export class PayslipService {
                 doc.fillColor('#2da44e')
                    .fontSize(10)
                    .font('Helvetica-Bold')
-                   .text(`Status: ${entry.run_status}`, 330, 70, { align: 'right', width: 215 });
+                   .text(`Status: ${entry.status || entry.run_status}`, 330, 70, { align: 'right', width: 215 });
 
                 // Divider Line
                 doc.moveTo(50, 95)
@@ -172,33 +172,53 @@ export class PayslipService {
 
                 doc.fontSize(9).font('Helvetica');
 
-                // Items list
-                let y = billTop + 28;
-                
-                // Left side items
-                doc.fillColor(textColor).text('Gross Monthly Salary', 60, y);
-                doc.text(`₹${Number(entry.gross_salary).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 210, y, { align: 'right', width: 70 });
+                // Parse adjustments
+                const adjustments = entry.adjustments_json 
+                    ? (typeof entry.adjustments_json === 'string' ? JSON.parse(entry.adjustments_json) : entry.adjustments_json) 
+                    : [];
 
-                // Right side items
-                doc.text('Loss of Pay (LOP) Deduction', 315, y);
-                doc.text(`₹${Number(entry.lop_deduction).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 465, y, { align: 'right', width: 70 });
+                const additions = adjustments.filter(a => a.type === 'addition');
+                const deductions = adjustments.filter(a => a.type === 'deduction');
 
-                y += 20;
+                // Left side items (Earnings / Additions)
+                let leftY = billTop + 28;
+                doc.fillColor(textColor).text('Gross Monthly Salary', 60, leftY);
+                doc.text(`₹${Number(entry.gross_salary).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 210, leftY, { align: 'right', width: 70 });
 
-                // Overtime item (if active)
                 if (Number(entry.overtime_amount) > 0) {
-                    doc.text(`Overtime Allowance (${entry.overtime_hours} hrs)`, 60, y);
-                    doc.text(`₹${Number(entry.overtime_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 210, y, { align: 'right', width: 70 });
+                    leftY += 20;
+                    doc.text(`Overtime Allowance (${entry.overtime_hours} hrs)`, 60, leftY);
+                    doc.text(`₹${Number(entry.overtime_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 210, leftY, { align: 'right', width: 70 });
                 }
 
-                // Grid Divider line
-                doc.moveTo(50, billTop + 80)
-                   .lineTo(545, billTop + 80)
+                for (const adj of additions) {
+                    leftY += 20;
+                    doc.text(adj.label, 60, leftY);
+                    doc.text(`₹${Number(adj.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 210, leftY, { align: 'right', width: 70 });
+                }
+
+                // Right side items (Deductions)
+                let rightY = billTop + 28;
+                doc.text('Loss of Pay (LOP) Deduction', 315, rightY);
+                doc.text(`₹${Number(entry.lop_deduction).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 465, rightY, { align: 'right', width: 70 });
+
+                for (const adj of deductions) {
+                    rightY += 20;
+                    doc.text(adj.label, 315, rightY);
+                    doc.text(`₹${Number(adj.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 465, rightY, { align: 'right', width: 70 });
+                }
+
+                // Grid Divider line (positioned below the longest list)
+                const maxY = Math.max(leftY, rightY);
+                const dividerY = Math.max(billTop + 80, maxY + 20);
+
+                doc.moveTo(50, dividerY)
+                   .lineTo(545, dividerY)
                    .strokeColor(borderLight)
                    .stroke();
 
                 // Net Salary Box (Highlight block)
-                const netTop = billTop + 95;
+                const netTop = dividerY + 15;
                 doc.rect(50, netTop, 495, 40).fill(primaryColor);
 
                 doc.fillColor('#ffffff')

@@ -101,11 +101,18 @@ const CompensationTab = ({ employeeId }) => {
                 
                 {activeSalary ? (
                     <div className="space-y-4">
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-3xl font-black text-slate-800 dark:text-github-dark-text">
-                                ₹{Number(activeSalary.gross_monthly_salary).toLocaleString('en-IN')}
-                            </span>
-                            <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">/ month</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-3xl font-black text-slate-800 dark:text-github-dark-text">
+                                    ₹{Number(activeSalary.gross_monthly_salary).toLocaleString('en-IN')}
+                                </span>
+                                <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">/ month</span>
+                            </div>
+                            {activeSalary.package_name && (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-150 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-200/25">
+                                    Package: {activeSalary.package_name}
+                                </span>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 pt-2 border-t border-indigo-200/40 dark:border-indigo-900/30">
@@ -249,6 +256,11 @@ const CompensationTab = ({ employeeId }) => {
                                     <tr key={history.salary_history_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/35">
                                         <td className="px-4 py-3 font-semibold text-slate-800 dark:text-github-dark-text">
                                             ₹{Number(history.gross_monthly_salary).toLocaleString('en-IN')}
+                                            {history.package_name && (
+                                                <span className="block text-[10px] text-indigo-500 font-semibold mt-0.5">
+                                                    Package: {history.package_name}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3">
                                             {history.overtime_enabled ? `₹${history.overtime_rate}/hr` : 'No'}

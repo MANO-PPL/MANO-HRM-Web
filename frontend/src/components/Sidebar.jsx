@@ -19,7 +19,8 @@ import {
     ShieldAlert,
     MessageSquare,
     Code,
-    Hammer
+    Hammer,
+    Layers
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import FeedbackModal from './FeedbackModal';
@@ -78,6 +79,7 @@ const getNavItems = (userType) => {
         { icon: <Settings size={18} />, text: "Shift Management", to: "/shift-management", roles: ['admin', 'hr'] },
         { icon: <Calendar size={18} />, text: "Holidays and Leave", to: "/holidays", roles: ['admin', 'hr', 'employee'] },
         { icon: <CreditCard size={18} />, text: "Payroll", to: "/payroll", roles: ['admin', 'hr'] },
+        { icon: <Layers size={18} />, text: "Salary Packages", to: "/payroll-packages", roles: ['admin', 'hr'] },
         // { icon: <CreditCard size={18} />, text: "Subscription", to: "/subscription", roles: ['admin'] },
     ];
 
