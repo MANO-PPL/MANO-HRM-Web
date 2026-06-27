@@ -107,9 +107,12 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false }) =
                         </div>
 
                         <div className="relative">
-                            <button
+                            <div
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => setIsProfileOpen(!isProfileOpen)}
-                                className="flex items-center gap-3 pl-4 sm:pl-6 border-l border-slate-200 dark:border-github-dark-border hover:opacity-80 transition-opacity outline-none"
+                                onKeyDown={(e) => e.key === 'Enter' && setIsProfileOpen(!isProfileOpen)}
+                                className="flex items-center gap-3 pl-4 sm:pl-6 border-l border-slate-200 dark:border-github-dark-border hover:opacity-80 transition-opacity outline-none cursor-pointer"
                             >
                                 <div className="text-right hidden sm:block">
                                     <p className="text-sm font-medium text-slate-700 dark:text-github-dark-text capitalize">
@@ -120,17 +123,17 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false }) =
                                     </p>
                                 </div>
                                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold border-2 border-white dark:border-github-dark-border shadow-sm text-sm sm:text-base cursor-pointer overflow-hidden">
-                                    {useAuth().user?.profile_image_url ? (
+                                    {user?.profile_image_url ? (
                                         <img
-                                            src={`${useAuth().user?.profile_image_url}?t=${avatarTimestamp}`}
+                                            src={`${user?.profile_image_url}?t=${avatarTimestamp}`}
                                             alt="Profile"
                                             className="w-full h-full object-cover"
                                         />
                                     ) : (
-                                        useAuth().user?.user_name?.charAt(0).toUpperCase() || 'U'
+                                        user?.user_name?.charAt(0).toUpperCase() || 'U'
                                     )}
                                 </div>
-                            </button>
+                            </div>
 
                             {/* Profile Dropdown */}
                             {isProfileOpen && (

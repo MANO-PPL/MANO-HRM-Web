@@ -1,5 +1,11 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import EventBus from '../utils/EventBus.js';
 import { getEventSource } from '../utils/clientInfo.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const errorHandler = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500;
@@ -25,6 +31,15 @@ const errorHandler = (err, req, res, next) => {
             console.warn(`⚠️  [OperationalError] ${err.statusCode} - ${err.message}`);
         } else {
             console.error('ERROR 💥', err);
+        }
+
+        try {
+            const logPath = path.resolve(__dirname, '../../error-debug.log');
+            const timestamp = new Date().toISOString();
+            const logMsg = `[${timestamp}] ${req.method} ${req.originalUrl}\nStatusCode: ${err.statusCode}\nError: ${err.message}\nStack: ${err.stack}\n\n`;
+            fs.appendFileSync(logPath, logMsg, 'utf8');
+        } catch (e) {
+            console.error('Failed to write to error-debug.log:', e.message);
         }
     }
 

@@ -947,10 +947,13 @@ const ChatPage = () => {
                                 const typingNames = Object.values(activeTyping);
 
                                 return (
-                                    <button
+                                    <div
                                         key={room.room_id}
+                                        role="button"
+                                        tabIndex={0}
                                         onClick={() => handleRoomSelect(room)}
-                                        className={`w-full text-left p-3 flex items-center gap-3 transition-all cursor-pointer border-none outline-none group ${
+                                        onKeyDown={(e) => e.key === 'Enter' && handleRoomSelect(room)}
+                                        className={`w-full text-left p-3 flex items-center gap-3 transition-all cursor-pointer outline-none group ${
                                             isSelected 
                                             ? 'bg-white dark:bg-[#21262d] border-l-[3px] border-[#7dd3fc] dark:border-[#388bfd] shadow-sm' 
                                             : 'hover:bg-[#e0f2fe]/40 dark:hover:bg-[#21262d]/50 bg-transparent border-l-[3px] border-transparent'
@@ -1020,7 +1023,7 @@ const ChatPage = () => {
                                                 <Pin size={12} className={pinnedRoomIds.includes(room.room_id) ? "fill-current" : ""} />
                                             </button>
                                         </div>
-                                    </button>
+                                    </div>
                                 );
                             })
                         )}

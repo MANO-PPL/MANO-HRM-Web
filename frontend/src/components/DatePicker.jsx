@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp } from 'lucide-react';
 
-const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate, compact = false }) => {
+const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate, compact = false, clearable = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
     const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -163,16 +163,19 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
                     </span>
                 </div>
 
-                {value ? (
-                    <button
-                        onClick={clearDate}
-                        className="p-1 text-slate-400 hover:text-red-500 transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 shrink-0"
-                    >
-                        <X size={14} />
-                    </button>
-                ) : (
-                    <ChevronDown size={14} className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 shrink-0" />
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                    {clearable && value && (
+                        <button
+                            onClick={clearDate}
+                            type="button"
+                            className="p-1 text-slate-400 hover:text-red-500 transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"
+                            title="Clear date"
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+                    <ChevronDown size={14} className={`text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                </div>
             </div>
 
             {isOpen && (

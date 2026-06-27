@@ -175,6 +175,38 @@ const getUserColor = (userId) => {
     return colors[id % colors.length];
 };
 
+// Returns a pretty date label for grouping messages by day
+const getMessageDateLabel = (createdAt) => {
+    if (!createdAt) return '';
+    try {
+        let date;
+        if (typeof createdAt === 'string') {
+            if (!createdAt.includes('Z') && !createdAt.includes('+') && !createdAt.includes('T')) {
+                date = new Date(createdAt.trim().replace(' ', 'T') + 'Z');
+            } else if (!createdAt.includes('Z') && !createdAt.includes('+') && createdAt.includes('T')) {
+                date = new Date(createdAt + 'Z');
+            } else {
+                date = new Date(createdAt);
+            }
+        } else {
+            date = new Date(createdAt);
+        }
+        if (isNaN(date.getTime())) return '';
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(today.getDate() - 1);
+        const isSameDay = (a, b) =>
+            a.getFullYear() === b.getFullYear() &&
+            a.getMonth() === b.getMonth() &&
+            a.getDate() === b.getDate();
+        if (isSameDay(date, today)) return 'Today';
+        if (isSameDay(date, yesterday)) return 'Yesterday';
+        return date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (e) {
+        return '';
+    }
+};
+
 const MobileChatPage = () => {
     const { user } = useAuth();
     const socket = useSocket();
@@ -235,6 +267,7 @@ const MobileChatPage = () => {
     const messagesEndRef = useRef(null);
     const scrollContainerRef = useRef(null);
     const [showScrollBottom, setShowScrollBottom] = useState(false);
+    const isInitialLoadRef = useRef(false); // tracks if next scroll should be instant (on room open)
 
     // Mention Dropdown State
     const [activeMention, setActiveMention] = useState(false);
@@ -434,9 +467,15 @@ const MobileChatPage = () => {
         };
     }, [socket, selectedRoom, currentUserId]);
 
-    // Auto Scroll thread
+    // Auto Scroll thread — instant on initial load, smooth for new messages & typing
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (!messagesEndRef.current) return;
+        if (isInitialLoadRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'instant' });
+            isInitialLoadRef.current = false;
+        } else {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
     }, [messages, typingUsers]);
 
     const handleScroll = () => {
@@ -492,6 +531,7 @@ const MobileChatPage = () => {
 
     const fetchMessages = async (roomId) => {
         setLoadingMessages(true);
+        isInitialLoadRef.current = true; // mark this as initial load so scroll is instant
         try {
             const res = await api.get(`/collaboration/rooms/${roomId}/messages`);
             if (res.data.success) {
@@ -763,11 +803,11 @@ const MobileChatPage = () => {
     };
 
     return (
-        <MobileDashboardLayout title="Chat & Collaboration" hideHeader={true}>
-            <div className="bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-3xl overflow-hidden h-[calc(100vh-140px)] relative flex">
+        <MobileDashboardLayout title="Chats" hideHeader={showMobileChatWindow}>
+            <div className="relative">
                 
                 {/* 1. Sidebar contacts list */}
-                <div className={`w-full flex-col h-full ${showMobileChatWindow ? 'hidden' : 'flex bg-white dark:bg-github-dark-subtle'}`}>
+                <div className={`w-full flex-col bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-3xl overflow-hidden h-[calc(100dvh-130px)] ${showMobileChatWindow ? 'hidden' : 'flex'}`}>
                     <div className="p-4 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between shrink-0">
                         <h2 className="text-xl font-black text-slate-800 dark:text-github-dark-text tracking-tight">Chats</h2>
                         <div className="flex gap-2">
@@ -831,10 +871,13 @@ const MobileChatPage = () => {
                                 const typingNames = Object.values(typingUsers[room.room_id] || {});
 
                                 return (
-                                    <button
+                                    <div
                                         key={room.room_id}
+                                        role="button"
+                                        tabIndex={0}
                                         onClick={() => handleRoomSelect(room)}
-                                        className="w-full text-left p-4 flex items-center gap-3 active:bg-slate-50 dark:active:bg-white/5 bg-transparent border-none outline-none group"
+                                        onKeyDown={(e) => e.key === 'Enter' && handleRoomSelect(room)}
+                                        className="w-full text-left p-4 flex items-center gap-3 active:bg-slate-50 dark:active:bg-white/5 bg-transparent border-none outline-none group cursor-pointer"
                                     >
                                         <div className="relative shrink-0">
                                             {isGroup ? (
@@ -893,21 +936,34 @@ const MobileChatPage = () => {
                                                 <Pin size={13} className={pinnedRoomIds.includes(room.room_id) ? "fill-current" : ""} />
                                             </button>
                                         </div>
-                                    </button>
+                                    </div>
                                 );
                             })
                         )}
                     </div>
                 </div>
 
-                {/* 2. Main Active Chat Conversation Panel */}
-                <div className={`w-full flex-col h-full bg-white dark:bg-github-dark-subtle ${showMobileChatWindow ? 'flex' : 'hidden'}`}>
+                {/* 2. Main Active Chat Conversation Panel — Full screen overlay when open */}
+                <AnimatePresence>
+                {showMobileChatWindow && (
+                <motion.div
+                    key="chat-window"
+                    initial={{ x: '100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '100%' }}
+                    transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+                    className="fixed inset-0 z-[120] flex flex-col bg-white dark:bg-github-dark-subtle"
+                    style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+                >
                     {selectedRoom ? (
                         <>
                             {/* Chat Header */}
-                            <div className="h-16 px-4 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-bg/30 flex items-center justify-between shrink-0">
+                            <div className="px-4 pt-3 pb-3 border-b border-slate-100 dark:border-github-dark-border bg-white dark:bg-github-dark-subtle flex items-center justify-between shrink-0 min-h-[60px]">
                                 <div className="flex items-center gap-3 min-w-0">
-                                    <button onClick={() => setShowMobileChatWindow(false)} className="p-2 text-slate-500 bg-slate-100/50 dark:bg-white/5 border border-slate-200/50 dark:border-white/5 rounded-xl active:scale-90 transition-all">
+                                    <button
+                                        onClick={() => setShowMobileChatWindow(false)}
+                                        className="p-2 text-slate-500 bg-slate-100/50 dark:bg-white/5 border border-slate-200/50 dark:border-white/5 rounded-xl active:scale-90 transition-all shrink-0"
+                                    >
                                         <ArrowLeft size={16} />
                                     </button>
                                     
@@ -954,10 +1010,10 @@ const MobileChatPage = () => {
                             </div>
 
                             {/* Messages Scroll Area */}
-                            <div 
+                            <div
                                 ref={scrollContainerRef}
                                 onScroll={handleScroll}
-                                className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-slate-50/50 dark:bg-github-dark-bg/10 relative"
+                                className="flex-1 overflow-y-auto px-4 pt-3 pb-2 space-y-3 custom-scrollbar bg-slate-50/50 dark:bg-github-dark-bg/10 relative overscroll-contain"
                             >
                                 {loadingMessages ? (
                                     <div className="flex flex-col items-center justify-center py-20 gap-2">
@@ -982,8 +1038,12 @@ const MobileChatPage = () => {
                                         </div>
 
                                         {(() => {
+                                            let lastDateLabel = '';
                                             return messages.map((msg, idx) => {
                                                 const isSelf = Number(msg.sender_id) === Number(currentUserId);
+                                                const dateLabel = getMessageDateLabel(msg.created_at);
+                                                const showDateSep = dateLabel && dateLabel !== lastDateLabel;
+                                                if (showDateSep) lastDateLabel = dateLabel;
                                                 const hasAvatar = msg.profile_image_url;
                                                 
                                                 const matchesMention = msg.message_text && msg.message_text.includes(`@${user?.user_name}`);
@@ -1056,12 +1116,19 @@ const MobileChatPage = () => {
                                                 }
 
                                                 return (
-                                                    <motion.div 
-                                                        key={msg.message_id || idx}
-                                                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                        className={`flex items-end gap-2 max-w-[85%] ${isSelf ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
-                                                    >
+                                                    <React.Fragment key={msg.message_id || idx}>
+                                                        {showDateSep && (
+                                                            <div className="flex justify-center w-full my-3">
+                                                                <span className="bg-white dark:bg-github-dark-subtle border border-slate-200/50 dark:border-white/5 text-slate-400 dark:text-slate-500 px-3.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm">
+                                                                    {dateLabel}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        <motion.div 
+                                                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                            className={`flex items-end gap-2 max-w-[85%] ${isSelf ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+                                                        >
                                                         {!isSelf && (
                                                             <div className="shrink-0 mb-0.5">
                                                                 {msg.profile_image_url ? (
@@ -1361,6 +1428,7 @@ const MobileChatPage = () => {
                                                             </div>
                                                         </div>
                                                     </motion.div>
+                                                    </React.Fragment>
                                                 );
                                             });
                                         })()}
@@ -1472,7 +1540,11 @@ const MobileChatPage = () => {
                                             </div>
                                         )}
    
-                                        <form onSubmit={handleSend} className="p-3 bg-white dark:bg-github-dark-subtle border-t border-slate-100 dark:border-github-dark-border flex gap-2 items-center shrink-0 relative w-full">
+                                        <form
+                                            onSubmit={handleSend}
+                                            className="px-3 pt-2 bg-white dark:bg-github-dark-subtle border-t border-slate-100 dark:border-github-dark-border flex gap-2 items-center shrink-0 relative w-full"
+                                            style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom, 12px))' }}
+                                        >
                                             <button 
                                                 type="button"
                                                 disabled={isUploading}
@@ -1519,7 +1591,9 @@ const MobileChatPage = () => {
                             <p className="text-xs text-slate-400 mt-1 max-w-[200px]">Select a teammate or group from the list to start chatting.</p>
                         </div>
                     )}
-                </div>
+                </motion.div>
+                )}
+                </AnimatePresence>
 
                 {/* 3. Direct Message Modal */}
                 <AnimatePresence>
