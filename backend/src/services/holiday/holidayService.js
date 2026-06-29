@@ -101,7 +101,6 @@ export const createHolidays = async (org_id, holidaysToInsert) => {
     // Invalidate Cache
     await cacheService.del(`mano-cache:holidays:org:${org_id}`);
 
-<<<<<<< HEAD
     // Trigger organization-wide draft payroll updates in the background
     try {
         const uniquePeriods = new Set();
@@ -120,10 +119,9 @@ export const createHolidays = async (org_id, holidaysToInsert) => {
     } catch (e) {
         console.error("Failed to trigger background payroll calculation for holiday creation:", e);
     }
-=======
+
     // Trigger push notifications
     notifyNewHolidays(org_id, prepareData).catch(console.error);
->>>>>>> origin/main
 
     return prepareData.length;
 
