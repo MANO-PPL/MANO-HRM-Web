@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react';
 
-const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date" }) => {
+const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
     const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -72,16 +72,27 @@ const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date" 
         }
 
         for (let i = 1; i <= totalDays; i++) {
+            const monthStr = String(currentMonth + 1).padStart(2, '0');
+            const dayStr = String(i).padStart(2, '0');
+            const dateStr = `${currentYear}-${monthStr}-${dayStr}`;
+            
+            let isDisabled = false;
+            if (minDate && dateStr < minDate) isDisabled = true;
+            if (maxDate && dateStr > maxDate) isDisabled = true;
+
             days.push(
                 <button
                     key={i}
-                    onClick={() => handleDayClick(i)}
+                    onClick={() => !isDisabled && handleDayClick(i)}
+                    disabled={isDisabled}
                     className={`h-8 w-8 rounded-lg flex items-center justify-center text-[10px] font-black transition-all
-                        ${isSelected(i)
-                            ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                            : isToday(i)
-                                ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20'
-                                : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300'
+                        ${isDisabled
+                            ? 'opacity-20 cursor-not-allowed text-slate-350 dark:text-slate-650'
+                            : isSelected(i)
+                                ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                : isToday(i)
+                                    ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20'
+                                    : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300'
                         }
                     `}
                     type="button"
