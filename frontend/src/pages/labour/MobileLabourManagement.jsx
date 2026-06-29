@@ -86,7 +86,7 @@ const MobileLabourManagement = () => {
     });
 
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
-    const [advanceForm, setAdvanceForm] = useState({ labour_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
+    const [advanceForm, setAdvanceForm] = useState({ labour_id: '', site_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
 
     // Phase 2 States
     const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
@@ -98,6 +98,7 @@ const MobileLabourManagement = () => {
     const [borrowSearchQuery, setBorrowSearchQuery] = useState('');
 
     const [selectedHistoryLabour, setSelectedHistoryLabour] = useState(null);
+    const [selectedHistoryLabourDetails, setSelectedHistoryLabourDetails] = useState(null);
     const [labourHistoryData, setLabourHistoryData] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -105,7 +106,7 @@ const MobileLabourManagement = () => {
     const [historyTab, setHistoryTab] = useState('sites'); // 'sites', 'payouts'
     const [labourPayoutHistory, setLabourPayoutHistory] = useState([]);
     const [payoutForm, setPayoutForm] = useState({
-        payout_id: null, labour_id: '', name: '', month: '', wage_type: '', monthly_salary: '',
+        payout_id: null, labour_id: '', site_id: '', name: '', month: '', wage_type: '', monthly_salary: '',
         present_days: 0, half_days: 0, absent_days: 0, paid_leaves: 0,
         accrued_credit: 0, advances_taken: 0, net_payable: 0, paid_amount: '',
         status: 'Paid', payment_date: new Date().toISOString().split('T')[0], notes: ''
@@ -162,8 +163,9 @@ const MobileLabourManagement = () => {
     };
 
     const fetchFinances = async () => {
+        if (!selectedSite) return;
         try {
-            const res = await labourService.getFinancesSummary(financeMonth ? `${financeMonth}-01` : '');
+            const res = await labourService.getFinancesSummary(selectedSite.site_id);
             setFinanceSummary(res.summary || []);
             setMonthDetails(res.monthDetails || null);
         } catch (err) {
@@ -228,7 +230,7 @@ const MobileLabourManagement = () => {
                 fetchFinances();
             }
         }
-    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, financeMonth, activeTab, selectedSite, subTab]);
+    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, activeTab, selectedSite, subTab]);
 
     // Bulk upload CSV/Excel handlers for Mobile
     const handleCSVUpload = async (e) => {
@@ -405,6 +407,7 @@ const MobileLabourManagement = () => {
             const res = await labourService.getLabourWorkHistory(lab.labour_id);
             setLabourHistoryData(res.history || []);
             setLabourPayoutHistory(res.payouts || []);
+            setSelectedHistoryLabourDetails(res.labour || null);
         } catch (err) {
             toast.error(err.message || 'Failed to load history');
         }
@@ -557,6 +560,7 @@ const MobileLabourManagement = () => {
     const handleOpenAdvance = (labour) => {
         setAdvanceForm({
             labour_id: labour.labour_id,
+            site_id: selectedSite ? selectedSite.site_id.toString() : 'All',
             name: labour.name,
             amount: '',
             date: new Date().toISOString().split('T')[0],
@@ -570,15 +574,20 @@ const MobileLabourManagement = () => {
         try {
             await labourService.logLabourAdvance({
                 labour_id: Number(advanceForm.labour_id),
+                site_id: advanceForm.site_id,
                 amount: Number(advanceForm.amount),
                 date: advanceForm.date,
                 notes: advanceForm.notes
             });
-            toast.success(`Advance logged for ${advanceForm.name}`);
+            toast.success(`Advance logged successfully for ${advanceForm.name}`);
             setShowAdvanceModal(false);
-            fetchFinances();
+            if (selectedHistoryLabour) {
+                handleViewHistory(selectedHistoryLabour);
+            } else {
+                fetchFinances();
+            }
         } catch (err) {
-            toast.error(err.message || 'Failed to log advance');
+            toast.error(err.message || 'Failed to log advance payment');
         }
     };
 
@@ -589,14 +598,15 @@ const MobileLabourManagement = () => {
         setPayoutForm({
             payout_id: isExisting ? row.payout.payout_id : null,
             labour_id: row.labour_id,
+            site_id: selectedSite ? selectedSite.site_id.toString() : 'All',
             name: row.name,
             month: monthKey,
             wage_type: row.wage_type,
             monthly_salary: row.monthly_salary,
-            present_days: row.attendance.present,
-            half_days: row.attendance.half_day,
-            absent_days: row.attendance.absent,
-            paid_leaves: row.attendance.paid_leave || 0,
+            present_days: row.attendance?.present || 0,
+            half_days: row.attendance?.half_day || 0,
+            absent_days: row.attendance?.absent || 0,
+            paid_leaves: row.attendance?.paid_leave || 0,
             accrued_credit: row.accrued_credit,
             advances_taken: row.advances_taken,
             net_payable: row.net_payable,
@@ -612,7 +622,9 @@ const MobileLabourManagement = () => {
         e.preventDefault();
         try {
             await labourService.logLabourPayout({
+                payout_id: payoutForm.payout_id,
                 labour_id: Number(payoutForm.labour_id),
+                site_id: payoutForm.site_id,
                 month: payoutForm.month,
                 wage_type: payoutForm.wage_type,
                 monthly_salary: Number(payoutForm.monthly_salary),
@@ -630,10 +642,55 @@ const MobileLabourManagement = () => {
             });
             toast.success(`Payout successfully processed for ${payoutForm.name}`);
             setShowPayoutModal(false);
-            fetchFinances();
+            if (selectedHistoryLabour) {
+                handleViewHistory(selectedHistoryLabour);
+            } else {
+                fetchFinances();
+            }
         } catch (err) {
             toast.error(err.message || 'Failed to log monthly payout');
         }
+    };
+
+    const handleOpenGlobalPayout = () => {
+        if (!selectedHistoryLabourDetails) return;
+        const lab = selectedHistoryLabourDetails;
+        const monthKey = new Date().toISOString().slice(0, 7);
+        setPayoutForm({
+            payout_id: null,
+            labour_id: lab.labour_id,
+            site_id: 'All',
+            name: lab.name,
+            month: monthKey,
+            wage_type: lab.wage_type,
+            monthly_salary: lab.monthly_salary,
+            present_days: 0,
+            half_days: 0,
+            absent_days: 0,
+            paid_leaves: 0,
+            accrued_credit: lab.global_earned,
+            advances_taken: lab.global_advances,
+            net_payable: lab.global_net_payable,
+            paid_amount: lab.global_net_payable,
+            status: 'Paid',
+            payment_date: new Date().toISOString().split('T')[0],
+            notes: ''
+        });
+        setShowPayoutModal(true);
+    };
+
+    const handleOpenGlobalAdvance = () => {
+        if (!selectedHistoryLabourDetails) return;
+        const lab = selectedHistoryLabourDetails;
+        setAdvanceForm({
+            labour_id: lab.labour_id,
+            site_id: 'All',
+            name: lab.name,
+            amount: '',
+            date: new Date().toISOString().split('T')[0],
+            notes: ''
+        });
+        setShowAdvanceModal(true);
     };
 
     return (
@@ -1016,18 +1073,7 @@ const MobileLabourManagement = () => {
                                                      size="sm"
                                                      triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl font-medium"
                                                  />
-                                                 <MonthPicker
-                                                     label="Select Month"
-                                                     value={financeMonth}
-                                                     onChange={(val) => setFinanceMonth(val)}
-                                                     compact={true}
-                                                 />
                                             </div>
-                                            {monthDetails && (
-                                                <div className="bg-slate-100 dark:bg-github-dark-border p-2.5 rounded-lg text-[9px] font-bold text-slate-600 dark:text-github-dark-text text-center border border-slate-200/50">
-                                                    🗓️ {getMonthNameAndYear(monthDetails.start)} PERIOD: DAYS ELAPSED {monthDetails.elapsedDays} OF {monthDetails.totalDays}
-                                                </div>
-                                            )}
 
                                             <div className="grid gap-3">
                                                 {financeSummary.filter(row => row.site_id === selectedSite.site_id && (!financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase())).length === 0 ? (
@@ -1053,45 +1099,47 @@ const MobileLabourManagement = () => {
                                                                             {row.wage_type}
                                                                         </span>
                                                                     </div>
-
                                                                     <div className="grid grid-cols-4 gap-1 bg-slate-50 dark:bg-github-dark-border/20 p-2 rounded-lg text-center text-[9px]">
                                                                         <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Attendance</span>
-                                                                            <span className="font-bold text-slate-750 dark:text-github-dark-text">{row.attendance.present}P / {row.attendance.half_day}HD</span>
+                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Earned</span>
+                                                                            <span className="font-bold text-slate-750 dark:text-github-dark-text">₹{row.accrued_credit}</span>
                                                                         </div>
                                                                         <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Credit</span>
-                                                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{row.accrued_credit}</span>
+                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Paid</span>
+                                                                            <span className="font-bold text-slate-750 dark:text-github-dark-text">₹{row.total_paid}</span>
                                                                         </div>
                                                                         <div>
                                                                             <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Advances</span>
                                                                             <span className="font-bold text-amber-600 dark:text-amber-500">₹{row.advances_taken}</span>
                                                                         </div>
                                                                         <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Net Pay</span>
-                                                                            <span className={`font-black ${advanceAlert ? 'text-rose-500' : 'text-indigo-600 dark:text-indigo-400'}`}>₹{row.net_payable}</span>
+                                                                            <span className="block text-slate-400 dark:text-[#58a6ff] text-[8px] uppercase font-bold">Net Pay</span>
+                                                                            <span className={`font-black ${row.net_payable < 0 ? 'text-rose-500' : 'text-indigo-600 dark:text-[#58a6ff]'}`}>₹{row.net_payable}</span>
                                                                         </div>
                                                                     </div>
 
                                                                     <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-github-dark-border/40 mt-1">
                                                                         <div className="flex items-center gap-1.5">
                                                                             <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-semibold">Base: ₹{row.monthly_salary}</span>
-                                                                            {row.payout ? (
-                                                                                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold ${row.payout.status === 'Paid'
-                                                                                        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/30'
-                                                                                        : 'bg-amber-500 text-white rounded'
-                                                                                    }`}>
-                                                                                    {row.payout.status}
+                                                                            {row.net_payable <= 0 ? (
+                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50">
+                                                                                    Settled
                                                                                 </span>
                                                                             ) : (
-                                                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-450 border border-rose-200 dark:border-rose-900/30 whitespace-nowrap">
-                                                                                     <XCircle size={8} /> Not Paid
-                                                                                 </span>
+                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200/50">
+                                                                                    Pending
+                                                                                </span>
                                                                             )}
                                                                         </div>
                                                                         <div className="flex gap-1.5">
                                                                             <button onClick={() => handleOpenAdvance(row)} className="px-2 py-1 text-[9px] font-bold bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors">Advance</button>
-                                                                            <button onClick={() => handleOpenPayout(row)} className={`px-2 py-1 text-[9px] font-bold border rounded-lg transition-colors ${row.payout ? 'bg-emerald-50 dark:bg-emerald-950/15 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30' : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent'}`}>{row.payout ? 'View Payout' : 'Release'}</button>
+                                                                            <button
+                                                                                onClick={() => handleOpenPayout(row)}
+                                                                                disabled={row.net_payable <= 0}
+                                                                                className={`px-2 py-1 text-[9px] font-bold border rounded-lg transition-colors ${row.net_payable <= 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-50' : 'bg-indigo-600 text-white border-transparent'}`}
+                                                                            >
+                                                                                Release
+                                                                            </button>
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -1447,6 +1495,17 @@ const MobileLabourManagement = () => {
                                     <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/40 p-3 rounded-lg text-slate-600 dark:text-slate-300">
                                         Logging salary advance for <strong>{advanceForm.name}</strong>.
                                     </div>
+                                    <MinimalSelect
+                                        options={[
+                                            { value: 'All', label: 'All Sites (Global / Unallocated)' },
+                                            ...sites.map(s => ({ value: s.site_id.toString(), label: s.site_name }))
+                                        ]}
+                                        value={advanceForm.site_id}
+                                        onChange={(val) => setAdvanceForm({ ...advanceForm, site_id: val })}
+                                        variant="input"
+                                        size="sm"
+                                        triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-bold"
+                                    />
                                     <input
                                         type="number"
                                         value={advanceForm.amount}
@@ -1533,36 +1592,68 @@ const MobileLabourManagement = () => {
                                         </div>
                                         <div className="space-y-0.5">
                                             <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-bold">Net Payable:</span>
-                                            <span className="font-black text-indigo-600 dark:text-indigo-400 text-xs">₹{payoutForm.net_payable}</span>
+                                            <span className="font-extrabold text-slate-800 dark:text-white text-xs">₹{payoutForm.net_payable}</span>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">Paid Amount</label>
+                                    {/* Target Site Dropdown */}
+                                    <div>
+                                        <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">Target Site</label>
+                                        <MinimalSelect
+                                            options={[
+                                                { value: 'All', label: 'All Sites (Auto-Distribute)' },
+                                                ...sites.map(s => ({ value: s.site_id.toString(), label: s.site_name }))
+                                            ]}
+                                            value={payoutForm.site_id}
+                                            onChange={(val) => setPayoutForm({ ...payoutForm, site_id: val })}
+                                            variant="input"
+                                            size="sm"
+                                            triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-bold"
+                                        />
+                                    </div>
+
+                                    {/* Amount to Release — Editable Input */}
+                                    <div className="rounded-xl border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-[#161b22] p-3.5 space-y-3">
+                                        <div className="flex justify-between items-center text-[10px]">
+                                            <div>
+                                                <span className="font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider block">Paid Amount</span>
+                                                <span className="text-[9px] text-slate-400 dark:text-github-dark-muted mt-0.5 block">Remaining Balance: ₹{Math.max(0, payoutForm.net_payable - Number(payoutForm.paid_amount || 0)).toLocaleString()}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPayoutForm({ ...payoutForm, paid_amount: payoutForm.net_payable })}
+                                                className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer bg-transparent border-none"
+                                            >
+                                                Use Full Payout
+                                            </button>
+                                        </div>
+                                        <div className="relative flex items-center">
+                                            <span className="absolute left-3.5 text-slate-400 dark:text-slate-500 font-bold text-sm">₹</span>
                                             <input
                                                 type="number"
                                                 value={payoutForm.paid_amount}
                                                 onChange={(e) => setPayoutForm({ ...payoutForm, paid_amount: e.target.value })}
-                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs font-bold focus:outline-none"
+                                                className="w-full pl-6.5 pr-3 py-2 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-[#f0f6fc] text-xs font-bold rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
                                                 required
                                                 min="0"
+                                                placeholder="Enter release amount"
                                             />
                                         </div>
-                                        <div>
-                                            <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">Status</label>
-                                            <MinimalSelect
-                                                options={[
-                                                    { value: 'Paid', label: 'Paid' },
-                                                    { value: 'Pending', label: 'Pending' }
-                                                ]}
-                                                value={payoutForm.status}
-                                                onChange={(val) => setPayoutForm({ ...payoutForm, status: val })}
-                                                variant="input"
-                                                size="sm"
-                                                triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-bold"
-                                            />
-                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">Status</label>
+                                        <MinimalSelect
+                                            options={[
+                                                { value: 'Paid', label: 'Paid' },
+                                                { value: 'Pending', label: 'Pending' }
+                                            ]}
+                                            value={payoutForm.status}
+                                            onChange={(val) => setPayoutForm({ ...payoutForm, status: val })}
+                                            variant="input"
+                                            size="sm"
+                                            triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-bold"
+                                        />
                                     </div>
 
                                     <div>
@@ -1898,6 +1989,47 @@ const MobileLabourManagement = () => {
                                                 <div className="py-10 flex justify-center"><Clock className="animate-spin text-indigo-500" size={20} /></div>
                                             ) : (
                                                 <>
+                                                    {/* Global Ledger Card */}
+                                                    {selectedHistoryLabourDetails && (
+                                                        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-3 rounded-xl shadow-md border border-indigo-950/40 space-y-2 mb-3">
+                                                            <div className="flex justify-between items-center">
+                                                                <div>
+                                                                    <span className="block text-[8px] uppercase font-bold text-indigo-300 tracking-wider">All-Time Global Balance</span>
+                                                                    <span className="text-base font-black">₹{selectedHistoryLabourDetails.global_net_payable.toLocaleString()}</span>
+                                                                </div>
+                                                                <div className="flex gap-1">
+                                                                    <button
+                                                                        onClick={handleOpenGlobalAdvance}
+                                                                        className="px-2 py-0.5 text-[9px] font-bold bg-amber-500 hover:bg-amber-600 text-white rounded transition-all"
+                                                                    >
+                                                                        Advance
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={handleOpenGlobalPayout}
+                                                                        disabled={selectedHistoryLabourDetails.global_net_payable <= 0}
+                                                                        className="px-2 py-0.5 text-[9px] font-bold bg-white text-indigo-950 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
+                                                                    >
+                                                                        Release
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-indigo-900/60 text-[8px] font-mono text-indigo-200">
+                                                                <div>
+                                                                    <span className="block text-[7px] uppercase text-indigo-400">Earned</span>
+                                                                    ₹{selectedHistoryLabourDetails.global_earned.toLocaleString()}
+                                                                </div>
+                                                                <div>
+                                                                    <span className="block text-[7px] uppercase text-indigo-400">Paid</span>
+                                                                    ₹{selectedHistoryLabourDetails.global_paid.toLocaleString()}
+                                                                </div>
+                                                                <div>
+                                                                    <span className="block text-[7px] uppercase text-indigo-400">Advances</span>
+                                                                    ₹{selectedHistoryLabourDetails.global_advances.toLocaleString()}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     <div className="flex bg-slate-100 dark:bg-[#161b22] p-0.5 rounded-lg border border-slate-200 dark:border-github-dark-border">
                                                         <button type="button" onClick={() => setHistoryTab('sites')} className={`flex-1 py-1 text-center font-bold rounded-md transition-all ${historyTab === 'sites' ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>Timeline</button>
                                                         <button type="button" onClick={() => setHistoryTab('payouts')} className={`flex-1 py-1 text-center font-bold rounded-md transition-all ${historyTab === 'payouts' ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>Payouts</button>
@@ -1924,10 +2056,17 @@ const MobileLabourManagement = () => {
                                                                 <div className="text-center text-slate-400 italic py-6">No payouts.</div>
                                                             ) : (
                                                                 labourPayoutHistory.map((payout) => (
-                                                                    <div key={payout.payout_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm space-y-1.5">
+                                                                    <div key={payout.payout_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm space-y-1.5 text-[10px]">
                                                                         <div className="flex justify-between items-center font-bold">
                                                                             <span className="text-indigo-600 dark:text-indigo-400">{getMonthNameAndYear(payout.month + "-01")}</span>
-                                                                            <span className="text-slate-700 dark:text-slate-300">₹{payout.paid_amount} ({payout.status})</span>
+                                                                            <span className="text-slate-700 dark:text-slate-300">₹{payout.paid_amount}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between text-[9px] text-slate-400 dark:text-github-dark-muted font-mono">
+                                                                            <span>Site: {payout.site_name || 'Global / Unallocated'}</span>
+                                                                            <span>Status: {payout.status}</span>
+                                                                        </div>
+                                                                        <div className="text-[8px] text-slate-400 font-mono text-right mt-1">
+                                                                            {new Date(payout.payment_date).toLocaleDateString()}
                                                                         </div>
                                                                     </div>
                                                                 ))

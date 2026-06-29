@@ -88,7 +88,7 @@ const LabourManagement = () => {
     });
 
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
-    const [advanceForm, setAdvanceForm] = useState({ labour_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
+    const [advanceForm, setAdvanceForm] = useState({ labour_id: '', site_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
 
     // Phase 2 States
     const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
@@ -101,13 +101,14 @@ const LabourManagement = () => {
     const [borrowSearchQuery, setBorrowSearchQuery] = useState('');
 
     const [selectedHistoryLabour, setSelectedHistoryLabour] = useState(null);
+    const [selectedHistoryLabourDetails, setSelectedHistoryLabourDetails] = useState(null);
     const [labourHistoryData, setLabourHistoryData] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [showPayoutModal, setShowPayoutModal] = useState(false);
     const [historyTab, setHistoryTab] = useState('sites'); // 'sites', 'payouts'
     const [labourPayoutHistory, setLabourPayoutHistory] = useState([]);
     const [payoutForm, setPayoutForm] = useState({
-        payout_id: null, labour_id: '', name: '', month: '', wage_type: '', monthly_salary: '',
+        payout_id: null, labour_id: '', site_id: '', name: '', month: '', wage_type: '', monthly_salary: '',
         present_days: 0, half_days: 0, absent_days: 0, paid_leaves: 0,
         accrued_credit: 0, advances_taken: 0, net_payable: 0, paid_amount: '',
         status: 'Paid', payment_date: new Date().toISOString().split('T')[0], notes: ''
@@ -164,8 +165,9 @@ const LabourManagement = () => {
     };
 
     const fetchFinances = async () => {
+        if (!selectedSite) return;
         try {
-            const res = await labourService.getFinancesSummary(financeMonth ? `${financeMonth}-01` : '');
+            const res = await labourService.getFinancesSummary(selectedSite.site_id);
             setFinanceSummary(res.summary || []);
             setMonthDetails(res.monthDetails || null);
         } catch (err) {
@@ -230,7 +232,7 @@ const LabourManagement = () => {
                 fetchFinances();
             }
         }
-    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, financeMonth, activeTab, selectedSite, subTab]);
+    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, activeTab, selectedSite, subTab]);
     // Bulk upload CSV/Excel handlers
     const handleCSVUpload = async (e) => {
         const file = e.target.files[0];
@@ -379,6 +381,7 @@ const LabourManagement = () => {
             const res = await labourService.getLabourWorkHistory(lab.labour_id);
             setLabourHistoryData(res.history || []);
             setLabourPayoutHistory(res.payouts || []);
+            setSelectedHistoryLabourDetails(res.labour || null);
         } catch (err) {
             toast.error(err.message || 'Failed to load work history');
         }
@@ -557,6 +560,7 @@ const LabourManagement = () => {
     const handleOpenAdvance = (labour) => {
         setAdvanceForm({
             labour_id: labour.labour_id,
+            site_id: selectedSite ? selectedSite.site_id.toString() : 'All',
             name: labour.name,
             amount: '',
             date: new Date().toISOString().split('T')[0],
@@ -570,13 +574,18 @@ const LabourManagement = () => {
         try {
             await labourService.logLabourAdvance({
                 labour_id: Number(advanceForm.labour_id),
+                site_id: advanceForm.site_id,
                 amount: Number(advanceForm.amount),
                 date: advanceForm.date,
                 notes: advanceForm.notes
             });
             toast.success(`Advance logged successfully for ${advanceForm.name}`);
             setShowAdvanceModal(false);
-            fetchFinances();
+            if (selectedHistoryLabour) {
+                handleViewHistory(selectedHistoryLabour);
+            } else {
+                fetchFinances();
+            }
         } catch (err) {
             toast.error(err.message || 'Failed to log advance payment');
         }
@@ -589,14 +598,15 @@ const LabourManagement = () => {
         setPayoutForm({
             payout_id: isExisting ? row.payout.payout_id : null,
             labour_id: row.labour_id,
+            site_id: selectedSite ? selectedSite.site_id.toString() : 'All',
             name: row.name,
             month: monthKey,
             wage_type: row.wage_type,
             monthly_salary: row.monthly_salary,
-            present_days: row.attendance.present,
-            half_days: row.attendance.half_day,
-            absent_days: row.attendance.absent,
-            paid_leaves: row.attendance.paid_leave || 0,
+            present_days: row.attendance?.present || 0,
+            half_days: row.attendance?.half_day || 0,
+            absent_days: row.attendance?.absent || 0,
+            paid_leaves: row.attendance?.paid_leave || 0,
             accrued_credit: row.accrued_credit,
             advances_taken: row.advances_taken,
             net_payable: row.net_payable,
@@ -612,7 +622,9 @@ const LabourManagement = () => {
         e.preventDefault();
         try {
             await labourService.logLabourPayout({
+                payout_id: payoutForm.payout_id,
                 labour_id: Number(payoutForm.labour_id),
+                site_id: payoutForm.site_id,
                 month: payoutForm.month,
                 wage_type: payoutForm.wage_type,
                 monthly_salary: Number(payoutForm.monthly_salary),
@@ -630,10 +642,55 @@ const LabourManagement = () => {
             });
             toast.success(`Payout successfully processed for ${payoutForm.name}`);
             setShowPayoutModal(false);
-            fetchFinances();
+            if (selectedHistoryLabour) {
+                handleViewHistory(selectedHistoryLabour);
+            } else {
+                fetchFinances();
+            }
         } catch (err) {
             toast.error(err.message || 'Failed to log monthly payout');
         }
+    };
+
+    const handleOpenGlobalPayout = () => {
+        if (!selectedHistoryLabourDetails) return;
+        const lab = selectedHistoryLabourDetails;
+        const monthKey = new Date().toISOString().slice(0, 7);
+        setPayoutForm({
+            payout_id: null,
+            labour_id: lab.labour_id,
+            site_id: 'All',
+            name: lab.name,
+            month: monthKey,
+            wage_type: lab.wage_type,
+            monthly_salary: lab.monthly_salary,
+            present_days: 0,
+            half_days: 0,
+            absent_days: 0,
+            paid_leaves: 0,
+            accrued_credit: lab.global_earned,
+            advances_taken: lab.global_advances,
+            net_payable: lab.global_net_payable,
+            paid_amount: lab.global_net_payable,
+            status: 'Paid',
+            payment_date: new Date().toISOString().split('T')[0],
+            notes: ''
+        });
+        setShowPayoutModal(true);
+    };
+
+    const handleOpenGlobalAdvance = () => {
+        if (!selectedHistoryLabourDetails) return;
+        const lab = selectedHistoryLabourDetails;
+        setAdvanceForm({
+            labour_id: lab.labour_id,
+            site_id: 'All',
+            name: lab.name,
+            amount: '',
+            date: new Date().toISOString().split('T')[0],
+            notes: ''
+        });
+        setShowAdvanceModal(true);
     };
 
     // ==========================================
@@ -893,26 +950,21 @@ const LabourManagement = () => {
                                                     />
                                                 </>
                                             )}
-                                            {subTab === 'finances' && (
-                                                <>
-                                                    <MinimalSelect
-                                                        value={financeRoleFilter}
-                                                        onChange={(val) => setFinanceRoleFilter(val)}
-                                                        options={[
-                                                            { value: '', label: 'All Roles' },
-                                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
-                                                        ]}
-                                                        size="sm"
-                                                        triggerClassName="bg-[#f6f8fa] dark:bg-[#161b22] border-[#d0d7de]/70 dark:border-[#30363d]/60 text-slate-700 dark:text-github-dark-text cursor-pointer h-[30px] text-[11px]"
-                                                        variant="input"
-                                                    />
-                                                    <MonthPicker
-                                                        value={financeMonth}
-                                                        onChange={(val) => setFinanceMonth(val)}
-                                                        compact={true}
-                                                    />
-                                                </>
-                                            )}
+                                             {subTab === 'finances' && (
+                                                 <>
+                                                     <MinimalSelect
+                                                         value={financeRoleFilter}
+                                                         onChange={(val) => setFinanceRoleFilter(val)}
+                                                         options={[
+                                                             { value: '', label: 'All Roles' },
+                                                             ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                                         ]}
+                                                         size="sm"
+                                                         triggerClassName="bg-[#f6f8fa] dark:bg-[#161b22] border-[#d0d7de]/70 dark:border-[#30363d]/60 text-slate-700 dark:text-github-dark-text cursor-pointer h-[30px] text-[11px]"
+                                                         variant="input"
+                                                     />
+                                                 </>
+                                             )}
 
                                             {/* Divider between filters and tabs */}
                                             <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d] shrink-0" />
@@ -1181,126 +1233,102 @@ const LabourManagement = () => {
                                                     transition={{ duration: 0.18, ease: 'easeOut' }}
                                                     className="overflow-x-auto"
                                                 >
-                                                    <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
-                                                        <thead>
-                                                            <tr className="bg-slate-50/50 dark:bg-github-dark-border/20 text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border text-[11px]">
-                                                                <th className="p-3 text-left">Worker Name</th>
-                                                                <th className="p-3 text-left">Role</th>
-                                                                <th className="p-3 text-left">Wage Type</th>
-                                                                <th className="p-3 text-left">Attendance</th>
-                                                                <th className="p-3 text-right">Amount Earned</th>
-                                                                <th className="p-3 text-right">Advances Taken</th>
-                                                                <th className="p-3 text-right">Net Payable</th>
-                                                                <th className="p-3 text-right">Actions</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {financeSummary.filter(row => {
-                                                                const matchesSite = (row.site_ids && Array.isArray(row.site_ids) && row.site_ids.includes(selectedSite.site_id)) || row.site_id === selectedSite.site_id;
-                                                                const matchesRole = !financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase();
-                                                                return matchesSite && matchesRole;
-                                                            }).length === 0 ? (
-                                                                <tr>
-                                                                    <td colSpan="8" className="p-10 text-center text-slate-400 italic">No salary ledger details for workers assigned to this site this month.</td>
-                                                                </tr>
-                                                            ) : (
-                                                                financeSummary
-                                                                    .filter(row => {
-                                                                        const matchesSite = (row.site_ids && Array.isArray(row.site_ids) && row.site_ids.includes(selectedSite.site_id)) || row.site_id === selectedSite.site_id;
-                                                                        const matchesRole = !financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase();
-                                                                        return matchesSite && matchesRole;
-                                                                    })
-                                                                    .map(row => {
-                                                                        const advanceAlert = row.advances_taken > row.accrued_credit;
-                                                                        return (
-                                                                            <tr key={row.labour_id} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/20 dark:hover:bg-slate-800/10 align-middle">
-                                                                                <td className="p-3 font-bold text-slate-800 dark:text-github-dark-text whitespace-nowrap">{row.name}</td>
-                                                                                <td className="p-3">
-                                                                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 whitespace-nowrap">{row.role}</span>
-                                                                                </td>
-                                                                                <td className="p-3">
-                                                                                    <div className="flex flex-col items-start gap-1">
-                                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${row.wage_type === 'Fixed Salary'
-                                                                                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
-                                                                                            : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                                                            }`}>
-                                                                                            {row.wage_type}
-                                                                                        </span>
-                                                                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Base: ₹{row.monthly_salary.toLocaleString()}</span>
-                                                                                    </div>
-                                                                                </td>
-                                                                                <td className="p-3">
-                                                                                    <div className="flex flex-wrap gap-1 min-w-[140px]">
-                                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 whitespace-nowrap">
-                                                                                            {row.attendance.present} Present
-                                                                                        </span>
-                                                                                        {row.attendance.half_day > 0 && (
-                                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 whitespace-nowrap">
-                                                                                                {row.attendance.half_day} Half Day
-                                                                                            </span>
-                                                                                        )}
-                                                                                        {row.attendance.paid_leave > 0 && (
-                                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50 whitespace-nowrap">
-                                                                                                {row.attendance.paid_leave} Paid Leave
-                                                                                            </span>
-                                                                                        )}
-                                                                                        {row.attendance.absent > 0 && (
-                                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50 whitespace-nowrap">
-                                                                                                {row.attendance.absent} Absent
-                                                                                            </span>
-                                                                                        )}
-                                                                                    </div>
-                                                                                </td>
-                                                                                <td className="p-3 font-semibold text-slate-700 dark:text-slate-300 text-right whitespace-nowrap">₹{row.accrued_credit.toLocaleString()}</td>
-                                                                                <td className={`p-3 font-semibold text-right whitespace-nowrap ${advanceAlert ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                                                                                    <div className="flex items-center justify-end gap-1">
-                                                                                        <span>₹{row.advances_taken.toLocaleString()}</span>
-                                                                                        {advanceAlert && <AlertTriangle size={12} className="text-rose-500 animate-pulse" title="Advances exceed earned credit" />}
-                                                                                    </div>
-                                                                                </td>
-                                                                                <td className={`p-3 font-extrabold text-xs text-right whitespace-nowrap ${row.net_payable < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
-                                                                                    ₹{row.net_payable.toLocaleString()}
-                                                                                </td>
-                                                                                <td className="p-3 text-right">
-                                                                                    <div className="flex justify-end items-center gap-2 flex-nowrap">
-                                                                                        {row.payout ? (
-                                                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${row.payout.status === 'Paid'
-                                                                                                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-500/30'
-                                                                                                    : 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-500/30'
-                                                                                                }`}>
-                                                                                                {row.payout.status === 'Paid'
-                                                                                                    ? <CheckCircle size={10} />
-                                                                                                    : <Clock size={10} />}
-                                                                                                {row.payout.status}
-                                                                                            </span>
-                                                                                        ) : (
-                                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 whitespace-nowrap">
-                                                                                                <XCircle size={10} /> Not Paid
-                                                                                            </span>
-                                                                                        )}
-                                                                                        <button
-                                                                                            onClick={() => handleOpenAdvance(row)}
-                                                                                            className="px-2.5 py-1 text-[10px] font-black bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 rounded transition-all cursor-pointer whitespace-nowrap"
-                                                                                        >
-                                                                                            Advance
-                                                                                        </button>
-                                                                                        <button
-                                                                                            onClick={() => handleOpenPayout(row)}
-                                                                                            className={`px-2.5 py-1 text-[10px] font-black rounded border transition-all cursor-pointer whitespace-nowrap ${row.payout
-                                                                                                ? 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
-                                                                                                : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent'
-                                                                                                }`}
-                                                                                        >
-                                                                                            {row.payout ? 'View Payout' : 'Release Salary'}
-                                                                                        </button>
-                                                                                    </div>
-                                                                                </td>
-                                                                            </tr>
-                                                                        );
-                                                                    })
-                                                            )}
-                                                        </tbody>
-                                                    </table>
+                                                     <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
+                                                         <thead>
+                                                             <tr className="bg-slate-50/50 dark:bg-github-dark-border/20 text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border text-[11px]">
+                                                                 <th className="p-3 text-left">Worker Name</th>
+                                                                 <th className="p-3 text-left">Role</th>
+                                                                 <th className="p-3 text-left">Wage Type</th>
+                                                                 <th className="p-3 text-right">Total Earned</th>
+                                                                 <th className="p-3 text-right">Total Paid</th>
+                                                                 <th className="p-3 text-right">Accrued to Pay</th>
+                                                                 <th className="p-3 text-right">Advances Taken</th>
+                                                                 <th className="p-3 text-right">Final Net Payable</th>
+                                                                 <th className="p-3 text-right">Actions</th>
+                                                             </tr>
+                                                         </thead>
+                                                         <tbody>
+                                                             {financeSummary.filter(row => {
+                                                                 const matchesSite = (row.site_ids && Array.isArray(row.site_ids) && row.site_ids.includes(selectedSite.site_id)) || row.site_id === selectedSite.site_id;
+                                                                 const matchesRole = !financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase();
+                                                                 return matchesSite && matchesRole;
+                                                             }).length === 0 ? (
+                                                                 <tr>
+                                                                     <td colSpan="9" className="p-10 text-center text-slate-400 italic">No salary ledger details for workers assigned to this site.</td>
+                                                                 </tr>
+                                                             ) : (
+                                                                 financeSummary
+                                                                     .filter(row => {
+                                                                         const matchesSite = (row.site_ids && Array.isArray(row.site_ids) && row.site_ids.includes(selectedSite.site_id)) || row.site_id === selectedSite.site_id;
+                                                                         const matchesRole = !financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase();
+                                                                         return matchesSite && matchesRole;
+                                                                     })
+                                                                     .map(row => {
+                                                                         const advanceAlert = row.advances_taken > row.net_earned;
+                                                                         return (
+                                                                             <tr key={row.labour_id} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/20 dark:hover:bg-slate-800/10 align-middle">
+                                                                                 <td className="p-3 font-bold text-slate-800 dark:text-github-dark-text whitespace-nowrap">{row.name}</td>
+                                                                                 <td className="p-3">
+                                                                                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 whitespace-nowrap">{row.role}</span>
+                                                                                 </td>
+                                                                                 <td className="p-3">
+                                                                                     <div className="flex flex-col items-start gap-1">
+                                                                                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${row.wage_type === 'Fixed Salary'
+                                                                                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
+                                                                                             : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                                                                             }`}>
+                                                                                             {row.wage_type}
+                                                                                         </span>
+                                                                                         <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Base: ₹{row.monthly_salary.toLocaleString()}</span>
+                                                                                     </div>
+                                                                                 </td>
+                                                                                 <td className="p-3 font-semibold text-slate-700 dark:text-slate-300 text-right whitespace-nowrap">₹{row.accrued_credit.toLocaleString()}</td>
+                                                                                 <td className="p-3 font-semibold text-slate-700 dark:text-slate-300 text-right whitespace-nowrap">₹{row.total_paid.toLocaleString()}</td>
+                                                                                 <td className="p-3 font-semibold text-indigo-600 dark:text-indigo-400 text-right whitespace-nowrap">₹{row.net_earned.toLocaleString()}</td>
+                                                                                 <td className={`p-3 font-semibold text-right whitespace-nowrap ${advanceAlert ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                                                     <div className="flex items-center justify-end gap-1">
+                                                                                         <span>₹{row.advances_taken.toLocaleString()}</span>
+                                                                                         {advanceAlert && <AlertTriangle size={12} className="text-rose-500 animate-pulse" title="Advances exceed earned credit" />}
+                                                                                     </div>
+                                                                                 </td>
+                                                                                 <td className={`p-3 font-extrabold text-xs text-right whitespace-nowrap ${row.net_payable < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                                                                     ₹{row.net_payable.toLocaleString()}
+                                                                                 </td>
+                                                                                 <td className="p-3 text-right">
+                                                                                     <div className="flex justify-end items-center gap-2 flex-nowrap">
+                                                                                         {row.net_payable <= 0 ? (
+                                                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+                                                                                                 <CheckCircle size={10} /> Settled
+                                                                                             </span>
+                                                                                         ) : (
+                                                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap">
+                                                                                                 <Clock size={10} /> Pending
+                                                                                             </span>
+                                                                                         )}
+                                                                                         <button
+                                                                                             onClick={() => handleOpenAdvance(row)}
+                                                                                             className="px-2.5 py-1 text-[10px] font-black bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 rounded transition-all cursor-pointer whitespace-nowrap"
+                                                                                         >
+                                                                                             Advance
+                                                                                         </button>
+                                                                                         <button
+                                                                                             onClick={() => handleOpenPayout(row)}
+                                                                                             disabled={row.net_payable <= 0}
+                                                                                             className={`px-2.5 py-1 text-[10px] font-black rounded border transition-all cursor-pointer whitespace-nowrap ${row.net_payable <= 0
+                                                                                                 ? 'bg-slate-105 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-50'
+                                                                                                 : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent'
+                                                                                                 }`}
+                                                                                         >
+                                                                                             Release Salary
+                                                                                         </button>
+                                                                                     </div>
+                                                                                 </td>
+                                                                             </tr>
+                                                                         );
+                                                                     })
+                                                             )}
+                                                         </tbody>
+                                                     </table>
                                                 </motion.div>
                                             </div>
                                         </div>
@@ -1737,6 +1765,19 @@ const LabourManagement = () => {
                                             Logging salary advance for <strong>{advanceForm.name}</strong>. This amount will be automatically deducted from their next payroll payroll payout credit.
                                         </div>
                                         <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Target Site</label>
+                                            <MinimalSelect
+                                                value={advanceForm.site_id}
+                                                onChange={(val) => setAdvanceForm({ ...advanceForm, site_id: val })}
+                                                options={[
+                                                    { value: 'All', label: 'All Sites (Global / Unallocated)' },
+                                                    ...sites.map(s => ({ value: s.site_id.toString(), label: s.site_name }))
+                                                ]}
+                                                triggerClassName="w-full justify-between"
+                                                variant="input"
+                                            />
+                                        </div>
+                                        <div>
                                             <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Advance Amount (INR)</label>
                                             <input
                                                 type="number"
@@ -1823,11 +1864,26 @@ const LabourManagement = () => {
                                             <div>Processing salary payout for <strong>{payoutForm.name}</strong></div>
                                             <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase">Wage Type: {payoutForm.wage_type} | Month: {payoutForm.month}</div>
                                         </div>
+                                            
+                                        {/* Target Site Dropdown */}
+                                        <div>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Target Site</label>
+                                            <MinimalSelect
+                                                value={payoutForm.site_id}
+                                                onChange={(val) => setPayoutForm({ ...payoutForm, site_id: val })}
+                                                options={[
+                                                    { value: 'All', label: 'All Sites (Auto-Distribute)' },
+                                                    ...sites.map(s => ({ value: s.site_id.toString(), label: s.site_name }))
+                                                ]}
+                                                triggerClassName="w-full justify-between"
+                                                variant="input"
+                                            />
+                                        </div>
 
                                         {/* Earnings Summary Grid */}
                                         <div className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-[#161b22] p-3 rounded-lg border border-slate-200 dark:border-github-dark-border text-[11px]">
                                             <div className="space-y-1 col-span-2">
-                                                <div className="text-slate-400 mb-1">Attendance:</div>
+                                                <div className="text-slate-400 mb-1">Attendance Summary:</div>
                                                 <div className="flex flex-wrap gap-1">
                                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
                                                         {payoutForm.present_days} Present
@@ -1859,23 +1915,36 @@ const LabourManagement = () => {
                                             </div>
                                             <div className="space-y-0.5">
                                                 <div className="text-slate-500 dark:text-slate-400 font-bold">Net Payable:</div>
-                                                <div className="font-extrabold text-indigo-600 dark:text-indigo-400 dark:text-indigo-400 text-xs">₹{payoutForm.net_payable.toLocaleString()}</div>
+                                                <div className="font-bold text-slate-700 dark:text-slate-300">₹{payoutForm.net_payable.toLocaleString()}</div>
                                             </div>
                                         </div>
 
-                                        {/* Net Payable — locked, read-only */}
-                                        <div className="rounded-xl border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] p-4">
-                                            <div className="flex items-center justify-between">
+                                        {/* Amount to Release — Editable Input */}
+                                        <div className="rounded-xl border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] p-4 space-y-3">
+                                            <div className="flex justify-between items-center">
                                                 <div>
                                                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-0.5">Amount to Release</p>
-                                                    <p className="text-xs text-slate-500 dark:text-slate-400">Auto-calculated: Earned − Advances</p>
+                                                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Remaining Balance: ₹{Math.max(0, payoutForm.net_payable - Number(payoutForm.paid_amount || 0)).toLocaleString()}</p>
                                                 </div>
-                                                <div className={`text-xl font-black ${payoutForm.net_payable < 0
-                                                        ? 'text-rose-600 dark:text-rose-400'
-                                                        : 'text-indigo-600 dark:text-indigo-400'
-                                                    }`}>
-                                                    ₹{payoutForm.net_payable.toLocaleString()}
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPayoutForm({ ...payoutForm, paid_amount: payoutForm.net_payable })}
+                                                    className="text-[10px] font-bold text-indigo-650 dark:text-indigo-400 hover:underline cursor-pointer bg-transparent border-none"
+                                                >
+                                                    Use Full Payout
+                                                </button>
+                                            </div>
+                                            <div className="relative flex items-center">
+                                                <span className="absolute left-3.5 text-slate-400 dark:text-slate-500 font-bold text-sm">₹</span>
+                                                <input
+                                                    type="number"
+                                                    value={payoutForm.paid_amount}
+                                                    onChange={(e) => setPayoutForm({ ...payoutForm, paid_amount: e.target.value })}
+                                                    className="w-full pl-7 pr-3 py-2 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] text-slate-850 dark:text-[#f0f6fc] text-xs font-bold rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
+                                                    required
+                                                    min="1"
+                                                    placeholder="Enter release amount"
+                                                />
                                             </div>
                                         </div>
 
@@ -2506,18 +2575,46 @@ const LabourManagement = () => {
                                             <div className="text-center py-10 text-slate-400 italic">No historical attendance logged for this worker.</div>
                                         ) : (
                                             <>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div className="bg-slate-50 dark:bg-github-dark-border/20 p-3 rounded-xl border border-slate-100 dark:border-github-dark-border/40">
-                                                        <span className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Total Engagements</span>
-                                                        <span className="text-lg font-black text-slate-800 dark:text-github-dark-text">{labourHistoryData.length} Sites</span>
+                                                {/* Global Ledger Card */}
+                                                {selectedHistoryLabourDetails && (
+                                                    <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 rounded-xl shadow-lg border border-indigo-950/40 space-y-3">
+                                                        <div className="flex justify-between items-center">
+                                                            <div>
+                                                                <span className="block text-[9px] uppercase font-bold text-indigo-300 tracking-wider">All-Time Global Balance</span>
+                                                                <span className="text-xl font-black">₹{selectedHistoryLabourDetails.global_net_payable.toLocaleString()}</span>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={handleOpenGlobalAdvance}
+                                                                    className="px-2.5 py-1 text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white rounded transition-all"
+                                                                >
+                                                                    Log Global Advance
+                                                                </button>
+                                                                <button
+                                                                    onClick={handleOpenGlobalPayout}
+                                                                    disabled={selectedHistoryLabourDetails.global_net_payable <= 0}
+                                                                    className="px-2.5 py-1 text-[10px] font-bold bg-white text-indigo-950 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
+                                                                >
+                                                                    Release Global Payment
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-indigo-900/60 text-[10px] font-mono text-indigo-200">
+                                                            <div>
+                                                                <span className="block text-[8px] uppercase text-indigo-400">Total Earned</span>
+                                                                ₹{selectedHistoryLabourDetails.global_earned.toLocaleString()}
+                                                            </div>
+                                                            <div>
+                                                                <span className="block text-[8px] uppercase text-indigo-400">Total Paid</span>
+                                                                ₹{selectedHistoryLabourDetails.global_paid.toLocaleString()}
+                                                            </div>
+                                                            <div>
+                                                                <span className="block text-[8px] uppercase text-indigo-400">Total Advances</span>
+                                                                ₹{selectedHistoryLabourDetails.global_advances.toLocaleString()}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="bg-slate-50 dark:bg-github-dark-border/20 p-3 rounded-xl border border-slate-100 dark:border-github-dark-border/40">
-                                                        <span className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Total Days Logged</span>
-                                                        <span className="text-lg font-black text-indigo-600 dark:text-indigo-400 dark:text-indigo-400">
-                                                            {labourHistoryData.reduce((acc, curr) => acc + curr.total_days, 0)} Days
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                                )}
 
                                                 <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-lg border border-[#d0d7de] dark:border-[#30363d] select-none">
                                                     <button
@@ -2621,7 +2718,10 @@ const LabourManagement = () => {
                                                                         </div>
 
                                                                         <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                                                                            <span>Site: {payout.site_name || 'Global / Unallocated'}</span>
                                                                             <span>Method: {payout.notes || 'Unspecified'}</span>
+                                                                        </div>
+                                                                        <div className="text-[10px] text-slate-400 font-mono text-right mt-1">
                                                                             <span>{new Date(payout.payment_date).toLocaleDateString()}</span>
                                                                         </div>
                                                                     </div>
