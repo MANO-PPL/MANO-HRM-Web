@@ -219,6 +219,24 @@ const MobileLabourManagement = () => {
         }
     }, [selectedSite]);
 
+    const getMaxAttendanceDate = () => {
+        if (selectedSite && selectedSite.status === 'Completed' && selectedSite.end_date) {
+            const d = new Date(selectedSite.end_date);
+            d.setDate(d.getDate() - 1);
+            return d.toISOString().split('T')[0];
+        }
+        return undefined;
+    };
+
+    useEffect(() => {
+        if (selectedSite && selectedSite.status === 'Completed' && selectedSite.end_date) {
+            const maxD = getMaxAttendanceDate();
+            if (maxD && attendanceDate > maxD) {
+                setAttendanceDate(maxD);
+            }
+        }
+    }, [selectedSite, attendanceDate]);
+
     // Handle nested data dependencies inside clicked site dashboard
     useEffect(() => {
         if (activeTab === 'sites' && selectedSite) {
@@ -564,7 +582,9 @@ const MobileLabourManagement = () => {
             name: labour.name,
             amount: '',
             date: new Date().toISOString().split('T')[0],
-            notes: ''
+            notes: '',
+            accrued_credit: labour.accrued_credit,
+            net_payable: labour.net_payable
         });
         setShowAdvanceModal(true);
     };
@@ -688,7 +708,9 @@ const MobileLabourManagement = () => {
             name: lab.name,
             amount: '',
             date: new Date().toISOString().split('T')[0],
-            notes: ''
+            notes: '',
+            accrued_credit: lab.global_earned,
+            net_payable: lab.global_net_payable
         });
         setShowAdvanceModal(true);
     };
@@ -810,11 +832,20 @@ const MobileLabourManagement = () => {
                                     {/* Component views filtered for selectedSite */}
                                     {subTab === 'attendance' && (
                                          <div className="space-y-3 animate-in fade-in duration-100">
+                                             {selectedSite?.status === 'Completed' && selectedSite.end_date && (
+                                                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-3 rounded-xl text-amber-700 dark:text-amber-400 font-semibold text-[10px] flex items-start gap-1.5 shadow-sm">
+                                                     <span>⚠️</span>
+                                                     <span>
+                                                         This site was marked completed on <strong>{new Date(selectedSite.end_date).toLocaleDateString()}</strong>. Attendance is restricted to dates strictly before completion.
+                                                     </span>
+                                                 </div>
+                                             )}
                                              <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex flex-col gap-2.5">
                                                       <MobileDatePicker
                                                           label="Roster Date"
                                                           value={attendanceDate}
                                                           onChange={(val) => setAttendanceDate(val)}
+                                                          maxDate={getMaxAttendanceDate()}
                                                       />
                                                       <MinimalSelect
                                                           options={[
@@ -894,13 +925,6 @@ const MobileLabourManagement = () => {
                                                                          </div>
                                                                          <div className="flex items-center gap-1.5 mt-1 text-[9px] text-slate-400 dark:text-github-dark-muted font-mono uppercase">
                                                                              <span>{item.role}</span>
-                                                                             <span>•</span>
-                                                                             <span className={`px-1.5 py-0.2 rounded text-[8px] font-bold ${item.wage_type === 'Fixed Salary'
-                                                                                 ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
-                                                                                 : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                                                 }`}>
-                                                                                 {item.wage_type}
-                                                                             </span>
                                                                          </div>
                                                                      </div>
                                                                  </div>
@@ -909,8 +933,7 @@ const MobileLabourManagement = () => {
                                                                      {[
                                                                          { id: 'Present', label: 'Present (Full Day)', activeColor: 'bg-emerald-500 text-white dark:bg-emerald-600', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
                                                                          { id: 'Half Day', label: 'Half Day', activeColor: 'bg-amber-500 text-white dark:bg-amber-600', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
-                                                                         { id: 'Absent', label: 'Absent', activeColor: 'bg-rose-500 text-white dark:bg-rose-600', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
-                                                                         ...(item.wage_type === 'Fixed Salary' ? [{ id: 'Paid Leave', label: 'Paid Leave', activeColor: 'bg-indigo-500 text-white dark:bg-indigo-600', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' }] : [])
+                                                                         { id: 'Absent', label: 'Absent', activeColor: 'bg-rose-500 text-white dark:bg-rose-600', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' }
                                                                      ].map(statusOpt => {
                                                                          const isSelected = item.status === statusOpt.id;
                                                                          return (
@@ -1090,14 +1113,8 @@ const MobileLabourManagement = () => {
                                                                     <div className="flex justify-between items-start">
                                                                         <div className="cursor-pointer" onClick={() => handleViewHistory(row)}>
                                                                             <h4 className="font-bold text-slate-800 dark:text-white text-xs">{row.name}</h4>
-                                                                            <span className="text-[9px] text-slate-450 dark:text-github-dark-muted block font-mono">{row.role} | {row.wage_type}</span>
+                                                                            <span className="text-[9px] text-slate-450 dark:text-github-dark-muted block font-mono">{row.role}</span>
                                                                         </div>
-                                                                        <span className={`px-2 py-0.5 rounded text-[8px] font-bold ${row.wage_type === 'Fixed Salary'
-                                                                                ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
-                                                                                : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/30'
-                                                                            }`}>
-                                                                            {row.wage_type}
-                                                                        </span>
                                                                     </div>
                                                                     <div className="grid grid-cols-4 gap-1 bg-slate-50 dark:bg-github-dark-border/20 p-2 rounded-lg text-center text-[9px]">
                                                                         <div>
@@ -1420,24 +1437,14 @@ const MobileLabourManagement = () => {
                                         size="sm"
                                         triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
                                     />
-                                    <MinimalSelect
-                                        options={[
-                                            { value: 'Daily Wage', label: 'Daily Wage' },
-                                            { value: 'Fixed Salary', label: 'Fixed Monthly Salary' }
-                                        ]}
-                                        value={labourForm.wage_type}
-                                        onChange={(val) => setLabourForm({ ...labourForm, wage_type: val })}
-                                        variant="input"
-                                        size="sm"
-                                        triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
-                                    />
+
                                     <input
                                         type="number"
                                         value={labourForm.monthly_salary}
                                         onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
                                         className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
                                         required
-                                        placeholder="Monthly Wage Salary"
+                                        placeholder="Daily Wage (INR)"
                                     />
                                     {editingLabour && (
                                         <MinimalSelect
@@ -1514,6 +1521,14 @@ const MobileLabourManagement = () => {
                                         required
                                         placeholder="Advance Amount (INR)"
                                     />
+                                    {advanceForm.amount && Number(advanceForm.amount) > Number(advanceForm.net_payable || 0) && (
+                                        <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-2.5 rounded-xl text-rose-700 dark:text-rose-455 font-bold text-[10px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm">
+                                            <span>⚠️</span>
+                                            <span>
+                                                Warning: Advance exceeds net payable balance (₹{Number(advanceForm.net_payable || 0).toLocaleString()}).
+                                            </span>
+                                        </div>
+                                    )}
                                     <input
                                         type="date"
                                         value={advanceForm.date}

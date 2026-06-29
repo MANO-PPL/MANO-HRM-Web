@@ -213,13 +213,30 @@ const LabourManagement = () => {
         loadInitial();
     }, []);
 
-    // Sync site select ids when selectedSite changes
     useEffect(() => {
         if (selectedSite) {
             setAttendanceSiteId(selectedSite.site_id.toString());
             setGridSiteId(selectedSite.site_id.toString());
         }
     }, [selectedSite]);
+
+    const getMaxAttendanceDate = () => {
+        if (selectedSite && selectedSite.status === 'Completed' && selectedSite.end_date) {
+            const d = new Date(selectedSite.end_date);
+            d.setDate(d.getDate() - 1);
+            return d.toISOString().split('T')[0];
+        }
+        return undefined;
+    };
+
+    useEffect(() => {
+        if (selectedSite && selectedSite.status === 'Completed' && selectedSite.end_date) {
+            const maxD = getMaxAttendanceDate();
+            if (maxD && attendanceDate > maxD) {
+                setAttendanceDate(maxD);
+            }
+        }
+    }, [selectedSite, attendanceDate]);
 
     // Handle nested data dependencies inside clicked site dashboard
     useEffect(() => {
@@ -564,7 +581,9 @@ const LabourManagement = () => {
             name: labour.name,
             amount: '',
             date: new Date().toISOString().split('T')[0],
-            notes: ''
+            notes: '',
+            accrued_credit: labour.accrued_credit,
+            net_payable: labour.net_payable
         });
         setShowAdvanceModal(true);
     };
@@ -688,7 +707,9 @@ const LabourManagement = () => {
             name: lab.name,
             amount: '',
             date: new Date().toISOString().split('T')[0],
-            notes: ''
+            notes: '',
+            accrued_credit: lab.global_earned,
+            net_payable: lab.global_net_payable
         });
         setShowAdvanceModal(true);
     };
@@ -926,6 +947,7 @@ const LabourManagement = () => {
                                                     <DatePicker
                                                         value={attendanceDate}
                                                         onChange={(val) => setAttendanceDate(val)}
+                                                        maxDate={getMaxAttendanceDate()}
                                                         compact={true}
                                                     />
                                                 </>
@@ -998,6 +1020,14 @@ const LabourManagement = () => {
                                     {/* Component Renders (filtered for this site) */}
                                     {subTab === 'attendance' && (
                                         <div className="space-y-4 animate-in fade-in duration-150">
+                                            {selectedSite?.status === 'Completed' && selectedSite.end_date && (
+                                                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-3.5 rounded-xl text-amber-700 dark:text-amber-400 font-semibold text-xs flex items-center gap-2 shadow-sm">
+                                                    <span>⚠️</span>
+                                                    <span>
+                                                        This site was marked completed on <strong>{new Date(selectedSite.end_date).toLocaleDateString()}</strong>. Attendance is restricted to dates strictly before completion.
+                                                    </span>
+                                                </div>
+                                            )}
 
                                             {attendanceLoading ? (
                                                 <div className="flex justify-center py-20">
@@ -1393,8 +1423,7 @@ const LabourManagement = () => {
                                                 <th className="p-3">Gender</th>
                                                 <th className="p-3">Role / Designation</th>
                                                 <th className="p-3">Assigned Site</th>
-                                                <th className="p-3">Wage Model</th>
-                                                <th className="p-3">Monthly Salary</th>
+                                                <th className="p-3">Daily Wage</th>
                                                 <th className="p-3 text-right">Actions</th>
                                             </tr>
                                         </thead>
@@ -1451,14 +1480,6 @@ const LabourManagement = () => {
                                                                     </div>
                                                                 );
                                                             })()}
-                                                        </td>
-                                                        <td className="p-3">
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${lab.wage_type === 'Fixed Salary'
-                                                                ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
-                                                                : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                                }`}>
-                                                                {lab.wage_type}
-                                                            </span>
                                                         </td>
                                                         <td className="p-3 font-medium text-slate-700 dark:text-github-dark-text dark:text-slate-300">
                                                             ₹{Number(lab.monthly_salary).toLocaleString()}
@@ -1671,20 +1692,7 @@ const LabourManagement = () => {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Wage Model</label>
-                                            <MinimalSelect
-                                                value={labourForm.wage_type}
-                                                onChange={(val) => setLabourForm({ ...labourForm, wage_type: val })}
-                                                options={[
-                                                    { value: 'Daily Wage', label: 'Daily Wage (strictly pro-rated)' },
-                                                    { value: 'Fixed Salary', label: 'Fixed Monthly Salary' }
-                                                ]}
-                                                triggerClassName="w-full justify-between"
-                                                variant="input"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Monthly Salary (INR)</label>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Daily Wage (INR)</label>
                                             <input
                                                 type="number"
                                                 value={labourForm.monthly_salary}
@@ -1692,7 +1700,7 @@ const LabourManagement = () => {
                                                 className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
                                                 required
                                                 min="0"
-                                                placeholder="e.g., 25000"
+                                                placeholder="e.g., 600"
                                             />
                                         </div>
                                         {editingLabour && (
@@ -1779,6 +1787,14 @@ const LabourManagement = () => {
                                         </div>
                                         <div>
                                             <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Advance Amount (INR)</label>
+                                            {advanceForm.amount && Number(advanceForm.amount) > Number(advanceForm.net_payable || 0) && (
+                                                <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-3 rounded-lg text-rose-700 dark:text-rose-400 font-bold text-[11px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm mb-2">
+                                                    <span>⚠️</span>
+                                                    <span>
+                                                        Warning: Advance amount (₹{Number(advanceForm.amount).toLocaleString()}) exceeds the worker's net payable balance (₹{Number(advanceForm.net_payable || 0).toLocaleString()}).
+                                                    </span>
+                                                </div>
+                                            )}
                                             <input
                                                 type="number"
                                                 value={advanceForm.amount}
@@ -2780,10 +2796,9 @@ const LabourManagement = () => {
                                                     <ul className="list-disc pl-4 space-y-1 font-mono text-[10px]">
                                                         <li><strong>Name</strong> (Required)</li>
                                                         <li><strong>Role</strong> (Required, e.g. Mason, Carpenter)</li>
-                                                        <li><strong>Monthly Salary</strong> (Required, e.g. 15000)</li>
+                                                        <li><strong>Daily Wage</strong> (Required, e.g. 600)</li>
                                                         <li><strong>Phone</strong> (Optional, 10 digit number)</li>
                                                         <li><strong>Sex</strong> (Optional, Male/Female, defaults to Male)</li>
-                                                        <li><strong>Wage Type</strong> (Optional, "Daily Wage" or "Fixed Salary")</li>
                                                         <li><strong>Site Name</strong> (Optional, matches existing construction site name)</li>
                                                     </ul>
                                                     <div className="pt-2">
