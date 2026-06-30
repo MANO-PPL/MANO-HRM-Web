@@ -358,6 +358,13 @@ function getDefaultShiftConfig() {
  * @returns {Promise<{ok: boolean, error?: string}>}
  */
 export async function checkLocationCompliance(user_id, lat, lng, accuracy, requirements) {
+    const reqs = requirements || {};
+    // Handle both old nested and new flat structures
+    const geoPolicy = reqs.geolocation || reqs; 
+    
+    // If not required, pass
+    if (geoPolicy.geofence === false || geoPolicy.required === false) return { ok: true };
+
     // 1. Basic Validation
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
         return { ok: false, error: "Invalid or missing latitude/longitude" };
@@ -367,13 +374,6 @@ export async function checkLocationCompliance(user_id, lat, lng, accuracy, requi
     if (!accuracy || accuracy > MAX_ALLOWED_ACCURACY) {
         return { ok: false, error: `Location accuracy too poor (${Math.round(accuracy)}m). GPS/Wi-Fi required (< ${MAX_ALLOWED_ACCURACY}m).` };
     }
-
-    const reqs = requirements || {};
-    // Handle both old nested and new flat structures
-    const geoPolicy = reqs.geolocation || reqs; 
-    
-    // If not required, pass
-    if (geoPolicy.geofence === false || geoPolicy.required === false) return { ok: true };
 
     // 2. Perform Geofence Check
     const isInLocation = await verifyUserGeofence(user_id, lat, lng);

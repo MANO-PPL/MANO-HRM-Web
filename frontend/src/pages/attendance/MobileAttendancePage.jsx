@@ -269,6 +269,7 @@ const MobileAttendancePage = () => {
     const [loading, setLoading] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
     const [fileFormat, setFileFormat] = useState('xlsx');
+    const [myShift, setMyShift] = useState(() => attendanceCacheData.shiftPolicy?.shift || attendanceCacheData.shiftPolicy || null);
 
     // Reports Self-Service States
     const [reportsSelectedMonth, setReportsSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -338,6 +339,12 @@ const MobileAttendancePage = () => {
             d.push(date);
         }
         setScrollerDates(d);
+
+        attendanceService.getMyShiftPolicy()
+            .then(data => {
+                if (data.ok) setMyShift(data.shift);
+            })
+            .catch(console.error);
     }, []);
 
     // --- FETCHING ---
@@ -579,6 +586,57 @@ const MobileAttendancePage = () => {
         setImgSrc(null);
     };
 
+    const handlePunchClick = async (mode) => {
+        const isSelfieRequired = mode === 'IN'
+            ? (myShift?.rules?.entry_requirements?.selfie ?? false)
+            : (myShift?.rules?.exit_requirements?.selfie ?? false);
+
+        if (isSelfieRequired) {
+            openCamera(mode);
+        } else {
+            await executeDirectPunch(mode);
+        }
+    };
+
+    const executeDirectPunch = async (mode) => {
+        const isGeoRequired = mode === 'IN'
+            ? (myShift?.rules?.entry_requirements?.geofence ?? false)
+            : (myShift?.rules?.exit_requirements?.geofence ?? false);
+
+        if (isGeoRequired && !location.lat) {
+            toast.error("Location not found");
+            return;
+        }
+
+        setIsSubmitting(true);
+        setCameraMode(mode);
+        try {
+            const payload = {
+                latitude: location.lat,
+                longitude: location.lng,
+                accuracy: location.lat ? 10 : null
+            };
+
+            if (mode === 'IN') {
+                await attendanceService.timeIn(payload);
+                toast.success("Checked In Successfully!");
+            } else {
+                await attendanceService.timeOut(payload);
+                toast.success("Checked Out Successfully!");
+            }
+
+            setCameraMode(null);
+            fetchDailyRecords();
+            fetchMonthlyRecords();
+        } catch (error) {
+            console.error(error);
+            setCameraMode(null);
+            toast.error(error.message || "Attendance failed");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const closeCamera = () => {
         setShowCamera(false);
         setImgSrc(null);
@@ -604,17 +662,31 @@ const MobileAttendancePage = () => {
     };
 
     const confirmAttendance = async () => {
-        if (!imgSrc || !location.lat) return;
+        const isSelfieRequired = cameraMode === 'IN'
+            ? (myShift?.rules?.entry_requirements?.selfie ?? false)
+            : (myShift?.rules?.exit_requirements?.selfie ?? false);
+
+        const isGeoRequired = cameraMode === 'IN'
+            ? (myShift?.rules?.entry_requirements?.geofence ?? false)
+            : (myShift?.rules?.exit_requirements?.geofence ?? false);
+
+        if (isSelfieRequired && !imgSrc) return;
+        if (isGeoRequired && !location.lat) {
+            toast.error("Location not found");
+            return;
+        }
 
         setIsSubmitting(true);
         try {
-            const imageBlob = dataURLtoBlob(imgSrc);
             const payload = {
                 latitude: location.lat,
                 longitude: location.lng,
-                accuracy: 10,
-                imageFile: imageBlob
+                accuracy: location.lat ? 10 : null
             };
+            if (imgSrc) {
+                const imageBlob = dataURLtoBlob(imgSrc);
+                payload.imageFile = imageBlob;
+            }
 
             if (cameraMode === 'IN') {
                 await attendanceService.timeIn(payload);
@@ -1266,8 +1338,8 @@ const MobileAttendancePage = () => {
                                 {/* Punch Cards - Redesigned to match image */}
                                 <div className="grid grid-cols-1 gap-4">
                                     <button
-                                        onClick={() => !hasActiveSession && openCamera('IN')}
-                                        disabled={hasActiveSession}
+                                        onClick={() => !hasActiveSession && !isSubmitting && handlePunchClick('IN')}
+                                        disabled={hasActiveSession || isSubmitting}
                                         className={`group relative p-4 rounded-[2rem] flex items-center justify-between transition-all duration-300 overflow-hidden border ${
                                             hasActiveSession
                                                 ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
@@ -1283,7 +1355,9 @@ const MobileAttendancePage = () => {
                                                 <ArrowRight size={22} strokeWidth={2.5} />
                                             </div>
                                             <div className="text-left">
-                                                <h3 className={`text-base font-bold tracking-tight ${hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>Time In</h3>
+                                                <h3 className={`text-base font-bold tracking-tight ${hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                                                    {isSubmitting && cameraMode === 'IN' && !showCamera ? 'Processing...' : 'Time In'}
+                                                </h3>
                                                 <p className="text-slate-400 dark:text-slate-500 text-[11px] font-medium mt-0.5">
                                                     {hasActiveSession ? 'Session active' : 'Start shift for today'}
                                                 </p>
@@ -1295,8 +1369,8 @@ const MobileAttendancePage = () => {
                                     </button>
 
                                     <button
-                                        onClick={() => hasActiveSession && openCamera('OUT')}
-                                        disabled={!hasActiveSession}
+                                        onClick={() => hasActiveSession && !isSubmitting && handlePunchClick('OUT')}
+                                        disabled={!hasActiveSession || isSubmitting}
                                         className={`group relative p-4 rounded-[2rem] flex items-center justify-between transition-all duration-300 overflow-hidden border ${
                                             !hasActiveSession
                                                 ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
@@ -1312,7 +1386,9 @@ const MobileAttendancePage = () => {
                                                 <LogOut size={22} strokeWidth={2.5} />
                                             </div>
                                             <div className="text-left">
-                                                <h3 className={`text-base font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>Time Out</h3>
+                                                <h3 className={`text-base font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                                                    {isSubmitting && cameraMode === 'OUT' && !showCamera ? 'Processing...' : 'Time Out'}
+                                                </h3>
                                                 <p className="text-slate-400 dark:text-slate-500 text-[11px] font-medium mt-0.5">
                                                     {!hasActiveSession ? 'No active session' : 'End your day'}
                                                 </p>
@@ -2327,39 +2403,66 @@ const MobileAttendancePage = () => {
 
             {/* Camera Overlay */}
             {showCamera && createPortal(
-                <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
-                    <div className="flex-1 relative">
-                        {imgSrc ? (
-                            <img src={imgSrc} alt="Captured" className="w-full h-full object-cover" />
-                        ) : (
-                            <Webcam
-                                audio={false}
-                                ref={webcamRef}
-                                screenshotFormat="image/jpeg"
-                                className="w-full h-full object-cover"
-                                videoConstraints={{ facingMode: "user" }}
-                            />
-                        )}
-                        <button onClick={closeCamera} className="absolute top-6 right-6 p-4 bg-black/50 text-white rounded-full backdrop-blur-md">
-                            <X size={24} />
-                        </button>
+                (() => {
+                    const isSelfieRequired = cameraMode === 'IN'
+                        ? (myShift?.rules?.entry_requirements?.selfie ?? true)
+                        : (myShift?.rules?.exit_requirements?.selfie ?? false);
 
-                        <div className="absolute bottom-12 left-0 right-0 px-10">
-                            {!imgSrc ? (
-                                <button onClick={capture} className="w-20 h-20 bg-white rounded-full mx-auto border-8 border-white/30 flex items-center justify-center">
-                                    <div className="w-14 h-14 bg-indigo-600 rounded-full" />
+                    return (
+                        <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
+                            <div className="flex-1 relative">
+                                {isSelfieRequired ? (
+                                    imgSrc ? (
+                                        <img src={imgSrc} alt="Captured" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <Webcam
+                                            audio={false}
+                                            ref={webcamRef}
+                                            screenshotFormat="image/jpeg"
+                                            className="w-full h-full object-cover"
+                                            videoConstraints={{ facingMode: "user" }}
+                                        />
+                                    )
+                                ) : (
+                                    <div className="w-full h-full bg-slate-900/50 backdrop-blur-md flex flex-col items-center justify-center text-center p-6">
+                                        <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center mb-4 text-indigo-400 border border-indigo-500/20">
+                                            <Clock size={36} />
+                                        </div>
+                                        <h4 className="text-xl font-bold text-white mb-2">Ready to {cameraMode === 'IN' ? 'Time In' : 'Time Out'}</h4>
+                                        <p className="text-sm text-slate-400 max-w-xs">
+                                            Selfie verification is not required. Click confirm below to record your attendance.
+                                        </p>
+                                    </div>
+                                )}
+                                <button onClick={closeCamera} className="absolute top-6 right-6 p-4 bg-black/50 text-white rounded-full backdrop-blur-md">
+                                    <X size={24} />
                                 </button>
-                            ) : (
-                                <div className="flex gap-4">
-                                    <button onClick={retake} className="flex-1 py-5 bg-white/10 backdrop-blur-md text-white font-black uppercase tracking-widest rounded-2xl border border-white/20">Retake</button>
-                                    <button onClick={confirmAttendance} disabled={isSubmitting} className="flex-1 py-5 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl">
-                                        {isSubmitting ? 'Processing...' : 'Confirm'}
-                                    </button>
+
+                                <div className="absolute bottom-12 left-0 right-0 px-10">
+                                    {!isSelfieRequired ? (
+                                        <div className="flex gap-4">
+                                            <button onClick={closeCamera} className="flex-1 py-5 bg-white/10 backdrop-blur-md text-white font-black uppercase tracking-widest rounded-2xl border border-white/20">Cancel</button>
+                                            <button onClick={confirmAttendance} disabled={isSubmitting} className="flex-1 py-5 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl">
+                                                {isSubmitting ? 'Processing...' : 'Confirm'}
+                                            </button>
+                                        </div>
+                                    ) : !imgSrc ? (
+                                        <button onClick={capture} className="w-20 h-20 bg-white rounded-full mx-auto border-8 border-white/30 flex items-center justify-center">
+                                            <div className="w-14 h-14 bg-indigo-600 rounded-full" />
+                                        </button>
+                                    ) : (
+                                        <div className="flex gap-4">
+                                            <button onClick={retake} className="flex-1 py-5 bg-white/10 backdrop-blur-md text-white font-black uppercase tracking-widest rounded-2xl border border-white/20">Retake</button>
+                                            <button onClick={confirmAttendance} disabled={isSubmitting} className="flex-1 py-5 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl">
+                                                {isSubmitting ? 'Processing...' : 'Confirm'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            </div>
                         </div>
-                    </div>
-                </div>,
+                    );
+                })(),
                 document.body
             )}
 

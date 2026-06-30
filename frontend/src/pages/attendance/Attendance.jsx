@@ -1074,8 +1074,6 @@ const Attendance = () => {
     useEffect(() => {
         fetchCorrectionHistory();
     }, [fetchCorrectionHistory]);
-
-
     // --- ACTION HANDLERS ---
 
     const openCamera = (mode) => {
@@ -1085,6 +1083,119 @@ const Attendance = () => {
         setLateReasonMessage("");
         setLateReasonText("");
         setShowCamera(true);
+    };
+
+    const handlePunchClick = async (mode) => {
+        const isSelfieRequired = mode === 'IN'
+            ? (myShift?.rules?.entry_requirements?.selfie ?? false)
+            : (myShift?.rules?.exit_requirements?.selfie ?? false);
+
+        if (isSelfieRequired) {
+            openCamera(mode);
+        } else {
+            await executeDirectPunch(mode);
+        }
+    };
+
+    const executeDirectPunch = async (mode) => {
+        setIsSubmitting(true);
+        setCameraMode(mode);
+
+        const isGeoRequired = mode === 'IN'
+            ? (myShift?.rules?.entry_requirements?.geofence ?? false)
+            : (myShift?.rules?.exit_requirements?.geofence ?? false);
+
+        const submitDirectData = async (latitude, longitude, accuracy) => {
+            try {
+                let payload = { latitude, longitude, accuracy };
+
+                let res;
+                if (mode === 'IN') {
+                    res = await attendanceService.timeIn(payload);
+                    toast.success("Checked In Successfully!");
+                } else {
+                    res = await attendanceService.timeOut(payload);
+                    toast.success("Checked Out Successfully!");
+                }
+
+                setCameraMode(null);
+                fetchDailyRecords();
+            } catch (error) {
+                console.error(error);
+                const errorMsg = error.message || "Attendance failed";
+                const errorLower = errorMsg.toLowerCase();
+
+                if (mode === 'IN' && errorLower.includes("late") && errorLower.includes("reason")) {
+                    setCameraMode(mode);
+                    setImgSrc(null);
+                    setRequireLateReason(true);
+                    setLateReasonMessage(errorMsg);
+                    setLateReasonText("");
+                    setShowCamera(true);
+                    toast.warning(errorMsg);
+                } else {
+                    setCameraMode(null);
+                    toast.error(errorMsg);
+                }
+            } finally {
+                setIsSubmitting(false);
+            }
+        };
+
+        if (!isGeoRequired) {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude, accuracy } = position.coords;
+                        submitDirectData(latitude, longitude, accuracy);
+                    },
+                    (err) => {
+                        console.warn("Direct punch location fetch failed, proceeding with null location", err);
+                        submitDirectData(null, null, null);
+                    },
+                    { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+                );
+            } else {
+                submitDirectData(null, null, null);
+            }
+        } else {
+            if (!navigator.geolocation) {
+                toast.error("Geolocation is not supported");
+                setIsSubmitting(false);
+                return;
+            }
+
+            const handleGeoSuccess = (position) => {
+                const { latitude, longitude, accuracy } = position.coords;
+                submitDirectData(latitude, longitude, accuracy);
+            };
+
+            const handleGeoError = (error) => {
+                console.warn("High accuracy geolocation failed during punch-in/out, retrying with low accuracy...", error);
+                if (error.code === 3 || error.code === 1) {
+                    navigator.geolocation.getCurrentPosition(
+                        handleGeoSuccess,
+                        (fallbackError) => {
+                            console.error("Fallback geolocation also failed:", fallbackError);
+                            toast.error("Location error: " + fallbackError.message);
+                            setCameraMode(null);
+                            setIsSubmitting(false);
+                        },
+                        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+                    );
+                } else {
+                    toast.error("Location error: " + error.message);
+                    setCameraMode(null);
+                    setIsSubmitting(false);
+                }
+            };
+
+            navigator.geolocation.getCurrentPosition(
+                handleGeoSuccess,
+                handleGeoError,
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
     };
 
     const closeCamera = () => {
@@ -1115,23 +1226,24 @@ const Attendance = () => {
     }
 
     const confirmAttendance = async () => {
-        if (!imgSrc) return;
+        const isSelfieRequired = cameraMode === 'IN'
+            ? (myShift?.rules?.entry_requirements?.selfie ?? false)
+            : (myShift?.rules?.exit_requirements?.selfie ?? false);
+
+        const isGeoRequired = cameraMode === 'IN'
+            ? (myShift?.rules?.entry_requirements?.geofence ?? false)
+            : (myShift?.rules?.exit_requirements?.geofence ?? false);
+
+        if (isSelfieRequired && !imgSrc) return;
         setIsSubmitting(true);
 
-        if (!navigator.geolocation) {
-            toast.error("Geolocation is not supported");
-            setIsSubmitting(false);
-            return;
-        }
-
-        const submitData = async (position) => {
+        const submitData = async (latitude, longitude, accuracy) => {
             try {
-                const { latitude, longitude, accuracy } = position.coords;
-                // const MAX_ALLOWED_ACCURACY = 200; 
-                // if (accuracy > MAX_ALLOWED_ACCURACY) ... (Strict check disabled for dev flexibility if needed, but keeping generally)
-
-                const imageBlob = dataURLtoBlob(imgSrc);
-                let payload = { latitude, longitude, accuracy, imageFile: imageBlob };
+                let payload = { latitude, longitude, accuracy };
+                if (imgSrc) {
+                    const imageBlob = dataURLtoBlob(imgSrc);
+                    payload.imageFile = imageBlob;
+                }
 
                 if (requireLateReason && lateReasonText.trim()) {
                     payload.late_reason = lateReasonText;
@@ -1167,29 +1279,58 @@ const Attendance = () => {
             }
         };
 
-        const handleGeoError = (error) => {
-            console.warn("High accuracy geolocation failed during punch-in/out, retrying with low accuracy...", error);
-            if (error.code === 3 || error.code === 1) {
+        if (!isGeoRequired) {
+            if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
-                    submitData,
-                    (fallbackError) => {
-                        console.error("Fallback geolocation also failed:", fallbackError);
-                        toast.error("Location error: " + fallbackError.message);
-                        setIsSubmitting(false);
+                    (position) => {
+                        const { latitude, longitude, accuracy } = position.coords;
+                        submitData(latitude, longitude, accuracy);
                     },
-                    { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+                    (err) => {
+                        console.warn("Selfie punch location fetch failed, proceeding with null location", err);
+                        submitData(null, null, null);
+                    },
+                    { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
                 );
             } else {
-                toast.error("Location error: " + error.message);
-                setIsSubmitting(false);
+                submitData(null, null, null);
             }
-        };
+        } else {
+            if (!navigator.geolocation) {
+                toast.error("Geolocation is not supported");
+                setIsSubmitting(false);
+                return;
+            }
 
-        navigator.geolocation.getCurrentPosition(
-            submitData,
-            handleGeoError,
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
-        );
+            const handleGeoSuccess = (position) => {
+                const { latitude, longitude, accuracy } = position.coords;
+                submitData(latitude, longitude, accuracy);
+            };
+
+            const handleGeoError = (error) => {
+                console.warn("High accuracy geolocation failed, retrying with low accuracy...", error);
+                if (error.code === 3 || error.code === 1) {
+                    navigator.geolocation.getCurrentPosition(
+                        handleGeoSuccess,
+                        (fallbackError) => {
+                            console.error("Fallback geolocation also failed:", fallbackError);
+                            toast.error("Location error: " + fallbackError.message);
+                            setIsSubmitting(false);
+                        },
+                        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+                    );
+                } else {
+                    toast.error("Location error: " + error.message);
+                    setIsSubmitting(false);
+                }
+            };
+
+            navigator.geolocation.getCurrentPosition(
+                handleGeoSuccess,
+                handleGeoError,
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
     };
 
     const handleDownloadReport = async () => {
@@ -1690,8 +1831,8 @@ const Attendance = () => {
                                     <div data-tour-id="att-session-actions" className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                         {/* Time In Card */}
                                         <button
-                                            onClick={() => openCamera('IN')}
-                                            disabled={hasActiveSession}
+                                            onClick={() => handlePunchClick('IN')}
+                                            disabled={hasActiveSession || isSubmitting}
                                             data-tour-id="att-checkin-btn"
                                             className={`group relative p-5 rounded-xl flex items-center justify-between transition-all duration-500 overflow-hidden border-2 ${
                                                 hasActiveSession
@@ -1708,7 +1849,9 @@ const Attendance = () => {
                                                     <ArrowRight size={24} strokeWidth={2.5} />
                                                 </div>
                                                 <div className="text-left">
-                                                    <h3 className={`text-xl font-black tracking-tight ${hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>Time In</h3>
+                                                    <h3 className={`text-xl font-black tracking-tight ${hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>
+                                                        {isSubmitting && cameraMode === 'IN' && !showCamera ? 'Processing...' : 'Time In'}
+                                                    </h3>
                                                     <p className="text-slate-500 dark:text-slate-400 text-[11px] font-bold mt-1 uppercase tracking-wider opacity-60">
                                                         {hasActiveSession ? 'Session Active' : 'Start shift for today'}
                                                     </p>
@@ -1721,8 +1864,8 @@ const Attendance = () => {
 
                                         {/* Time Out Card */}
                                         <button
-                                            onClick={() => openCamera('OUT')}
-                                            disabled={!hasActiveSession}
+                                            onClick={() => handlePunchClick('OUT')}
+                                            disabled={!hasActiveSession || isSubmitting}
                                             className={`group relative p-5 rounded-xl flex items-center justify-between transition-all duration-500 overflow-hidden border-2 ${
                                                 !hasActiveSession
                                                     ? 'bg-slate-50/50 dark:bg-slate-900/20 border-slate-100 dark:border-white/5 opacity-40 grayscale-[0.5]'
@@ -1738,7 +1881,9 @@ const Attendance = () => {
                                                     <LogOut size={24} strokeWidth={2.5} />
                                                 </div>
                                                 <div className="text-left">
-                                                    <h3 className={`text-xl font-black tracking-tight ${!hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>Time Out</h3>
+                                                    <h3 className={`text-xl font-black tracking-tight ${!hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>
+                                                        {isSubmitting && cameraMode === 'OUT' && !showCamera ? 'Processing...' : 'Time Out'}
+                                                    </h3>
                                                     <p className="text-slate-500 dark:text-slate-400 text-[11px] font-bold mt-1 uppercase tracking-wider opacity-60">
                                                         {!hasActiveSession ? 'No Active Session' : 'End your day'}
                                                     </p>
@@ -3393,74 +3538,100 @@ const Attendance = () => {
                         <div className="flex min-h-full items-center justify-center p-4 text-center transition-all duration-200">
                             <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md transition-opacity" onClick={closeCamera} />
                             <div className="relative w-full max-w-4xl space-y-8 animate-in fade-in zoom-in-95 duration-200 text-left mx-auto">
-                            <div className="flex justify-between items-center px-4">
-                                <h3 className="text-2xl font-bold text-white tracking-tight">
+                            <div className="relative flex justify-center items-center px-4">
+                                <h3 className="text-2xl font-bold text-white tracking-tight text-center">
                                     {cameraMode === 'IN' ? 'Check In' : 'Check Out'}
                                 </h3>
                                 <button
                                     onClick={closeCamera}
-                                    className="p-2.5 rounded-full bg-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-all backdrop-blur-md"
+                                    className="absolute right-4 p-2.5 rounded-full bg-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-all backdrop-blur-md"
                                 >
                                     <X size={28} />
                                 </button>
                             </div>
 
-                            <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center aspect-video">
-                                {imgSrc ? (
-                                    <img src={imgSrc} alt="Captured" className="w-full h-full object-cover" />
-                                ) : (
-                                    <Webcam
-                                        audio={false}
-                                        ref={webcamRef}
-                                        screenshotFormat="image/jpeg"
-                                        className="w-full h-full object-cover"
-                                        videoConstraints={{ facingMode: "user" }}
-                                    />
-                                )}
-                            </div>
+                            {(() => {
+                                const isSelfieRequired = cameraMode === 'IN'
+                                    ? (myShift?.rules?.entry_requirements?.selfie ?? true)
+                                    : (myShift?.rules?.exit_requirements?.selfie ?? false);
 
-                            {requireLateReason && imgSrc && (
-                                <div className="space-y-3 px-2 w-full max-w-lg mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                    <div className="flex items-center gap-2 text-amber-300 bg-amber-900/40 border border-amber-500/30 p-3 rounded-xl mb-4 text-sm font-medium">
-                                        <AlertCircle size={18} className="shrink-0" />
-                                        <p>{lateReasonMessage}</p>
-                                    </div>
-                                    <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
-                                        Please provide a reason
-                                    </label>
-                                    <textarea
-                                        value={lateReasonText}
-                                        onChange={(e) => setLateReasonText(e.target.value)}
-                                        placeholder="I got held up in traffic..."
-                                        className="w-full px-4 py-3 bg-slate-800/80 border border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white placeholder-slate-400 h-24 resize-none backdrop-blur-md"
-                                        required
-                                    ></textarea>
-                                </div>
-                            )}
+                                return (
+                                    <>
+                                        {isSelfieRequired && (
+                                            <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center aspect-video">
+                                                {imgSrc ? (
+                                                    <img src={imgSrc} alt="Captured" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <Webcam
+                                                        audio={false}
+                                                        ref={webcamRef}
+                                                        screenshotFormat="image/jpeg"
+                                                        className="w-full h-full object-cover"
+                                                        videoConstraints={{ facingMode: "user" }}
+                                                    />
+                                                )}
+                                            </div>
+                                        )}
 
-                            <div className="flex justify-center gap-6 pt-2">
-                                {!imgSrc ? (
-                                    <button
-                                        onClick={capture}
-                                        className="w-24 h-24 rounded-full bg-white text-indigo-600 hover:scale-110 active:scale-95 flex items-center justify-center shadow-xl shadow-indigo-900/20 transition-all duration-300 ring-8 ring-white/20">
-                                        <Camera size={40} />
-                                    </button>
-                                ) : (
-                                    <div className="flex w-full gap-4 px-4 max-w-lg mx-auto">
-                                        <button
-                                            onClick={retake}
-                                            className="flex-1 px-8 py-4 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white border border-white/10 font-bold text-lg transition-all flex items-center justify-center gap-3 backdrop-blur-md hover:scale-[1.02] active:scale-95">
-                                            <RefreshCw size={22} /> Retake
-                                        </button>
-                                        <button
-                                            onClick={confirmAttendance}
-                                            disabled={isSubmitting}
-                                            className="flex-1 px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-lg shadow-xl shadow-indigo-600/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none">
-                                            {isSubmitting ? '...' : 'Confirm'} <ArrowRight size={22} />
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
+                                        {requireLateReason && (!isSelfieRequired || imgSrc) && (
+                                            <div className="space-y-3 px-2 w-full max-w-lg mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                <div className="flex items-center gap-2 text-amber-300 bg-amber-900/40 border border-amber-500/30 p-3 rounded-xl mb-4 text-sm font-medium">
+                                                    <AlertCircle size={18} className="shrink-0" />
+                                                    <p>{lateReasonMessage}</p>
+                                                </div>
+                                                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                                                    Please provide a reason
+                                                </label>
+                                                <textarea
+                                                    value={lateReasonText}
+                                                    onChange={(e) => setLateReasonText(e.target.value)}
+                                                    placeholder="I got held up in traffic..."
+                                                    className="w-full px-4 py-3 bg-slate-800/80 border border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white placeholder-slate-400 h-24 resize-none backdrop-blur-md"
+                                                    required
+                                                ></textarea>
+                                            </div>
+                                        )}
+
+                                        <div className="flex justify-center gap-6 pt-2">
+                                            {!isSelfieRequired ? (
+                                                <div className="flex w-full gap-4 px-4 max-w-lg mx-auto">
+                                                    <button
+                                                        onClick={closeCamera}
+                                                        className="flex-1 px-8 py-4 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white border border-white/10 font-bold text-lg transition-all flex items-center justify-center gap-3 backdrop-blur-md hover:scale-[1.02] active:scale-95">
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={confirmAttendance}
+                                                        disabled={isSubmitting}
+                                                        className="flex-1 px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-lg shadow-xl shadow-indigo-600/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none">
+                                                        {isSubmitting ? '...' : 'Confirm'} <ArrowRight size={22} />
+                                                    </button>
+                                                </div>
+                                            ) : !imgSrc ? (
+                                                <button
+                                                    onClick={capture}
+                                                    className="w-24 h-24 rounded-full bg-white text-indigo-600 hover:scale-110 active:scale-95 flex items-center justify-center shadow-xl shadow-indigo-900/20 transition-all duration-300 ring-8 ring-white/20">
+                                                    <Camera size={40} />
+                                                </button>
+                                            ) : (
+                                                <div className="flex w-full gap-4 px-4 max-w-lg mx-auto">
+                                                    <button
+                                                        onClick={retake}
+                                                        className="flex-1 px-8 py-4 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white border border-white/10 font-bold text-lg transition-all flex items-center justify-center gap-3 backdrop-blur-md hover:scale-[1.02] active:scale-95">
+                                                        <RefreshCw size={22} /> Retake
+                                                    </button>
+                                                    <button
+                                                        onClick={confirmAttendance}
+                                                        disabled={isSubmitting}
+                                                        className="flex-1 px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-lg shadow-xl shadow-indigo-600/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none">
+                                                        {isSubmitting ? '...' : 'Confirm'} <ArrowRight size={22} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </div>
                     </div>
                     </div>,

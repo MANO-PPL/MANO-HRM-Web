@@ -15,8 +15,11 @@ import {
     FileText,
     UserPlus,
     Briefcase,
-    RefreshCw
+    RefreshCw,
+    Coffee
 } from 'lucide-react';
+import employeeService from '../../services/employeeService';
+import { parsePolicy } from '../../utils/weekOffPolicy';
 import {
     LineChart,
     Line,
@@ -125,6 +128,62 @@ const AdminDashboard = () => {
     const [selectedMonth, setSelectedMonth] = React.useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear());
     const [todayStatus, setTodayStatus] = React.useState(null);
+    const [shift, setShift] = React.useState(null);
+    const [activeWorkingDays, setActiveWorkingDays] = React.useState([]);
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    const formatTime12h = (timeStr) => {
+        if (!timeStr) return '--:--';
+        const parts = timeStr.split(':');
+        if (parts.length < 2) return timeStr;
+        let hour = parseInt(parts[0], 10);
+        const minute = parts[1];
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        hour = hour % 12;
+        hour = hour ? hour : 12;
+        const strHour = hour < 10 ? '0' + hour : hour;
+        return `${strHour}:${minute} ${ampm}`;
+    };
+
+    const formatDuration = (hours) => {
+        if (hours === undefined || hours === null) return '0h';
+        const numHours = parseFloat(hours);
+        if (isNaN(numHours) || numHours === 0) return '0h';
+        const h = Math.floor(numHours);
+        const m = Math.round((numHours - h) * 60);
+        if (m === 0) return `${h}h`;
+        return `${h}h ${m}m`;
+    };
+
+    const getStatusLabel = (status) => {
+        if (!status || status === 'ABSENT') return 'No Session Today';
+        if (status === 'Active') return 'Active Session';
+        if (status === 'Late Active') return 'Late Active';
+        return status;
+    };
+
+    const getStatusBadgeClass = (status) => {
+        if (!status || status === 'ABSENT') return 'bg-white/10 text-white/60 border border-white/5';
+        switch (status) {
+            case 'Active':
+                return 'bg-emerald-500/30 text-emerald-250 border border-emerald-500/20 animate-pulse';
+            case 'Late Active':
+                return 'bg-orange-500/30 text-orange-200 border border-orange-500/20 animate-pulse';
+            case 'PRESENT':
+            case 'LATE':
+            case 'OVERTIME':
+                return 'bg-indigo-500/30 text-indigo-200 border border-indigo-500/20';
+            case 'WEEK_OFF':
+            case 'HOLIDAY':
+                return 'bg-sky-500/20 text-sky-300 border border-sky-500/30';
+            case 'LEAVE':
+                return 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
+            case 'MISSED_PUNCH':
+                return 'bg-rose-500/20 text-rose-300 border border-rose-500/30';
+            default:
+                return 'bg-white/10 text-white/60 border border-white/5';
+        }
+    };
 
     const formatDashboardTime = (isoString) => {
         if (!isoString || isoString === '--:--') return '--:--';
@@ -152,17 +211,40 @@ const AdminDashboard = () => {
     };
 
     React.useEffect(() => {
-        const fetchStatus = async () => {
+        const fetchStatusAndShift = async () => {
             try {
-                const res = await attendanceService.getTodayStatus();
-                if (res.success) {
-                    setTodayStatus(res.data);
+                const [statusRes, shiftRes] = await Promise.all([
+                    attendanceService.getTodayStatus(),
+                    employeeService.getMyShift()
+                ]);
+                if (statusRes.success) {
+                    setTodayStatus(statusRes.data);
+                }
+                if (shiftRes && (shiftRes.ok || shiftRes.success)) {
+                    setShift(shiftRes.shift);
+                    if (shiftRes.shift && shiftRes.shift.rules?.week_off_policy) {
+                        try {
+                            const parsed = parsePolicy(shiftRes.shift.rules.week_off_policy);
+                            setActiveWorkingDays(parsed.workingDays || []);
+                        } catch (e) {
+                            console.error("Failed to parse policy", e);
+                            setActiveWorkingDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+                        }
+                    } else if (shiftRes.shift && shiftRes.shift.working_days) {
+                        try {
+                            const days = JSON.parse(shiftRes.shift.working_days);
+                            setActiveWorkingDays(days);
+                        } catch (e) {
+                            console.error("Failed to parse working days JSON:", e);
+                            setActiveWorkingDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+                        }
+                    }
                 }
             } catch (err) {
-                console.error("Failed to fetch admin today status:", err);
+                console.error("Failed to fetch admin dashboard status/shift:", err);
             }
         };
-        fetchStatus();
+        fetchStatusAndShift();
     }, [user]);
 
     React.useEffect(() => {
@@ -288,62 +370,136 @@ const AdminDashboard = () => {
                         transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
                         className="absolute -bottom-24 -left-24 w-[30rem] h-[30rem] bg-sky-500/10 blur-3xl rounded-full pointer-events-none"
                     />
-
-                    <div className="relative z-10 w-full mx-auto">
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                                <h1 className="text-3xl font-black text-white tracking-tight">
-                                    Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}, {user?.user_name || user?.name || 'Admin'}!
-                                </h1>
-                                <p className="text-indigo-100/70 text-base font-medium mt-2">
-                                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                                </p>
-                            </div>
+                    <div className="relative z-10 w-full mx-auto flex flex-col gap-6">
+                        {/* Greeting and Action Buttons */}
+                        <div>
+                            <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-2">
+                                Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}, {user?.user_name || user?.name || 'Admin'}! 👋
+                            </h1>
+                            <p className="text-indigo-100/70 text-base font-medium mt-2">
+                                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-4 mt-2">
+                            <button
+                                onClick={() => navigate('/attendance')}
+                                className="px-6 py-2.5 bg-white text-indigo-600 font-bold rounded-xl shadow-md hover:bg-indigo-50 transition-all transform hover:-translate-y-1 active:scale-95 flex items-center gap-2 border border-transparent"
+                            >
+                                <Clock size={18} className="text-indigo-600" />
+                                My Attendance
+                            </button>
+                            <button
+                                onClick={() => navigate('/holidays')}
+                                className="px-6 py-2.5 bg-indigo-555/40 border border-indigo-300/30 text-white font-semibold rounded-xl hover:bg-indigo-500/60 transition-all flex items-center gap-2 backdrop-blur-sm"
+                            >
+                                <Calendar size={18} />
+                                Holiday List
+                            </button>
+                            <button
+                                onClick={() => navigate('/apply-leave')}
+                                className="px-6 py-2.5 bg-indigo-555/40 border border-indigo-300/30 text-white font-semibold rounded-xl hover:bg-indigo-500/60 transition-all flex items-center gap-2 backdrop-blur-sm"
+                            >
+                                <Coffee size={18} />
+                                Apply Leave
+                            </button>
                         </div>
 
-                        {/* Recent Session Glass Card */}
-                        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl text-white">
-                            <div className="flex items-center gap-6">
-                                <div className="w-14 h-14 bg-white/20 backdrop-blur-lg rounded-xl flex items-center justify-center shadow-inner shrink-0">
-                                    <Clock size={32} strokeWidth={2.5} className="text-white" />
-                                </div>
-                                <div>
-                                    <span className="block text-[10px] font-black text-indigo-200 tracking-[0.2em] mb-1 opacity-90 uppercase">Recent Session</span>
-                                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
-                                        <div>
-                                            <span className="text-xs text-indigo-100 font-semibold opacity-85">Check In: </span>
-                                            <span className="text-sm font-bold font-mono">
-                                                {formatDashboardTime(todayStatus?.time_in)}
-                                            </span>
-                                        </div>
-                                        <div className="hidden md:block h-5 w-px bg-white/20"></div>
-                                        <div>
-                                            <span className="text-xs text-indigo-100 font-semibold opacity-85">Check Out: </span>
-                                            <span className="text-sm font-bold font-mono">
-                                                {formatDashboardTime(todayStatus?.time_out)}
-                                            </span>
-                                        </div>
-                                        {todayStatus?.duration && (
-                                            <>
-                                                <div className="hidden md:block h-5 w-px bg-white/20"></div>
-                                                <div>
-                                                    <span className="text-xs text-indigo-100 font-semibold opacity-85">Duration: </span>
-                                                    <span className="text-sm font-bold font-mono text-emerald-300">
-                                                        {todayStatus.duration}
+                        {/* Today's Status & Shift Details Side-by-Side Glass Cards */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-2">
+                            {/* Today's Status Card */}
+                            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 flex flex-col justify-center shadow-xl text-white">
+                                <div className="flex items-center gap-4 w-full">
+                                    <div className="w-14 h-14 bg-white/20 backdrop-blur-lg rounded-xl flex items-center justify-center shadow-inner shrink-0">
+                                        <Clock size={32} strokeWidth={2.5} className="text-white" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <span className="block text-[10px] font-black text-indigo-200 tracking-[0.2em] mb-3 opacity-90 uppercase">Today's Status</span>
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                            <div>
+                                                <span className="block text-[10px] font-black text-indigo-200/60 tracking-wider uppercase mb-1">Check In</span>
+                                                <span className="text-base font-extrabold font-mono block text-white mt-1">
+                                                    {formatDashboardTime(todayStatus?.first_in || todayStatus?.time_in)}
+                                                </span>
+                                            </div>
+                                            <div className="hidden sm:block h-8 w-px bg-white/20"></div>
+                                            <div>
+                                                <span className="block text-[10px] font-black text-indigo-200/60 tracking-wider uppercase mb-1">Check Out</span>
+                                                <span className="text-base font-extrabold font-mono block text-white mt-1">
+                                                    {formatDashboardTime(todayStatus?.last_out || todayStatus?.time_out)}
+                                                </span>
+                                            </div>
+                                            <div className="hidden sm:block h-8 w-px bg-white/20"></div>
+                                            <div>
+                                                <span className="block text-[10px] font-black text-indigo-200/60 tracking-wider uppercase mb-1">Duration</span>
+                                                <span className="text-base font-extrabold font-mono text-emerald-350 block mt-1">
+                                                    {formatDuration(todayStatus?.total_hours || todayStatus?.duration)}
+                                                </span>
+                                            </div>
+                                            <div className="hidden sm:block h-8 w-px bg-white/20"></div>
+                                            <div>
+                                                <span className="block text-[10px] font-black text-indigo-200/60 tracking-wider uppercase mb-1.5">Status</span>
+                                                <div className="mt-1">
+                                                    <span className={`px-4 py-1 rounded-full text-xs font-black tracking-wider block text-center ${
+                                                        getStatusBadgeClass(todayStatus?.status)
+                                                    }`}>
+                                                        {getStatusLabel(todayStatus?.status)}
                                                     </span>
                                                 </div>
-                                            </>
-                                        )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div className="w-full md:w-auto flex flex-col md:items-end shrink-0">
-                                <span className="block text-[10px] font-black text-indigo-200 tracking-[0.2em] mb-1 opacity-90 uppercase">Status</span>
-                                <span className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wider ${
-                                    todayStatus ? (todayStatus.time_out ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-500/20' : 'bg-emerald-500/30 text-emerald-250 border border-emerald-500/20 animate-pulse') : 'bg-white/10 text-white/60 border border-white/5'
-                                }`}>
-                                    {todayStatus ? (todayStatus.time_out ? 'Completed' : 'Active Session') : 'No Session Today'}
-                                </span>
+
+                            {/* Shift Details Card (Embedded side-by-side inside welcome) */}
+                            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 flex flex-col justify-center shadow-xl text-white">
+                                <div className="w-full">
+                                    <div className="flex items-center gap-2 text-indigo-300 font-bold uppercase tracking-wider text-xs mb-3">
+                                        <Calendar size={14} className="text-indigo-300" />
+                                        <span>Shift Details</span>
+                                    </div>
+                                    <div className="mb-4">
+                                        <h2 className="text-lg font-bold text-white">
+                                            {shift ? shift.name : 'No Shift Assigned'}
+                                        </h2>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-4 border-l-2 border-indigo-500/30 pl-4 mt-2">
+                                        <div className="flex-1">
+                                            <span className="block text-[10px] font-black text-indigo-250/70 tracking-wider uppercase">Start Time</span>
+                                            <span className="text-base font-extrabold font-mono text-white mt-1 block">
+                                                {shift ? formatTime12h(shift.start_time || shift.rules?.shift_timing?.start_time) : '--:--'}
+                                            </span>
+                                        </div>
+                                        <div className="w-px h-10 bg-white/10"></div>
+                                        <div className="flex-1">
+                                            <span className="block text-[10px] font-black text-indigo-250/70 tracking-wider uppercase">End Time</span>
+                                            <span className="text-base font-extrabold font-mono text-white mt-1 block">
+                                                {shift ? formatTime12h(shift.end_time || shift.rules?.shift_timing?.end_time) : '--:--'}
+                                            </span>
+                                        </div>
+                                        <div className="w-px h-10 bg-white/10"></div>
+                                        <div className="flex-2">
+                                            <span className="block text-[10px] font-black text-indigo-250/70 tracking-wider uppercase mb-1.5">Working Days</span>
+                                            <div className="flex flex-wrap gap-1">
+                                                {weekdays.map(day => {
+                                                    const active = shift ? activeWorkingDays.includes(day) : false;
+                                                    return (
+                                                        <span
+                                                            key={day}
+                                                            className={`px-2.5 py-0.5 text-[10px] rounded ${
+                                                                active 
+                                                                    ? 'bg-white/15 text-white border border-white/10 font-semibold' 
+                                                                    : 'bg-white/5 text-white/30'
+                                                            }`}
+                                                        >
+                                                            {day}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
