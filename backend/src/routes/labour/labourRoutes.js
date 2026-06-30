@@ -8,6 +8,7 @@ import {
     bulkTransferLabours, bulkCreateLabours, getLabourWorkHistory, logLabourPayout,
     downloadBulkTemplate, parseBulkLabours
 } from '../../controllers/labour/labourController.js';
+import { getLabourSchedule, saveLabourSchedule } from '../../controllers/labour/dailyScheduleController.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -42,6 +43,11 @@ router.route('/attendance')
     .post(saveSiteAttendance);
 
 router.get('/attendance/monthly-summary', getMonthlyGridAttendance);
+
+// Daily Schedule Routes
+router.route('/schedule')
+    .get(getLabourSchedule)
+    .post(saveLabourSchedule);
 
 // Financial/Salary Credit Tracker Routes
 router.get('/finances/summary', getFinancesSummary);
