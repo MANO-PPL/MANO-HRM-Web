@@ -156,6 +156,24 @@ export const labourService = {
         }
     },
 
+    async getLabourSchedule(labourId, date) {
+        try {
+            const res = await api.get(`/labour/schedule?labour_id=${labourId}&date=${date}`);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to fetch labour schedule');
+        }
+    },
+
+    async saveLabourSchedule(scheduleData) {
+        try {
+            const res = await api.post('/labour/schedule', scheduleData);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to save labour schedule');
+        }
+    },
+
     // ==========================================
     // 4. FINANCIAL SERVICES
     // ==========================================
