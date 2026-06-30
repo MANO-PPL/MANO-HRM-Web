@@ -275,23 +275,42 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
 
-    // Get all active labours associated with this site, sorted by attendance frequency in the last 30 days
+    // Get all active labours scheduled for this site today, or falling back to their labour_site_relations if not scheduled anywhere
     const labours = await attendanceDB('labours as l')
-        .join('labour_site_relations as r', 'l.labour_id', 'r.labour_id')
         .leftJoin('labour_attendance as a', function() {
             this.on('l.labour_id', '=', 'a.labour_id')
                 .andOn('a.site_id', '=', attendanceDB.raw('?', [Number(site_id)]))
                 .andOn('a.date', '>=', attendanceDB.raw('?', [thirtyDaysAgoStr]))
                 .andOnIn('a.status', ['Present', 'Half Day', 'Paid Leave']);
         })
-        .where({ 'r.site_id': Number(site_id), 'l.status': 'Active' })
+        .where('l.status', 'Active')
+        .andWhere(function() {
+            this.whereIn('l.labour_id', function() {
+                this.select('labour_id')
+                    .from('labour_daily_schedule')
+                    .where({ date, site_id: Number(site_id) });
+            }).orWhere(function() {
+                this.whereIn('l.labour_id', function() {
+                    this.select('labour_id')
+                        .from('labour_site_relations')
+                        .where({ site_id: Number(site_id) });
+                }).whereNotIn('l.labour_id', function() {
+                    this.select('labour_id')
+                        .from('labour_daily_schedule')
+                        .where({ date });
+                });
+            });
+        })
         .select('l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.site_id as primary_site_id')
         .count('a.attendance_id as frequent_count')
         .groupBy('l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.site_id')
         .orderBy('frequent_count', 'desc')
         .orderBy('l.name', 'asc');
 
-    const associatedIds = new Set(labours.map(l => l.labour_id));
+    const relations = await attendanceDB('labour_site_relations')
+        .where('site_id', Number(site_id))
+        .select('labour_id');
+    const associatedIds = new Set(relations.map(r => r.labour_id));
 
     // Get attendance marked for any labours on this date across ALL sites
     // This allows us to detect if a labour has been marked at another site
@@ -332,6 +351,19 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
 
     const allLabours = [...labours, ...extraLabours];
 
+    const allLabourIds = allLabours.map(l => l.labour_id);
+    const dailySchedules = allLabourIds.length > 0
+        ? await attendanceDB('labour_daily_schedule')
+            .where({ date })
+            .whereIn('labour_id', allLabourIds)
+            .select('labour_id')
+        : [];
+
+    const scheduleCountMap = {};
+    dailySchedules.forEach(sch => {
+        scheduleCountMap[sch.labour_id] = (scheduleCountMap[sch.labour_id] || 0) + 1;
+    });
+
     const roster = allLabours.map(lab => ({
         labour_id: lab.labour_id,
         name: lab.name,
@@ -340,7 +372,8 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
         status: attendanceMap[lab.labour_id] || '', // Default to empty string (unmarked) if not marked
         is_borrowed: !associatedIds.has(lab.labour_id),
         frequent_count: Number(lab.frequent_count || 0),
-        already_marked_at: otherSitesAttendanceMap[lab.labour_id] || null
+        already_marked_at: otherSitesAttendanceMap[lab.labour_id] || null,
+        is_scheduled_multi_site: (scheduleCountMap[lab.labour_id] || 0) >= 2
     }));
 
     res.json({
@@ -382,22 +415,37 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                 .whereIn('labour_id', labourIds)
                 .del();
 
-            // Check if any of these labours are already marked at other sites to avoid duplicate marking
+            // Fetch daily schedules for these workers on this date to count scheduled sites
+            const dailySchedules = await trx('labour_daily_schedule')
+                .where({ date })
+                .whereIn('labour_id', labourIds)
+                .select('labour_id');
+
+            const scheduledCountMap = {};
+            dailySchedules.forEach(sch => {
+                scheduledCountMap[sch.labour_id] = (scheduledCountMap[sch.labour_id] || 0) + 1;
+            });
+
+            // Check if any of these labours are already marked with active status at other sites
             const otherSiteRecords = await trx('labour_attendance')
                 .where({ date })
                 .whereNot({ site_id: Number(site_id) })
                 .whereIn('labour_id', labourIds)
+                .whereIn('status', ['Present', 'Half Day', 'Paid Leave'])
                 .select('labour_id');
             const otherSiteLabourIds = new Set(otherSiteRecords.map(r => r.labour_id));
 
-            // Insert new records (filtering out any that are already marked at another site)
+            // Insert new records for this site
             const insertData = [];
             for (const r of roster) {
-                // If they have attendance marked at another site, do not insert a duplicate record
-                if (otherSiteLabourIds.has(r.labour_id)) {
-                    console.log(`⚠️ Skipping attendance save for labour_id ${r.labour_id} on ${date} at site ${site_id} (already marked at another site)`);
+                const isScheduledMultiSite = (scheduledCountMap[r.labour_id] || 0) >= 2;
+                const statusIsActive = ['Present', 'Half Day', 'Paid Leave'].includes(r.status);
+
+                if (!isScheduledMultiSite && statusIsActive && otherSiteLabourIds.has(r.labour_id)) {
+                    console.log(`⚠️ Skipping attendance save for labour_id ${r.labour_id} on ${date} at site ${site_id} (already active on another site)`);
                     continue;
                 }
+
                 insertData.push({
                     labour_id: r.labour_id,
                     site_id: Number(site_id),
@@ -469,11 +517,27 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
 
     const labourIds = labours.map(l => l.labour_id);
 
-    // 2. Fetch all attendance records for these labours ON THIS SITE
+    // 2. Fetch all attendance records for these labours across ALL sites
     const attendanceRecords = await attendanceDB('labour_attendance')
         .whereIn('labour_id', labourIds)
-        .andWhere('site_id', Number(site_id))
-        .select('labour_id', 'status', 'date');
+        .select('labour_id', 'status', 'date', 'site_id');
+
+    // Fetch daily schedules for these labours to calculate divisors
+    const dailySchedules = await attendanceDB('labour_daily_schedule')
+        .whereIn('labour_id', labourIds)
+        .select('labour_id', 'site_id', 'date');
+
+    const scheduleCountMap = {};
+    dailySchedules.forEach(sch => {
+        const dateStr = new Date(sch.date).toISOString().split('T')[0];
+        if (!scheduleCountMap[sch.labour_id]) {
+            scheduleCountMap[sch.labour_id] = {};
+        }
+        if (!scheduleCountMap[sch.labour_id][dateStr]) {
+            scheduleCountMap[sch.labour_id][dateStr] = 0;
+        }
+        scheduleCountMap[sch.labour_id][dateStr] += 1;
+    });
 
     // Group attendance by labour and month (to calculate correct monthly-based wage rates if Fixed Salary)
     const attendanceMap = {};
@@ -484,14 +548,28 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
     attendanceRecords.forEach(rec => {
         const counts = attendanceMap[rec.labour_id];
         if (counts) {
-            const monthKey = new Date(rec.date).toISOString().slice(0, 7); // YYYY-MM
+            const dateStr = new Date(rec.date).toISOString().split('T')[0];
+            const monthKey = dateStr.slice(0, 7); // YYYY-MM
             if (!counts[monthKey]) {
-                counts[monthKey] = { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0 };
+                counts[monthKey] = { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0 };
             }
-            if (rec.status === 'Present') counts[monthKey].Present += 1;
-            else if (rec.status === 'Absent') counts[monthKey].Absent += 1;
-            else if (rec.status === 'Half Day') counts[monthKey].HalfDay += 1;
-            else if (rec.status === 'Paid Leave') counts[monthKey].PaidLeave += 1;
+            const isCurrentSite = Number(rec.site_id) === Number(site_id);
+            if (isCurrentSite) {
+                if (rec.status === 'Present') counts[monthKey].Present += 1;
+                else if (rec.status === 'Absent') counts[monthKey].Absent += 1;
+                else if (rec.status === 'Half Day') counts[monthKey].HalfDay += 1;
+                else if (rec.status === 'Paid Leave') counts[monthKey].PaidLeave += 1;
+
+                // Compute split weight based on scheduled sites count (S)
+                const S = (scheduleCountMap[rec.labour_id] && scheduleCountMap[rec.labour_id][dateStr]) || 1;
+                let w = 0;
+                if (rec.status === 'Present' || rec.status === 'Paid Leave') {
+                    w = 1 / S;
+                } else if (rec.status === 'Half Day') {
+                    w = 0.5 / S;
+                }
+                counts[monthKey].weightSum += w;
+            }
         }
     });
 
@@ -550,28 +628,12 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
             const endOfMonth = new Date(year, monthIdx + 1, 0);
             const totalDays = endOfMonth.getDate();
 
-            // Calculate elapsed days for this month (if current month, only up to today)
-            const today = new Date();
-            let elapsedDays = totalDays;
-            if (today.getFullYear() === year && today.getMonth() === monthIdx) {
-                elapsedDays = today.getDate();
-            }
-
             const dailyRate = lab.wage_type === 'Daily Wage'
                 ? monthlySalary
                 : (monthlySalary / totalDays);
 
-            if (lab.wage_type === 'Daily Wage') {
-                const creditDays = counts.Present + (0.5 * counts.HalfDay);
-                accruedCredit += creditDays * dailyRate;
-            } else {
-                const totalAttendanceRecords = counts.Present + counts.HalfDay + counts.PaidLeave + counts.Absent;
-                if (totalAttendanceRecords > 0) {
-                    const absentDaysCount = counts.Absent + (0.5 * counts.HalfDay);
-                    const paidDays = Math.max(0, elapsedDays - absentDaysCount);
-                    accruedCredit += paidDays * dailyRate;
-                }
-            }
+            // Dynamic credit calculation using weight sum
+            accruedCredit += counts.weightSum * dailyRate;
         });
 
         accruedCredit = Math.round(accruedCredit);
@@ -643,20 +705,45 @@ async function getLabourBalancesPerSite(labour_id) {
         .where('labour_id', labour_id)
         .select('status', 'date', 'site_id');
 
+    // Fetch daily schedules for this worker
+    const dailySchedules = await attendanceDB('labour_daily_schedule')
+        .where('labour_id', labour_id)
+        .select('site_id', 'date');
+
+    const scheduleCountMap = {};
+    dailySchedules.forEach(sch => {
+        const dateStr = new Date(sch.date).toISOString().split('T')[0];
+        if (!scheduleCountMap[dateStr]) {
+            scheduleCountMap[dateStr] = 0;
+        }
+        scheduleCountMap[dateStr] += 1;
+    });
+
     // Group attendance by site and month
     const siteAttendance = {};
     attendance.forEach(rec => {
         const sId = rec.site_id || 0;
         if (!sId) return;
         if (!siteAttendance[sId]) siteAttendance[sId] = {};
-        const monthKey = new Date(rec.date).toISOString().slice(0, 7);
+        const dateStr = new Date(rec.date).toISOString().split('T')[0];
+        const monthKey = dateStr.slice(0, 7);
         if (!siteAttendance[sId][monthKey]) {
-            siteAttendance[sId][monthKey] = { Present: 0, HalfDay: 0, Absent: 0, PaidLeave: 0 };
+            siteAttendance[sId][monthKey] = { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0 };
         }
         if (rec.status === 'Present') siteAttendance[sId][monthKey].Present += 1;
         else if (rec.status === 'Absent') siteAttendance[sId][monthKey].Absent += 1;
         else if (rec.status === 'Half Day') siteAttendance[sId][monthKey].HalfDay += 1;
         else if (rec.status === 'Paid Leave') siteAttendance[sId][monthKey].PaidLeave += 1;
+
+        // Compute split weight based on scheduled sites count (S)
+        const S = scheduleCountMap[dateStr] || 1;
+        let w = 0;
+        if (rec.status === 'Present' || rec.status === 'Paid Leave') {
+            w = 1 / S;
+        } else if (rec.status === 'Half Day') {
+            w = 0.5 / S;
+        }
+        siteAttendance[sId][monthKey].weightSum += w;
     });
 
     // Fetch all advances
@@ -700,27 +787,12 @@ async function getLabourBalancesPerSite(labour_id) {
             const endOfMonth = new Date(year, monthIdx + 1, 0);
             const totalDays = endOfMonth.getDate();
 
-            const today = new Date();
-            let elapsedDays = totalDays;
-            if (today.getFullYear() === year && today.getMonth() === monthIdx) {
-                elapsedDays = today.getDate();
-            }
-
             const dailyRate = worker.wage_type === 'Daily Wage'
                 ? monthlySalary
                 : (monthlySalary / totalDays);
 
-            if (worker.wage_type === 'Daily Wage') {
-                const creditDays = counts.Present + (0.5 * counts.HalfDay);
-                accruedCredit += creditDays * dailyRate;
-            } else {
-                const totalAttendanceRecords = counts.Present + counts.HalfDay + counts.PaidLeave + counts.Absent;
-                if (totalAttendanceRecords > 0) {
-                    const absentDaysCount = counts.Absent + (0.5 * counts.HalfDay);
-                    const paidDays = Math.max(0, elapsedDays - absentDaysCount);
-                    accruedCredit += paidDays * dailyRate;
-                }
-            }
+            // Dynamic credit calculation using weight sum
+            accruedCredit += counts.weightSum * dailyRate;
         });
 
         accruedCredit = Math.round(accruedCredit);
