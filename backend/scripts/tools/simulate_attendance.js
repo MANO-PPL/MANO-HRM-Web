@@ -469,15 +469,11 @@ async function performSimulationStep() {
               user_id: userId,
               org_id: userRow.org_id,
               time_in: formattedTimeStr,
-              latitude: localCoords.lat,
-              longitude: localCoords.lng,
-              accuracy: 10,
-              address: `Office Building, ${userState.baseCity.name}`,
+              time_in_lat: localCoords.lat,
+              time_in_lng: localCoords.lng,
+              time_in_address: `Office Building, ${userState.baseCity.name}`,
               status: "PRESENT",
               time_in_image_key: rowImageKey || null,
-              device_type: "Web Browser",
-              ip_address: "127.0.0.1",
-              user_agent: "Mozilla/5.0 (Simulated)",
               metadata: JSON.stringify(metadata)
             });
 
