@@ -196,6 +196,13 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
 
     await attendanceDB('leave_request').where({ lr_id: id }).del();
 
+    // Trigger payroll recalculation if the withdrawn leave was approved (affects salary)
+    if (wasApproved) {
+        PayrollCalculationService.triggerLeaveRecalculation({ ...request, org_id }).catch(err => {
+            console.error("Failed to trigger payroll recalculation after leave withdrawal:", err);
+        });
+    }
+
     try {
         const employee = await attendanceDB('users').where({ user_id }).select('user_name').first();
         const employeeName = employee?.user_name || 'An employee';

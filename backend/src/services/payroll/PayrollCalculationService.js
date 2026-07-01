@@ -107,7 +107,7 @@ export class PayrollCalculationService {
         }
 
         // Fetch approved leaves
-        const leaves = await attendanceDB('leave_requests')
+        const leaves = await attendanceDB('leave_request')
             .where('user_id', emp.user_id)
             .where('status', 'Approved')
             .where('start_date', '<=', endDateStr)
