@@ -758,7 +758,7 @@ const MobileLabourManagement = () => {
                             ========================================== */}
                         {activeTab === 'sites' && (
                             selectedSite === null ? (
-                                <div className="space-y-4 animate-in fade-in duration-150">
+                                <div className="space-y-3 animate-in fade-in duration-150">
                                     <div className="flex justify-between items-center bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm">
                                         <span className="font-bold text-slate-700 dark:text-white">Active Projects</span>
                                         <button
@@ -1174,7 +1174,7 @@ const MobileLabourManagement = () => {
                             TAB 2: LABOUR DIRECTORY
                             ========================================== */}
                         {activeTab === 'directory' && (
-                            <div className="space-y-3 pt-1 animate-in fade-in duration-150">
+                            <div className="space-y-3 animate-in fade-in duration-150">
                                 <div className="flex flex-col gap-2.5 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm">
                                     <span className="font-bold text-slate-700 dark:text-white block">Labour Directory</span>
                                     <div className="relative">

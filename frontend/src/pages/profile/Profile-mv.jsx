@@ -1,19 +1,62 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
-import { Mail, Phone, Briefcase, Shield, Camera, Loader2, Edit, Trash2, LogOut } from 'lucide-react';
+import { Mail, Phone, Briefcase, Shield, Camera, Loader2, Edit, Trash2, LogOut, Sparkles, Map } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useTour } from '../../context/TourContext';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 
 const Profile = () => {
-    const { user: authUser, fetchUser, logout } = useAuth();
+    const { user: authUser, fetchUser, setUser, logout } = useAuth();
+    const { skipTour } = useTour();
     const [profileData, setProfileData] = useState(null);
     const [loading, setLoading] = useState(true);
     const fileInputRef = useRef(null);
     const [uploading, setUploading] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [imageTimestamp, setImageTimestamp] = useState(Date.now());
+    const [chatbotVisible, setChatbotVisible] = useState(() => {
+        const saved = localStorage.getItem('mano_chatbot_visible');
+        return saved === null ? true : saved === 'true';
+    });
+    const [tourDismissed, setTourDismissed] = useState(() => !!(authUser?.tour_dismissed));
+
+    const toggleChatbot = () => {
+        setChatbotVisible(prev => {
+            const next = !prev;
+            localStorage.setItem('mano_chatbot_visible', String(next));
+            return next;
+        });
+    };
+
+    const toggleTourDismissed = async () => {
+        const newStatus = !tourDismissed;
+        setTourDismissed(newStatus);
+        setUser(prev => prev ? { ...prev, tour_dismissed: newStatus } : prev);
+        if (newStatus) {
+            skipTour();
+        } else {
+            setUser(prev => prev ? { ...prev, pages_tour_seen: {} } : prev);
+        }
+        try {
+            if (newStatus) {
+                await api.patch('/profile/preferences', { tour_dismissed: true });
+            } else {
+                await api.patch('/profile/preferences', {
+                    tour_dismissed: false,
+                    pages_tour_seen: {},
+                });
+            }
+            toast.success(newStatus ? 'App walkthrough disabled.' : 'App walkthrough enabled.');
+            await fetchUser();
+        } catch (error) {
+            console.error('Failed to update tour preferences', error);
+            toast.error('Failed to update preferences.');
+            setTourDismissed(!newStatus);
+            setUser(prev => prev ? { ...prev, tour_dismissed: !newStatus } : prev);
+        }
+    };
 
     // Fetch full profile data on mount
     useEffect(() => {
@@ -22,6 +65,7 @@ const Profile = () => {
                 const res = await api.get('/profile/me');
                 if (res.data.ok) {
                     setProfileData(res.data.user);
+                    setTourDismissed(res.data.user.tour_dismissed === 1 || res.data.user.tour_dismissed === '1' || res.data.user.tour_dismissed === true);
                 }
             } catch (error) {
                 console.error('Error fetching profile:', error);
@@ -247,6 +291,47 @@ const Profile = () => {
                             <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mb-0.5">Designation</p>
                             <p className="text-[13px] font-semibold text-slate-800 dark:text-github-dark-text">Manager</p>
                         </div>
+                    </div>
+                </div>
+
+                {/* Preferences Card */}
+                <div className="bg-white dark:bg-[#1f2937] border border-slate-100 dark:border-transparent rounded-3xl p-6 shadow-sm space-y-4">
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-github-dark-text border-b border-slate-100 dark:border-slate-800 pb-3">Preferences</h3>
+                    
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                <Sparkles size={16} />
+                            </div>
+                            <div>
+                                <p className="font-semibold text-slate-800 dark:text-github-dark-text text-xs">AI Chatbot (Mano Copilot)</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5">{chatbotVisible ? 'Visible' : 'Hidden'}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={toggleChatbot}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none shrink-0 ${chatbotVisible ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                        >
+                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${chatbotVisible ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                        </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                <Map size={16} />
+                            </div>
+                            <div>
+                                <p className="font-semibold text-slate-800 dark:text-github-dark-text text-xs">Interactive Page Guides</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5">{!tourDismissed ? 'Enabled' : 'Disabled'}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={toggleTourDismissed}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none shrink-0 ${!tourDismissed ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                        >
+                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${!tourDismissed ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                        </button>
                     </div>
                 </div>
 

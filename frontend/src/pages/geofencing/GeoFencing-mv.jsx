@@ -7,7 +7,7 @@ import { fetchLocations, fetchWorkLocationUsers, updateLocationAssignments, crea
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
 
-const GeoFencing = () => {
+const GeoFencing = ({ embedded = false }) => {
     const [locations, setLocations] = useState([]);
     const [staff, setStaff] = useState([]);
     const [loadingStaff, setLoadingStaff] = useState(false);
@@ -208,9 +208,9 @@ const GeoFencing = () => {
         s.role.toLowerCase().includes(staffSearchTerm.toLowerCase())
     );
 
-    return (
-        <MobileDashboardLayout title="Geo-Fencing">
-            <div className="space-y-3 pb-20">
+    const content = (
+        <>
+            <div className={embedded ? "space-y-3 pb-20 pt-1" : "space-y-3 pb-20"}>
                 {loadingLocations ? (
                     <div className="text-center py-10 text-slate-400 text-xs">Loading locations...</div>
                 ) : locations.map((loc) => {
@@ -321,7 +321,7 @@ const GeoFencing = () => {
                         </div>
 
                         {/* List */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[300px]">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[300px] no-scrollbar">
                             {loadingStaff ? (
                                 <div className="text-center py-10 text-slate-400 text-xs">Loading staff...</div>
                             ) : filteredStaff.length === 0 ? (
@@ -493,6 +493,13 @@ const GeoFencing = () => {
                 </div>,
                 document.body
             )}
+        </>
+    );
+
+    if (embedded) return content;
+    return (
+        <MobileDashboardLayout title="Geo-Fencing">
+            {content}
         </MobileDashboardLayout>
     );
 };

@@ -90,7 +90,8 @@ export async function getMyProfile(user_id) {
         }
     }
 
-    return { ...row, pages_tour_seen: pagesTourSeen };
+    const tourDismissed = row.tour_dismissed === 1 || row.tour_dismissed === '1' || row.tour_dismissed === true || row.tour_dismissed === 'true';
+    return { ...row, tour_dismissed: tourDismissed, pages_tour_seen: pagesTourSeen };
 }
 
 /**

@@ -815,7 +815,7 @@ const LabourManagement = () => {
                             ========================================== */}
                         {activeTab === 'sites' && (
                             selectedSite === null ? (
-                                <div className="space-y-4 animate-in fade-in duration-200">
+                                <div className="space-y-3 animate-in fade-in duration-200">
                                     <div className="flex justify-between items-center bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
                                         <div>
                                             <h3 className="font-bold text-sm text-slate-800 dark:text-github-dark-text">Project Construction Sites</h3>
@@ -915,7 +915,7 @@ const LabourManagement = () => {
                                 </div>
                             ) : (
                                 /* Click-to-drill-down site details dashboard */
-                                <div className="space-y-6 animate-in fade-in duration-200">
+                                <div className="space-y-3 animate-in fade-in duration-200">
                                     <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border px-4 py-3 rounded-xl shadow-sm flex items-center justify-between gap-3 flex-wrap">
                                         {/* Left: site name + status */}
                                         <div className="flex items-center gap-2.5 shrink-0">
@@ -1371,7 +1371,7 @@ const LabourManagement = () => {
                             TAB 2: LABOUR FORCE DIRECTORY
                             ========================================== */}
                         {activeTab === 'directory' && (
-                            <div className="space-y-4 pt-2 animate-in fade-in duration-200">
+                            <div className="space-y-3 animate-in fade-in duration-200">
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
                                     <div>
                                         <h3 className="font-bold text-sm text-slate-800 dark:text-github-dark-text">Labour Force Directory</h3>

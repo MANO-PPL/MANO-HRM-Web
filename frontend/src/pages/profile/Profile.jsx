@@ -54,7 +54,7 @@ const Profile = () => {
                 const res = await api.get('/profile/me');
                 if (res.data.ok) {
                     setProfileData(res.data.user);
-                    setTourDismissed(res.data.user.tour_dismissed || false);
+                    setTourDismissed(res.data.user.tour_dismissed === 1 || res.data.user.tour_dismissed === '1' || res.data.user.tour_dismissed === true);
                 }
             } catch (error) {
                 console.error('Error fetching profile:', error);
@@ -367,9 +367,9 @@ const Profile = () => {
                                 <Map size={22} />
                             </div>
                             <div>
-                                <p className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Auto-start Page Tours</p>
+                                <p className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Interactive Page Guides</p>
                                 <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-0.5 max-w-sm leading-relaxed">
-                                    {!tourDismissed ? 'Enabled' : 'Disabled'}. When enabled, interactive walkthroughs will start automatically the first time you visit a page. You can still trigger them manually anytime using the Help icon.
+                                    {!tourDismissed ? 'Enabled' : 'Disabled'}. When enabled, helpful walkthrough guides automatically introduce key features the first time you visit a page.
                                 </p>
                             </div>
                         </div>

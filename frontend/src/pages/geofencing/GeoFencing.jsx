@@ -65,7 +65,7 @@ const createMarkerIcon = (color) => {
   });
 };
 
-const GeoFencing = () => {
+const GeoFencing = ({ embedded = false }) => {
   const navigate = useNavigate();
 
   // Redirect to mobile view if on mobile
@@ -587,9 +587,8 @@ const GeoFencing = () => {
     );
   }
 
-  return (
-    <DashboardLayout title="Geo-Fencing" noPadding={true} tourPageKey={PAGE_KEY} tourSteps={TOUR_STEPS}>
-      <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden p-3 gap-3 bg-slate-50 dark:bg-dark-bg">
+  const content = (
+    <div className={`flex ${embedded ? 'h-full p-0' : 'h-[calc(100vh-64px)] p-3'} w-full overflow-hidden gap-3 bg-slate-50 dark:bg-dark-bg`}>
 
         {/* Left Panel: Locations List as a Card */}
         <div data-tour-id="geo-sidebar-locations" className="w-[380px] flex-shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm flex flex-col overflow-hidden">
@@ -622,7 +621,7 @@ const GeoFencing = () => {
           </div>
 
           {/* Locations List */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-2 space-y-2 no-scrollbar">
             {locations.map(loc => {
               const selectedUser = selectedUserId ? users.find(u => u.user_id === selectedUserId) : null;
               const isUserAssignedLocation = selectedUser && selectedUser.work_locations?.some(wl => Number(wl.location_id) === Number(loc.location_id));
@@ -874,7 +873,7 @@ const GeoFencing = () => {
 
           {/* Edit Mode: Expanded Form */}
           {selectedLocation && isEditingLocation && editDraftCoords && !showCreateModal && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[95%] max-w-6xl bg-white/98 dark:bg-github-dark-subtle/95 backdrop-blur-2xl border border-slate-200 dark:border-github-dark-border rounded-3xl p-8 text-slate-800 dark:text-github-dark-text z-[1000] shadow-[0_30px_100px_rgba(0,0,0,0.4)]">
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[95%] max-w-6xl bg-white/95 dark:bg-github-dark-subtle/95 backdrop-blur-2xl border border-slate-200 dark:border-github-dark-border rounded-3xl p-8 text-slate-800 dark:text-github-dark-text z-[1000] shadow-[0_30px_100px_rgba(0,0,0,0.4)]">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold flex items-center gap-2">
                   <Edit2 size={14} className="text-indigo-500 dark:text-indigo-400" />
@@ -936,7 +935,7 @@ const GeoFencing = () => {
                       const val = Number(e.target.value);
                       setEditDraftCoords(prev => ({ ...prev, radius: val }));
                     }}
-                    className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-indigo-500 mt-1"
+                    className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.3)] [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-indigo-600 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.3)]"
                   />
                 </div>
               </div>
@@ -976,7 +975,7 @@ const GeoFencing = () => {
 
           {/* Create Mode: Expanded Form */}
           {showCreateModal && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[95%] max-w-6xl bg-white/98 dark:bg-github-dark-subtle/95 backdrop-blur-2xl border border-slate-200 dark:border-github-dark-border rounded-3xl p-8 text-slate-800 dark:text-github-dark-text z-[1000] shadow-[0_30px_100px_rgba(0,0,0,0.4)]">
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[95%] max-w-6xl bg-white/95 dark:bg-github-dark-subtle/95 backdrop-blur-2xl border border-slate-200 dark:border-github-dark-border rounded-3xl p-8 text-slate-800 dark:text-github-dark-text z-[1000] shadow-[0_30px_100px_rgba(0,0,0,0.4)]">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold flex items-center gap-2">
                   <Plus size={14} className="text-indigo-500 dark:text-indigo-400" />
@@ -1035,7 +1034,7 @@ const GeoFencing = () => {
                     step={10}
                     value={newGeo.radius}
                     onChange={(e) => setNewGeo({ ...newGeo, radius: Number(e.target.value) })}
-                    className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-indigo-500 mt-1"
+                    className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.3)] [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-indigo-600 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.3)]"
                   />
                 </div>
               </div>
@@ -1094,7 +1093,7 @@ const GeoFencing = () => {
               </h3>
             </div>
           </div>
-          <div className="p-2 flex-1 overflow-y-auto space-y-4 custom-scrollbar">
+          <div className="p-2 flex-1 overflow-y-auto space-y-4 no-scrollbar">
             {loadingUsers && (
               <p className="text-sm text-slate-400 px-3">Loading users...</p>
             )}
@@ -1199,6 +1198,12 @@ const GeoFencing = () => {
         </div>
 
       </div>
+  );
+
+  if (embedded) return content;
+  return (
+    <DashboardLayout title="Geo-Fencing" noPadding={true} tourPageKey={PAGE_KEY} tourSteps={TOUR_STEPS}>
+      {content}
     </DashboardLayout>
   );
 };
