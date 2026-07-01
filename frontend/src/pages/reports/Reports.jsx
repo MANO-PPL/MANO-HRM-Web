@@ -49,89 +49,83 @@ const getAlignmentClass = (colHeader) => {
     return 'center';
 };
 
-const getCellStyle = (cellValue, colHeader, isTotalsRow, isEven) => {
+const getCellStyle = (cellValue, colHeader, isTotalsRow, isEven, rowIdx) => {
     const val = cellValue?.toString().trim() || '';
     const header = colHeader.toLowerCase();
 
-    // 1. Totals row styling
+    // 1. Totals / summary row styling
     if (isTotalsRow) {
         return {
-            fontWeight: 'bold',
-            color: '#1F4E78',
-            backgroundColor: '#F2F4F7',
-            borderTop: '2px solid #1F4E78',
-            borderBottom: '4px double #1F4E78',
-            borderLeft: '1px solid #CBD5E1',
-            borderRight: '1px solid #CBD5E1',
-            paddingTop: '8px',
-            paddingBottom: '8px',
+            fontWeight: '800',
+            fontSize: '11px',
+            color: '#1a3a5c',
+            backgroundColor: '#dce8f5',
+            borderTop: '2.5px solid #2563EB',
+            borderBottom: '3px double #1e40af',
+            borderLeft: '1px solid #bfdbfe',
+            borderRight: '1px solid #bfdbfe',
+            paddingTop: '9px',
+            paddingBottom: '9px',
+            letterSpacing: '0.01em',
         };
     }
 
-    // Default borders
-    const defaultBorder = '1px solid #CBD5E1';
+    // Default borders - thin Excel-like grid
+    const defaultBorder = '1px solid #E2E8F0';
+    const baseFont = { fontSize: '11.5px', fontFamily: '"Segoe UI", Arial, sans-serif' };
 
-    // 2. Conditional formatting based on cell values (Excel replica colors)
-    // Present or 1.0 status (Green)
-    if (val === 'Present' || val === '1.0') {
-        return {
-            backgroundColor: '#E6F4EA',
-            color: '#137333',
-            fontWeight: 'bold',
-            border: defaultBorder
-        };
+    // 2. Status-based conditional formatting
+    // Present
+    if (val === 'Present' || val === '1.0' || val === '1') {
+        return { ...baseFont, backgroundColor: '#DCFCE7', color: '#15803D', fontWeight: '700', border: defaultBorder };
     }
-    // Absent or 0.0 status (Red)
-    if (val === 'Absent' || val === '0.0') {
-        return {
-            backgroundColor: '#FCE8E6',
-            color: '#C5221F',
-            fontWeight: 'bold',
-            border: defaultBorder
-        };
+    // Absent
+    if (val === 'Absent' || val === '0.0' || val === '0') {
+        return { ...baseFont, backgroundColor: '#FEE2E2', color: '#B91C1C', fontWeight: '700', border: defaultBorder };
     }
-    // Late or Late Minutes/Count > 0 (Orange)
+    // Half Day
+    if (val.toLowerCase() === 'half day') {
+        return { ...baseFont, backgroundColor: '#FEF9C3', color: '#854D0E', fontWeight: '700', border: defaultBorder };
+    }
+    // On Leave / Leave
+    if (val.toLowerCase() === 'on leave' || val.toLowerCase() === 'leave') {
+        return { ...baseFont, backgroundColor: '#DBEAFE', color: '#1D4ED8', fontWeight: '700', border: defaultBorder };
+    }
+    // Late
     if (val.toLowerCase().includes('late') || (header.includes('late') && Number(val) > 0)) {
-        return {
-            backgroundColor: '#FEF7E0',
-            color: '#B06000',
-            fontWeight: 'bold',
-            border: defaultBorder
-        };
+        return { ...baseFont, backgroundColor: '#FFF7ED', color: '#C2410C', fontWeight: '700', border: defaultBorder };
     }
-    // Weekend Sat/Sun/WEEK_OFF (Lavender)
+    // Weekend / Week Off
     if (val === 'Sun' || val === 'Sat' || val === 'WEEK_OFF') {
-        return {
-            backgroundColor: '#F1F3F4',
-            color: '#5F6368',
-            fontWeight: 'bold',
-            border: defaultBorder
-        };
+        return { ...baseFont, backgroundColor: '#F1F5F9', color: '#64748B', fontWeight: '600', fontStyle: 'italic', border: defaultBorder };
     }
-    // Not Recorded status (Soft grey font)
-    if (val === 'Not Recorded') {
-        return {
-            backgroundColor: '#F1F3F4',
-            color: '#8E8E93',
-            fontWeight: 'bold',
-            border: defaultBorder
-        };
+    // Not Recorded
+    if (val === 'Not Recorded' || val === '-' || val === '') {
+        return { ...baseFont, backgroundColor: '#F8FAFC', color: '#94A3B8', fontWeight: '500', border: defaultBorder };
     }
-    // Leaves status
-    if (val.toLowerCase() === 'on leave' || val.toLowerCase() === 'leave' || val.toLowerCase() === 'half day') {
-        return {
-            backgroundColor: '#E8F0FE',
-            color: '#1A73E8',
-            fontWeight: 'bold',
-            border: defaultBorder
-        };
+    // Numeric columns – overtime, salary, counts
+    if ((header.includes('salary') || header.includes('pay') || header.includes('amount') || header.includes('₹')) && val.includes('₹')) {
+        return { ...baseFont, backgroundColor: isEven ? '#F0FDF4' : '#FFFFFF', color: '#065F46', fontWeight: '700', border: defaultBorder };
+    }
+    // Overtime hours
+    if (header.includes('overtime') || header.includes('ot') && Number(val) > 0) {
+        return { ...baseFont, backgroundColor: '#F5F3FF', color: '#6D28D9', fontWeight: '700', border: defaultBorder };
+    }
+    // Numeric count > 0 with green tint for present-like columns
+    if (header.includes('present') && !isNaN(Number(val)) && Number(val) > 0) {
+        return { ...baseFont, backgroundColor: '#F0FDF4', color: '#166534', fontWeight: '700', border: defaultBorder };
+    }
+    if (header.includes('absent') && !isNaN(Number(val)) && Number(val) > 0) {
+        return { ...baseFont, backgroundColor: '#FFF1F2', color: '#9F1239', fontWeight: '700', border: defaultBorder };
     }
 
-    // Default Zebra Striping Styles
+    // Default: clean alternating rows like Excel
     return {
-        backgroundColor: isEven ? '#F8FAFC' : '#FFFFFF',
-        color: '#333333',
-        border: defaultBorder
+        ...baseFont,
+        backgroundColor: isEven ? '#F8FAFD' : '#FFFFFF',
+        color: '#1E293B',
+        border: defaultBorder,
+        fontWeight: header.includes('name') || header.includes('employee') ? '600' : '400',
     };
 };
 
@@ -1037,6 +1031,113 @@ const Reports = () => {
             presentRate,
             lateCount: hasLateMetric ? lateCount : null
         };
+    }, [previewData]);
+
+    const reportsSummary = React.useMemo(() => {
+        const summary = {
+            present: 0,
+            absent: 0,
+            leave: 0,
+            halfDay: 0,
+            overtime: 0,
+            hasData: false
+        };
+
+        if (!previewData || !previewData.rows || previewData.rows.length === 0) {
+            return summary;
+        }
+
+        // 1. If we have cardRecords, we can calculate from daily records directly
+        if (previewData.cardRecords && previewData.cardRecords.length > 0) {
+            summary.hasData = true;
+            previewData.cardRecords.forEach(record => {
+                const status = record.status || '';
+                const statusLower = status.toLowerCase();
+
+                if (status === 'Present' || statusLower.includes('present')) {
+                    summary.present += 1;
+                } else if (status === 'Absent' || statusLower.includes('absent')) {
+                    summary.absent += 1;
+                } else if (statusLower === 'on leave' || statusLower === 'leave') {
+                    summary.leave += 1;
+                } else if (statusLower === 'half day') {
+                    summary.halfDay += 1;
+                } else if (statusLower.includes('late') || statusLower.includes('overtime')) {
+                    summary.present += 1; // late/overtime counts as present
+                }
+
+                const otHrs = parseFloat(record.overtime_hours);
+                if (!isNaN(otHrs) && otHrs > 0) {
+                    summary.overtime += otHrs;
+                }
+            });
+            return summary;
+        }
+
+        // 2. Otherwise, parse spreadsheet columns
+        const columns = previewData.columns || [];
+        const rows = previewData.rows || [];
+
+        const dataRows = rows.filter(row => {
+            const firstCell = row[0]?.toString().toUpperCase();
+            return firstCell !== 'TOTALS' && firstCell !== 'TOTAL';
+        });
+
+        if (dataRows.length === 0) return summary;
+
+        // Find indices of relevant columns
+        const presentIdx = columns.findIndex(c => {
+            const cl = c?.toString().toLowerCase() || '';
+            return cl === 'present' || cl === 'present days';
+        });
+        const absentIdx = columns.findIndex(c => {
+            const cl = c?.toString().toLowerCase() || '';
+            return cl === 'absent' || cl === 'absent days';
+        });
+        const leaveIdx = columns.findIndex(c => {
+            const cl = c?.toString().toLowerCase() || '';
+            return cl === 'on leave' || cl === 'leave' || cl === 'leave days';
+        });
+        const halfDayIdx = columns.findIndex(c => {
+            const cl = c?.toString().toLowerCase() || '';
+            return cl === 'half day' || cl === 'half days';
+        });
+        const overtimeIdx = columns.findIndex(c => {
+            const cl = c?.toString().toLowerCase() || '';
+            return cl.includes('overtime') || cl === 'ot' || cl === 'ot hrs';
+        });
+        const statusIdx = columns.findIndex(c => (c?.toString().toLowerCase() || '') === 'status');
+
+        if (presentIdx !== -1 || absentIdx !== -1 || leaveIdx !== -1 || halfDayIdx !== -1 || overtimeIdx !== -1) {
+            summary.hasData = true;
+            dataRows.forEach(row => {
+                if (presentIdx !== -1) summary.present += parseInt(row[presentIdx]) || 0;
+                if (absentIdx !== -1) summary.absent += parseInt(row[absentIdx]) || 0;
+                if (leaveIdx !== -1) summary.leave += parseInt(row[leaveIdx]) || 0;
+                if (halfDayIdx !== -1) summary.halfDay += parseInt(row[halfDayIdx]) || 0;
+                if (overtimeIdx !== -1) summary.overtime += parseFloat(row[overtimeIdx]) || 0;
+            });
+        } else if (statusIdx !== -1) {
+            summary.hasData = true;
+            dataRows.forEach(row => {
+                const status = row[statusIdx]?.toString() || '';
+                const statusLower = status.toLowerCase();
+
+                if (status === 'Present' || statusLower.includes('present')) {
+                    summary.present += 1;
+                } else if (status === 'Absent' || statusLower.includes('absent')) {
+                    summary.absent += 1;
+                } else if (statusLower === 'on leave' || statusLower === 'leave') {
+                    summary.leave += 1;
+                } else if (statusLower === 'half day') {
+                    summary.halfDay += 1;
+                } else if (statusLower.includes('late') || statusLower.includes('overtime')) {
+                    summary.present += 1;
+                }
+            });
+        }
+
+        return summary;
     }, [previewData]);
 
     const matrixData = React.useMemo(() => {
@@ -2058,86 +2159,189 @@ const Reports = () => {
                                     <p className="text-slate-500 text-sm font-medium">Crunching and parsing preview records...</p>
                                 </div>
                             ) : (previewData.rows && previewData.rows.length > 0) ? (
-                                /* Spreadsheet View: Render Original Excel replica table */
-                                <table className="w-full text-left border-collapse bg-white text-slate-800 shadow-sm rounded border border-slate-300" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
-                                    <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-github-dark-subtle/95 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-github-dark-border">
-                                        {previewData.headers ? (
-                                            <>
-                                                <tr className="text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
-                                                    {previewData.headers[0].map((cell, idx) => (
-                                                        <th
-                                                            key={idx}
-                                                            rowSpan={cell.rowspan}
-                                                            colSpan={cell.colspan}
-                                                            className="px-4 py-3 whitespace-nowrap tracking-wider text-center text-xs font-bold uppercase border border-[#3A6085]"
-                                                            style={{ backgroundColor: '#1F4E78', color: '#FFFFFF' }}
-                                                        >
-                                                            {cell.label}
-                                                        </th>
-                                                    ))}
-                                                </tr>
-                                                <tr className="text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold">
-                                                    {previewData.headers[1].map((cell, idx) => (
-                                                        <th
-                                                            key={idx}
-                                                            className="px-4 py-2.5 whitespace-nowrap tracking-wider text-center text-xs font-bold uppercase border border-[#3A6085]"
-                                                            style={{ backgroundColor: '#1F4E78', color: '#FFFFFF' }}
-                                                        >
-                                                            {cell.label}
-                                                        </th>
-                                                    ))}
-                                                </tr>
-                                            </>
-                                        ) : (
-                                            <tr className="text-xs uppercase font-bold border-b border-slate-200 dark:border-github-dark-border">
-                                                {previewData.columns.map((col, idx) => {
-                                                    const alignment = getAlignmentClass(col);
-                                                    return (
-                                                        <th
-                                                            key={idx}
-                                                            className="px-4 py-3 whitespace-nowrap tracking-wider text-xs font-bold uppercase border border-[#3A6085]"
-                                                            style={{
-                                                                backgroundColor: '#1F4E78',
-                                                                color: '#FFFFFF',
-                                                                textAlign: alignment
-                                                            }}
-                                                        >
-                                                            {col?.toString().split('\n').map((line, lIdx) => (
-                                                                <div key={lIdx} className="leading-tight">{line}</div>
+                                <>
+                                    {/* Attendance Summary Section */}
+                                    {activeFilters.reportType !== 'employee_master' && (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4 shrink-0 animate-in fade-in duration-300">
+                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Total Present</span>
+                                                    <h3 className="text-xl font-black text-emerald-600 mt-1">{reportsSummary.present}</h3>
+                                                    <p className="text-[9px] text-slate-450 dark:text-github-dark-muted mt-1">Present days</p>
+                                                </div>
+                                                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                                                    <CheckCircle size={18} />
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Total Absent</span>
+                                                    <h3 className="text-xl font-black text-rose-600 mt-1">{reportsSummary.absent}</h3>
+                                                    <p className="text-[9px] text-slate-450 dark:text-github-dark-muted mt-1">Absent days</p>
+                                                </div>
+                                                <div className="p-2.5 bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 rounded-xl">
+                                                    <XCircle size={18} />
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Total Leave</span>
+                                                    <h3 className="text-xl font-black text-sky-600 mt-1">{reportsSummary.leave}</h3>
+                                                    <p className="text-[9px] text-slate-450 dark:text-github-dark-muted mt-1">Leave days</p>
+                                                </div>
+                                                <div className="p-2.5 bg-sky-50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400 rounded-xl">
+                                                    <Calendar size={18} />
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Total Half Day</span>
+                                                    <h3 className="text-xl font-black text-indigo-650 mt-1">{reportsSummary.halfDay}</h3>
+                                                    <p className="text-[9px] text-slate-450 dark:text-github-dark-muted mt-1">Half day occurrences</p>
+                                                </div>
+                                                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                                                    <Clock size={18} />
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Total Overtime</span>
+                                                    <h3 className="text-xl font-black text-purple-600 mt-1">{reportsSummary.overtime.toFixed(1)}h</h3>
+                                                    <p className="text-[9px] text-slate-450 dark:text-github-dark-muted mt-1">Accumulated hours</p>
+                                                </div>
+                                                <div className="p-2.5 bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400 rounded-xl">
+                                                    <TrendingUp size={18} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Spreadsheet View: Premium Excel-replica table */}
+                                    <div className="rounded-xl overflow-hidden border border-slate-300 dark:border-[#30363d] shadow-md">
+                                        {/* Row number + freeze bar header */}
+                                        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#217346]/10 border-b border-[#217346]/20">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-[#217346] animate-pulse" />
+                                            <span className="text-[9px] font-bold uppercase tracking-widest text-[#217346]">Live Preview · Excel Format</span>
+                                            <span className="ml-auto text-[9px] font-semibold text-slate-400">{previewData.rows?.filter(r => r[0]?.toString().toUpperCase() !== 'TOTALS').length} rows</span>
+                                        </div>
+                                        <table
+                                            className="w-full text-left border-collapse bg-white"
+                                            style={{ fontFamily: '"Segoe UI", Calibri, Arial, sans-serif', fontSize: '11.5px' }}
+                                        >
+                                            <thead className="sticky top-0 z-10">
+                                                {previewData.headers ? (
+                                                    <>
+                                                        {/* Row 1 – group headers */}
+                                                        <tr>
+                                                            {/* Row # column */}
+                                                            <th style={{ backgroundColor: '#1F4E78', color: '#FFFFFF', border: '1px solid #2563EB', width: '36px', minWidth: '36px' }}
+                                                                className="px-2 py-2 text-center text-[9px] font-bold uppercase tracking-wider">#</th>
+                                                            {previewData.headers[0].map((cell, idx) => (
+                                                                <th
+                                                                    key={idx}
+                                                                    rowSpan={cell.rowspan}
+                                                                    colSpan={cell.colspan}
+                                                                    className="px-4 py-2.5 whitespace-nowrap tracking-wide text-center text-[10px] font-black uppercase"
+                                                                    style={{ backgroundColor: '#1F4E78', color: '#FFFFFF', border: '1px solid #2563EB', letterSpacing: '0.04em' }}
+                                                                >
+                                                                    {cell.label}
+                                                                </th>
                                                             ))}
-                                                        </th>
+                                                        </tr>
+                                                        {/* Row 2 – sub-headers */}
+                                                        <tr>
+                                                            {previewData.headers[1].map((cell, idx) => (
+                                                                <th
+                                                                    key={idx}
+                                                                    className="px-3 py-2 whitespace-nowrap tracking-wide text-center text-[10px] font-bold uppercase"
+                                                                    style={{ backgroundColor: '#2E6DA4', color: '#E8F4FD', border: '1px solid #3B82F6', letterSpacing: '0.03em' }}
+                                                                >
+                                                                    {cell.label}
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                    </>
+                                                ) : (
+                                                    <tr>
+                                                        {/* Row # column */}
+                                                        <th style={{ backgroundColor: '#1F4E78', color: '#FFFFFF', border: '1px solid #2563EB', width: '36px', minWidth: '36px' }}
+                                                            className="px-2 py-3 text-center text-[9px] font-bold uppercase">#</th>
+                                                        {previewData.columns.map((col, idx) => {
+                                                            const alignment = getAlignmentClass(col);
+                                                            return (
+                                                                <th
+                                                                    key={idx}
+                                                                    className="px-4 py-3 whitespace-nowrap tracking-wide text-[10px] font-black uppercase"
+                                                                    style={{
+                                                                        backgroundColor: '#1F4E78',
+                                                                        color: '#FFFFFF',
+                                                                        border: '1px solid #2563EB',
+                                                                        textAlign: alignment,
+                                                                        letterSpacing: '0.04em'
+                                                                    }}
+                                                                >
+                                                                    {col?.toString().split('\n').map((line, lIdx) => (
+                                                                        <div key={lIdx} className="leading-snug">{line}</div>
+                                                                    ))}
+                                                                </th>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                )}
+                                            </thead>
+                                            <tbody>
+                                                {previewData.rows.map((row, rIdx) => {
+                                                    const isTotalsRow = row[0]?.toString().toUpperCase() === 'TOTALS';
+                                                    const isEven = rIdx % 2 === 0;
+                                                    return (
+                                                        <tr
+                                                            key={rIdx}
+                                                            className={`transition-colors ${isTotalsRow ? '' : 'hover:brightness-95'}`}
+                                                            style={isTotalsRow ? { position: 'relative' } : {}}
+                                                        >
+                                                            {/* Row number cell */}
+                                                            <td
+                                                                className="text-center text-[9px] font-semibold select-none"
+                                                                style={{
+                                                                    backgroundColor: isTotalsRow ? '#dce8f5' : isEven ? '#EFF6FF' : '#F8FAFD',
+                                                                    color: '#64748B',
+                                                                    border: '1px solid #E2E8F0',
+                                                                    borderRight: '2px solid #CBD5E1',
+                                                                    width: '36px',
+                                                                    minWidth: '36px',
+                                                                    paddingTop: '6px',
+                                                                    paddingBottom: '6px',
+                                                                }}
+                                                            >
+                                                                {isTotalsRow ? '∑' : rIdx + 1}
+                                                            </td>
+                                                            {row.map((cell, cIdx) => {
+                                                                const colHeader = previewData.columns[cIdx]?.toString() || '';
+                                                                const cellStyle = getCellStyle(cell, colHeader, isTotalsRow, isEven, rIdx);
+                                                                const alignment = getAlignmentClass(colHeader);
+                                                                return (
+                                                                    <td
+                                                                        key={cIdx}
+                                                                        className="px-4 whitespace-nowrap transition-colors"
+                                                                        style={{ ...cellStyle, textAlign: alignment, paddingTop: '6px', paddingBottom: '6px' }}
+                                                                    >
+                                                                        {cell?.toString().split('\n').map((line, lIdx) => (
+                                                                            <div key={lIdx} className="leading-normal">{line}</div>
+                                                                        ))}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                        </tr>
                                                     );
                                                 })}
-                                            </tr>
-                                        )}
-                                    </thead>
-                                    <tbody>
-                                        {previewData.rows.map((row, rIdx) => {
-                                            const isTotalsRow = row[0]?.toString().toUpperCase() === 'TOTALS';
-                                            const isEven = rIdx % 2 === 0;
-                                            return (
-                                                <tr key={rIdx} className="transition-colors hover:bg-slate-100/50">
-                                                    {row.map((cell, cIdx) => {
-                                                        const colHeader = previewData.columns[cIdx]?.toString() || '';
-                                                        const cellStyle = getCellStyle(cell, colHeader, isTotalsRow, isEven);
-                                                        const alignment = getAlignmentClass(colHeader);
-                                                        return (
-                                                            <td
-                                                                key={cIdx}
-                                                                className="px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors"
-                                                                style={{ ...cellStyle, textAlign: alignment }}
-                                                            >
-                                                                {cell?.toString().split('\n').map((line, lIdx) => (
-                                                                    <div key={lIdx} className="leading-normal">{line}</div>
-                                                                ))}
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
                             ) : (
                                 <div className="flex flex-col items-center justify-center py-20 gap-3 bg-white dark:bg-dark-card border border-dashed border-slate-200 dark:border-github-dark-border rounded-xl">
                                     <Table className="text-slate-200 dark:text-slate-700" size={48} />

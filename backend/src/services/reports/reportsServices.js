@@ -10,6 +10,10 @@ const isValidDesgId = (desgId) => {
     return desgId && desgId !== 'All' && desgId !== 'undefined' && desgId !== 'null' && String(desgId).trim() !== '';
 };
 
+const isValidShiftId = (shiftId) => {
+    return shiftId && shiftId !== 'All' && shiftId !== 'undefined' && shiftId !== 'null' && String(shiftId).trim() !== '';
+};
+
 
 export async function getTodayStr(org_id) {
 
@@ -273,12 +277,12 @@ export const resolveDateRange = ({ type, month, date, startDate: customStart, en
     return { startDate, endDate };
 };
 
-export async function getUsers({ org_id, targetUserId, dept_id, desg_id }) {
+export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id }) {
     return attendanceDB("users as u")
         .leftJoin("departments as d", "u.dept_id", "d.dept_id")
         .leftJoin("designations as dg", "u.desg_id", "dg.desg_id")
         .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
-        .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type", "s.policy_rules")
+        .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type", "s.policy_rules", "s.shift_name")
         .where("u.org_id", org_id)
         .modify(qb => {
             if (targetUserId) {
@@ -290,14 +294,17 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id }) {
             if (isValidDesgId(desg_id)) {
                 qb.where("u.desg_id", desg_id);
             }
+            if (isValidShiftId(shift_id)) {
+                qb.where("u.shift_id", shift_id);
+            }
         })
         .orderBy("u.user_name", "asc");
 }
 
-export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id }) {
+export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
     return attendanceDB("attendance_records as ar")
         .modify(qb => {
-            if (isValidDeptId(dept_id) || isValidDesgId(desg_id)) {
+            if (isValidDeptId(dept_id) || isValidDesgId(desg_id) || isValidShiftId(shift_id)) {
                 qb.join("users as u", "ar.user_id", "u.user_id")
                   .select("ar.*");
                 if (isValidDeptId(dept_id)) {
@@ -305,6 +312,9 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
                 }
                 if (isValidDesgId(desg_id)) {
                     qb.where("u.desg_id", desg_id);
+                }
+                if (isValidShiftId(shift_id)) {
+                    qb.where("u.shift_id", shift_id);
                 }
             }
         })
@@ -314,7 +324,7 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
         .modify(qb => { if (targetUserId) qb.where("ar.user_id", targetUserId); });
 }
 
-export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id }) {
+export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
     return attendanceDB("attendance_records as ar")
         .join("users as u", "ar.user_id", "u.user_id")
         .leftJoin("departments as d", "u.dept_id", "d.dept_id")
@@ -333,15 +343,18 @@ export async function getDetailedRecords({ org_id, startDate, endDate, targetUse
             if (isValidDesgId(desg_id)) {
                 qb.where("u.desg_id", desg_id);
             }
+            if (isValidShiftId(shift_id)) {
+                qb.where("u.shift_id", shift_id);
+            }
         })
         .orderBy("ar.time_in", "asc");
 }
 
 
 
-export async function getCardRecords({ org_id, targetUserId, startDate, endDate, dept_id, desg_id }) {
-    const users = await getUsers({ org_id, targetUserId, dept_id, desg_id });
-    const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id });
+export async function getCardRecords({ org_id, targetUserId, startDate, endDate, dept_id, desg_id, shift_id }) {
+    const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id });
+    const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 
     const start = new Date(startDate + 'T00:00:00Z');
     const end = new Date(endDate + 'T00:00:00Z');
@@ -445,7 +458,7 @@ export async function getCardRecords({ org_id, targetUserId, startDate, endDate,
 }
 
 
-export async function getPreviewData({ type, org_id, month, startDate, endDate, targetUserId, columns, dept_id, desg_id }) {
+export async function getPreviewData({ type, org_id, month, startDate, endDate, targetUserId, columns, dept_id, desg_id, shift_id }) {
     const colsObj = typeof columns === 'string' ? JSON.parse(columns) : (columns || {});
     let data = { columns: [], rows: [] };
     const todayStr = await getTodayStr(org_id);
@@ -455,7 +468,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             .leftJoin("departments as d", "u.dept_id", "d.dept_id")
             .leftJoin("designations as dg", "u.desg_id", "dg.desg_id")
             .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
-            .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "s.policy_rules")
+            .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "s.policy_rules", "s.shift_name")
             .where("u.org_id", org_id)
             .modify(qb => {
                 if (targetUserId) {
@@ -467,10 +480,13 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 if (isValidDesgId(desg_id)) {
                     qb.where("u.desg_id", desg_id);
                 }
+                if (isValidShiftId(shift_id)) {
+                    qb.where("u.shift_id", shift_id);
+                }
             })
             .orderBy("u.user_name", "asc");
 
-        const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id });
+        const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 
         if (type === "matrix_daily") {
             const cols = [];
@@ -620,6 +636,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             }
 
             const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
+            if (colsObj.shift !== false) {
+                baseHeaders.push("Shift");
+            }
             const dateLabels = dateHeaders.map(d => {
                 return `${d.getDate()} ${d.toLocaleDateString('en-US', { weekday: 'short' })}`;
             });
@@ -649,6 +668,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     u.desg_name || "-",
                     u.dept_name || "-"
                 ];
+                if (colsObj.shift !== false) {
+                    userRow.push(u.shift_name || "-");
+                }
 
                 let totalWorkedHrs = 0;
                 let totalLateMins = 0;
@@ -749,6 +771,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             }
 
             const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
+            if (colsObj.shift !== false) {
+                baseHeaders.push("Shift");
+            }
             const timeHeaders = [];
 
             let dailyColspan = 0;
@@ -792,6 +817,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 { label: "Position", rowspan: 2, colspan: 1 },
                 { label: "Dept", rowspan: 2, colspan: 1 }
             ];
+            if (colsObj.shift !== false) {
+                row1.push({ label: "Shift", rowspan: 2, colspan: 1 });
+            }
 
             dateHeaders.forEach(d => {
                 const datePrefix = `${d.getDate()} ${d.toLocaleDateString('en-US', { weekday: 'short' })}`;
@@ -843,6 +871,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 const userRecs = records.filter(r => r.user_id === u.user_id);
 
                 const userRow = [index + 1, u.user_name, u.desg_name || "-", u.dept_name || "-"];
+                if (colsObj.shift !== false) {
+                    userRow.push(u.shift_name || "-");
+                }
 
                 let totalHrs = 0;
                 let lateCount = 0;
@@ -909,7 +940,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         }
     } else if (type === "attendance_detailed") {
         const records = await getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id });
-        const cols = ["Date", "Name", "Dept", "Shift"];
+        const cols = ["Date", "Name", "Dept"];
         const colIndices = [];
 
         const pushCol = (name, check, index) => {
@@ -919,6 +950,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             }
         };
 
+        pushCol("Shift", "shift", 3);
         pushCol("Time In", "timeIn", 4);
         pushCol("Time Out", "timeOut", 5);
         pushCol("Work Hrs", "workedHours", 6);
@@ -941,7 +973,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 r.time_out_address || "-"
             ];
 
-            const row = [fullRow[0], fullRow[1], fullRow[2], fullRow[3]];
+            const row = [fullRow[0], fullRow[1], fullRow[2]];
             colIndices.forEach(idx => {
                 row.push(fullRow[idx]);
             });
@@ -955,7 +987,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             .leftJoin("departments as d", "u.dept_id", "d.dept_id")
             .leftJoin("designations as dg", "u.desg_id", "dg.desg_id")
             .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
-            .select("u.user_id", "u.user_name", "d.dept_name", "s.policy_rules")
+            .select("u.user_id", "u.user_name", "d.dept_name", "s.policy_rules", "s.shift_name")
             .where("u.org_id", org_id)
             .modify(qb => {
                 if (targetUserId) {
@@ -967,9 +999,12 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 if (isValidDesgId(desg_id)) {
                     qb.where("u.desg_id", desg_id);
                 }
+                if (isValidShiftId(shift_id)) {
+                    qb.where("u.shift_id", shift_id);
+                }
             });
 
-        const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id });
+        const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 
         const cols = ["Name", "Dept", "Total Days"];
         const colIndices = [];

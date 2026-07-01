@@ -6,7 +6,7 @@ import * as S3Service from '../services/s3/s3Service.js';
 import EventBus from '../utils/EventBus.js';
 
 const reportWorker = new Worker('{ReportQueue}', async (job) => {
-    const { reportId, org_id, user_id, targetUserId, month, date, type, format, startDate, endDate, columns, dept_id, desg_id } = job.data;
+    const { reportId, org_id, user_id, targetUserId, month, date, type, format, startDate, endDate, columns, dept_id, desg_id, shift_id } = job.data;
     console.log(`👷 [Worker] Processing report job #${reportId} for Org ${org_id}...`);
 
     // 1. Update database status to 'processing'
@@ -16,7 +16,7 @@ const reportWorker = new Worker('{ReportQueue}', async (job) => {
 
     try {
         // 2. Generate the report buffer asynchronously
-        const fileBuffer = await compileReportBuffer({ org_id, targetUserId, month, date, type, format, startDate, endDate, columns, dept_id, desg_id });
+        const fileBuffer = await compileReportBuffer({ org_id, targetUserId, month, date, type, format, startDate, endDate, columns, dept_id, desg_id, shift_id });
 
         // 3. Define content type & S3 directory details
         const contentType = format === 'pdf' 

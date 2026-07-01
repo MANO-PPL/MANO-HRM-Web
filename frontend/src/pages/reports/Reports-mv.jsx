@@ -457,6 +457,7 @@ const MobileReports = () => {
     const [employees, setEmployees] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
+    const [shifts, setShifts] = useState([]);
 
     // Department states
     const [attendanceDeptId, setAttendanceDeptId] = useState('');
@@ -476,17 +477,28 @@ const MobileReports = () => {
     const [tableDesgSearchQuery, setTableDesgSearchQuery] = useState('');
     const [tableIsDesgDropdownOpen, setTableIsDesgDropdownOpen] = useState(false);
 
+    // Shift states
+    const [attendanceShiftId, setAttendanceShiftId] = useState('');
+    const [attendanceShiftSearchQuery, setAttendanceShiftSearchQuery] = useState('');
+    const [attendanceIsShiftDropdownOpen, setAttendanceIsShiftDropdownOpen] = useState(false);
+
+    const [tableShiftId, setTableShiftId] = useState('');
+    const [tableShiftSearchQuery, setTableShiftSearchQuery] = useState('');
+    const [tableIsShiftDropdownOpen, setTableIsShiftDropdownOpen] = useState(false);
+
     // Refs
     const attendanceEmpDropdownRef = React.useRef(null);
     const attendanceWeekDropdownRef = React.useRef(null);
     const attendanceDeptDropdownRef = React.useRef(null);
     const attendanceDesgDropdownRef = React.useRef(null);
+    const attendanceShiftDropdownRef = React.useRef(null);
     const tableEmpDropdownRef = React.useRef(null);
     const tableTypeDropdownRef = React.useRef(null);
     const tableWeekDropdownRef = React.useRef(null);
     const tableColsDropdownRef = React.useRef(null);
     const tableDeptDropdownRef = React.useRef(null);
     const tableDesgDropdownRef = React.useRef(null);
+    const tableShiftDropdownRef = React.useRef(null);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -501,6 +513,9 @@ const MobileReports = () => {
             }
             if (attendanceDesgDropdownRef.current && !attendanceDesgDropdownRef.current.contains(event.target)) {
                 setAttendanceIsDesgDropdownOpen(false);
+            }
+            if (attendanceShiftDropdownRef.current && !attendanceShiftDropdownRef.current.contains(event.target)) {
+                setAttendanceIsShiftDropdownOpen(false);
             }
             if (tableEmpDropdownRef.current && !tableEmpDropdownRef.current.contains(event.target)) {
                 setTableIsEmpDropdownOpen(false);
@@ -520,6 +535,9 @@ const MobileReports = () => {
             if (tableDesgDropdownRef.current && !tableDesgDropdownRef.current.contains(event.target)) {
                 setTableIsDesgDropdownOpen(false);
             }
+            if (tableShiftDropdownRef.current && !tableShiftDropdownRef.current.contains(event.target)) {
+                setTableIsShiftDropdownOpen(false);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -529,16 +547,18 @@ const MobileReports = () => {
     const attendanceFilteredEmployees = employees.filter(emp => {
         const matchesDept = !attendanceDeptId || String(emp.dept_id) === String(attendanceDeptId);
         const matchesDesg = !attendanceDesgId || String(emp.desg_id) === String(attendanceDesgId);
+        const matchesShift = !attendanceShiftId || String(emp.shift_id) === String(attendanceShiftId);
         const matchesQuery = emp.user_name.toLowerCase().includes(attendanceEmpSearchQuery.toLowerCase());
-        return matchesDept && matchesDesg && matchesQuery;
+        return matchesDept && matchesDesg && matchesShift && matchesQuery;
     });
 
     const tableSelectedEmployeeName = employees.find(emp => emp.user_id === tableEmployeeId)?.user_name || 'All Employees';
     const tableFilteredEmployees = employees.filter(emp => {
         const matchesDept = !tableDeptId || String(emp.dept_id) === String(tableDeptId);
         const matchesDesg = !tableDesgId || String(emp.desg_id) === String(tableDesgId);
+        const matchesShift = !tableShiftId || String(emp.shift_id) === String(tableShiftId);
         const matchesQuery = emp.user_name.toLowerCase().includes(tableEmpSearchQuery.toLowerCase());
-        return matchesDept && matchesDesg && matchesQuery;
+        return matchesDept && matchesDesg && matchesShift && matchesQuery;
     });
 
     const attendanceWeeks = React.useMemo(() => getWeeksOfMonth(attendanceMonth), [attendanceMonth]);
@@ -562,12 +582,13 @@ const MobileReports = () => {
             if (emp) {
                 const deptMismatch = attendanceDeptId && String(emp.dept_id) !== String(attendanceDeptId);
                 const desgMismatch = attendanceDesgId && String(emp.desg_id) !== String(attendanceDesgId);
-                if (deptMismatch || desgMismatch) {
+                const shiftMismatch = attendanceShiftId && String(emp.shift_id) !== String(attendanceShiftId);
+                if (deptMismatch || desgMismatch || shiftMismatch) {
                     setAttendanceEmployeeId('');
                 }
             }
         }
-    }, [attendanceDeptId, attendanceDesgId, employees, attendanceEmployeeId]);
+    }, [attendanceDeptId, attendanceDesgId, attendanceShiftId, employees, attendanceEmployeeId]);
 
     useEffect(() => {
         if (tableEmployeeId) {
@@ -575,20 +596,22 @@ const MobileReports = () => {
             if (emp) {
                 const deptMismatch = tableDeptId && String(emp.dept_id) !== String(tableDeptId);
                 const desgMismatch = tableDesgId && String(emp.desg_id) !== String(tableDesgId);
-                if (deptMismatch || desgMismatch) {
+                const shiftMismatch = tableShiftId && String(emp.shift_id) !== String(tableShiftId);
+                if (deptMismatch || desgMismatch || shiftMismatch) {
                     setTableEmployeeId('');
                 }
             }
         }
-    }, [tableDeptId, tableDesgId, employees, tableEmployeeId]);
+    }, [tableDeptId, tableDesgId, tableShiftId, employees, tableEmployeeId]);
 
     useEffect(() => {
         const fetchEmployeesAndDepts = async () => {
             try {
-                const [empRes, deptRes, desgRes] = await Promise.all([
+                const [empRes, deptRes, desgRes, shiftRes] = await Promise.all([
                     adminService.getAllUsers(),
                     adminService.getDepartments(),
-                    adminService.getDesignations()
+                    adminService.getDesignations(),
+                    adminService.getShifts()
                 ]);
                 if (empRes.success && empRes.users) {
                     const sorted = [...empRes.users].sort((a, b) => a.user_name.localeCompare(b.user_name));
@@ -601,6 +624,10 @@ const MobileReports = () => {
                 if (desgRes && desgRes.designations) {
                     const sortedDesgs = [...desgRes.designations].sort((a, b) => a.desg_name.localeCompare(b.desg_name));
                     setDesignations(sortedDesgs);
+                }
+                if (shiftRes && shiftRes.shifts) {
+                    const sortedShifts = [...shiftRes.shifts].sort((a, b) => a.shift_name.localeCompare(b.shift_name));
+                    setShifts(sortedShifts);
                 }
             } catch (err) {
                 console.error("Failed to load filter metadata (mobile)", err);
@@ -660,10 +687,12 @@ const MobileReports = () => {
         const selectedEmployeeId = isCard ? attendanceEmployeeId : tableEmployeeId;
         const selectedDeptId = isCard ? attendanceDeptId : tableDeptId;
         const selectedDesgId = isCard ? attendanceDesgId : tableDesgId;
+        const selectedShiftId = isCard ? attendanceShiftId : tableShiftId;
         const useCustomRange = isCard ? false : tableUseCustomRange;
         const customStartDate = isCard ? '' : tableCustomStartDate;
         const customEndDate = isCard ? '' : tableCustomEndDate;
         const exportColumnsObj = isCard ? {
+            shift: true,
             timeIn: true,
             timeOut: true,
             status: true,
@@ -687,6 +716,7 @@ const MobileReports = () => {
             selectedEmployeeId,
             selectedDeptId,
             selectedDesgId,
+            selectedShiftId,
             useCustomRange,
             customStartDate,
             customEndDate,
@@ -697,8 +727,8 @@ const MobileReports = () => {
         };
     }, [
         previewMode,
-        attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId, attendanceDeptId, attendanceDesgId,
-        tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableDeptId, tableDesgId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
+        attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId, attendanceDeptId, attendanceDesgId, attendanceShiftId,
+        tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableDeptId, tableDesgId, tableShiftId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
     ]);
 
     // Fetch Preview
@@ -716,7 +746,8 @@ const MobileReports = () => {
                     activeFilters.qEnd,
                     activeFilters.exportColumnsKey,
                     activeFilters.selectedDeptId,
-                    activeFilters.selectedDesgId
+                    activeFilters.selectedDesgId,
+                    activeFilters.selectedShiftId
                 );
                 if (!cancelled && res.ok) {
                     setPreviewData(res.data);
@@ -778,7 +809,8 @@ const MobileReports = () => {
                 qEnd,
                 JSON.stringify(tableExportColumns),
                 tableDeptId,
-                tableDesgId
+                tableDesgId,
+                tableShiftId
             );
             if (res.ok) {
                 const reportId = res.reportId;
@@ -1061,6 +1093,55 @@ const MobileReports = () => {
                         ))}
                     </div>
 
+                    {/* Stats Dashboard */}
+                    {previewData && previewData.rows && previewData.rows.length > 0 && (
+                        <div className="grid grid-cols-2 gap-3.5 mt-2 animate-in fade-in duration-300">
+                            <div className="bg-white dark:bg-black border border-slate-200 dark:border-github-dark-border p-3.5 rounded-2xl shadow-sm flex items-center justify-between">
+                                <div>
+                                    <span className="text-[8px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider block">Records</span>
+                                    <h4 className="text-lg font-black text-slate-800 dark:text-github-dark-text mt-1">{stats.total}</h4>
+                                </div>
+                                <div className="p-2 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                                    <User size={14} />
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-black border border-slate-200 dark:border-github-dark-border p-3.5 rounded-2xl shadow-sm flex items-center justify-between">
+                                <div>
+                                    <span className="text-[8px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider block">Avg Hours</span>
+                                    <h4 className="text-lg font-black text-slate-800 dark:text-github-dark-text mt-1">{stats.avgHrs}h</h4>
+                                </div>
+                                <div className="p-2 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                                    <Clock size={14} />
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-black border border-slate-200 dark:border-github-dark-border p-3.5 rounded-2xl shadow-sm flex items-center justify-between">
+                                <div>
+                                    <span className="text-[8px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider block">Present %</span>
+                                    <h4 className="text-lg font-black text-slate-800 dark:text-github-dark-text mt-1">
+                                        {stats.presentRate !== null ? `${stats.presentRate}%` : 'N/A'}
+                                    </h4>
+                                </div>
+                                <div className="p-2 bg-purple-50 dark:bg-purple-950/20 text-purple-650 dark:text-purple-400 rounded-xl">
+                                    <CheckCircle2 size={14} />
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-black border border-slate-200 dark:border-github-dark-border p-3.5 rounded-2xl shadow-sm flex items-center justify-between">
+                                <div>
+                                    <span className="text-[8px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider block">Late Count</span>
+                                    <h4 className="text-lg font-black text-slate-800 dark:text-github-dark-text mt-1">
+                                        {stats.lateCount !== null ? stats.lateCount : 0}
+                                    </h4>
+                                </div>
+                                <div className="p-2 bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 rounded-xl">
+                                    <AlertCircle size={14} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* --- CONFIGURATION PANEL --- */}
                     {previewMode === 'table' ? (
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-white/5 shadow-sm space-y-5">
@@ -1234,6 +1315,77 @@ const MobileReports = () => {
                                                 ) : (
                                                     <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
                                                         No designations found
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Custom Searchable Shift Selector */}
+                                <div className="space-y-1.5 relative animate-none" ref={tableShiftDropdownRef}>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Shift</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTableIsShiftDropdownOpen(!tableIsShiftDropdownOpen);
+                                            setTableShiftSearchQuery('');
+                                        }}
+                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                    >
+                                        <span className="truncate">
+                                            {shifts.find(s => String(s.shift_id) === String(tableShiftId))?.shift_name || 'All Shifts'}
+                                        </span>
+                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {tableIsShiftDropdownOpen && (
+                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                            <div className="relative mb-2">
+                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search shifts..."
+                                                    value={tableShiftSearchQuery}
+                                                    onChange={(e) => setTableShiftSearchQuery(e.target.value)}
+                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setTableShiftId('');
+                                                        setTableIsShiftDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableShiftId === ''
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                        }`}
+                                                >
+                                                    All Shifts
+                                                </button>
+                                                {shifts.filter(s => s.shift_name.toLowerCase().includes(tableShiftSearchQuery.toLowerCase())).length > 0 ? (
+                                                    shifts.filter(s => s.shift_name.toLowerCase().includes(tableShiftSearchQuery.toLowerCase())).map(s => (
+                                                        <button
+                                                            key={s.shift_id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTableShiftId(s.shift_id);
+                                                                setTableIsShiftDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(tableShiftId) === String(s.shift_id)
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            {s.shift_name}
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                        No shifts found
                                                     </div>
                                                 )}
                                             </div>
@@ -1654,6 +1806,77 @@ const MobileReports = () => {
                                                 ) : (
                                                     <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
                                                         No designations found
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Custom Searchable Shift Selector */}
+                                <div className="space-y-1.5 relative animate-none" ref={attendanceShiftDropdownRef}>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Shift</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setAttendanceIsShiftDropdownOpen(!attendanceIsShiftDropdownOpen);
+                                            setAttendanceShiftSearchQuery('');
+                                        }}
+                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                    >
+                                        <span className="truncate">
+                                            {shifts.find(s => String(s.shift_id) === String(attendanceShiftId))?.shift_name || 'All Shifts'}
+                                        </span>
+                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {attendanceIsShiftDropdownOpen && (
+                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                            <div className="relative mb-2">
+                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search shifts..."
+                                                    value={attendanceShiftSearchQuery}
+                                                    onChange={(e) => setAttendanceShiftSearchQuery(e.target.value)}
+                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setAttendanceShiftId('');
+                                                        setAttendanceIsShiftDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceShiftId === ''
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                        }`}
+                                                >
+                                                    All Shifts
+                                                </button>
+                                                {shifts.filter(s => s.shift_name.toLowerCase().includes(attendanceShiftSearchQuery.toLowerCase())).length > 0 ? (
+                                                    shifts.filter(s => s.shift_name.toLowerCase().includes(attendanceShiftSearchQuery.toLowerCase())).map(s => (
+                                                        <button
+                                                            key={s.shift_id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setAttendanceShiftId(s.shift_id);
+                                                                setAttendanceIsShiftDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(attendanceShiftId) === String(s.shift_id)
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            {s.shift_name}
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                        No shifts found
                                                     </div>
                                                 )}
                                             </div>

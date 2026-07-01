@@ -414,7 +414,7 @@ export const previewReport = catchAsync(async (req, res) => {
         return res.status(403).json({ ok: false, message: "Access denied" });
     }
 
-    const { month, date, type, startDate, endDate, columns, dept_id, desg_id } = req.query;
+    const { month, date, type, startDate, endDate, columns, dept_id, desg_id, shift_id } = req.query;
     const org_id = req.user.org_id;
 
     if (!type) {
@@ -432,20 +432,20 @@ export const previewReport = catchAsync(async (req, res) => {
     }
 
     const { startDate: resolvedStart, endDate: resolvedEnd } = reportsService.resolveDateRange({ type, month, date, startDate, endDate });
-    const data = await reportsService.getPreviewData({ type, org_id, month, startDate: resolvedStart, endDate: resolvedEnd, targetUserId, columns, dept_id, desg_id });
+    const data = await reportsService.getPreviewData({ type, org_id, month, startDate: resolvedStart, endDate: resolvedEnd, targetUserId, columns, dept_id, desg_id, shift_id });
 
     res.json({ ok: true, data });
 });
 
-export const compileReportBuffer = async ({ org_id, targetUserId, month, date, type, format, startDate: queryStart, endDate: queryEnd, columns, dept_id, desg_id }) => {
+export const compileReportBuffer = async ({ org_id, targetUserId, month, date, type, format, startDate: queryStart, endDate: queryEnd, columns, dept_id, desg_id, shift_id }) => {
     const colsObj = typeof columns === 'string' ? JSON.parse(columns) : (columns || {});
     const { startDate, endDate } = reportsService.resolveDateRange({ type, month, date, startDate: queryStart, endDate: queryEnd });
     const todayStr = await reportsService.getTodayStr(org_id);
 
-    const users = await reportsService.getUsers({ org_id, targetUserId, dept_id, desg_id });
+    const users = await reportsService.getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id });
     let records = [];
     if (type !== "employee_master") {
-        records = await reportsService.getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id });
+        records = await reportsService.getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
     }
 
     if (format === "pdf") {
@@ -453,8 +453,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         let pdfCols, pdfRows;
 
         if (type === "attendance_detailed") {
-            const detailedRecords = await reportsService.getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id });
-            pdfCols = ["Date", "Name", "Dept", "Shift"];
+            const detailedRecords = await reportsService.getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
+            pdfCols = ["Date", "Name", "Dept"];
             const pdfColIndices = [];
 
             const pushPdfCol = (name, check, index) => {
@@ -464,6 +464,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 }
             };
 
+            pushPdfCol("Shift", "shift", 3);
             pushPdfCol("In Time", "timeIn", 4);
             pushPdfCol("Out Time", "timeOut", 5);
             pushPdfCol("Work Hrs", "workedHours", 6);
@@ -485,7 +486,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     r.time_out_address || "-"
                 ];
 
-                const row = [fullRow[0], fullRow[1], fullRow[2], fullRow[3]];
+                const row = [fullRow[0], fullRow[1], fullRow[2]];
                 pdfColIndices.forEach(idx => {
                     row.push(fullRow[idx]);
                 });
@@ -961,6 +962,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         }
 
         const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
+        if (colsObj.shift !== false) {
+            baseHeaders.push("Shift");
+        }
         const gridHeaders = dateHeaders.map(d => `${d.getDate()}\n${d.toLocaleDateString('en-US', { weekday: 'short' })}`);
         
         const summaryCols = [];
@@ -992,6 +996,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 u.desg_name || "-",
                 u.dept_name || "-"
             ];
+            if (colsObj.shift !== false) {
+                userRow.push(u.shift_name || "-");
+            }
 
             let totalWorkedHrs = 0;
             let totalLateMins = 0;
@@ -1104,8 +1111,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         const cols = [
             { header: "Date", key: "date", width: 15 },
             { header: "Name", key: "name", width: 25 },
-            { header: "Department", key: "dept", width: 20 },
-            { header: "Shift", key: "shift", width: 15 }
+            { header: "Department", key: "dept", width: 20 }
         ];
 
         const pushCol = (header, key, check, width) => {
@@ -1114,6 +1120,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             }
         };
 
+        pushCol("Shift", "shift", "shift", 15);
         pushCol("Time In", "time_in", "timeIn", 15);
         pushCol("Time Out", "time_out", "timeOut", 15);
         pushCol("Work Hrs", "work_hrs", "workedHours", 12);
@@ -1122,15 +1129,15 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         pushCol("Out Location", "time_out_address", "location", 40);
 
         worksheet.columns = cols;
-        const detailedRecords = await reportsService.getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id });
+        const detailedRecords = await reportsService.getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
         detailedRecords.forEach(r => {
             const rowData = {
                 date: reportsService.formatLocalDateStr(r.time_in),
                 name: r.user_name,
-                dept: r.dept_name || "-",
-                shift: r.shift_name || "-"
+                dept: r.dept_name || "-"
             };
 
+            if (colsObj.shift !== false) rowData.shift = r.shift_name || "-";
             if (colsObj.timeIn !== false) rowData.time_in = reportsService.formatLocalTimeStr(r.time_in, true);
             if (colsObj.timeOut !== false) rowData.time_out = reportsService.formatLocalTimeStr(r.time_out, true);
             if (colsObj.workedHours !== false) rowData.work_hrs = reportsService.calculateWorkHours(r.time_in, r.time_out);
@@ -1354,6 +1361,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
         // Add Row 1 (Top Header)
         const r1Values = ["SR No.", "Name", "Position", "Dept"];
+        if (colsObj.shift !== false) {
+            r1Values.push("Shift");
+        }
         dateHeaders.forEach(d => {
             const datePrefix = `${d.getDate()} ${d.toLocaleDateString('en-US', { weekday: 'short' })}`;
             if (dailyColspan > 0) {
@@ -1367,7 +1377,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         worksheet.addRow(r1Values);
 
         // Add Row 2 (Sub Header)
-        const r2Values = ["", "", "", ""];
+        const r2Values = colsObj.shift !== false ? ["", "", "", "", ""] : ["", "", "", ""];
         if (dailyColspan > 0) {
             dateHeaders.forEach(() => {
                 subCols.forEach(sc => {
@@ -1379,13 +1389,14 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         worksheet.addRow(r2Values);
 
         // Merge cells
-        // Merge base headers vertically (Columns 1 to 4)
-        for (let col = 1; col <= 4; col++) {
+        // Merge base headers vertically (Columns 1 to 4 or 5)
+        const baseColLimit = colsObj.shift !== false ? 5 : 4;
+        for (let col = 1; col <= baseColLimit; col++) {
             worksheet.mergeCells(1, col, 2, col);
         }
 
         // Merge date headers horizontally
-        let currentCol = 5;
+        let currentCol = colsObj.shift !== false ? 6 : 5;
         if (dailyColspan > 0) {
             dateHeaders.forEach(() => {
                 const startCol = currentCol;
@@ -1406,6 +1417,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         users.forEach((u, index) => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
             const userRow = [index + 1, u.user_name, u.desg_name || "-", u.dept_name || "-"];
+            if (colsObj.shift !== false) {
+                userRow.push(u.shift_name || "-");
+            }
 
             let totalHrs = 0;
             let lateCount = 0;
