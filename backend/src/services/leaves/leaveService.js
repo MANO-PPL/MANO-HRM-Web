@@ -900,3 +900,85 @@ export async function deleteLeavePolicyRule({ org_id, lp_id, rule_id }) {
 
     return { ok: true, message: "Rule deleted successfully" };
 }
+
+export async function assignPolicyToEmployees({ org_id, lp_id, user_ids, year }) {
+    const targetYear = year || new Date().getFullYear();
+
+    // Verify policy exists and belongs to organization
+    const policy = await attendanceDB('leave_policies')
+        .where({ lp_id, org_id })
+        .first();
+
+    if (!policy) {
+        throw { status: 404, message: "Leave policy not found" };
+    }
+
+    // Get all active rules for this policy
+    const rules = await attendanceDB('leave_policies_rules')
+        .where({ lp_id, is_active: 1 });
+
+    if (rules.length === 0) {
+        throw { status: 400, message: "This policy has no active rules to assign" };
+    }
+
+    // Verify users belong to org
+    const users = await attendanceDB('users')
+        .where({ org_id, is_deleted: 0 })
+        .whereIn('user_id', user_ids);
+
+    const validUserIds = users.map(u => u.user_id);
+    if (validUserIds.length === 0) {
+        throw { status: 400, message: "No valid employees selected" };
+    }
+
+    const results = [];
+
+    // Assign rules to each user
+    for (const userId of validUserIds) {
+        const userResults = [];
+        for (const rule of rules) {
+            const existing = await attendanceDB('leave_balances')
+                .where({ user_id: userId, org_id, rule_id: rule.rule_id, year: targetYear })
+                .first();
+
+            if (existing) {
+                // Update allocation to policy default max_balance
+                await attendanceDB('leave_balances')
+                    .where({ lb_id: existing.lb_id })
+                    .update({
+                        allocated: rule.max_balance,
+                        updated_at: new Date()
+                    });
+                userResults.push({
+                    lb_id: existing.lb_id,
+                    user_id: userId,
+                    rule_id: rule.rule_id,
+                    allocated: rule.max_balance,
+                    status: 'updated'
+                });
+            } else {
+                // Create new balance
+                const [lb_id] = await attendanceDB('leave_balances').insert({
+                    user_id: userId,
+                    org_id,
+                    rule_id: rule.rule_id,
+                    year: targetYear,
+                    allocated: rule.max_balance,
+                    used: 0,
+                    carried_forward: 0,
+                    updated_at: new Date()
+                });
+                userResults.push({
+                    lb_id,
+                    user_id: userId,
+                    rule_id: rule.rule_id,
+                    allocated: rule.max_balance,
+                    status: 'created'
+                });
+            }
+        }
+        results.push({ user_id: userId, rules: userResults });
+    }
+
+    return { ok: true, results };
+}

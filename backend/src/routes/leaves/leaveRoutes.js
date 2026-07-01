@@ -42,6 +42,7 @@ router.post('/policies', ensureAdmin, LeavePolicyController.createLeavePolicy);
 router.get('/policies/:lp_id', ensureAdmin, LeavePolicyController.getLeavePolicyById);
 router.put('/policies/:lp_id', ensureAdmin, LeavePolicyController.updateLeavePolicy);
 router.delete('/policies/:lp_id', ensureAdmin, LeavePolicyController.deleteLeavePolicy);
+router.post('/policies/:lp_id/assign', ensureAdmin, LeavePolicyController.assignPolicyToEmployees);
 
 // Admin Leave Policy Rule Routes
 router.post('/policies/:lp_id/rules', ensureAdmin, LeavePolicyController.createLeavePolicyRule);

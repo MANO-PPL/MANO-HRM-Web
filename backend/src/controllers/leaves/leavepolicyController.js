@@ -121,3 +121,26 @@ export const deleteLeavePolicyRule = catchAsync(async (req, res) => {
         throw err;
     }
 });
+
+export const assignPolicyToEmployees = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
+    const { lp_id } = req.params;
+    const { user_ids, year } = req.body;
+
+    if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
+        return res.status(400).json({ ok: false, message: "user_ids must be a non-empty array" });
+    }
+
+    try {
+        const result = await LeaveService.assignPolicyToEmployees({
+            org_id,
+            lp_id: Number(lp_id),
+            user_ids: user_ids.map(Number),
+            year: year ? Number(year) : undefined
+        });
+        res.json({ ok: true, message: "Policy assigned successfully", result });
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ ok: false, message: err.message });
+        throw err;
+    }
+});
