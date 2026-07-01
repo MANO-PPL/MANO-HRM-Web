@@ -40,6 +40,7 @@ export default function App() {
                     <Route path="/product/policy-geofencing" element={<GenericPage />} />
                     <Route path="/product/reports-automation" element={<GenericPage />} />
                     <Route path="/product/salary-packages" element={<GenericPage />} />
+                    <Route path="/product/payroll-payslips" element={<GenericPage />} />
 
                     <Route path="/solutions/hr-teams" element={<GenericPage />} />
                     <Route path="/solutions/managers" element={<GenericPage />} />

@@ -3,6 +3,7 @@ import { useLocation, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { pageContent } from "../siteData";
 import { CheckCircle2, ArrowRight, ChevronRight } from "lucide-react";
+import MacWindow from "../components/MacWindow";
 
 export default function GenericPage() {
     const { pathname } = useLocation();
@@ -60,11 +61,10 @@ export default function GenericPage() {
                         className="relative"
                     >
                         <div className="absolute inset-0 bg-blue-500/10 blur-[100px] rounded-full" />
-                        <div className="relative bg-white/5 border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
-                            <img 
+                        <div className="relative">
+                            <MacWindow 
                                 src={content.image || "/showcase/dashboard.png"} 
                                 alt={content.title} 
-                                className="w-full h-auto block"
                             />
                         </div>
                     </motion.div>

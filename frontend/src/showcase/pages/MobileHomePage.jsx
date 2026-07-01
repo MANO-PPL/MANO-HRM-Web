@@ -60,22 +60,22 @@ export default function MobileHomePage() {
                     {homeData.highlights.map((feature, idx) => {
                         const Icon = featureIcons[idx] || Clock;
                         return (
-                        <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-5 active:bg-white/10 transition-all">
-                            <div className="flex items-center gap-4 mb-3">
-                                <div className="p-2.5 bg-blue-500/10 rounded-xl">
-                                    <Icon size={22} className="text-blue-400" />
+                            <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-5 active:bg-white/10 transition-all">
+                                <div className="flex items-center gap-4 mb-3">
+                                    <div className="p-2.5 bg-blue-500/10 rounded-xl">
+                                        <Icon size={22} className="text-blue-400" />
+                                    </div>
+                                    <h3 className="text-white font-bold text-lg">{feature.title}</h3>
                                 </div>
-                                <h3 className="text-white font-bold text-lg">{feature.title}</h3>
+                                <p className="text-gray-400 text-xs leading-relaxed mb-3">{feature.body}</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {feature.bullets.map((bullet, bidx) => (
+                                        <span key={bidx} className="text-[10px] bg-white/5 text-gray-300 px-2.5 py-1 rounded-lg border border-white/5 italic">
+                                            • {bullet}
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
-                            <p className="text-gray-400 text-xs leading-relaxed mb-3">{feature.body}</p>
-                            <div className="flex flex-wrap gap-2">
-                                {feature.bullets.map((bullet, bidx) => (
-                                    <span key={bidx} className="text-[10px] bg-white/5 text-gray-300 px-2.5 py-1 rounded-lg border border-white/5 italic">
-                                        • {bullet}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
                         );
                     })}
                 </div>

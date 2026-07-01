@@ -165,6 +165,18 @@ export const homeData = {
             link: "/features/chat-collaboration"
         },
         {
+            title: "Automated Payroll & Detailed Payslip Breakdown",
+            body: "Translate attendance records directly into accurate, transparent payroll breakdowns. Automatically calculate gross salaries, overtime increments, and deductions based on live check-in logs, and generate audit-ready payslips in a single click.",
+            bullets: [
+                "Dynamic payslip summary detailing total base salary, overtime earnings, and unpaid leaves",
+                "Automatic reconciliation matching work days, lateness, and hours directly to attendance logs",
+                "Detailed salary breakdown showing basic pay, allowances, and compliant statutory deductions",
+                "One-click PDF downloads and email delivery of itemized payslips to employees"
+            ],
+            image: "/showcase/reports.png",
+            link: "/product/payroll-payslips"
+        },
+        {
             title: "Salary Packages & OT Rate Configurations",
             body: "Establish organization-wide salary standards and customize overtime allowances dynamically. Transition employees seamlessly from standardized packages to individual custom configurations with automatic historical rate audits.",
             bullets: [
@@ -278,6 +290,39 @@ export const pageContent = {
             "Workforce Analytics",
             "Real-time Notifications",
         ],
+    },
+    "/product/payroll-payslips": {
+        title: "Automated Payroll & Payslip Breakdown",
+        image: "/showcase/reports.png",
+        intro: "Reconcile hours, lateness, and leave directly into accurate, compliant salary summaries and downloadable payslips.",
+        body: "Generate clear payroll statements automatically. Our platform translates employee timestamps directly into statutory components, overtime calculations, and leave deductions, providing transparency for both HR and workers.",
+        points: [
+            "Real-time attendance-to-salary reconciliation",
+            "Granular breakdowns of basic salary, overtime, and allowances",
+            "Automatic deduction mapping for unpaid leaves and late buffer breaches",
+            "Professional PDF payslip downloads with custom branding",
+            "Timezone-safe payroll runs with full change audits"
+        ],
+        sections: [
+            {
+                title: "Granular Salary & Overtime Reconciliation",
+                body: "Say goodbye to manual Excel summaries. The platform processes clock-in sessions, grace period breaches, and approved overtime rules dynamically to draft draft pay summaries instantly.",
+                bullets: [
+                    "Automatic calculation of hourly, daily, or monthly base rates",
+                    "Dynamically applied shift allowances and project-specific rates",
+                    "Statutory contribution tracking to ensure audit compliance"
+                ]
+            },
+            {
+                title: "Downloadable Itemized Payslips",
+                body: "Provide employees with transparent, professional pay receipts detailing exactly how their earnings were calculated based on their real-time attendance matrix.",
+                bullets: [
+                    "One-click PDF generation for offline records",
+                    "Breakdowns showing working days, public holidays, and leaves taken",
+                    "Secure, authenticated access for employees to download their history"
+                ]
+            }
+        ]
     },
     "/product/salary-packages": {
         title: "Salary Packages & OT Rate Configurations",

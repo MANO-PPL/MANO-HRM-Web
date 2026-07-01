@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Radar, ShieldCheck, Sparkles, BarChart3, Clock3, MapPin, Workflow, Activity, Users, TimerReset, Table2, Scale, HeartHandshake, Settings2, Cpu, ShieldAlert, BrainCircuit, ArrowRightLeft, MessageSquare, Clock, ChevronDown } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import MotionSection from "../components/MotionSection";
+import MacWindow from "../components/MacWindow";
 import { homeData, pageContent } from "../siteData";
 
 const highlightIcons = [Radar, ShieldCheck, Sparkles, BarChart3];
@@ -41,12 +42,12 @@ export default function HomePage() {
                     </motion.div>
 
                     <motion.div
-                        className="hero-visual glass-card"
+                        className="hero-visual"
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.6, delay: 0.2 }}
                     >
-                        <img src={homeData.heroImage} alt="Platform Dashboard" />
+                        <MacWindow src={homeData.heroImage} alt="Platform Dashboard" />
                     </motion.div>
                 </div>
             </section>
@@ -84,9 +85,9 @@ export default function HomePage() {
                                             Talk to Sales <Workflow size={16} />
                                         </a>
                                     </div>
-                                    <div className="split-image-container glass-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <div className="split-image-container" style={{ padding: 0, overflow: 'hidden' }}>
                                         {item.image ? (
-                                            <img src={item.image} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                            <MacWindow src={item.image} alt={item.title} />
                                         ) : (
                                             <div style={{ height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)' }}>
                                                 <Sparkles size={48} style={{ color: "var(--accent-secondary)", opacity: 0.5 }} />
@@ -111,7 +112,7 @@ export default function HomePage() {
                                 TimerReset, Activity, Table2, ShieldCheck, Scale, HeartHandshake
                             }[item.icon] || Activity;
                             return (
-                                <article key={item.title} className="glass-card metric-card" style={{ padding: '1.15rem 1.35rem', display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden' }}>
+                                <article key={item.title} className="glass-card metric-card animated-white-border" style={{ padding: '1.15rem 1.35rem', display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden' }}>
                                     {/* A subtle glowing overlay map in the background of each stat card */}
                                     <div style={{ position: 'absolute', right: '-15px', bottom: '-15px', opacity: 0.05, transform: 'rotate(-15deg)', pointerEvents: 'none' }}>
                                         <IconComponent size={120} />
@@ -158,7 +159,7 @@ export default function HomePage() {
                                     </div>
 
                                     {/* Content Card sliding off left/right  */}
-                                    <article className="glass-card timeline-content" style={{ width: '45%', padding: '1.15rem 1.35rem', position: 'relative', textAlign: isEven ? 'right' : 'left', display: 'flex', flexDirection: 'column', alignItems: isEven ? 'flex-end' : 'flex-start' }}>
+                                    <article className="glass-card timeline-content animated-white-border" style={{ width: '45%', padding: '1.15rem 1.35rem', position: 'relative', textAlign: isEven ? 'right' : 'left', display: 'flex', flexDirection: 'column', alignItems: isEven ? 'flex-end' : 'flex-start' }}>
 
                                         {/* Massive background number watermark */}
                                         <div style={{ position: 'absolute', top: '-5px', [isEven ? 'left' : 'right']: '15px', fontSize: '6rem', fontWeight: 900, color: 'rgba(255,255,255,0.02)', zIndex: 0, lineHeight: 1, pointerEvents: 'none' }}>
@@ -187,7 +188,7 @@ export default function HomePage() {
                         {(pageContent['/pricing'].plans || []).map((plan, idx) => {
                             const Icon = [Activity, Sparkles, ShieldCheck][idx % 3];
                             return (
-                                <article key={plan.name} className="glass-card pricing-card" style={{ padding: '1.15rem 1.35rem' }}>
+                                <article key={plan.name} className="glass-card pricing-card animated-white-border" style={{ padding: '1.15rem 1.35rem' }}>
                                     <div className="module-title" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginBottom: '0.75rem' }}>
                                         <Icon size={20} style={{ color: "var(--accent-primary)" }} />
                                         <h3 style={{ margin: 0, fontSize: '1.3rem' }}>{plan.name}</h3>
@@ -242,7 +243,7 @@ export default function HomePage() {
                         {/* Right Side: Information Cards */}
                         <div className="contact-split-content">
                             {/* Card 1: Contact Detail */}
-                            <article className="glass-card info-card-horizontal">
+                            <article className="glass-card info-card-horizontal animated-white-border">
                                 <div>
                                     <h4 className="text-blue-500 font-bold text-sm uppercase tracking-wider mb-2">Connect</h4>
                                     <h3 className="text-white font-bold text-xl">Contact Channels</h3>
@@ -258,7 +259,7 @@ export default function HomePage() {
                             </article>
 
                             {/* Card 2: Availability */}
-                            <article className="glass-card info-card-horizontal">
+                            <article className="glass-card info-card-horizontal animated-white-border">
                                 <div>
                                     <h4 className="text-blue-500 font-bold text-sm uppercase tracking-wider mb-2">Availability</h4>
                                     <h3 className="text-white font-bold text-xl flex items-center gap-3">
@@ -279,7 +280,7 @@ export default function HomePage() {
                             </article>
 
                             {/* Card 3: Support Flow */}
-                            <article className="glass-card info-card-horizontal">
+                            <article className="glass-card info-card-horizontal animated-white-border">
                                 <div>
                                     <h4 className="text-blue-500 font-bold text-sm uppercase tracking-wider mb-2">Success</h4>
                                     <h3 className="text-white font-bold text-xl">Support Journey</h3>
