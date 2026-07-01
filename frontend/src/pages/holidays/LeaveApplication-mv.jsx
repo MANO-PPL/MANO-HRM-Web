@@ -92,6 +92,11 @@ const LeaveApplication = () => {
     const [adminAction, setAdminAction] = useState({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
     const adminRemarksRef = useRef(null);
 
+    // Leave Balances States
+    const [myBalances, setMyBalances] = useState([]);
+    const [selectedEmployeeBalances, setSelectedEmployeeBalances] = useState([]);
+    const [loadingBalances, setLoadingBalances] = useState(false);
+
     useEffect(() => {
         if (adminRemarksRef.current) {
             adminRemarksRef.current.style.height = 'auto';
@@ -114,7 +119,7 @@ const LeaveApplication = () => {
 
     // Form State (User)
     const [formData, setFormData] = useState({
-        leave_type: 'Casual Leave',
+        leave_type: '',
         start_date: '',
         end_date: '',
         reason: '',
@@ -165,13 +170,52 @@ const LeaveApplication = () => {
             }, 0);
     }, [filteredLeaves]);
 
+    const { totalQuota, totalUsed, totalAvailable, usedPercentage } = React.useMemo(() => {
+        const quota = myBalances.reduce((acc, b) => acc + Number(b.allocated) + Number(b.carried_forward), 0);
+        const used = myBalances.reduce((acc, b) => acc + Number(b.used), 0);
+        const avail = myBalances.reduce((acc, b) => acc + Number(b.available), 0);
+        const pct = quota > 0 ? Math.round((used / quota) * 100) : 0;
+        return { totalQuota: quota, totalUsed: used, totalAvailable: avail, usedPercentage: pct };
+    }, [myBalances]);
+
     const isAdmin = user?.user_type === 'admin' || user?.user_type === 'hr';
 
     useEffect(() => {
         if (user) {
             fetchLeaves();
         }
-    }, [user]);
+    }, [user, selectedYear]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('apply') === 'true') {
+            setShowForm(true);
+        }
+    }, []);
+
+    // Admin: Fetch selected employee's leave balance
+    const fetchSelectedEmployeeBalances = async (userId) => {
+        setLoadingBalances(true);
+        try {
+            const res = await leaveService.getEmployeeLeaveBalance(userId, selectedYear);
+            if (res.ok) {
+                setSelectedEmployeeBalances(res.balances || []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch employee balances", error);
+            setSelectedEmployeeBalances([]);
+        } finally {
+            setLoadingBalances(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isAdmin && selectedLeave) {
+            fetchSelectedEmployeeBalances(selectedLeave.user_id);
+        } else {
+            setSelectedEmployeeBalances([]);
+        }
+    }, [selectedLeave, selectedYear]);
 
     const fetchLeaves = async () => {
         setLoading(true);
@@ -185,6 +229,20 @@ const LeaveApplication = () => {
 
                 setLeaves(fetched);
                 // For mobile, do NOT select first item by default to keep list view clean
+            }
+
+            // Fetch current employee's leave balances
+            if (!isAdmin) {
+                const balRes = await leaveService.getMyLeaveBalances(selectedYear);
+                if (balRes.ok) {
+                    setMyBalances(balRes.balances || []);
+                    if (balRes.balances?.length > 0) {
+                        setFormData(prev => ({
+                            ...prev,
+                            leave_type: String(balRes.balances[0].rule_id)
+                        }));
+                    }
+                }
             }
         } catch (error) {
             console.error("Fetch leaves error", error);
@@ -212,7 +270,7 @@ const LeaveApplication = () => {
 
             if (res.ok) {
                 toast.success("Leave request submitted successfully");
-                setFormData({ leave_type: 'Casual Leave', start_date: '', end_date: '', reason: '', attachments: [] });
+                setFormData({ leave_type: myBalances[0]?.rule_id ? String(myBalances[0].rule_id) : 'Casual Leave', start_date: '', end_date: '', reason: '', attachments: [] });
                 setShowForm(false);
                 setIsCustomType(false);
                 fetchLeaves();
@@ -461,6 +519,24 @@ const LeaveApplication = () => {
                                 </div>
                             </div>
 
+                            {/* Selected employee balances display for Admins */}
+                            {isAdmin && selectedEmployeeBalances.length > 0 && (
+                                <div className="border-t border-slate-100 dark:border-github-dark-border pt-4">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">Employee Leave Balances</span>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {selectedEmployeeBalances.map(bal => (
+                                            <div key={bal.lb_id} className="bg-slate-50 dark:bg-github-dark-subtle/50 p-2.5 rounded-lg border border-slate-100 dark:border-github-dark-border flex flex-col">
+                                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">{bal.leave_type}</span>
+                                                <div className="flex justify-between items-baseline mt-1">
+                                                    <span className="text-xs font-black text-indigo-650 dark:text-indigo-400">{Number(bal.available)} days left</span>
+                                                    <span className="text-[9px] text-slate-400 uppercase font-bold">{Number(bal.used)} used</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {selectedLeave.attachments && selectedLeave.attachments.length > 0 && (
                                 <div>
                                     <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Attachments</h4>
@@ -528,7 +604,99 @@ const LeaveApplication = () => {
     // --- DEFAULT USER APPLY & LIST VIEW ---
     return (
         <MobileDashboardLayout title="Apply Leave">
-            <div className="space-y-6 pb-20">
+            <div className="space-y-6 pb-20 animate-in fade-in duration-300">
+                {/* Leave Dashboard display */}
+                {!isAdmin && myBalances.length > 0 && (
+                    <div className="space-y-3">
+                        {/* Overall Utilization Card for Mobile */}
+                        <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-2xl shadow-sm flex items-center justify-between gap-4">
+                            <div className="space-y-1">
+                                <span className="text-[9px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Leave Balance Year {selectedYear}</span>
+                                <h3 className="text-base font-black text-slate-800 dark:text-github-dark-text">Annual Leave Dashboard</h3>
+                                <div className="flex gap-4 mt-2">
+                                    <div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Quota</p>
+                                        <p className="text-xs font-black text-slate-700 dark:text-github-dark-text">{totalQuota} Days</p>
+                                    </div>
+                                    <div className="border-l border-slate-100 dark:border-github-dark-border pl-3">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Used</p>
+                                        <p className="text-xs font-black text-slate-700 dark:text-github-dark-text">{totalUsed} Days</p>
+                                    </div>
+                                    <div className="border-l border-slate-100 dark:border-github-dark-border pl-3">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Available</p>
+                                        <p className="text-xs font-black text-indigo-650 dark:text-indigo-400">{totalAvailable} Days</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
+                                <svg className="w-full h-full transform -rotate-90">
+                                    <circle
+                                        cx="32"
+                                        cy="32"
+                                        r="26"
+                                        className="stroke-slate-100 dark:stroke-github-dark-border"
+                                        strokeWidth="5"
+                                        fill="transparent"
+                                    />
+                                    <circle
+                                        cx="32"
+                                        cy="32"
+                                        r="26"
+                                        className="stroke-indigo-600 transition-all duration-1000 ease-out"
+                                        strokeWidth="5"
+                                        fill="transparent"
+                                        strokeDasharray={163.3}
+                                        strokeDashoffset={163.3 - (Math.min(usedPercentage, 100) / 100) * 163.3}
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                                <span className="absolute text-xs font-black text-slate-800 dark:text-github-dark-text">{usedPercentage}%</span>
+                            </div>
+                        </div>
+
+                        {/* Individual Leave Type Progress Bars */}
+                        <div className="grid grid-cols-2 gap-3">
+                            {myBalances.map((bal, idx) => {
+                                const balQuota = Number(bal.allocated) + Number(bal.carried_forward);
+                                const percentUsed = balQuota > 0 ? Math.round((Number(bal.used) / balQuota) * 100) : 0;
+                                const colors = [
+                                    { text: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-650', track: 'bg-indigo-50 dark:bg-indigo-950/20' },
+                                    { text: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-500', track: 'bg-rose-50 dark:bg-rose-950/20' },
+                                    { text: 'text-teal-650 dark:text-teal-400', bg: 'bg-teal-500', track: 'bg-teal-50 dark:bg-teal-950/20' },
+                                    { text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500', track: 'bg-amber-50 dark:bg-amber-950/20' }
+                                ][idx % 4];
+
+                                return (
+                                    <div key={bal.lb_id} className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-2xl shadow-sm flex flex-col justify-between">
+                                        <div className="flex justify-between items-start">
+                                            <span className="text-[9px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider truncate flex-1 mr-1">{bal.leave_type}</span>
+                                            <span className={`text-[8px] font-black uppercase px-1 py-0.5 rounded shrink-0 ${colors.track} ${colors.text}`}>
+                                                {percentUsed}%
+                                            </span>
+                                        </div>
+                                        <div className="flex items-baseline gap-1 mt-1.5 mb-3">
+                                            <span className="text-xl font-black text-slate-800 dark:text-github-dark-text leading-none">{Number(bal.available)}</span>
+                                            <span className="text-[9px] text-slate-450 dark:text-github-dark-muted font-bold">days left</span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <div className={`w-full h-1.5 rounded-full ${colors.track} overflow-hidden`}>
+                                                <div
+                                                    className={`h-full ${colors.bg} rounded-full transition-all duration-1000`}
+                                                    style={{ width: `${Math.min(percentUsed, 100)}%` }}
+                                                />
+                                            </div>
+                                            <div className="flex justify-between text-[8px] font-bold text-slate-400">
+                                                <span>{Number(bal.used)} Used</span>
+                                                <span>{Number(balQuota)} Max</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Form Card */}
                 <div className="bg-white dark:bg-github-dark-subtle rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-5">
                     <div
@@ -549,7 +717,7 @@ const LeaveApplication = () => {
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Leave Type</label>
                                 <select
-                                    value={['Casual Leave', 'Sick Leave'].includes(formData.leave_type) ? formData.leave_type : 'Other'}
+                                    value={formData.leave_type}
                                     onChange={(e) => {
                                         if (e.target.value === 'Other') {
                                             setIsCustomType(true);
@@ -559,11 +727,20 @@ const LeaveApplication = () => {
                                             setFormData({ ...formData, leave_type: e.target.value });
                                         }
                                     }}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm font-semibold cursor-pointer"
                                 >
-                                    <option>Casual Leave</option>
-                                    <option>Sick Leave</option>
-                                    <option>Other</option>
+                                    {myBalances.map(bal => (
+                                        <option key={bal.rule_id} value={bal.rule_id}>
+                                            {bal.leave_type} ({Number(bal.available)} left)
+                                        </option>
+                                    ))}
+                                    {myBalances.length === 0 && (
+                                        <>
+                                            <option value="Casual Leave">Casual Leave</option>
+                                            <option value="Sick Leave">Sick Leave</option>
+                                        </>
+                                    )}
+                                    <option value="Other">Other</option>
                                 </select>
                             </div>
                             {isCustomType && (

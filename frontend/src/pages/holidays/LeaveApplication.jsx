@@ -94,6 +94,11 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
     const [adminAction, setAdminAction] = useState({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
     const adminRemarksRef = useRef(null);
 
+    // Leave Balances States
+    const [myBalances, setMyBalances] = useState([]);
+    const [selectedEmployeeBalances, setSelectedEmployeeBalances] = useState([]);
+    const [loadingBalances, setLoadingBalances] = useState(false);
+
     useEffect(() => {
         if (adminRemarksRef.current) {
             adminRemarksRef.current.style.height = 'auto';
@@ -117,7 +122,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
 
     // Form State (User)
     const [formData, setFormData] = useState({
-        leave_type: 'Casual Leave',
+        leave_type: '',
         start_date: '',
         end_date: '',
         reason: '',
@@ -189,6 +194,14 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
             }, 0);
     }, [filteredLeaves]);
 
+    const { totalQuota, totalUsed, totalAvailable, usedPercentage } = React.useMemo(() => {
+        const quota = myBalances.reduce((acc, b) => acc + Number(b.allocated) + Number(b.carried_forward), 0);
+        const used = myBalances.reduce((acc, b) => acc + Number(b.used), 0);
+        const avail = myBalances.reduce((acc, b) => acc + Number(b.available), 0);
+        const pct = quota > 0 ? Math.round((used / quota) * 100) : 0;
+        return { totalQuota: quota, totalUsed: used, totalAvailable: avail, usedPercentage: pct };
+    }, [myBalances]);
+
     const isAdmin = user?.user_type === 'admin' || user?.user_type === 'hr';
 
     // --- ADMIN FILTERED LEAVES ---
@@ -205,7 +218,38 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
         if (user) {
             fetchLeaves();
         }
-    }, [user]);
+    }, [user, selectedYear]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('apply') === 'true') {
+            setShowForm(true);
+        }
+    }, []);
+
+    // Admin: Fetch selected employee's leave balance
+    const fetchSelectedEmployeeBalances = async (userId) => {
+        setLoadingBalances(true);
+        try {
+            const res = await leaveService.getEmployeeLeaveBalance(userId, selectedYear);
+            if (res.ok) {
+                setSelectedEmployeeBalances(res.balances || []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch employee balances", error);
+            setSelectedEmployeeBalances([]);
+        } finally {
+            setLoadingBalances(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isAdmin && selectedLeave) {
+            fetchSelectedEmployeeBalances(selectedLeave.user_id);
+        } else {
+            setSelectedEmployeeBalances([]);
+        }
+    }, [selectedLeave, selectedYear]);
 
     const fetchLeaves = async () => {
         setLoading(true);
@@ -225,6 +269,20 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                 }
                 // Select first item by default for admin
                 if (isAdmin && fetched.length > 0) setSelectedLeave(fetched[0]);
+            }
+
+            // Fetch current employee's leave balances
+            if (!isAdmin) {
+                const balRes = await leaveService.getMyLeaveBalances(selectedYear);
+                if (balRes.ok) {
+                    setMyBalances(balRes.balances || []);
+                    if (balRes.balances?.length > 0) {
+                        setFormData(prev => ({
+                            ...prev,
+                            leave_type: String(balRes.balances[0].rule_id)
+                        }));
+                    }
+                }
             }
         } catch (error) {
             console.error("Fetch leaves error", error);
@@ -320,7 +378,9 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
         try {
             const payload = {
                 status: actionStatus.charAt(0).toUpperCase() + actionStatus.slice(1), // Capitalize for backend
-                admin_comment: adminAction.remarks
+                admin_comment: adminAction.remarks,
+                pay_type: adminAction.payType,
+                pay_percentage: adminAction.payPercentage
             };
 
             const res = await leaveService.updateLeaveStatus(selectedLeave.lr_id, payload);
@@ -329,11 +389,11 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                 // Update local state
                 const updatedLeaves = leaves.map(l =>
                     l.lr_id === selectedLeave.lr_id
-                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks }
+                        ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage }
                         : l
                 );
                 setLeaves(updatedLeaves);
-                setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks });
+                setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage });
                 setAdminAction({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
             }
         } catch (error) {
@@ -373,7 +433,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
     return (
         <>
             {isAdmin ? (
-                <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-14rem)] min-h-[600px]">
+                <div className="flex flex-col lg:flex-row gap-6 h-full min-h-[600px]">
 
                     {/* LEFT PANEL: LIST */}
                     <div data-tour-id="leave-admin-list" className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col">
@@ -493,6 +553,17 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                                 }`}></span>
                                             {selectedLeave.status}
                                         </div>
+                                        {selectedLeave.status === 'approved' && selectedLeave.pay_type && (
+                                            <div className="mt-1">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                                    selectedLeave.pay_type === 'Paid'
+                                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                                        : 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400'
+                                                }`}>
+                                                    {selectedLeave.pay_type}
+                                                </span>
+                                            </div>
+                                        )}
                                         <div className='text-xs text-slate-400 mt-2'>Applied: {new Date(selectedLeave.applied_at || Date.now()).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</div>
                                     </div>
                                 </div>
@@ -526,6 +597,24 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                                 <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">Reason</span>
                                                 <p className="text-sm text-slate-700 dark:text-slate-300 italic mt-0.5">"{selectedLeave.reason}"</p>
                                             </div>
+
+                                            {/* Selected employee balances display for Admins */}
+                                            {isAdmin && selectedEmployeeBalances.length > 0 && (
+                                                <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-4">
+                                                    <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-2">Employee Leave Balances</span>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        {selectedEmployeeBalances.map(bal => (
+                                                            <div key={bal.lb_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-2.5 rounded-lg flex flex-col">
+                                                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-355 truncate">{bal.leave_type}</span>
+                                                                <div className="flex justify-between items-baseline mt-1">
+                                                                    <span className="text-xs font-black text-indigo-650 dark:text-indigo-400">{Number(bal.available)} days left</span>
+                                                                    <span className="text-[9px] text-slate-400 uppercase font-bold">{Number(bal.used)} used</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Attachments Section - Condensed with Inline Expansion */}
                                             {selectedLeave.attachments && selectedLeave.attachments.length > 0 && (
@@ -583,6 +672,35 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                                 {selectedLeave.status === 'pending' ? (
                                                     <>
                                                         <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-2">Admin Action</span>
+                                                        
+                                                        <div className="mb-4">
+                                                            <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1.5">Pay Type</span>
+                                                            <div className="flex gap-4">
+                                                                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="payType"
+                                                                        value="Paid"
+                                                                        checked={adminAction.payType === 'Paid'}
+                                                                        onChange={(e) => setAdminAction({ ...adminAction, payType: e.target.value })}
+                                                                        className="text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                                                    />
+                                                                    Paid Leave
+                                                                </label>
+                                                                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="payType"
+                                                                        value="Unpaid"
+                                                                        checked={adminAction.payType === 'Unpaid'}
+                                                                        onChange={(e) => setAdminAction({ ...adminAction, payType: e.target.value })}
+                                                                        className="text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                                                    />
+                                                                    Unpaid Leave
+                                                                </label>
+                                                            </div>
+                                                        </div>
+
                                                         <textarea
                                                             ref={adminRemarksRef}
                                                             value={adminAction.remarks}
@@ -609,6 +727,18 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                                     </>
                                                 ) : (
                                                     <>
+                                                        <div className="mb-4">
+                                                            <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">
+                                                                Pay Status
+                                                            </span>
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
+                                                                selectedLeave.pay_type === 'Paid'
+                                                                    ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                                                    : 'text-red-700 bg-red-50 dark:bg-red-950/20 dark:text-red-400'
+                                                            }`}>
+                                                                {selectedLeave.pay_type || 'Unspecified'}
+                                                            </span>
+                                                        </div>
                                                         <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.12em] block mb-1">
                                                             Admin Remarks
                                                         </span>
@@ -687,6 +817,113 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                         </div>
                     </div>
 
+                    {/* --- LEAVE DASHBOARD OVERVIEW --- */}
+                    {!isAdmin && myBalances.length > 0 && (
+                        <div className="p-6 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/10 dark:bg-github-dark-subtle/5 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.15em]">Leave Dashboard</h4>
+                                <span className="text-[10px] font-bold text-indigo-650 bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-1 rounded-full">
+                                    Calendar Year {selectedYear}
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Overall Utilization Circle Card */}
+                                <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-2xl p-6 shadow-sm flex items-center justify-around gap-4">
+                                    <div className="relative w-28 h-28 flex items-center justify-center shrink-0">
+                                        <svg className="w-full h-full transform -rotate-90">
+                                            <circle
+                                                cx="56"
+                                                cy="56"
+                                                r="48"
+                                                className="stroke-slate-100 dark:stroke-github-dark-border"
+                                                strokeWidth="8"
+                                                fill="transparent"
+                                            />
+                                            <circle
+                                                cx="56"
+                                                cy="56"
+                                                r="48"
+                                                className="stroke-indigo-600 transition-all duration-1000 ease-out"
+                                                strokeWidth="8"
+                                                fill="transparent"
+                                                strokeDasharray={301.6}
+                                                strokeDashoffset={301.6 - (Math.min(usedPercentage, 100) / 100) * 301.6}
+                                                strokeLinecap="round"
+                                            />
+                                        </svg>
+                                        <div className="absolute flex flex-col items-center">
+                                            <span className="text-xl font-black text-slate-800 dark:text-github-dark-text">{usedPercentage}%</span>
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Used</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2.5">
+                                        <div>
+                                            <h5 className="text-xs font-bold text-slate-700 dark:text-slate-300">Annual Leave Overview</h5>
+                                            <p className="text-[10px] text-slate-405 mt-0.5">Track your overall leave utilization</p>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase">Quota</p>
+                                                <p className="text-sm font-black text-slate-700 dark:text-github-dark-text">{totalQuota} Days</p>
+                                            </div>
+                                            <div className="border-l border-slate-100 dark:border-github-dark-border pl-4">
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase">Used</p>
+                                                <p className="text-sm font-black text-slate-700 dark:text-github-dark-text">{totalUsed} Days</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Linear Progress Cards Grid */}
+                                <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {myBalances.map((bal, idx) => {
+                                        const balQuota = Number(bal.allocated) + Number(bal.carried_forward);
+                                        const percentUsed = balQuota > 0 ? Math.round((Number(bal.used) / balQuota) * 100) : 0;
+                                        
+                                        // Pick distinct color profiles
+                                        const colors = [
+                                            { text: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-650', track: 'bg-indigo-50 dark:bg-indigo-950/20' },
+                                            { text: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-500', track: 'bg-rose-50 dark:bg-rose-950/20' },
+                                            { text: 'text-teal-650 dark:text-teal-400', bg: 'bg-teal-500', track: 'bg-teal-50 dark:bg-teal-950/20' },
+                                            { text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500', track: 'bg-amber-50 dark:bg-amber-950/20' }
+                                        ][idx % 4];
+
+                                        return (
+                                            <div key={bal.lb_id} className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">{bal.leave_type}</span>
+                                                        <div className="flex items-baseline gap-1.5 mt-1">
+                                                            <span className="text-2xl font-black text-slate-800 dark:text-github-dark-text leading-none">{Number(bal.available)}</span>
+                                                            <span className="text-xs text-slate-500 dark:text-github-dark-muted">available</span>
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${colors.track} ${colors.text}`}>
+                                                        {percentUsed}% Consumed
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-4 space-y-1.5">
+                                                    <div className={`w-full h-2 rounded-full ${colors.track} overflow-hidden`}>
+                                                        <div
+                                                            className={`h-full ${colors.bg} rounded-full transition-all duration-1000`}
+                                                            style={{ width: `${Math.min(percentUsed, 100)}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-between text-[9px] font-bold text-slate-400 select-none">
+                                                        <span>{Number(bal.used)} Days Used</span>
+                                                        <span>{balQuota} Days Total</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {filteredLeaves.length === 0 ? (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-400">
                             <FileText size={48} className="mx-auto mb-4 opacity-20" />
@@ -727,6 +964,17 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                                         }`}></span>
                                                     {leave.status}
                                                 </span>
+                                                {leave.status === 'approved' && leave.pay_type && (
+                                                    <div className="mt-1">
+                                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                                            leave.pay_type === 'Paid'
+                                                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/5 dark:text-emerald-400 border border-emerald-500/10'
+                                                                : 'bg-red-50 text-red-650 dark:bg-red-500/5 dark:text-red-400 border border-red-500/10'
+                                                        }`}>
+                                                            {leave.pay_type}
+                                                        </span>
+                                                    </div>
+                                                )}
                                                 {leave.admin_comment && (
                                                     <p className="text-[10px] text-slate-500 mt-1 max-w-[120px] truncate" title={leave.admin_comment}>
                                                         Note: {leave.admin_comment}
@@ -813,7 +1061,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                     <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Leave Type</label>
                                     <div className="relative">
                                         <select
-                                            value={['Casual Leave', 'Sick Leave'].includes(formData.leave_type) ? formData.leave_type : 'Other'}
+                                            value={formData.leave_type}
                                             onChange={(e) => {
                                                 if (e.target.value === 'Other') {
                                                     setIsCustomType(true);
@@ -825,9 +1073,18 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                             }}
                                             className="w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-700 dark:text-github-dark-text font-medium cursor-pointer transition-all hover:bg-slate-100 dark:hover:bg-slate-900"
                                         >
-                                            <option>Casual Leave</option>
-                                            <option>Sick Leave</option>
-                                            <option>Other</option>
+                                            {myBalances.map(bal => (
+                                                <option key={bal.rule_id} value={bal.rule_id}>
+                                                    {bal.leave_type} ({Number(bal.available)} days left)
+                                                </option>
+                                            ))}
+                                            {myBalances.length === 0 && (
+                                                <>
+                                                    <option value="Casual Leave">Casual Leave</option>
+                                                    <option value="Sick Leave">Sick Leave</option>
+                                                </>
+                                            )}
+                                            <option value="Other">Other</option>
                                         </select>
                                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                     </div>

@@ -17,9 +17,13 @@ import {
     Pencil,
     AlertTriangle,
     ChevronDown,
-    Check
+    Check,
+    Users,
+    Settings,
+    Layers
 } from 'lucide-react';
 import LeaveApplication from './LeaveApplication';
+import LeavePolicies from '../leaves/LeavePolicies';
 import HolidayCalendarView from '../../components/HolidayCalendarView';
 import ConfirmationModal from '../../components/modals/ConfirmationModal';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,7 +44,20 @@ const HolidayManagement = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState(() => {
         const params = new URLSearchParams(window.location.search);
-        return params.get('tab') || 'holidays';
+        const tab = params.get('tab') || 'holidays';
+        if (tab === 'leave_policies' || tab === 'policies') {
+            return 'policies';
+        }
+        if (['leave_application', 'leave_balances', 'leaves'].includes(tab)) {
+            return 'leaves';
+        }
+        return 'holidays';
+    });
+    const [leaveSubTab, setLeaveSubTab] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab === 'leave_balances') return 'balances';
+        return 'requests';
     });
 
     // Memoize role-aware tour steps with actions to switch tabs automatically
@@ -64,31 +81,31 @@ const HolidayManagement = () => {
                     targetId: 'holidays-tab-leaves',
                     title: 'Leave Approval Center',
                     description: 'Switch to this tab to view and manage leave applications submitted by employees across the entire organization.',
-                    action: () => setActiveTab('leave_application'),
+                    action: () => { setActiveTab('leaves'); setLeaveSubTab('requests'); },
                 },
                 {
                     targetId: 'leave-admin-list',
                     title: 'Leave Requests Queue',
                     description: 'This queue displays all pending, approved, and rejected employee leave requests. Search by employee name or filter by request status to find specific cases.',
-                    action: () => setActiveTab('leave_application'),
+                    action: () => { setActiveTab('leaves'); setLeaveSubTab('requests'); },
                 },
                 {
                     targetId: 'leave-admin-details',
                     title: 'Review Details & Attachments',
                     description: 'Examine the leave type, exact start/end dates, duration, and employee reason. You can also expand the attachments section to inspect medical certificates or other supporting documents.',
-                    action: () => setActiveTab('leave_application'),
+                    action: () => { setActiveTab('leaves'); setLeaveSubTab('requests'); },
                 },
                 {
                     targetId: 'leave-admin-actions',
                     title: 'Decision Panel',
                     description: 'Approve or reject the request. If rejecting, you must provide feedback remarks so the employee understands the decision.',
-                    action: () => setActiveTab('leave_application'),
+                    action: () => { setActiveTab('leaves'); setLeaveSubTab('requests'); },
                 },
                 {
                     targetId: 'holidays-calendar-view',
                     title: 'Calendar Overview',
                     description: 'The high-level calendar highlights company holidays in purple and the selected employee\'s leave dates in blue/amber to help you check for overlap.',
-                    action: () => setActiveTab('leave_application'),
+                    action: () => { setActiveTab('leaves'); setLeaveSubTab('requests'); },
                 },
             ];
         } else {
@@ -103,12 +120,13 @@ const HolidayManagement = () => {
                     targetId: 'holidays-tab-leaves',
                     title: 'Leave Application',
                     description: 'Switch to this tab to submit new leave requests or track the approval status of your past requests.',
-                    action: () => setActiveTab('leave_application'),
+                    action: () => { setActiveTab('leaves'); setLeaveSubTab('requests'); },
                 },
                 {
                     targetId: 'holidays-calendar-view',
                     title: 'Calendar View',
                     description: 'This mini-calendar highlights holidays in purple and your leaves in blue/amber. It gives you a quick snapshot of the month.',
+                    action: () => { setActiveTab('leaves'); setLeaveSubTab('requests'); },
                 },
             ];
         }
@@ -118,9 +136,19 @@ const HolidayManagement = () => {
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
         if (tab) {
-            setActiveTab(tab);
+            if (tab === 'leave_policies' || tab === 'policies') {
+                setActiveTab('policies');
+            } else if (['leave_application', 'leaves'].includes(tab)) {
+                setActiveTab('leaves');
+                setLeaveSubTab('requests');
+            } else if (tab === 'leave_balances') {
+                setActiveTab('leaves');
+                setLeaveSubTab('balances');
+            } else {
+                setActiveTab(tab);
+            }
         }
-    }, [window.location.search]);
+    }, [window.location.search, navigate]);
 
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('mano-active-tab', {
@@ -149,7 +177,7 @@ const HolidayManagement = () => {
         title: '',
         message: '',
         type: 'info',
-        onConfirm: () => {},
+        onConfirm: () => { },
         confirmText: 'Confirm'
     });
     const [isDeleting, setIsDeleting] = useState(false);
@@ -385,14 +413,19 @@ const HolidayManagement = () => {
         );
     };
 
+    const handleTabChange = (tab) => {
+        setActiveTab(tab);
+        navigate(`/holidays?tab=${tab}`);
+    };
+
     return (
         <DashboardLayout title="Holiday Management" noPadding={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
-            <div className="h-[calc(100vh-64px)] p-4 space-y-4 overflow-hidden flex flex-col">
+            <div className="h-[calc(100vh-64px)] p-3 space-y-3 overflow-hidden flex flex-col">
 
                 {/* Tabs */}
                 <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                     <button
-                        onClick={() => setActiveTab('holidays')}
+                        onClick={() => handleTabChange('holidays')}
                         data-tour-id="holidays-tab-holidays"
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'holidays'
                             ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
@@ -403,16 +436,28 @@ const HolidayManagement = () => {
                         <span className="leading-none">Holidays List</span>
                     </button>
                     <button
-                        onClick={() => setActiveTab('leave_application')}
+                        onClick={() => { handleTabChange('leaves'); setLeaveSubTab('requests'); }}
                         data-tour-id="holidays-tab-leaves"
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'leave_application'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'leaves'
                             ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
                             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                             }`}
                     >
-                        <FileText size={14} className={`${activeTab === 'leave_application' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
-                        <span className="leading-none">Leave Application</span>
+                        <FileText size={14} className={`${activeTab === 'leaves' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
+                        <span className="leading-none">{['admin', 'hr'].includes(user?.user_type) ? 'Leave Requests' : 'Leave Application'}</span>
                     </button>
+                    {['admin', 'hr'].includes(user?.user_type) && (
+                        <button
+                            onClick={() => handleTabChange('policies')}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'policies'
+                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                }`}
+                        >
+                            <Settings size={14} className={`${activeTab === 'policies' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
+                            <span className="leading-none">Policies & Balances</span>
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex flex-col xl:flex-row gap-3 flex-1 min-h-0">
@@ -422,7 +467,7 @@ const HolidayManagement = () => {
 
                         {/* Content Area */}
                         <div className="flex-1 overflow-y-auto no-scrollbar">
-                            {activeTab === 'holidays' ? (
+                            {activeTab === 'holidays' && (
                                 <div className="space-y-6">
                                     {/* Header Actions */}
                                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-dark-card p-4 rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border">
@@ -441,7 +486,7 @@ const HolidayManagement = () => {
                                         <div className="flex gap-3 w-full sm:w-auto">
                                             {['admin', 'hr'].includes(user?.user_type) && (
                                                 <>
-                                                    <button 
+                                                    <button
                                                         onClick={() => navigate('/holidays/bulk')}
                                                         className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-github-dark-text rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
                                                         <Upload size={16} />
@@ -484,28 +529,38 @@ const HolidayManagement = () => {
                                         )}
                                     </div>
                                 </div>
-                            ) : (
-                                <LeaveApplication 
-                                    onSelectLeave={handleSelectLeave}
-                                    onLeavesChange={setLeaves}
-                                    onActiveRangeChange={setActiveRange}
-                                />
+                            )}
+                            {activeTab === 'leaves' && (
+                                <div className="h-full">
+                                    <LeaveApplication
+                                        onSelectLeave={handleSelectLeave}
+                                        onLeavesChange={setLeaves}
+                                        onActiveRangeChange={setActiveRange}
+                                    />
+                                </div>
+                            )}
+                            {activeTab === 'policies' && (
+                                <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    <LeavePolicies />
+                                </div>
                             )}
                         </div>
                     </div>
 
                     {/* Calendar Sidebar */}
-                    <div data-tour-id="holidays-calendar-view" className="w-full xl:w-[350px] shrink-0 overflow-hidden animate-in fade-in slide-in-from-right-10 duration-500">
+                    {(activeTab === 'holidays' || (activeTab === 'leaves' && leaveSubTab === 'requests')) && (
+                        <div data-tour-id="holidays-calendar-view" className="w-full xl:w-[350px] shrink-0 overflow-hidden animate-in fade-in slide-in-from-right-10 duration-500">
                             <HolidayCalendarView
                                 holidays={holidays}
-                                leaves={activeTab === 'leave_application' ? leaves : []}
-                                selectedLeave={activeTab === 'leave_application' ? (selectedLeave || activeRange) : null}
+                                leaves={activeTab === 'leaves' ? leaves : []}
+                                selectedLeave={activeTab === 'leaves' ? (selectedLeave || activeRange) : null}
                                 onDelete={handleDeleteClick}
                                 isAdmin={['admin', 'hr'].includes(user?.user_type)}
                                 currentDate={calendarDate}
                                 onDateChange={setCalendarDate}
                             />
                         </div>
+                    )}
                 </div>
 
                 {/* --- ADD HOLIDAY DRAWER --- */}

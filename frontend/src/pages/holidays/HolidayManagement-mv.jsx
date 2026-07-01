@@ -30,11 +30,15 @@ import {
     CalendarDays,
     Info,
     History,
-    Check
+    Check,
+    Users,
+    Settings,
+    Layers
 } from 'lucide-react';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import MobileSelect from '../../components/MobileSelect';
 import MobileConfirmModal from '../../components/MobileConfirmModal';
+import LeavePolicies from '../leaves/LeavePolicies';
 
 const AttachmentModal = ({ file, onClose }) => {
     if (!file) return null;
@@ -85,26 +89,50 @@ const HolidayManagement = () => {
     // --- TABS STATE ---
     const [activeTab, setActiveTab] = useState(() => {
         const params = new URLSearchParams(window.location.search);
-        const tab = params.get('tab');
-        if (tab === 'leave_application') {
-            return 'my_leaves';
+        const tab = params.get('tab') || 'holidays';
+        if (tab === 'leave_policies' || tab === 'policies') {
+            return 'policies';
         }
-        return tab || 'holidays';
+        if (['my_leaves', 'leave_application', 'requests', 'balances', 'leaves'].includes(tab)) {
+            return 'leaves';
+        }
+        return 'holidays';
+    });
+    const [leaveSubTab, setLeaveSubTab] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab === 'leave_balances' || tab === 'balances') return 'balances';
+        return 'requests';
     });
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
         if (tab) {
-            setActiveTab(tab === 'leave_application' ? 'my_leaves' : tab);
+            if (tab === 'leave_policies' || tab === 'policies') {
+                setActiveTab('policies');
+            } else if (['leave_application', 'my_leaves', 'leaves', 'requests'].includes(tab)) {
+                setActiveTab('leaves');
+                setLeaveSubTab('requests');
+            } else if (tab === 'leave_balances' || tab === 'balances') {
+                setActiveTab('leaves');
+                setLeaveSubTab('balances');
+            } else {
+                setActiveTab(tab);
+            }
         }
-    }, [window.location.search]);
+    }, [window.location.search, navigate]);
 
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('mano-active-tab', {
             detail: { tab: activeTab }
         }));
     }, [activeTab]);
+
+    const handleTabChange = (tab) => {
+        setActiveTab(tab);
+        navigate(`/holidays?tab=${tab}`);
+    };
 
     // --- DATA STATE ---
     const [holidays, setHolidays] = useState([]);
@@ -143,6 +171,7 @@ const HolidayManagement = () => {
     const [isEditMode, setIsEditMode] = useState(false);
     const [holidayActionSheet, setHolidayActionSheet] = useState(null); // For edit/delete menu
     const [remarks, setRemarks] = useState('');
+    const [payType, setPayType] = useState('Paid');
     const adminRemarksRef = useRef(null);
 
     useEffect(() => {
@@ -186,6 +215,9 @@ const HolidayManagement = () => {
         };
     }, [showApplyModal, !!selectedLeaf, isAddModalOpen, !!viewingAttachment, !!holidayActionSheet]);
 
+    // --- LEAVE BALANCES STATE ---
+    const [myBalances, setMyBalances] = useState([]);
+
     // --- FETCH DATA ---
     const loadData = async () => {
         setIsLoading(true);
@@ -199,7 +231,16 @@ const HolidayManagement = () => {
             const myLeavesRes = await api.get('/leaves/my-history');
             if (myLeavesRes.data.ok) setLeaves(myLeavesRes.data.leaves || []);
 
-            // 3. Admin Requests (if applicable)
+            // 3. My Balances
+            const balancesRes = await api.get('/leaves/balances');
+            if (balancesRes.data.ok) {
+                setMyBalances(balancesRes.data.balances || []);
+                if (balancesRes.data.balances?.length > 0 && !applyForm.leave_type) {
+                    setApplyForm(prev => ({ ...prev, leave_type: balancesRes.data.balances[0].leave_type }));
+                }
+            }
+
+            // 4. Admin Requests (if applicable)
             // Even if not admin, we might just fetch empty or skip
             if (user?.user_type === 'admin' || user?.user_type === 'hr') {
                 const requestsRes = await api.get('/leaves/admin/history');
@@ -240,7 +281,7 @@ const HolidayManagement = () => {
             if (res.data.ok) {
                 toast.success("Leave applied successfully");
                 setShowApplyModal(false);
-                setApplyForm({ leave_type: 'Casual Leave', start_date: '', end_date: '', reason: '', attachments: [] });
+                setApplyForm({ leave_type: myBalances[0]?.leave_type || 'Casual Leave', start_date: '', end_date: '', reason: '', attachments: [] });
                 loadData();
             }
         } catch (error) {
@@ -287,13 +328,16 @@ const HolidayManagement = () => {
         try {
             const res = await api.put(`/leaves/admin/status/${selectedLeaf.lr_id}`, {
                 status: status.charAt(0).toUpperCase() + status.slice(1),
-                admin_comment: remarks || ''
+                admin_comment: remarks || '',
+                pay_type: payType,
+                pay_percentage: payType === 'Paid' ? 100 : 0
             });
 
             if (res.data.ok) {
                 toast.success(`Leave request ${status.toLowerCase()} successfully`);
                 setSelectedLeaf(null);
                 setRemarks('');
+                setPayType('Paid');
                 loadData();
             }
         } catch (error) {
@@ -338,23 +382,25 @@ const HolidayManagement = () => {
 
                 {/* TABS - Standardized Full Width */}
                 <div className="px-4">
-                    <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1.5 flex rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm">
+                    <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1.5 flex rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-x-auto no-scrollbar">
                         {[
                             { id: 'holidays', label: 'Holidays', icon: Umbrella },
-                            { id: 'my_leaves', label: 'My Leaves', icon: CalendarDays },
-                            { id: 'requests', label: 'Requests', icon: Shield, adminOnly: true }
-                        ].filter(tab => !tab.adminOnly || (user?.user_type === 'admin' || user?.user_type === 'hr')).map(tab => (
+                            { id: 'leaves', label: ['admin', 'hr'].includes(user?.user_type) ? 'Requests' : 'My Leaves', icon: CalendarDays },
+                            ...(user?.user_type === 'admin' || user?.user_type === 'hr' ? [
+                                { id: 'policies', label: 'Policies', icon: Settings }
+                            ] : [])
+                        ].map(tab => (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2
+                                onClick={() => handleTabChange(tab.id)}
+                                className={`flex-1 min-w-[85px] py-3 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0
                                     ${activeTab === tab.id
                                         ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-md transform scale-[1.02] border border-slate-200 dark:border-github-dark-border'
                                         : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'
                                     }`}
                             >
-                                <tab.icon size={14} className={activeTab === tab.id ? 'animate-pulse' : ''} />
-                                {tab.label}
+                                <tab.icon size={12} className={activeTab === tab.id ? 'animate-pulse' : ''} />
+                                <span className="whitespace-nowrap">{tab.label}</span>
                             </button>
                         ))}
                     </div>
@@ -448,163 +494,196 @@ const HolidayManagement = () => {
                 )}
 
 
-                {/* --- MY LEAVES TAB --- */}
-                {activeTab === 'my_leaves' && (
+                {/* --- LEAVES TAB --- */}
+                {activeTab === 'leaves' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 mt-2">
-                        {/* Leave Summary Stats */}
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-center">
-                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-tight">Total</p>
-                                <p className="text-lg font-medium text-slate-900 dark:text-github-dark-text mt-0.5">{leaves.length}</p>
-                            </div>
-                            <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/20 shadow-sm text-center">
-                                <p className="text-[10px] font-semibold text-emerald-500/80 uppercase tracking-tight">Approved</p>
-                                <p className="text-lg font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                    {leaves.filter(l => l.status?.toLowerCase() === 'approved').length}
-                                </p>
-                            </div>
-                            <div className="bg-amber-50/50 dark:bg-amber-900/10 p-3 rounded-2xl border border-amber-100/50 dark:border-amber-900/20 shadow-sm text-center">
-                                <p className="text-[10px] font-semibold text-amber-500/80 uppercase tracking-tight">Pending</p>
-                                <p className="text-lg font-medium text-amber-600 dark:text-amber-400 mt-0.5">
-                                    {leaves.filter(l => l.status?.toLowerCase() === 'pending').length}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* List */}
-                        <div className="space-y-2.5">
-                            {leaves.length > 0 ? (
-                                leaves.map(leave => (
-                                    <div
-                                        key={leave.lr_id}
-                                        onClick={() => setSelectedLeaf(leave)}
-                                        className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
-                                    >
-                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${getStatusColor(leave.status).replace('text-', 'bg-').replace('-600', '-500/10').replace('-500', '-500/10')}`}>
-                                            {leave.status?.toLowerCase() === 'approved' ? <CheckCircle size={20} className="text-emerald-500" /> :
-                                             leave.status?.toLowerCase() === 'rejected' ? <XCircle size={20} className="text-red-500" /> :
-                                             <Clock size={20} className="text-amber-500" />}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex justify-between items-start">
-                                                <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate leading-tight group-hover:text-indigo-600 transition-colors">{leave.leave_type}</h3>
-                                                <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(leave.status)}`}>
-                                                    {leave.status}
-                                                </span>
+                        {/* If employee OR requests sub-tab selected */}
+                        {(!['admin', 'hr'].includes(user?.user_type) || leaveSubTab === 'requests') && (
+                            <>
+                                {/* For employee show apply leaves, else show admin request list */}
+                                {!['admin', 'hr'].includes(user?.user_type) ? (
+                                    <div className="space-y-4">
+                                        {/* Leave Balances display */}
+                                        {myBalances.length > 0 && (
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {myBalances.map(bal => (
+                                                    <div key={bal.lb_id} className="bg-white dark:bg-black border border-slate-100 dark:border-slate-800 p-3.5 rounded-2xl shadow-sm flex flex-col">
+                                                        <span className="text-[9px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">{bal.leave_type}</span>
+                                                        <div className="flex justify-between items-baseline mt-1.5">
+                                                            <span className="text-xl font-black text-indigo-650 dark:text-indigo-400">{Number(bal.available)}</span>
+                                                            <span className="text-[10px] text-slate-500 dark:text-github-dark-muted">/ {Number(bal.allocated) + Number(bal.carried_forward)} left</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <CalendarDays size={12} className="text-slate-400" />
-                                                <span className="text-[11px] font-medium text-slate-500">
-                                                    {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                                </span>
+                                        )}
+
+                                        {/* Leave Summary Stats */}
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-center">
+                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-tight">Total</p>
+                                                <p className="text-lg font-medium text-slate-900 dark:text-github-dark-text mt-0.5">{leaves.length}</p>
+                                            </div>
+                                            <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/20 shadow-sm text-center">
+                                                <p className="text-[10px] font-semibold text-emerald-500/80 uppercase tracking-tight">Approved</p>
+                                                <p className="text-lg font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                                    {leaves.filter(l => l.status?.toLowerCase() === 'approved').length}
+                                                </p>
+                                            </div>
+                                            <div className="bg-amber-50/50 dark:bg-amber-900/10 p-3 rounded-2xl border border-amber-100/50 dark:border-amber-900/20 shadow-sm text-center">
+                                                <p className="text-[10px] font-semibold text-amber-500/80 uppercase tracking-tight">Pending</p>
+                                                <p className="text-lg font-medium text-amber-600 dark:text-amber-400 mt-0.5">
+                                                    {leaves.filter(l => l.status?.toLowerCase() === 'pending').length}
+                                                </p>
                                             </div>
                                         </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="text-center py-12">
-                                    <div className="w-16 h-16 bg-slate-100 dark:bg-[#161b22] rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 mx-auto mb-3">
-                                        <CalendarDays size={24} />
-                                    </div>
-                                    <p className="text-xs font-semibold text-slate-500">No leave records yet</p>
-                                </div>
-                            )}
-                        </div>
 
-                        {/* Apply FAB */}
-                        <button
-                            onClick={() => setShowApplyModal(true)}
-                            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)', right: 20 }}
-                            className="fixed w-14 h-14 bg-indigo-600 rounded-2xl text-white shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center active:scale-90 active:rotate-12 transition-all z-40"
-                        >
-                            <Plus size={28} strokeWidth={3} />
-                        </button>
-                    </div>
-                )}
-
-
-                {/* --- REQUESTS TAB (Admin) --- */}
-                {activeTab === 'requests' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 mt-2">
-                        {/* Sub Tabs - Redesigned */}
-                        <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1 rounded-xl flex border border-slate-200 dark:border-github-dark-border shadow-sm">
-                            <button
-                                onClick={() => setRequestSubTab('pending')}
-                                className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
-                                ${requestSubTab === 'pending'
-                                        ? 'bg-white dark:bg-[#21262d] text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
-                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
-                            >
-                                <Clock size={14} className="inline mr-1" /> Pending
-                            </button>
-                            <button
-                                onClick={() => setRequestSubTab('history')}
-                                className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
-                                ${requestSubTab === 'history'
-                                        ? 'bg-white dark:bg-[#21262d] text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
-                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
-                            >
-                                <History size={14} className="inline mr-1" /> History
-                            </button>
-                        </div>
-
-                        {/* Filter - Redesigned */}
-                        <div className="bg-white dark:bg-black rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                            <MobileSelect
-                                value={requestStatusFilter}
-                                options={['All', 'Approved', 'Rejected']}
-                                onChange={(val) => setRequestStatusFilter(val)}
-                                placeholder="All Status"
-                            />
-                        </div>
-
-                        {/* Request List - Redesigned */}
-                        <div className="space-y-2.5 pb-24">
-                            {requests
-                                .filter(req => {
-                                    if (requestSubTab === 'pending') return req.status === 'pending';
-                                    return req.status !== 'pending';
-                                })
-                                .filter(req => {
-                                    if (requestStatusFilter === 'All') return true;
-                                    return req.status.toLowerCase() === requestStatusFilter.toLowerCase();
-                                })
-                                .map(req => (
-                                    <div
-                                        key={req.lr_id}
-                                        onClick={() => setSelectedLeaf(req)}
-                                        className="bg-white dark:bg-black p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
-                                    >
-                                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-black border-slate-100 dark:border-slate-800">
-                                            {(req.user_name || 'U').charAt(0).toUpperCase()}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex justify-between items-start">
-                                                <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate group-hover:text-indigo-600 transition-colors">{req.user_name}</h3>
-                                                <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(req.status)}`}>
-                                                    {req.status}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center justify-between mt-1.5">
-                                                <p className="text-[11px] font-semibold text-slate-500">{req.leave_type}</p>
-                                                <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
-                                                    <CalendarDays size={12} />
-                                                    {new Date(req.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                        {/* List */}
+                                        <div className="space-y-2.5">
+                                            {leaves.length > 0 ? (
+                                                leaves.map(leave => (
+                                                    <div
+                                                        key={leave.lr_id}
+                                                        onClick={() => setSelectedLeaf(leave)}
+                                                        className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
+                                                    >
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${getStatusColor(leave.status).replace('text-', 'bg-').replace('-600', '-500/10').replace('-500', '-500/10')}`}>
+                                                            {leave.status?.toLowerCase() === 'approved' ? <CheckCircle size={20} className="text-emerald-500" /> :
+                                                             leave.status?.toLowerCase() === 'rejected' ? <XCircle size={20} className="text-red-500" /> :
+                                                             <Clock size={20} className="text-amber-500" />}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex justify-between items-start">
+                                                                <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate leading-tight group-hover:text-indigo-650 transition-colors">{leave.leave_type}</h3>
+                                                                <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(leave.status)}`}>
+                                                                    {leave.status}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <CalendarDays size={12} className="text-slate-400" />
+                                                                <span className="text-[11px] font-medium text-slate-500">
+                                                                    {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="text-center py-12">
+                                                    <div className="w-16 h-16 bg-slate-100 dark:bg-[#161b22] rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 mx-auto mb-3">
+                                                        <CalendarDays size={24} />
+                                                    </div>
+                                                    <p className="text-xs font-semibold text-slate-500">No leave records yet</p>
                                                 </div>
-                                            </div>
+                                            )}
+                                        </div>
+
+                                        {/* Apply FAB */}
+                                        <button
+                                            onClick={() => setShowApplyModal(true)}
+                                            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)', right: 20 }}
+                                            className="fixed w-14 h-14 bg-indigo-600 rounded-2xl text-white shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center active:scale-90 active:rotate-12 transition-all z-40"
+                                        >
+                                            <Plus size={28} strokeWidth={3} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    /* Admin Requests List */
+                                    <div className="space-y-4">
+                                        {/* Sub Tabs for pending vs history */}
+                                        <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1 rounded-xl flex border border-slate-200 dark:border-github-dark-border shadow-sm">
+                                            <button
+                                                onClick={() => setRequestSubTab('pending')}
+                                                className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
+                                                ${requestSubTab === 'pending'
+                                                        ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
+                                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
+                                            >
+                                                <Clock size={14} className="inline mr-1" /> Pending
+                                            </button>
+                                            <button
+                                                onClick={() => setRequestSubTab('history')}
+                                                className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
+                                                ${requestSubTab === 'history'
+                                                        ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
+                                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
+                                            >
+                                                <History size={14} className="inline mr-1" /> History
+                                            </button>
+                                        </div>
+
+                                        {/* Filter */}
+                                        <div className="bg-white dark:bg-black rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                                            <MobileSelect
+                                                value={requestStatusFilter}
+                                                options={['All', 'Approved', 'Rejected']}
+                                                onChange={(val) => setRequestStatusFilter(val)}
+                                                placeholder="All Status"
+                                            />
+                                        </div>
+
+                                        {/* Request List */}
+                                        <div className="space-y-2.5 pb-24">
+                                            {requests
+                                                .filter(req => {
+                                                    if (requestSubTab === 'pending') return req.status === 'pending';
+                                                    return req.status !== 'pending';
+                                                })
+                                                .filter(req => {
+                                                    if (requestStatusFilter === 'All') return true;
+                                                    return req.status.toLowerCase() === requestStatusFilter.toLowerCase();
+                                                })
+                                                .map(req => (
+                                                    <div
+                                                        key={req.lr_id}
+                                                        onClick={() => setSelectedLeaf(req)}
+                                                        className="bg-white dark:bg-black p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
+                                                    >
+                                                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-black border-slate-100 dark:border-slate-800 flex items-center justify-center font-bold text-slate-650 dark:text-slate-400 text-sm">
+                                                            {(req.user_name || 'U').charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex justify-between items-start">
+                                                                <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate group-hover:text-indigo-650 transition-colors">{req.user_name}</h3>
+                                                                <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(req.status)}`}>
+                                                                    {req.status}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between mt-1.5">
+                                                                <p className="text-[11px] font-semibold text-slate-500">{req.leave_type}</p>
+                                                                <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
+                                                                    <CalendarDays size={12} />
+                                                                    <span>{new Date(req.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            }
+                                            {requests.length === 0 && (
+                                                <div className="text-center py-12">
+                                                    <Shield size={32} className="mx-auto text-slate-200 mb-3" />
+                                                    <p className="text-xs font-medium text-slate-400">No requests found</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                ))
-                            }
-                            {requests.length === 0 && (
-                                <div className="text-center py-12">
-                                    <Shield size={32} className="mx-auto text-slate-200 mb-3" />
-                                    <p className="text-xs font-medium text-slate-400">No requests found</p>
-                                </div>
-                            )}
-                        </div>
+                                )}
+                            </>
+                        )}
+
+
                     </div>
                 )}
+
+                {/* --- POLICIES TAB (Admin/HR only) --- */}
+                {activeTab === 'policies' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 mt-2 pb-24">
+                        <LeavePolicies />
+                    </div>
+                )}
+
+
 
             </div>
 
@@ -742,7 +821,7 @@ const HolidayManagement = () => {
                             <MobileSelect
                                 label="Leave Type"
                                 value={applyForm.leave_type}
-                                options={['Casual Leave', 'Sick Leave', 'Privilege Leave']}
+                                options={myBalances.length > 0 ? myBalances.map(b => b.leave_type) : ['Casual Leave', 'Sick Leave']}
                                 onChange={(val) => setApplyForm({ ...applyForm, leave_type: val })}
                             />
 
@@ -843,8 +922,19 @@ const HolidayManagement = () => {
                                     ID: #{selectedLeaf.lr_id}
                                 </p>
                             </div>
-                            <div className={`px-4 py-2 rounded-2xl text-[10px] font-bold uppercase tracking-widest ${getStatusColor(selectedLeaf.status)} shadow-sm border border-black/5`}>
-                                {selectedLeaf.status}
+                            <div className="flex flex-col items-end gap-1.5">
+                                <div className={`px-4 py-2 rounded-2xl text-[10px] font-bold uppercase tracking-widest ${getStatusColor(selectedLeaf.status)} shadow-sm border border-black/5`}>
+                                    {selectedLeaf.status}
+                                </div>
+                                {selectedLeaf.status?.toLowerCase() === 'approved' && selectedLeaf.pay_type && (
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                        selectedLeaf.pay_type === 'Paid'
+                                            ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20'
+                                            : 'text-red-700 bg-red-50 dark:bg-red-950/20'
+                                    }`}>
+                                        {selectedLeaf.pay_type}
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -911,6 +1001,33 @@ const HolidayManagement = () => {
                             {/* Admin Action Area */}
                             {activeTab === 'requests' && selectedLeaf.status === 'pending' && (
                                 <div className="border-t border-slate-100 dark:border-slate-800 pt-8 mt-4 space-y-6">
+                                    <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
+                                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-2">Pay Type</label>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="mobilePayType"
+                                                    value="Paid"
+                                                    checked={payType === 'Paid'}
+                                                    onChange={(e) => setPayType(e.target.value)}
+                                                    className="text-indigo-650 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                                />
+                                                Paid Leave
+                                            </label>
+                                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="mobilePayType"
+                                                    value="Unpaid"
+                                                    checked={payType === 'Unpaid'}
+                                                    onChange={(e) => setPayType(e.target.value)}
+                                                    className="text-indigo-650 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                                />
+                                                Unpaid Leave
+                                            </label>
+                                        </div>
+                                    </div>
                                     <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
                                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-2">Admin Remarks</label>
                                         <textarea
