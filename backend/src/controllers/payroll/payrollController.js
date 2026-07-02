@@ -648,10 +648,14 @@ export const createPackageRevision = catchAsync(async (req, res, next) => {
 export const updatePackageGroup = catchAsync(async (req, res, next) => {
     const orgId = req.user.org_id;
     const { packageGroupId } = req.params;
-    const { packageName, isActive } = req.body;
+    const { packageName, isActive, grossSalary, overtimeEnabled, overtimeRate, effectiveFrom } = req.body;
     const updated = await PackageService.updatePackageGroup(Number(packageGroupId), orgId, {
         packageName,
-        isActive
+        isActive,
+        grossSalary,
+        overtimeEnabled,
+        overtimeRate,
+        effectiveFrom
     });
 
     // Write audit log

@@ -207,26 +207,48 @@ export class PackageService {
     /**
      * Update package group name or status
      */
-    static async updatePackageGroup(packageGroupId, orgId, { packageName, isActive }) {
-        const updates = {};
-        if (packageName !== undefined) updates.package_name = packageName;
-        if (isActive !== undefined) updates.is_active = isActive ? 1 : 0;
+    static async updatePackageGroup(packageGroupId, orgId, { packageName, isActive, grossSalary, overtimeEnabled, overtimeRate, effectiveFrom }) {
+        return await attendanceDB.transaction(async (trx) => {
+            const updates = {};
+            if (packageName !== undefined) updates.package_name = packageName;
+            if (isActive !== undefined) updates.is_active = isActive ? 1 : 0;
 
-        if (Object.keys(updates).length === 0) {
-            throw new AppError('No changes specified.', 400);
-        }
+            if (Object.keys(updates).length > 0) {
+                const affected = await trx('payroll_package_groups')
+                    .where({ package_group_id: packageGroupId, org_id: orgId, is_deleted: 0 })
+                    .update(updates);
 
-        const affected = await attendanceDB('payroll_package_groups')
-            .where({ package_group_id: packageGroupId, org_id: orgId, is_deleted: 0 })
-            .update(updates);
+                if (affected === 0) {
+                    throw new AppError('Package group not found or unauthorized.', 404);
+                }
+            }
 
-        if (affected === 0) {
-            throw new AppError('Package group not found or unauthorized.', 404);
-        }
+            // Update the latest rate revision if rate fields are provided
+            if (grossSalary !== undefined || overtimeEnabled !== undefined || overtimeRate !== undefined || effectiveFrom !== undefined) {
+                const latestRevision = await trx('payroll_packages')
+                    .where('package_group_id', packageGroupId)
+                    .orderBy('effective_from', 'desc')
+                    .first();
 
-        return await attendanceDB('payroll_package_groups')
-            .where('package_group_id', packageGroupId)
-            .first();
+                if (latestRevision) {
+                    const packageUpdates = {};
+                    if (grossSalary !== undefined) packageUpdates.gross_salary = Number(grossSalary);
+                    if (overtimeEnabled !== undefined) packageUpdates.overtime_enabled = overtimeEnabled ? 1 : 0;
+                    if (overtimeRate !== undefined) packageUpdates.overtime_rate = Number(overtimeRate || 0.00);
+                    if (effectiveFrom !== undefined) packageUpdates.effective_from = effectiveFrom;
+
+                    if (Object.keys(packageUpdates).length > 0) {
+                        await trx('payroll_packages')
+                            .where('package_id', latestRevision.package_id)
+                            .update(packageUpdates);
+                    }
+                }
+            }
+
+            return await trx('payroll_package_groups')
+                .where('package_group_id', packageGroupId)
+                .first();
+        });
     }
 
     /**
