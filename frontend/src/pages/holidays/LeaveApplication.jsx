@@ -25,7 +25,10 @@ import {
     ExternalLink,
     Download,
     Image as ImageIcon,
-    ArrowLeft
+    ArrowLeft,
+    Shield,
+    BookOpen,
+    Info
 } from 'lucide-react';
 import ConfirmationModal from '../../components/modals/ConfirmationModal';
 import MinimalSelect from '../../components/MinimalSelect';
@@ -98,6 +101,10 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
     const [myBalances, setMyBalances] = useState([]);
     const [selectedEmployeeBalances, setSelectedEmployeeBalances] = useState([]);
     const [loadingBalances, setLoadingBalances] = useState(false);
+
+    // Employee Policy View State
+    const [policies, setPolicies] = useState([]);
+    const [loadingPolicies, setLoadingPolicies] = useState(false);
 
     useEffect(() => {
         if (adminRemarksRef.current) {
@@ -194,6 +201,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
             }, 0);
     }, [filteredLeaves]);
 
+    // eslint-disable-next-line no-unused-vars
     const { totalQuota, totalUsed, totalAvailable, usedPercentage } = React.useMemo(() => {
         const quota = myBalances.reduce((acc, b) => acc + Number(b.allocated) + Number(b.carried_forward), 0);
         const used = myBalances.reduce((acc, b) => acc + Number(b.used), 0);
@@ -201,6 +209,8 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
         const pct = quota > 0 ? Math.round((used / quota) * 100) : 0;
         return { totalQuota: quota, totalUsed: used, totalAvailable: avail, usedPercentage: pct };
     }, [myBalances]);
+
+    const selectedBalance = myBalances.find(b => String(b.rule_id) === String(formData.leave_type));
 
     const isAdmin = user?.user_type === 'admin' || user?.user_type === 'hr';
 
@@ -217,6 +227,9 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
     useEffect(() => {
         if (user) {
             fetchLeaves();
+            if (user.user_type !== 'admin' && user.user_type !== 'hr') {
+                fetchPolicies();
+            }
         }
     }, [user, selectedYear]);
 
@@ -292,9 +305,31 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
         }
     };
 
+    // Fetch leave policies for the employee view
+    const fetchPolicies = async () => {
+        if (isAdmin) return;
+        setLoadingPolicies(true);
+        try {
+            const res = await leaveService.getLeavePolicies();
+            if (res.ok) {
+                setPolicies(res.policies || []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch policies", error);
+        } finally {
+            setLoadingPolicies(false);
+        }
+    };
+
     const handleApply = async (e) => {
         e.preventDefault();
         try {
+            // Check if attachment is required per policy
+            if (selectedBalance && selectedBalance.requires_doc && (!formData.attachments || formData.attachments.length === 0)) {
+                toast.error(`An attachment is required for ${selectedBalance.leave_type} as per leave policy.`);
+                return;
+            }
+
             // Create FormData to handle file upload
             const data = new FormData();
             data.append('leave_type', formData.leave_type);
@@ -761,35 +796,30 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                     </div>
                 </div>
             ) : (
-                <div className="w-full">
-                <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col h-full min-h-[500px]">
+                <div className="w-full space-y-5">
 
-                    {/* --- LIST HEADER WITH FILTERS --- */}
-                    <div className="px-6 py-5 border-b border-slate-200 dark:border-github-dark-border flex flex-wrap gap-4 justify-between items-center bg-slate-50/50 dark:bg-github-dark-subtle/10">
+                    {/* ── TOP ACTION BAR ── */}
+                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border px-6 py-4 flex flex-wrap gap-4 justify-between items-center">
                         <div>
-                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text">Leave History</h3>
+                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text text-base">My Leave</h3>
                             <div className="flex items-center gap-2 mt-1">
                                 <div className="text-xs font-medium text-slate-500 bg-slate-100 dark:bg-github-dark-subtle px-2 py-1 rounded-md">
-                                    {filteredLeaves.length} Records
+                                    {filteredLeaves.length} Requests
                                 </div>
                                 <div className="text-xs font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-500/20 dark:text-indigo-200 px-3 py-1.5 rounded-md border border-indigo-100 dark:border-indigo-500/30">
-                                    Total Approved: {totalApprovedDays} Days
+                                    {totalApprovedDays} Days Approved
                                 </div>
                             </div>
                         </div>
-
-                        <div className="flex items-center gap-3">
-                            {/* Apply Button */}
+                        <div className="flex items-center gap-2 flex-wrap">
                             <button
                                 onClick={() => setShowForm(true)}
                                 data-tour-id="leave-request-btn"
-                                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all shadow-md text-xs font-bold active:scale-95 cursor-pointer mr-2"
+                                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all shadow-md text-xs font-bold active:scale-95 cursor-pointer"
                             >
                                 <Plus size={14} />
                                 Apply for Leave
                             </button>
-
-                            {/* Month Picker */}
                             <MinimalSelect
                                 options={Array.from({ length: 12 }, (_, i) => ({
                                     value: i,
@@ -801,8 +831,6 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                 triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border shadow-sm font-semibold"
                                 menuWidth={130}
                             />
-
-                            {/* Year Picker */}
                             <MinimalSelect
                                 options={Array.from({ length: 5 }, (_, i) => {
                                     const y = new Date().getFullYear() - 2 + i;
@@ -817,206 +845,409 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                         </div>
                     </div>
 
-                    {/* --- LEAVE DASHBOARD OVERVIEW --- */}
-                    {!isAdmin && myBalances.length > 0 && (
-                        <div className="p-6 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/10 dark:bg-github-dark-subtle/5 space-y-6">
-                            <div className="flex items-center justify-between">
-                                <h4 className="text-xs font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.15em]">Leave Dashboard</h4>
-                                <span className="text-[10px] font-bold text-indigo-650 bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-1 rounded-full">
-                                    Calendar Year {selectedYear}
-                                </span>
+                    {/* ── MY LEAVE PLAN & BALANCES ── */}
+                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+                                <h4 className="text-xs font-bold text-slate-600 dark:text-github-dark-muted uppercase tracking-wider">My Leave Plan & Balances</h4>
                             </div>
+                            <span className="text-[10px] font-medium text-slate-400 dark:text-github-dark-muted">Calendar Year {selectedYear}</span>
+                        </div>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                {/* Overall Utilization Circle Card */}
-                                <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-2xl p-6 shadow-sm flex items-center justify-around gap-4">
-                                    <div className="relative w-28 h-28 flex items-center justify-center shrink-0">
-                                        <svg className="w-full h-full transform -rotate-90">
-                                            <circle
-                                                cx="56"
-                                                cy="56"
-                                                r="48"
-                                                className="stroke-slate-100 dark:stroke-github-dark-border"
-                                                strokeWidth="8"
-                                                fill="transparent"
-                                            />
-                                            <circle
-                                                cx="56"
-                                                cy="56"
-                                                r="48"
-                                                className="stroke-indigo-600 transition-all duration-1000 ease-out"
-                                                strokeWidth="8"
-                                                fill="transparent"
-                                                strokeDasharray={301.6}
-                                                strokeDashoffset={301.6 - (Math.min(usedPercentage, 100) / 100) * 301.6}
-                                                strokeLinecap="round"
-                                            />
-                                        </svg>
-                                        <div className="absolute flex flex-col items-center">
-                                            <span className="text-xl font-black text-slate-800 dark:text-github-dark-text">{usedPercentage}%</span>
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Used</span>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2.5">
-                                        <div>
-                                            <h5 className="text-xs font-bold text-slate-700 dark:text-slate-300">Annual Leave Overview</h5>
-                                            <p className="text-[10px] text-slate-405 mt-0.5">Track your overall leave utilization</p>
-                                        </div>
-                                        <div className="flex gap-4">
+                        {loadingPolicies ? (
+                            <div className="flex items-center justify-center py-10">
+                                <Loader2 className="animate-spin text-indigo-500" size={24} />
+                            </div>
+                        ) : policies.filter(p => p.is_active).length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400 px-6">
+                                <BookOpen size={36} className="mb-3 opacity-20" />
+                                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">No leave plan assigned yet</p>
+                                <p className="text-[11px] mt-1 max-w-xs text-slate-400">Contact your HR team to get a leave plan assigned to you.</p>
+                            </div>
+                        ) : (
+                            <div className="p-5 space-y-6">
+                                {policies.filter(p => p.is_active).map(policy => (
+                                    <div key={policy.lp_id} className="space-y-4">
+                                        {/* Policy name badge */}
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                                                <Shield size={14} />
+                                            </div>
                                             <div>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase">Quota</p>
-                                                <p className="text-sm font-black text-slate-700 dark:text-github-dark-text">{totalQuota} Days</p>
-                                            </div>
-                                            <div className="border-l border-slate-100 dark:border-github-dark-border pl-4">
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase">Used</p>
-                                                <p className="text-sm font-black text-slate-700 dark:text-github-dark-text">{totalUsed} Days</p>
+                                                <p className="font-extrabold text-sm text-slate-800 dark:text-github-dark-text">{policy.name}</p>
+                                                {policy.description && <p className="text-[10px] text-slate-400 dark:text-github-dark-muted">{policy.description}</p>}
                                             </div>
                                         </div>
-                                    </div>
-                                </div>
 
-                                {/* Linear Progress Cards Grid */}
-                                <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {myBalances.map((bal, idx) => {
-                                        const balQuota = Number(bal.allocated) + Number(bal.carried_forward);
-                                        const percentUsed = balQuota > 0 ? Math.round((Number(bal.used) / balQuota) * 100) : 0;
-                                        
-                                        // Pick distinct color profiles
-                                        const colors = [
-                                            { text: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-650', track: 'bg-indigo-50 dark:bg-indigo-950/20' },
-                                            { text: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-500', track: 'bg-rose-50 dark:bg-rose-950/20' },
-                                            { text: 'text-teal-650 dark:text-teal-400', bg: 'bg-teal-500', track: 'bg-teal-50 dark:bg-teal-950/20' },
-                                            { text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500', track: 'bg-amber-50 dark:bg-amber-950/20' }
-                                        ][idx % 4];
+                                        {/* Premium horizontal rule cards */}
+                                        {policy.rules && policy.rules.length > 0 ? (
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                                {policy.rules.map((rule, idx) => {
+                                                    const palettes = [
+                                                        { hex: '#6366f1', ringTrack: '#e0e7ff', ringTrackDark: '#1e1b4b', badgeClass: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400', chipUsed: 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300', gradFrom: 'from-indigo-50/60', gradToDark: 'dark:from-indigo-950/20' },
+                                                        { hex: '#f43f5e', ringTrack: '#ffe4e6', ringTrackDark: '#4c0519', badgeClass: 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400', chipUsed: 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300', gradFrom: 'from-rose-50/60', gradToDark: 'dark:from-rose-950/20' },
+                                                        { hex: '#14b8a6', ringTrack: '#ccfbf1', ringTrackDark: '#042f2e', badgeClass: 'bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400', chipUsed: 'bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300', gradFrom: 'from-teal-50/60', gradToDark: 'dark:from-teal-950/20' },
+                                                        { hex: '#f59e0b', ringTrack: '#fef3c7', ringTrackDark: '#451a03', badgeClass: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400', chipUsed: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300', gradFrom: 'from-amber-50/60', gradToDark: 'dark:from-amber-950/20' },
+                                                        { hex: '#a855f7', ringTrack: '#f3e8ff', ringTrackDark: '#3b0764', badgeClass: 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400', chipUsed: 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300', gradFrom: 'from-purple-50/60', gradToDark: 'dark:from-purple-950/20' },
+                                                        { hex: '#0ea5e9', ringTrack: '#e0f2fe', ringTrackDark: '#082f49', badgeClass: 'bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400', chipUsed: 'bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300', gradFrom: 'from-sky-50/60', gradToDark: 'dark:from-sky-950/20' },
+                                                    ][idx % 6];
 
-                                        return (
-                                            <div key={bal.lb_id} className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
-                                                <div className="flex justify-between items-start">
-                                                    <div>
-                                                        <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">{bal.leave_type}</span>
-                                                        <div className="flex items-baseline gap-1.5 mt-1">
-                                                            <span className="text-2xl font-black text-slate-800 dark:text-github-dark-text leading-none">{Number(bal.available)}</span>
-                                                            <span className="text-xs text-slate-500 dark:text-github-dark-muted">available</span>
+                                                    const myBalance = myBalances.find(b => b.rule_id === rule.rule_id);
+                                                    const available = myBalance ? Number(myBalance.available) : null;
+                                                    const total = myBalance ? (Number(myBalance.allocated) + Number(myBalance.carried_forward)) : rule.max_balance;
+                                                    const used = myBalance ? Number(myBalance.used) : 0;
+                                                    const usedPct = total > 0 ? Math.round((used / total) * 100) : 0;
+                                                    const displayDays = available !== null ? available : total;
+
+                                                    // SVG ring values (r=28, circumference ≈ 176)
+                                                    const r = 28, circ = 2 * Math.PI * r;
+                                                    const offset = circ - (Math.min(usedPct, 100) / 100) * circ;
+
+                                                    return (
+                                                        <div
+                                                            key={rule.rule_id}
+                                                            className={`group relative flex items-stretch gap-0 bg-gradient-to-br from-white to-slate-50/80 dark:from-[#1a2233] dark:to-[#141923] border border-slate-200 dark:border-github-dark-border rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl dark:hover:shadow-black/40 hover:border-slate-300 dark:hover:border-slate-600`}
+                                                        >
+                                                            {/* Left colored accent panel with ring */}
+                                                            <div className="flex flex-col items-center justify-center gap-2 px-5 py-5 shrink-0" style={{ background: `linear-gradient(135deg, ${palettes.hex}18 0%, ${palettes.hex}08 100%)`, borderRight: `1px solid ${palettes.hex}25` }}>
+                                                                {/* SVG Circular Ring */}
+                                                                <div className="relative w-[72px] h-[72px]">
+                                                                    <svg viewBox="0 0 72 72" className="w-full h-full -rotate-90">
+                                                                        <circle cx="36" cy="36" r={r} strokeWidth="5" fill="none" stroke={palettes.hex} strokeOpacity="0.15" />
+                                                                        <circle
+                                                                            cx="36" cy="36" r={r}
+                                                                            strokeWidth="5"
+                                                                            fill="none"
+                                                                            stroke={palettes.hex}
+                                                                            strokeLinecap="round"
+                                                                            strokeDasharray={circ}
+                                                                            strokeDashoffset={offset}
+                                                                            style={{ transition: 'stroke-dashoffset 1s ease' }}
+                                                                        />
+                                                                    </svg>
+                                                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                                                        <span className="text-lg font-black leading-none" style={{ color: palettes.hex }}>{displayDays}</span>
+                                                                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide leading-none mt-0.5">days</span>
+                                                                    </div>
+                                                                </div>
+                                                                {/* Code badge */}
+                                                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full tracking-wider ${palettes.badgeClass}`}>{rule.code}</span>
+                                                            </div>
+
+                                                            {/* Right content area */}
+                                                            <div className="flex-1 flex flex-col justify-between p-4 gap-3 min-w-0">
+                                                                {/* Title + sub info */}
+                                                                <div>
+                                                                    <h5 className="font-extrabold text-sm text-slate-800 dark:text-github-dark-text leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                                                        {rule.name}
+                                                                    </h5>
+                                                                    <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                                                                        {rule.accural_type && rule.accural_type !== 'No Accrual' ? `${rule.accural_type} accrual` : 'All days available upfront'}
+                                                                    </p>
+                                                                </div>
+
+                                                                {/* Balance bar */}
+                                                                {myBalance ? (
+                                                                    <div className="space-y-1.5">
+                                                                        <div className="flex items-center justify-between text-[10px] font-bold">
+                                                                            <span className="text-slate-500 dark:text-slate-400">{used} used</span>
+                                                                            <span className="text-slate-500 dark:text-slate-400">{total} total</span>
+                                                                        </div>
+                                                                        <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                                                            <div
+                                                                                className="h-full rounded-full transition-all duration-700"
+                                                                                style={{ width: `${Math.min(usedPct, 100)}%`, backgroundColor: palettes.hex }}
+                                                                            />
+                                                                        </div>
+                                                                        <p className="text-[10px] font-extrabold" style={{ color: palettes.hex }}>
+                                                                            {displayDays} days remaining
+                                                                        </p>
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-[10px] text-slate-400">
+                                                                        Up to <span className="font-bold text-slate-600 dark:text-slate-300">{total} days/year</span>
+                                                                    </p>
+                                                                )}
+
+                                                                {/* Feature tags */}
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${rule.is_paid ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'}`}>
+                                                                        {rule.is_paid ? '✓ Paid Leave' : 'Unpaid Leave'}
+                                                                    </span>
+                                                                    {rule.requires_doc === 1 && (
+                                                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/50">Doc Required</span>
+                                                                    )}
+                                                                    {rule.carry_forward === 1 && (
+                                                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border bg-sky-50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800/50">Carry Fwd</span>
+                                                                    )}
+                                                                    {rule.encashable === 1 && (
+                                                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/50">Encashable</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="px-4 py-4 text-center text-slate-400 bg-slate-50/50 dark:bg-github-dark-subtle/5 border border-slate-200 dark:border-github-dark-border rounded-xl">
+                                                <p className="text-xs">No leave types set up in this plan yet.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ── LEAVE REQUEST HISTORY ── */}
+                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-100 dark:border-github-dark-border flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+                            <h4 className="text-xs font-bold text-slate-600 dark:text-github-dark-muted uppercase tracking-wider">My Leave Requests</h4>
+                        </div>
+
+                        {filteredLeaves.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-14 text-center text-slate-400 px-6">
+                                <FileText size={40} className="mx-auto mb-3 opacity-20" />
+                                <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">No requests this month</p>
+                                <p className="text-xs max-w-sm">No leave requests found for {new Date(selectedYear, selectedMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}.</p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead className="bg-slate-50 dark:bg-github-dark-subtle/50 text-[11px] uppercase text-slate-500 font-bold tracking-wider">
+                                        <tr>
+                                            <th className="px-6 py-4">Type</th>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Duration</th>
+                                            <th className="px-6 py-4">Reason</th>
+                                            <th className="px-6 py-4">Applied On</th>
+                                            <th className="px-6 py-4 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                                        {filteredLeaves.map((leave) => {
+                                            const isActive = selectedLeave?.lr_id === leave.lr_id;
+                                            const statusColor = leave.status === 'approved'
+                                                ? { pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400', dot: 'bg-emerald-500' }
+                                                : leave.status === 'rejected'
+                                                ? { pill: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400', dot: 'bg-red-500' }
+                                                : { pill: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400', dot: 'bg-amber-500' };
+                                            return (
+                                            <tr
+                                                key={leave.lr_id}
+                                                onClick={() => setSelectedLeave(isActive ? null : leave)}
+                                                className={`transition-colors group cursor-pointer border-l-2 ${isActive ? 'bg-indigo-50/50 dark:bg-indigo-900/10 border-l-indigo-500' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30 border-l-transparent'}`}
+                                            >
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="font-bold text-sm text-slate-800 dark:text-github-dark-text">{leave.policy_name || leave.leave_type || 'Leave'}</span>
+                                                        {leave.leave_type && leave.policy_name && (
+                                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{leave.leave_type}</span>
+                                                        )}
+                                                        {leave.leave_code && (
+                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 w-fit tracking-wide">{leave.leave_code}</span>
+                                                        )}
                                                     </div>
-                                                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${colors.track} ${colors.text}`}>
-                                                        {percentUsed}% Consumed
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide ${statusColor.pill}`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${statusColor.dot}`}></span>
+                                                        {leave.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{calculateDays(leave.start_date, leave.end_date)} Days</span>
+                                                        <span className="text-[10px] text-slate-400 mt-0.5">
+                                                            {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 max-w-[200px]">
+                                                    <p className="text-sm text-slate-600 dark:text-github-dark-muted truncate" title={leave.reason}>{leave.reason}</p>
+                                                </td>
+                                                <td className="px-6 py-4 text-xs text-slate-500">
+                                                    {new Date(leave.applied_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <span className={`text-[9px] font-bold transition-opacity ${isActive ? 'opacity-100 text-indigo-500' : 'opacity-0 group-hover:opacity-60 text-slate-400'}`}>View Details →</span>
+                                                        {leave.status === 'pending' && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleWithdraw(leave.lr_id); }}
+                                                                className="text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100"
+                                                                title="Withdraw Request"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                </div>
+            )}
+
+            {/* --- LEAVE DETAIL DRAWER (Employee only) --- */}
+            <AnimatePresence>
+                {!isAdmin && selectedLeave && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setSelectedLeave(null)}
+                            className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px]"
+                        />
+                        <motion.div
+                            initial={{ x: '100%', opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: '100%', opacity: 0 }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="fixed right-0 top-0 h-full w-full max-w-[420px] z-50 bg-white dark:bg-dark-card border-l border-slate-200 dark:border-github-dark-border shadow-2xl flex flex-col overflow-hidden"
+                        >
+                            {/* Header */}
+                            {(() => {
+                                const sl = selectedLeave;
+                                const statusStyles = sl.status === 'approved'
+                                    ? { pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400', dot: 'bg-emerald-500', accent: '#10b981' }
+                                    : sl.status === 'rejected'
+                                    ? { pill: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400', dot: 'bg-red-500', accent: '#ef4444' }
+                                    : { pill: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400', dot: 'bg-amber-500', accent: '#f59e0b' };
+                                const days = calculateDays(sl.start_date, sl.end_date);
+                                return (
+                                    <>
+                                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                                                    <FileText size={18} />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-sm font-black text-slate-800 dark:text-github-dark-text">Leave Details</h3>
+                                                    <p className="text-[10px] text-slate-400">Request #{sl.lr_id}</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => setSelectedLeave(null)}
+                                                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+                                            {/* Status hero card */}
+                                            <div className="rounded-2xl p-5 flex items-center gap-4" style={{ background: `linear-gradient(135deg, ${statusStyles.accent}15 0%, ${statusStyles.accent}08 100%)`, border: `1px solid ${statusStyles.accent}30` }}>
+                                                <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${statusStyles.accent}20` }}>
+                                                    {sl.status === 'approved' ? <CheckCircle size={24} style={{ color: statusStyles.accent }} /> :
+                                                     sl.status === 'rejected' ? <XCircle size={24} style={{ color: statusStyles.accent }} /> :
+                                                     <Clock size={24} style={{ color: statusStyles.accent }} />}
+                                                </div>
+                                                <div>
+                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider mb-1 ${statusStyles.pill}`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${statusStyles.dot}`}></span>
+                                                        {sl.status}
+                                                    </span>
+                                                    <p className="text-base font-black text-slate-800 dark:text-github-dark-text">{days} Day{days !== 1 ? 's' : ''} Leave</p>
+                                                    <p className="text-xs text-slate-500 font-medium">{sl.policy_name || sl.leave_type || 'Leave'}</p>
+                                                    {sl.policy_name && sl.leave_type && <p className="text-[10px] text-slate-400 mt-0.5">{sl.leave_type}</p>}
+                                                </div>
+                                            </div>
+
+                                            {/* Info rows */}
+                                            <div className="bg-slate-50 dark:bg-github-dark-subtle/20 rounded-xl border border-slate-200 dark:border-github-dark-border divide-y divide-slate-100 dark:divide-slate-700/50 overflow-hidden">
+                                                <div className="flex items-center justify-between px-4 py-3">
+                                                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Leave Type</span>
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text">{sl.policy_name || sl.leave_type || '—'}</span>
+                                                            {sl.leave_code && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">{sl.leave_code}</span>}
+                                                        </div>
+                                                        {sl.policy_name && sl.leave_type && (
+                                                            <span className="text-[10px] text-slate-400">{sl.leave_type}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center justify-between px-4 py-3">
+                                                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Start Date</span>
+                                                    <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text">
+                                                        {new Date(sl.start_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                                                     </span>
                                                 </div>
-
-                                                <div className="mt-4 space-y-1.5">
-                                                    <div className={`w-full h-2 rounded-full ${colors.track} overflow-hidden`}>
-                                                        <div
-                                                            className={`h-full ${colors.bg} rounded-full transition-all duration-1000`}
-                                                            style={{ width: `${Math.min(percentUsed, 100)}%` }}
-                                                        />
-                                                    </div>
-                                                    <div className="flex justify-between text-[9px] font-bold text-slate-400 select-none">
-                                                        <span>{Number(bal.used)} Days Used</span>
-                                                        <span>{balQuota} Days Total</span>
-                                                    </div>
+                                                <div className="flex items-center justify-between px-4 py-3">
+                                                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">End Date</span>
+                                                    <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text">
+                                                        {new Date(sl.end_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                                    </span>
                                                 </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {filteredLeaves.length === 0 ? (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-400">
-                            <FileText size={48} className="mx-auto mb-4 opacity-20" />
-                            <h3 className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">No Leave Records</h3>
-                            <p className="max-w-sm mx-auto text-sm">No leave requests found for {new Date(selectedYear, selectedMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}.</p>
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50 dark:bg-github-dark-subtle/50 text-[11px] uppercase text-slate-500 font-bold tracking-wider">
-                                    <tr>
-                                        <th className="px-6 py-4">Type</th>
-                                        <th className="px-6 py-4">Current Status</th>
-                                        <th className="px-6 py-4">Duration</th>
-                                        <th className="px-6 py-4">Reason</th>
-                                        <th className="px-6 py-4">Date Applied</th>
-                                        <th className="px-6 py-4 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                                    {filteredLeaves.map((leave) => (
-                                        <tr 
-                                            key={leave.lr_id} 
-                                            onClick={() => setSelectedLeave(selectedLeave?.lr_id === leave.lr_id ? null : leave)}
-                                            className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group cursor-pointer ${selectedLeave?.lr_id === leave.lr_id ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
-                                        >
-                                            <td className="px-6 py-4">
-                                                <div className="font-semibold text-sm text-slate-800 dark:text-github-dark-text">{leave.leave_type}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide ${leave.status === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' :
-                                                    leave.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400' :
-                                                        'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
-                                                    }`}>
-                                                    <span className={`w-1.5 h-1.5 rounded-full ${leave.status === 'approved' ? 'bg-emerald-500' :
-                                                        leave.status === 'rejected' ? 'bg-red-500' :
-                                                            'bg-amber-500'
-                                                        }`}></span>
-                                                    {leave.status}
-                                                </span>
-                                                {leave.status === 'approved' && leave.pay_type && (
-                                                    <div className="mt-1">
-                                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                                                            leave.pay_type === 'Paid'
-                                                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/5 dark:text-emerald-400 border border-emerald-500/10'
-                                                                : 'bg-red-50 text-red-650 dark:bg-red-500/5 dark:text-red-400 border border-red-500/10'
-                                                        }`}>
-                                                            {leave.pay_type}
+                                                <div className="flex items-center justify-between px-4 py-3">
+                                                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Duration</span>
+                                                    <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">{days} Day{days !== 1 ? 's' : ''}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between px-4 py-3">
+                                                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Applied On</span>
+                                                    <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text">
+                                                        {new Date(sl.applied_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                    </span>
+                                                </div>
+                                                {sl.status === 'approved' && sl.pay_type && (
+                                                    <div className="flex items-center justify-between px-4 py-3">
+                                                        <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Pay Type</span>
+                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${sl.pay_type === 'Paid' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                                            {sl.pay_type}
                                                         </span>
                                                     </div>
                                                 )}
-                                                {leave.admin_comment && (
-                                                    <p className="text-[10px] text-slate-500 mt-1 max-w-[120px] truncate" title={leave.admin_comment}>
-                                                        Note: {leave.admin_comment}
-                                                    </p>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{calculateDays(leave.start_date, leave.end_date)} Days</span>
-                                                    <span className="text-[10px] text-slate-400 mt-0.5">
-                                                        {new Date(leave.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
-                                                    </span>
+                                            </div>
+
+                                            {/* Reason */}
+                                            <div className="space-y-1.5">
+                                                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Reason</p>
+                                                <div className="bg-slate-50 dark:bg-github-dark-subtle/20 rounded-xl border border-slate-200 dark:border-github-dark-border px-4 py-3">
+                                                    <p className="text-sm text-slate-700 dark:text-github-dark-text leading-relaxed">{sl.reason || 'No reason provided.'}</p>
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4 max-w-[200px]">
-                                                <p className="text-sm text-slate-600 dark:text-github-dark-muted truncate" title={leave.reason}>
-                                                    {leave.reason}
-                                                </p>
-                                            </td>
-                                            <td className="px-6 py-4 text-xs text-slate-500">
-                                                {new Date(leave.applied_at || Date.now()).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                {leave.status === 'pending' && (
-                                                    <button
-                                                        onClick={() => handleWithdraw(leave.lr_id)}
-                                                        className="text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100"
-                                                        title="Withdraw Request"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
-            </div>
-            )}
+                                            </div>
+
+                                            {/* Admin Note */}
+                                            {sl.admin_comment && (
+                                                <div className="space-y-1.5">
+                                                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Admin Note</p>
+                                                    <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800/30 px-4 py-3">
+                                                        <p className="text-sm text-amber-700 dark:text-amber-300 leading-relaxed">{sl.admin_comment}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Footer action */}
+                                        {sl.status === 'pending' && (
+                                            <div className="p-4 border-t border-slate-100 dark:border-github-dark-border">
+                                                <button
+                                                    onClick={() => { setSelectedLeave(null); handleWithdraw(sl.lr_id); }}
+                                                    className="w-full py-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 border border-red-200 dark:border-red-800/30"
+                                                >
+                                                    <Trash2 size={16} />
+                                                    Withdraw Request
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
 
             {/* --- APPLY FOR LEAVE DRAWER --- */}
             <AnimatePresence>
@@ -1075,7 +1306,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                         >
                                             {myBalances.map(bal => (
                                                 <option key={bal.rule_id} value={bal.rule_id}>
-                                                    {bal.leave_type} ({Number(bal.available)} days left)
+                                                    {bal.policy_name || bal.leave_type} — {bal.leave_type} ({Number(bal.available)} days left)
                                                 </option>
                                             ))}
                                             {myBalances.length === 0 && (
@@ -1114,6 +1345,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                             value={formData.end_date}
                                             onChange={(date) => setFormData({ ...formData, end_date: date })}
                                             placeholder="Select date"
+                                            align="right"
                                         />
                                     </div>
                                 </div>
@@ -1138,72 +1370,74 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                                     ></textarea>
                                 </div>
 
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Attachments (Optional)</label>
-                                    <div className="space-y-3">
-                                         {/* Upload Area */}
-                                         <div className="relative group">
-                                             <input
-                                                 type="file"
-                                                 id="leave-attachment"
-                                                 className="hidden"
-                                                 multiple
-                                                 accept=".jpg,.jpeg,.png,.pdf"
-                                                 onChange={handleFileChange}
-                                             />
-                                             <label
-                                                 htmlFor="leave-attachment"
-                                                 className="w-full flex flex-col items-center gap-2 px-4 py-6 bg-slate-50 dark:bg-github-dark-subtle border-2 border-dashed border-slate-300 dark:border-github-dark-border rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all group-hover:scale-[1.01]"
-                                             >
-                                                 <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                                                     <Paperclip size={18} />
-                                                 </div>
-                                                 <div className="text-center">
-                                                     <span className="text-sm font-medium text-slate-700 dark:text-github-dark-text">
-                                                         Click to upload documents
-                                                     </span>
-                                                     <p className="text-xs text-slate-400 mt-1">
-                                                         JPG, PNG, PDF (Max 5MB)
-                                                     </p>
-                                                 </div>
-                                             </label>
-                                         </div>
-
-                                         {/* Selected Files List */}
-                                         {formData.attachments && formData.attachments.length > 0 && (
-                                             <div className="grid grid-cols-1 gap-2">
-                                                 {formData.attachments.map((file, index) => (
-                                                     <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
-                                                         <div className="flex items-center gap-3 overflow-hidden">
-                                                             <div className="w-8 h-8 rounded bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
-                                                                 <FileText size={16} />
-                                                             </div>
-                                                             <div className="min-w-0">
-                                                                 <p className="text-sm font-medium text-slate-700 dark:text-github-dark-text truncate">
-                                                                     {file.name}
-                                                                 </p>
-                                                                 <p className="text-[10px] text-slate-400 uppercase font-bold">
-                                                                     {(file.size / 1024).toFixed(1)} KB
-                                                                 </p>
-                                                             </div>
-                                                         </div>
-                                                         <button
-                                                             type="button"
-                                                             onClick={(e) => {
-                                                                 e.preventDefault();
-                                                                 removeFile(index);
-                                                             }}
-                                                             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
-                                                             title="Remove file"
-                                                         >
-                                                             <Trash2 size={16} />
-                                                         </button>
+                                {selectedBalance?.requires_doc === 1 && (
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Attachments (Required)</label>
+                                        <div className="space-y-3">
+                                             {/* Upload Area */}
+                                             <div className="relative group">
+                                                 <input
+                                                     type="file"
+                                                     id="leave-attachment"
+                                                     className="hidden"
+                                                     multiple
+                                                     accept=".jpg,.jpeg,.png,.pdf"
+                                                     onChange={handleFileChange}
+                                                 />
+                                                 <label
+                                                     htmlFor="leave-attachment"
+                                                     className="w-full flex flex-col items-center gap-2 px-4 py-6 bg-slate-50 dark:bg-github-dark-subtle border-2 border-dashed border-slate-300 dark:border-github-dark-border rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all group-hover:scale-[1.01]"
+                                                 >
+                                                     <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                                         <Paperclip size={18} />
                                                      </div>
-                                                 ))}
+                                                     <div className="text-center">
+                                                         <span className="text-sm font-medium text-slate-700 dark:text-github-dark-text">
+                                                             Click to upload documents
+                                                         </span>
+                                                         <p className="text-xs text-slate-400 mt-1">
+                                                             JPG, PNG, PDF (Max 5MB)
+                                                         </p>
+                                                     </div>
+                                                 </label>
                                              </div>
-                                         )}
+
+                                             {/* Selected Files List */}
+                                             {formData.attachments && formData.attachments.length > 0 && (
+                                                 <div className="grid grid-cols-1 gap-2">
+                                                     {formData.attachments.map((file, index) => (
+                                                         <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                                                             <div className="flex items-center gap-3 overflow-hidden">
+                                                                 <div className="w-8 h-8 rounded bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+                                                                     <FileText size={16} />
+                                                                 </div>
+                                                                 <div className="min-w-0">
+                                                                     <p className="text-sm font-medium text-slate-700 dark:text-github-dark-text truncate">
+                                                                         {file.name}
+                                                                     </p>
+                                                                     <p className="text-[10px] text-slate-400 uppercase font-bold">
+                                                                         {(file.size / 1024).toFixed(1)} KB
+                                                                     </p>
+                                                                 </div>
+                                                             </div>
+                                                             <button
+                                                                 type="button"
+                                                                 onClick={(e) => {
+                                                                     e.preventDefault();
+                                                                     removeFile(index);
+                                                                 }}
+                                                                 className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
+                                                                 title="Remove file"
+                                                             >
+                                                                 <Trash2 size={16} />
+                                                             </button>
+                                                         </div>
+                                                     ))}
+                                                 </div>
+                                             )}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 <button
                                     type="submit"

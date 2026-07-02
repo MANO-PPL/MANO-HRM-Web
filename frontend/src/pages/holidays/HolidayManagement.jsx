@@ -444,7 +444,7 @@ const HolidayManagement = () => {
                             }`}
                     >
                         <FileText size={14} className={`${activeTab === 'leaves' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
-                        <span className="leading-none">{['admin', 'hr'].includes(user?.user_type) ? 'Leave Requests' : 'Leave Application'}</span>
+                        <span className="leading-none">{['admin', 'hr'].includes(user?.user_type) ? 'Leave Requests' : 'Leave'}</span>
                     </button>
                     {['admin', 'hr'].includes(user?.user_type) && (
                         <button

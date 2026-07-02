@@ -17,6 +17,7 @@ import {
     Search,
     Calendar,
     ChevronRight,
+    ChevronDown,
     ArrowLeft,
     UserMinus,
     UserPlus,
@@ -555,44 +556,44 @@ const LeavePolicies = () => {
                                     <p className="text-[10px] text-slate-400 font-bold">{editingBalance?.user_name} - {editingBalance?.leave_type}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setShowEditBalanceDrawer(false)} className="p-2 text-slate-400 hover:text-slate-655 rounded-lg hover:bg-slate-55">
+                            <button onClick={() => setShowEditBalanceDrawer(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-github-dark-muted rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800">
                                 <X size={20} />
                             </button>
                         </div>
 
                         <form onSubmit={handleSaveBalance} className="flex-1 p-6 space-y-5">
                             <div className="space-y-1.5">
-                                <label className="block text-xs font-black uppercase tracking-wider text-slate-455">Allocated Quota</label>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Allocated Quota</label>
                                 <input
                                     type="number"
                                     min="0"
                                     value={balanceForm.allocated}
                                     onChange={(e) => setBalanceForm({ ...balanceForm, allocated: Number(e.target.value) })}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                     required
                                 />
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="block text-xs font-black uppercase tracking-wider text-slate-455">Carried Forward</label>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Carried Forward</label>
                                 <input
                                     type="number"
                                     min="0"
                                     value={balanceForm.carried_forward}
                                     onChange={(e) => setBalanceForm({ ...balanceForm, carried_forward: Number(e.target.value) })}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                     required
                                 />
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="block text-xs font-black uppercase tracking-wider text-slate-455">Used Days</label>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Used Days</label>
                                 <input
                                     type="number"
                                     min="0"
                                     value={balanceForm.used}
                                     onChange={(e) => setBalanceForm({ ...balanceForm, used: Number(e.target.value) })}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                     required
                                 />
                             </div>
@@ -618,30 +619,30 @@ const LeavePolicies = () => {
                                 </div>
                                 <h3 className="text-sm font-black text-slate-800 dark:text-github-dark-text">{editingPolicy ? 'Edit Leave Policy' : 'Create Leave Policy'}</h3>
                             </div>
-                            <button onClick={() => setShowPolicyDrawer(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg transition-colors hover:bg-slate-50">
+                            <button onClick={() => setShowPolicyDrawer(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-github-dark-muted rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800">
                                 <X size={20} />
                             </button>
                         </div>
 
                         <form onSubmit={handleSavePolicy} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                             <div className="space-y-1.5">
-                                <label className="block text-xs font-black uppercase tracking-wider text-slate-450 dark:text-slate-300">Policy Name</label>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Policy Name</label>
                                 <input
                                     type="text"
                                     required
                                     value={policyForm.name}
                                     onChange={(e) => setPolicyForm({ ...policyForm, name: e.target.value })}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm font-medium"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 font-semibold text-xs"
                                     placeholder="e.g. Standard Entitlements"
                                 />
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="block text-xs font-black uppercase tracking-wider text-slate-455 dark:text-slate-300">Description</label>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Description</label>
                                 <textarea
                                     value={policyForm.description}
                                     onChange={(e) => setPolicyForm({ ...policyForm, description: e.target.value })}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm h-28 font-medium"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 text-xs font-semibold h-28 resize-none"
                                     placeholder="Outline scope or details about eligibility for this policy..."
                                 />
                             </div>
@@ -649,7 +650,7 @@ const LeavePolicies = () => {
                             {editingPolicy && (
                                 <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-github-dark-subtle/55 border border-slate-200 dark:border-github-dark-border rounded-xl">
                                     <div>
-                                        <span className="text-xs font-bold text-slate-805 dark:text-github-dark-text">Policy Status</span>
+                                        <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text">Policy Status</span>
                                         <p className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Inactive policies cannot be assigned to employees.</p>
                                     </div>
                                     <label className="relative inline-flex items-center cursor-pointer">
@@ -695,130 +696,203 @@ const LeavePolicies = () => {
                                     <p className="text-[10px] text-slate-400 font-bold">{selectedPolicy.name}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setShowRuleDrawer(false)} className="p-2 text-slate-400 hover:text-slate-655 rounded-lg transition-colors hover:bg-slate-50">
+                            <button onClick={() => setShowRuleDrawer(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-github-dark-muted rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800">
                                 <X size={20} />
                             </button>
                         </div>
 
                         <form onSubmit={handleSaveRule} className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
                             <div className="space-y-1.5">
-                                <label className="block text-xs font-black uppercase tracking-wider text-slate-455 dark:text-slate-300">Rule Name</label>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Rule Name</label>
                                 <input
                                     type="text"
                                     required
                                     value={ruleForm.name}
                                     onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-xs"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 font-semibold text-xs"
                                     placeholder="e.g. Annual Leave"
                                 />
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="block text-xs font-black uppercase tracking-wider text-slate-455 dark:text-slate-300">Leave Code / Abbreviation</label>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Leave Code / Abbreviation</label>
                                 <input
                                     type="text"
                                     required
                                     maxLength="4"
                                     value={ruleForm.code}
                                     onChange={(e) => setRuleForm({ ...ruleForm, code: e.target.value.toUpperCase() })}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-bold text-xs"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 font-bold text-xs"
                                     placeholder="e.g. AL"
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
-                                    <label className="block text-xs font-black uppercase tracking-wider text-slate-455 dark:text-slate-300">Annual Quota Allocation</label>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Days Per Year</label>
                                     <input
                                         type="number"
                                         min="0"
                                         required
                                         value={ruleForm.max_balance}
                                         onChange={(e) => setRuleForm({ ...ruleForm, max_balance: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text text-xs"
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 font-semibold text-xs"
                                     />
                                 </div>
 
                                 <div className="space-y-1.5">
-                                    <label className="block text-xs font-black uppercase tracking-wider text-slate-455 dark:text-slate-300">Accrual Strategy</label>
-                                    <select
-                                        value={ruleForm.accural_type}
-                                        onChange={(e) => setRuleForm({ ...ruleForm, accural_type: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-700 dark:text-slate-300 outline-none"
-                                    >
-                                        <option value="No Accrual">No Accrual (Frontload All)</option>
-                                        <option value="Monthly">Monthly Accrual</option>
-                                        <option value="Quarterly">Quarterly Accrual</option>
-                                    </select>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">When is Leave Added?</label>
+                                    <div className="relative">
+                                        <select
+                                            value={ruleForm.accural_type}
+                                            onChange={(e) => setRuleForm({ ...ruleForm, accural_type: e.target.value })}
+                                            className="w-full appearance-none px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 pr-10 cursor-pointer text-slate-700 dark:text-slate-350"
+                                        >
+                                            <option value="No Accrual">All at Once (Start of Year)</option>
+                                            <option value="Monthly">Add Monthly</option>
+                                            <option value="Quarterly">Add Every 3 Months</option>
+                                        </select>
+                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 dark:text-github-dark-muted">
+                                            <ChevronDown size={14} />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
                             {ruleForm.accural_type !== 'No Accrual' && (
                                 <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                                    <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Accrual Amount (Days per Period)</label>
+                                    <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Days Added Each Period</label>
                                     <input
                                         type="number"
                                         min="0.1"
                                         step="0.1"
                                         value={ruleForm.accural_amount}
                                         onChange={(e) => setRuleForm({ ...ruleForm, accural_amount: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs"
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
                                         required
                                     />
                                 </div>
                             )}
 
-                            <div className="p-4 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-bold uppercase text-slate-700 dark:text-slate-355">Accrue as Paid Leave</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={ruleForm.is_paid}
-                                        onChange={(e) => setRuleForm({ ...ruleForm, is_paid: e.target.checked })}
-                                        className="w-4 h-4 text-indigo-650 rounded focus:ring-indigo-500 cursor-pointer"
-                                    />
-                                </div>
+                            <div className="p-4 bg-slate-50/50 dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl space-y-3.5">
+                                {/* Option 1: Accrue as Paid Leave */}
+                                <label className="flex items-center justify-between p-3.5 bg-white dark:bg-[#161b22] hover:bg-slate-100/50 dark:hover:bg-slate-800/40 border border-slate-200 dark:border-[#30363d] rounded-xl cursor-pointer transition-all duration-200 group">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Accrue as Paid Leave</span>
+                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Employee gets paid as usual during this leave</span>
+                                    </div>
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={ruleForm.is_paid}
+                                            onChange={(e) => setRuleForm({ ...ruleForm, is_paid: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-5 h-5 rounded-md border border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22] flex items-center justify-center transition-all peer-checked:bg-indigo-600 peer-checked:border-indigo-600 group-hover:scale-105">
+                                            <svg
+                                                className={`w-3.5 h-3.5 text-white transition-opacity ${ruleForm.is_paid ? 'opacity-100' : 'opacity-0'}`}
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                                strokeWidth="3.5"
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </label>
 
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-bold uppercase text-slate-700 dark:text-slate-355">Requires Medical/Doc</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={ruleForm.requires_doc}
-                                        onChange={(e) => setRuleForm({ ...ruleForm, requires_doc: e.target.checked })}
-                                        className="w-4 h-4 text-indigo-655 rounded focus:ring-indigo-500 cursor-pointer"
-                                    />
-                                </div>
+                                {/* Option 2: Requires Medical/Doc */}
+                                <label className="flex items-center justify-between p-3.5 bg-white dark:bg-[#161b22] hover:bg-slate-100/50 dark:hover:bg-slate-800/40 border border-slate-200 dark:border-[#30363d] rounded-xl cursor-pointer transition-all duration-200 group">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Requires Medical/Doc</span>
+                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Must upload a doctor's note or document when applying</span>
+                                    </div>
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={ruleForm.requires_doc}
+                                            onChange={(e) => setRuleForm({ ...ruleForm, requires_doc: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-5 h-5 rounded-md border border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22] flex items-center justify-center transition-all peer-checked:bg-indigo-600 peer-checked:border-indigo-600 group-hover:scale-105">
+                                            <svg
+                                                className={`w-3.5 h-3.5 text-white transition-opacity ${ruleForm.requires_doc ? 'opacity-100' : 'opacity-0'}`}
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                                strokeWidth="3.5"
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </label>
 
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-bold uppercase text-slate-700 dark:text-slate-355">Encashable Leave</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={ruleForm.encashable}
-                                        onChange={(e) => setRuleForm({ ...ruleForm, encashable: e.target.checked })}
-                                        className="w-4 h-4 text-indigo-650 rounded focus:ring-indigo-500 cursor-pointer"
-                                    />
-                                </div>
+                                {/* Option 3: Encashable Leave */}
+                                <label className="flex items-center justify-between p-3.5 bg-white dark:bg-[#161b22] hover:bg-slate-100/50 dark:hover:bg-slate-800/40 border border-slate-200 dark:border-[#30363d] rounded-xl cursor-pointer transition-all duration-200 group">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Encashable Leave</span>
+                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Unused days can be paid out in cash</span>
+                                    </div>
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={ruleForm.encashable}
+                                            onChange={(e) => setRuleForm({ ...ruleForm, encashable: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-5 h-5 rounded-md border border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22] flex items-center justify-center transition-all peer-checked:bg-indigo-600 peer-checked:border-indigo-600 group-hover:scale-105">
+                                            <svg
+                                                className={`w-3.5 h-3.5 text-white transition-opacity ${ruleForm.encashable ? 'opacity-100' : 'opacity-0'}`}
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                                strokeWidth="3.5"
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </label>
 
-                                <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
-                                    <span className="text-xs font-bold uppercase text-slate-700 dark:text-slate-350">Carry Forward to Next Year</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={ruleForm.carry_forward}
-                                        onChange={(e) => setRuleForm({ ...ruleForm, carry_forward: e.target.checked })}
-                                        className="w-4 h-4 text-indigo-650 rounded focus:ring-indigo-500 cursor-pointer"
-                                    />
-                                </div>
+                                {/* Option 4: Carry Forward to Next Year */}
+                                <label className="flex items-center justify-between p-3.5 bg-white dark:bg-[#161b22] hover:bg-slate-100/50 dark:hover:bg-slate-800/40 border border-slate-200 dark:border-[#30363d] rounded-xl cursor-pointer transition-all duration-200 group">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Carry Forward to Next Year</span>
+                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Unused days move to the next year instead of expiring</span>
+                                    </div>
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={ruleForm.carry_forward}
+                                            onChange={(e) => setRuleForm({ ...ruleForm, carry_forward: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-5 h-5 rounded-md border border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22] flex items-center justify-center transition-all peer-checked:bg-indigo-600 peer-checked:border-indigo-600 group-hover:scale-105">
+                                            <svg
+                                                className={`w-3.5 h-3.5 text-white transition-opacity ${ruleForm.carry_forward ? 'opacity-100' : 'opacity-0'}`}
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                                strokeWidth="3.5"
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </label>
 
                                 {ruleForm.carry_forward && (
-                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                                        <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Max Carry Forward Cap</label>
+                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200 p-3.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl space-y-1.5 mt-2">
+                                        <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-github-dark-muted">Max Carry Forward Cap</label>
                                         <input
                                             type="number"
                                             min="0"
                                             step="0.5"
                                             value={ruleForm.carry_forward_max}
                                             onChange={(e) => setRuleForm({ ...ruleForm, carry_forward_max: Number(e.target.value) })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-850 dark:text-github-dark-text"
+                                            className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                             required
                                         />
                                     </div>
@@ -829,7 +903,7 @@ const LeavePolicies = () => {
                                 <button
                                     type="button"
                                     onClick={() => setShowRuleDrawer(false)}
-                                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-github-dark-text rounded-lg text-sm font-bold transition-all active:scale-[0.98] cursor-pointer"
+                                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-github-dark-text rounded-lg text-sm font-bold transition-all active:scale-[0.98] cursor-pointer"
                                 >
                                     Cancel
                                 </button>

@@ -178,6 +178,8 @@ const LeaveApplication = () => {
         return { totalQuota: quota, totalUsed: used, totalAvailable: avail, usedPercentage: pct };
     }, [myBalances]);
 
+    const selectedBalance = myBalances.find(b => String(b.rule_id) === String(formData.leave_type));
+
     const isAdmin = user?.user_type === 'admin' || user?.user_type === 'hr';
 
     useEffect(() => {
@@ -255,6 +257,11 @@ const LeaveApplication = () => {
     const handleApply = async (e) => {
         e.preventDefault();
         try {
+            // Check if attachment is required per policy
+            if (selectedBalance && selectedBalance.requires_doc && (!formData.attachments || formData.attachments.length === 0)) {
+                toast.error(`An attachment is required for ${selectedBalance.leave_type} as per leave policy.`);
+                return;
+            }
             const data = new FormData();
             data.append('leave_type', formData.leave_type);
             data.append('start_date', formData.start_date);
@@ -765,6 +772,7 @@ const LeaveApplication = () => {
                                     value={formData.end_date}
                                     onChange={(date) => setFormData({ ...formData, end_date: date })}
                                     placeholder="End"
+                                    align="right"
                                 />
                             </div>
 
@@ -781,20 +789,24 @@ const LeaveApplication = () => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">Attachments</label>
-                                <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                                    <label className="shrink-0 w-16 h-16 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50">
-                                        <Paperclip size={18} className="text-slate-400" />
-                                        <span className="text-[10px] text-slate-500 mt-1">Add</span>
-                                        <input type="file" multiple className="hidden" onChange={handleFileChange} />
-                                    </label>
-                                    {formData.attachments.map((file, i) => (
-                                        <div key={i} className="shrink-0 w-16 h-16 rounded-lg bg-slate-100 border border-slate-200 relative flex items-center justify-center">
-                                            <FileText size={20} className="text-indigo-400" />
-                                            <button type="button" onClick={() => removeFile(i)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={10} /></button>
+                                {selectedBalance?.requires_doc === 1 && (
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">Attachments (Required)</label>
+                                        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                                            <label className="shrink-0 w-16 h-16 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50">
+                                                <Paperclip size={18} className="text-slate-400" />
+                                                <span className="text-[10px] text-slate-500 mt-1">Add</span>
+                                                <input type="file" multiple className="hidden" onChange={handleFileChange} />
+                                            </label>
+                                            {formData.attachments.map((file, i) => (
+                                                <div key={i} className="shrink-0 w-16 h-16 rounded-lg bg-slate-100 border border-slate-200 relative flex items-center justify-center">
+                                                    <FileText size={20} className="text-indigo-400" />
+                                                    <button type="button" onClick={() => removeFile(i)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={10} /></button>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
+                                    </div>
+                                )}
                             </div>
 
                             <button type="submit" className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-sm">Submit Request</button>

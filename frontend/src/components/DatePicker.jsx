@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp } from 'lucide-react';
 
-const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate, compact = false, clearable = false }) => {
+const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate, compact = false, clearable = false, align = "left" }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
     const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -179,7 +179,7 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
             </div>
 
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-[280px] bg-white dark:bg-github-dark-subtle rounded-xl shadow-xl border border-slate-200 dark:border-github-dark-border z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
+                <div className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} mt-2 w-[280px] bg-white dark:bg-github-dark-subtle rounded-xl shadow-xl border border-slate-200 dark:border-github-dark-border z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden`}>
                     {/* Header */}
                     <div className="p-3 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-subtle/50">
                         <button onClick={handlePrevMonth} type="button" className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md text-slate-500 transition-colors">
