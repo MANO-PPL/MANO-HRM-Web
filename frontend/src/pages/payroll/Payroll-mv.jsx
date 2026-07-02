@@ -18,11 +18,11 @@ import {
 import { toast } from 'react-toastify';
 
 const INITIAL_EMPLOYEES = [
-    { id: 1, name: 'Aarav Sharma', designation: 'Senior Engineer', department: 'Engineering', basic: 75000, allowance: 12000, pf: 9000, lates: 2 },
-    { id: 2, name: 'Ananya Iyer', designation: 'Product Manager', department: 'Product', basic: 85000, allowance: 15000, pf: 10200, lates: 0 },
-    { id: 3, name: 'Kabir Verma', designation: 'UX Designer', department: 'Design', basic: 55000, allowance: 8000, pf: 6600, lates: 4 },
-    { id: 4, name: 'Diya Patel', designation: 'QA Lead', department: 'Engineering', basic: 60000, allowance: 9500, pf: 7200, lates: 1 },
-    { id: 5, name: 'Rohan Gupta', designation: 'HR Specialist', department: 'HR', basic: 45000, allowance: 7000, pf: 5400, lates: 0 }
+    { id: 1, name: 'Aarav Sharma', designation: 'Senior Engineer', department: 'Engineering', basic: 75000, allowance: 12000, pf: 0, lates: 2 },
+    { id: 2, name: 'Ananya Iyer', designation: 'Product Manager', department: 'Product', basic: 85000, allowance: 15000, pf: 0, lates: 0 },
+    { id: 3, name: 'Kabir Verma', designation: 'UX Designer', department: 'Design', basic: 55000, allowance: 8000, pf: 0, lates: 4 },
+    { id: 4, name: 'Diya Patel', designation: 'QA Lead', department: 'Engineering', basic: 60000, allowance: 9500, pf: 0, lates: 1 },
+    { id: 5, name: 'Rohan Gupta', designation: 'HR Specialist', department: 'HR', basic: 45000, allowance: 7000, pf: 0, lates: 0 }
 ];
 
 const PayrollMobile = () => {
@@ -80,7 +80,7 @@ const PayrollMobile = () => {
         employees.forEach(emp => {
             const lateDeduction = emp.lates * 500;
             const empGross = emp.basic + emp.allowance;
-            const empDeductions = emp.pf + lateDeduction;
+            const empDeductions = lateDeduction;
             gross += empGross;
             deductions += empDeductions;
             net += (empGross - empDeductions);
@@ -207,7 +207,7 @@ const PayrollMobile = () => {
                     {activeTab === 'run' && (
                         filteredEmployees.map(emp => {
                             const lateDeduction = emp.lates * 500;
-                            const netPay = emp.basic + emp.allowance - emp.pf - lateDeduction;
+                            const netPay = emp.basic + emp.allowance - lateDeduction;
 
                             return (
                                 <div key={emp.id} className="bg-white dark:bg-github-dark-subtle p-4 rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm flex flex-col space-y-3">
@@ -230,7 +230,7 @@ const PayrollMobile = () => {
                                         </div>
                                         <div>
                                             <p className="text-[9px] text-slate-400 font-bold uppercase">Deduction</p>
-                                            <p className="font-bold text-rose-500 mt-0.5">₹{(emp.pf + lateDeduction).toLocaleString()}</p>
+                                            <p className="font-bold text-rose-500 mt-0.5">₹{lateDeduction.toLocaleString()}</p>
                                         </div>
                                         <div>
                                             <p className="text-[9px] text-slate-400 font-bold uppercase">Net Payout</p>
@@ -260,20 +260,11 @@ const PayrollMobile = () => {
                                         <h4 className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{emp.name}</h4>
                                         <p className="text-[10px] text-slate-455 mt-1 font-semibold">{emp.designation}</p>
                                     </div>
-                                </div>
-
-                                <div className="grid grid-cols-3 gap-2 border-t pt-3 text-center text-xs">
-                                    <div>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase">Basic Pay</p>
-                                        <p className="font-bold text-slate-705 dark:text-github-dark-text mt-0.5">₹{emp.basic.toLocaleString()}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase">Allowances</p>
-                                        <p className="font-bold text-slate-705 dark:text-github-dark-text mt-0.5">₹{emp.allowance.toLocaleString()}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase">PF Contribution</p>
-                                        <p className="font-bold text-slate-705 dark:text-github-dark-text mt-0.5">₹{emp.pf.toLocaleString()}</p>
+                                    <div className="grid grid-cols-1 gap-2 border-t pt-3 text-center text-xs">
+                                        <div>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase">Basic Pay</p>
+                                            <p className="font-bold text-slate-705 dark:text-github-dark-text mt-0.5">₹{emp.basic.toLocaleString()}</p>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -352,16 +343,7 @@ const PayrollMobile = () => {
                                     className="w-full px-3 py-2 border rounded-xl bg-slate-50 dark:bg-[#161b22] text-xs font-semibold text-slate-700 dark:text-github-dark-text"
                                 />
                             </div>
-                            <div>
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">PF Contribution</label>
-                                <input
-                                    type="number"
-                                    value={editForm.pf}
-                                    onChange={(e) => setEditForm({ ...editForm, pf: e.target.value })}
-                                    className="w-full px-3 py-2 border rounded-xl bg-slate-50 dark:bg-[#161b22] text-xs font-semibold text-slate-700 dark:text-github-dark-text"
-                                />
                             </div>
-                        </div>
 
                         <div className="flex gap-3 pt-4">
                             <button
@@ -415,8 +397,7 @@ const PayrollMobile = () => {
                                 </div>
 
                                 <div className="space-y-1.5 text-xs">
-                                    <h5 className="font-bold text-[9px] uppercase tracking-wider text-slate-400">PF & Lates Deductions</h5>
-                                    <div className="flex justify-between"><span className="text-slate-500">Provident Fund (PF)</span><span className="font-bold text-slate-750">₹{selectedPayslipEmp.pf.toLocaleString()}</span></div>
+                                    <h5 className="font-bold text-[9px] uppercase tracking-wider text-slate-400">Lates Deductions</h5>
                                     <div className="flex justify-between"><span className="text-slate-500">Lateness Flags</span><span className="font-bold text-rose-500">₹{(selectedPayslipEmp.lates * 500).toLocaleString()}</span></div>
                                 </div>
                             </div>
@@ -424,7 +405,7 @@ const PayrollMobile = () => {
                             <div className="p-4 bg-slate-50 dark:bg-github-dark-border/20 rounded-2xl flex justify-between items-center border border-slate-100/50 mt-4">
                                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Net Released</span>
                                 <h3 className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                                    ₹{(selectedPayslipEmp.basic + selectedPayslipEmp.allowance - selectedPayslipEmp.pf - (selectedPayslipEmp.lates * 500)).toLocaleString()}
+                                    ₹{(selectedPayslipEmp.basic + selectedPayslipEmp.allowance - (selectedPayslipEmp.lates * 500)).toLocaleString()}
                                 </h3>
                             </div>
                         </div>

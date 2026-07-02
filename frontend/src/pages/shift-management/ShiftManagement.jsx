@@ -99,6 +99,7 @@ const ShiftManagement = ({ embedded = false }) => {
                     overtime: !!s.is_overtime_enabled,
                     otThreshold: parseFloat(s.overtime_threshold_hours),
                     otBuffer: parseFloat(s.overtime_buffer_hours ?? s.policy_rules?.overtime?.buffer ?? 0.5),
+                    otMaxHours: parseFloat(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime ?? 0),
                     correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 2),
                     policy_rules: s.policy_rules || {},
                     is_active: s.is_active !== 0
@@ -150,6 +151,7 @@ const ShiftManagement = ({ embedded = false }) => {
                 name: editingShift.name, start: editingShift.start, end: editingShift.end,
                 grace: editingShift.grace, otThreshold: editingShift.otThreshold || 8.0,
                 otBuffer: editingShift.otBuffer ?? 0.5,
+                otMaxHours: editingShift.otMaxHours ?? 0,
                 correctionDeadline: editingShift.correctionDeadline ?? 2,
                 reqEntrySelfie: !!rules.entry_requirements?.selfie,
                 reqEntryGeofence: true, // GPS is mandatory
@@ -165,7 +167,7 @@ const ShiftManagement = ({ embedded = false }) => {
             setShowAdvancedSettings(false);
         } else if (showShiftForm && !editingShift) {
             setShiftForm({ 
-                name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otBuffer: 0.5, correctionDeadline: 2,
+                name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otBuffer: 0.5, otMaxHours: 0, correctionDeadline: 2,
                 reqEntrySelfie: true, reqEntryGeofence: true, reqExitSelfie: false, reqExitGeofence: true, // GPS is mandatory
                 workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], weekOffRules: [], halfDayRules: [],
                 is_active: true
@@ -186,7 +188,12 @@ const ShiftManagement = ({ embedded = false }) => {
             is_active: shiftForm.is_active,
             shift_timing: { start_time: shiftForm.start, end_time: shiftForm.end },
             grace_period: { minutes: parseInt(shiftForm.grace) || 0 },
-            overtime: { enabled: isOtEnabled, threshold: parseFloat(shiftForm.otThreshold) || 0, buffer: parseFloat(shiftForm.otBuffer) || 0 },
+            overtime: { 
+                enabled: isOtEnabled, 
+                threshold: parseFloat(shiftForm.otThreshold) || 0, 
+                buffer: parseFloat(shiftForm.otBuffer) || 0,
+                max_overtime: parseFloat(shiftForm.otMaxHours) > 0 ? parseFloat(shiftForm.otMaxHours) : null
+            },
             correction_deadline: parseInt(shiftForm.correctionDeadline) || 2,
             entry_requirements: { selfie: shiftForm.reqEntrySelfie, geofence: true }, // GPS is mandatory
             exit_requirements: { selfie: shiftForm.reqExitSelfie, geofence: true }, // GPS is mandatory
@@ -272,6 +279,17 @@ const ShiftManagement = ({ embedded = false }) => {
         const totalMinutes = (parseInt(hr) || 0) * 60 + (parseInt(min) || 0);
         const decimal = parseFloat((totalMinutes / 60).toFixed(2));
         setShiftForm(prev => ({ ...prev, otBuffer: decimal }));
+    };
+
+    const otMaxHoursVal = parseFloat(shiftForm.otMaxHours) || 0;
+    const otMaxHoursMins = Math.round(otMaxHoursVal * 60);
+    const otMaxHoursHr = Math.floor(otMaxHoursMins / 60);
+    const otMaxHoursMin = otMaxHoursMins % 60;
+
+    const handleOtMaxHoursChange = (hr, min) => {
+        const totalMinutes = (parseInt(hr) || 0) * 60 + (parseInt(min) || 0);
+        const decimal = parseFloat((totalMinutes / 60).toFixed(2));
+        setShiftForm(prev => ({ ...prev, otMaxHours: decimal }));
     };
 
     const Toggle = ({ label, subLabel, checked, onChange }) => (
@@ -612,44 +630,66 @@ const ShiftManagement = ({ embedded = false }) => {
                                                     checked={isOtEnabled} onChange={e => setIsOtEnabled(e.target.checked)}
                                                 />
                                                 {isOtEnabled && (
-                                                    <div className="pt-3 grid grid-cols-2 gap-4">
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">OT Threshold</label>
-                                                            <div className="flex gap-2">
-                                                                <div className="relative flex-1">
-                                                                    <input type="number" min="0" placeholder="0" value={otThresholdHr || ''}
-                                                                        onChange={e => handleOtThresholdChange(e.target.value, otThresholdMin)}
-                                                                        className="w-full pl-3 pr-8 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                                    />
-                                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">hr</span>
+                                                    <div className="pt-3 space-y-3">
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">OT Threshold</label>
+                                                                <div className="flex gap-2">
+                                                                    <div className="relative flex-1">
+                                                                        <input type="number" min="0" placeholder="0" value={otThresholdHr || ''}
+                                                                            onChange={e => handleOtThresholdChange(e.target.value, otThresholdMin)}
+                                                                            className="w-full pl-3 pr-8 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        />
+                                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">hr</span>
+                                                                    </div>
+                                                                    <div className="relative flex-1">
+                                                                        <input type="number" min="0" max="59" placeholder="0" value={otThresholdMin || ''}
+                                                                            onChange={e => handleOtThresholdChange(otThresholdHr, e.target.value)}
+                                                                            className="w-full pl-3 pr-9 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        />
+                                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">min</span>
+                                                                    </div>
                                                                 </div>
-                                                                <div className="relative flex-1">
-                                                                    <input type="number" min="0" max="59" placeholder="0" value={otThresholdMin || ''}
-                                                                        onChange={e => handleOtThresholdChange(otThresholdHr, e.target.value)}
-                                                                        className="w-full pl-3 pr-9 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                                    />
-                                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">min</span>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Buffer Time</label>
+                                                                <div className="flex gap-2">
+                                                                    <div className="relative flex-1">
+                                                                        <input type="number" min="0" placeholder="0" value={otBufferHr || ''}
+                                                                            onChange={e => handleOtBufferChange(e.target.value, otBufferMin)}
+                                                                            className="w-full pl-3 pr-8 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        />
+                                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">hr</span>
+                                                                    </div>
+                                                                    <div className="relative flex-1">
+                                                                        <input type="number" min="0" max="59" placeholder="0" value={otBufferMin || ''}
+                                                                            onChange={e => handleOtBufferChange(otBufferHr, e.target.value)}
+                                                                            className="w-full pl-3 pr-9 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        />
+                                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">min</span>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Buffer Time</label>
+                                                            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Maximum Overtime Allowed</label>
                                                             <div className="flex gap-2">
                                                                 <div className="relative flex-1">
-                                                                    <input type="number" min="0" placeholder="0" value={otBufferHr || ''}
-                                                                        onChange={e => handleOtBufferChange(e.target.value, otBufferMin)}
+                                                                    <input type="number" min="0" placeholder="0" value={otMaxHoursHr || ''}
+                                                                        onChange={e => handleOtMaxHoursChange(e.target.value, otMaxHoursMin)}
                                                                         className="w-full pl-3 pr-8 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     />
                                                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">hr</span>
                                                                 </div>
                                                                 <div className="relative flex-1">
-                                                                    <input type="number" min="0" max="59" placeholder="0" value={otBufferMin || ''}
-                                                                        onChange={e => handleOtBufferChange(otBufferHr, e.target.value)}
+                                                                    <input type="number" min="0" max="59" placeholder="0" value={otMaxHoursMin || ''}
+                                                                        onChange={e => handleOtMaxHoursChange(otMaxHoursHr, e.target.value)}
                                                                         className="w-full pl-3 pr-9 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     />
                                                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">min</span>
                                                                 </div>
                                                             </div>
+                                                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Leave 0 or empty for unlimited overtime.</p>
                                                         </div>
                                                     </div>
                                                 )}
@@ -821,7 +861,7 @@ const ShiftManagement = ({ embedded = false }) => {
 
                                 <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-6">
                                     {/* Summary Cards */}
-                                    <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         {(() => {
                                             const cardStyles = {
                                                 indigo: {
@@ -996,9 +1036,14 @@ const ShiftManagement = ({ embedded = false }) => {
                                             <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg text-indigo-600 dark:text-indigo-400"><Zap size={16} /></div>
                                             <div className="flex flex-col">
                                                 <span className="text-sm text-slate-700 dark:text-slate-300 font-bold">Overtime enabled after {formatDecimalHours(selectedShift.otThreshold)}</span>
-                                                {selectedShift.otBuffer > 0 && (
-                                                    <span className="text-[10px] text-slate-500">Buffer grace period: {formatDecimalHours(selectedShift.otBuffer)}</span>
-                                                )}
+                                                <div className="flex flex-col gap-0.5 mt-0.5">
+                                                    {selectedShift.otBuffer > 0 && (
+                                                        <span className="text-[10px] text-slate-500">Buffer grace period: {formatDecimalHours(selectedShift.otBuffer)}</span>
+                                                    )}
+                                                    {selectedShift.otMaxHours > 0 && (
+                                                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">Max Overtime limit: {formatDecimalHours(selectedShift.otMaxHours)}</span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     )}

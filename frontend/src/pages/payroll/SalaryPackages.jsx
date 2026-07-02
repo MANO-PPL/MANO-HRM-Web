@@ -47,6 +47,7 @@ const SalaryPackages = ({ embedded = false }) => {
 
     // Modals & Forms State
     const [showPackageForm, setShowPackageForm] = useState(false);
+    const [editingPackage, setEditingPackage] = useState(null);
     const [packageForm, setPackageForm] = useState({
         name: '',
         grossSalary: '',
@@ -191,6 +192,19 @@ const SalaryPackages = ({ embedded = false }) => {
         }
     }, [showRevisionForm, selectedPackage]);
 
+    const handleEditPackageClick = () => {
+        if (!selectedPackage) return;
+        setEditingPackage(selectedPackage);
+        setPackageForm({
+            name: selectedPackage.package_name,
+            grossSalary: selectedPackage.active_rate?.gross_salary || 0,
+            overtimeEnabled: !!selectedPackage.active_rate?.overtime_enabled,
+            overtimeRate: selectedPackage.active_rate?.overtime_rate || 0,
+            effectiveFrom: selectedPackage.active_rate?.effective_from ? selectedPackage.active_rate.effective_from.split('T')[0] : new Date().toISOString().split('T')[0]
+        });
+        setShowPackageForm(true);
+    };
+
     // ── HANDLERS ─────────────────────────────────────────────────────────────
     const handleCreatePackage = async (e) => {
         e.preventDefault();
@@ -202,21 +216,38 @@ const SalaryPackages = ({ embedded = false }) => {
                 overtimeRate: Number(packageForm.overtimeRate || 0),
                 effectiveFrom: packageForm.effectiveFrom
             };
-            const res = await payrollService.createPackageGroup(data);
-            if (res.status === 'success') {
-                toast.success('Salary package created successfully!');
-                setShowPackageForm(false);
-                setPackageForm({
-                    name: '',
-                    grossSalary: '',
-                    overtimeEnabled: false,
-                    overtimeRate: '',
-                    effectiveFrom: new Date().toISOString().split('T')[0]
-                });
-                loadPackages();
+            if (editingPackage) {
+                const res = await payrollService.updatePackageGroup(editingPackage.package_group_id, data);
+                if (res.status === 'success') {
+                    toast.success('Salary package updated successfully!');
+                    setShowPackageForm(false);
+                    setEditingPackage(null);
+                    setPackageForm({
+                        name: '',
+                        grossSalary: '',
+                        overtimeEnabled: false,
+                        overtimeRate: '',
+                        effectiveFrom: new Date().toISOString().split('T')[0]
+                    });
+                    loadPackages();
+                }
+            } else {
+                const res = await payrollService.createPackageGroup(data);
+                if (res.status === 'success') {
+                    toast.success('Salary package created successfully!');
+                    setShowPackageForm(false);
+                    setPackageForm({
+                        name: '',
+                        grossSalary: '',
+                        overtimeEnabled: false,
+                        overtimeRate: '',
+                        effectiveFrom: new Date().toISOString().split('T')[0]
+                    });
+                    loadPackages();
+                }
             }
         } catch (err) {
-            toast.error(err.response?.data?.message || err.message || 'Failed to create package');
+            toast.error(err.response?.data?.message || err.message || 'Failed to save package');
         }
     };
 
@@ -378,7 +409,21 @@ const SalaryPackages = ({ embedded = false }) => {
     const filteredEmployees = employees.filter(e =>
         e.user_name?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
         e.desg_name?.toLowerCase().includes(employeeSearch.toLowerCase())
-    );
+    ).sort((a, b) => {
+        const aAssigned = selectedPackage && a.package_group_id === selectedPackage.package_group_id;
+        const bAssigned = selectedPackage && b.package_group_id === selectedPackage.package_group_id;
+        
+        if (aAssigned && !bAssigned) return -1;
+        if (!aAssigned && bAssigned) return 1;
+
+        const aHasPkg = a.package_group_id !== null && a.package_group_id !== undefined;
+        const bHasPkg = b.package_group_id !== null && b.package_group_id !== undefined;
+
+        if (aHasPkg && !bHasPkg) return -1;
+        if (!aHasPkg && bHasPkg) return 1;
+
+        return (a.user_name || '').localeCompare(b.user_name || '');
+    });
 
     const mainContent = (
         <>
@@ -597,8 +642,8 @@ const SalaryPackages = ({ embedded = false }) => {
                     ) : showPackageForm ? (
                         <>
                             <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-github-dark-border">
-                                <h3 className="font-bold text-slate-900 dark:text-github-dark-text text-lg">Create Salary Package</h3>
-                                <button onClick={() => setShowPackageForm(false)} className="text-slate-400 hover:text-slate-650 p-1 rounded-lg">
+                                <h3 className="font-bold text-slate-900 dark:text-github-dark-text text-lg">{editingPackage ? 'Edit Salary Package' : 'Create Salary Package'}</h3>
+                                <button onClick={() => { setShowPackageForm(false); setEditingPackage(null); }} className="text-slate-400 hover:text-slate-655 p-1 rounded-lg">
                                     <X size={18} />
                                 </button>
                             </div>
@@ -657,7 +702,7 @@ const SalaryPackages = ({ embedded = false }) => {
                                 </div>
                                 <div className="flex gap-3 pt-2">
                                     <button
-                                        type="button" onClick={() => setShowPackageForm(false)}
+                                        type="button" onClick={() => { setShowPackageForm(false); setEditingPackage(null); }}
                                         className="flex-1 px-4 py-2.5 text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-github-dark-text rounded-lg transition-all cursor-pointer"
                                     >
                                         Cancel
@@ -666,7 +711,7 @@ const SalaryPackages = ({ embedded = false }) => {
                                         type="submit"
                                         className="flex-1 px-4 py-2.5 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all cursor-pointer"
                                     >
-                                        Save Package
+                                        {editingPackage ? 'Update Package' : 'Save Package'}
                                     </button>
                                 </div>
                             </form>
@@ -874,6 +919,14 @@ const SalaryPackages = ({ embedded = false }) => {
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleEditPackageClick}
+                                        className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle hover:bg-slate-50 dark:hover:bg-github-dark-subtle/80 hover:text-slate-850 rounded-xl text-xs font-bold transition-all active:scale-[0.98] shadow-sm cursor-pointer"
+                                        title="Edit package details"
+                                    >
+                                        <Edit2 size={13} />
+                                        <span>Edit</span>
+                                    </button>
                                     <div className="flex items-center gap-2 border border-slate-200 dark:border-[#30363d] px-3 py-1 rounded-xl bg-slate-50/50 dark:bg-[#161b22]/30 select-none">
                                          <span className={`text-[11px] font-extrabold uppercase tracking-wider transition-colors duration-150 ${selectedPackage.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
                                              {selectedPackage.is_active ? 'Active' : 'Inactive'}
@@ -1056,13 +1109,26 @@ const SalaryPackages = ({ embedded = false }) => {
                                             ) : emp.user_name?.charAt(0)}
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="text-sm font-medium text-slate-800 dark:text-github-dark-text truncate">
-                                                {emp.user_name}
-                                            </p>
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <p className="text-sm font-medium text-slate-800 dark:text-github-dark-text truncate">
+                                                    {emp.user_name}
+                                                </p>
+                                                {emp.package_group_id && (() => {
+                                                    const assignedPkg = packages.find(p => p.package_group_id === emp.package_group_id);
+                                                    if (!assignedPkg) return null;
+                                                    return (
+                                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0 ${
+                                                            isAssigned
+                                                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50'
+                                                                : 'bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-450 border border-amber-250/30'
+                                                        }`}>
+                                                            {assignedPkg.package_name}
+                                                        </span>
+                                                    );
+                                                })()}
+                                            </div>
                                             <p className="text-[11px] text-slate-400 truncate">
-                                                {otherPkg ? (
-                                                    <span className="text-amber-500 font-semibold">{otherPkg.package_name}</span>
-                                                ) : emp.desg_name || 'No designation'}
+                                                {emp.desg_name || 'No designation'}
                                             </p>
                                         </div>
                                     </div>

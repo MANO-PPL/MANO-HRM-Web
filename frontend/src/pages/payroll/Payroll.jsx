@@ -128,7 +128,7 @@ const Payroll = () => {
                     const gross = Number(entry.gross_salary || 0);
                     const basic = Math.round(gross * 0.40);
                     const hra = Math.round(basic * 0.50);
-                    const pf = Math.round(basic * 0.12);
+                    const pf = 0;
                     const specialAllowance = Math.max(0, gross - (basic + hra));
                     const allowances = hra + specialAllowance;
 
@@ -187,7 +187,7 @@ const Payroll = () => {
 
         employees.forEach(emp => {
             gross += emp.gross;
-            net += (emp.net_salary - emp.pf);
+            net += emp.net_salary;
         });
 
         return { gross, net };
@@ -317,8 +317,8 @@ const Payroll = () => {
         
 
         const totalEarnings = emp.basic + emp.allowance + emp.overtime_amount + additionsSum;
-        const totalDeductions = emp.pf + emp.lop_deduction + deductionsSum;
-        const netPay = emp.net_salary - emp.pf;
+        const totalDeductions = emp.lop_deduction + deductionsSum;
+        const netPay = emp.net_salary;
 
         const printWindow = window.open('', '_blank', 'width=800,height=950');
         printWindow.document.write(`
@@ -672,7 +672,6 @@ const Payroll = () => {
                 'Overtime Hours',
                 'Overtime Rate (₹/hr)',
                 'Overtime Amount',
-                'PF Contribution',
                 'Manual Adjustments Sum',
                 'Net Payout',
                 'Status'
@@ -715,7 +714,6 @@ const Payroll = () => {
                     emp.overtime_hours,
                     salarySnap.overtime_rate ?? 0,
                     emp.overtime_amount,
-                    emp.pf,
                     adjustmentsNet,
                     netPay,
                     emp.status
@@ -794,7 +792,7 @@ const Payroll = () => {
                         <div>
                             <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Net Disbursed</span>
                             <h3 className="text-xl font-black text-slate-800 dark:text-github-dark-text mt-1">₹{totals.net.toLocaleString()}</h3>
-                            <p className="text-[10px] text-slate-455 dark:text-github-dark-muted mt-1">After PF & Lates Deductions</p>
+                            <p className="text-[10px] text-slate-455 dark:text-github-dark-muted mt-1">After LOP Deductions</p>
                         </div>
                         <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
                             <CreditCard size={20} />
@@ -941,7 +939,6 @@ const Payroll = () => {
                                         <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
                                             <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Employee</th>
                                             <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-right">Basic Salary</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-right">Allowances</th>
                                             <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-right">LOP Deductions</th>
                                             <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-right">Net Payout</th>
                                             <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-center">Status</th>
@@ -951,7 +948,7 @@ const Payroll = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-150 dark:divide-github-dark-border">
                                         {filteredEmployees.map((emp) => {
-                                            const netPay = emp.net_salary - emp.pf;
+                                            const netPay = emp.net_salary;
                                             const initials = emp.name.split(' ').map(n => n[0]).join('').slice(0, 2);
 
                                             return (
@@ -968,7 +965,6 @@ const Payroll = () => {
                                                         </div>
                                                     </td>
                                                     <td className="px-5 py-4 text-right font-semibold text-slate-700 dark:text-github-dark-text">₹{emp.basic.toLocaleString()}</td>
-                                                    <td className="px-5 py-4 text-right font-semibold text-slate-700 dark:text-github-dark-text">₹{emp.allowance.toLocaleString()}</td>
                                                     <td className="px-5 py-4 text-right font-semibold text-rose-500">
                                                         {emp.lop_deduction > 0 ? `-₹${emp.lop_deduction.toLocaleString()}` : '₹0'}
                                                         {emp.lates > 0 && <span className="block text-[8px] font-bold text-slate-450 dark:text-github-dark-muted mt-0.5">{emp.lates} LOP days</span>}
@@ -1137,7 +1133,6 @@ const Payroll = () => {
                                     {[
                                         { label: 'Basic Pay', value: configEmp.basic },
                                         { label: 'Allowances', value: configEmp.allowance },
-                                        { label: 'PF Deduction', value: -configEmp.pf },
                                         { label: 'LOP Deduction', value: -configEmp.lop_deduction },
                                         { label: 'Overtime', value: configEmp.overtime_amount },
                                     ].map(({ label, value }) => (
@@ -1150,7 +1145,7 @@ const Payroll = () => {
                                     ))}
                                     <div className="border-t border-dashed border-slate-200 dark:border-github-dark-border/40 pt-3 flex justify-between items-center">
                                         <span className="text-xs font-black text-indigo-700 dark:text-indigo-400">Net Payout</span>
-                                        <span className="text-sm font-black text-indigo-700 dark:text-indigo-400">₹{(configEmp.basic + configEmp.allowance + configEmp.overtime_amount - configEmp.pf - configEmp.lop_deduction).toLocaleString('en-IN')}</span>
+                                        <span className="text-sm font-black text-indigo-700 dark:text-indigo-400">₹{(configEmp.basic + configEmp.allowance + configEmp.overtime_amount - configEmp.lop_deduction).toLocaleString('en-IN')}</span>
                                     </div>
                                 </div>
 
@@ -1343,9 +1338,9 @@ const Payroll = () => {
                                     : [];
                                 const additionsSum = adjustments.filter(a => a.type === 'addition').reduce((sum, a) => sum + Number(a.amount), 0);
                                 const deductionsSum = adjustments.filter(a => a.type === 'deduction').reduce((sum, a) => sum + Number(a.amount), 0);
-                                const netPay = selectedPayslipEmp.net_salary - selectedPayslipEmp.pf;
+                                const netPay = selectedPayslipEmp.net_salary;
                                 const totalEarnings = selectedPayslipEmp.basic + selectedPayslipEmp.allowance + selectedPayslipEmp.overtime_amount + additionsSum;
-                                const totalDeductions = selectedPayslipEmp.pf + selectedPayslipEmp.lop_deduction + deductionsSum;
+                                const totalDeductions = selectedPayslipEmp.lop_deduction + deductionsSum;
 
                                 // Helper for parsing snapshots
                                 const salarySnap = snap?.salary_snapshot_json
