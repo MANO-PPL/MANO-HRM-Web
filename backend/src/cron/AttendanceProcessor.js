@@ -22,7 +22,6 @@ export async function processHourlyAttendance() {
         .leftJoin('user_work_locations', 'users.user_id', 'user_work_locations.user_id')
         .leftJoin('work_locations', 'user_work_locations.location_id', 'work_locations.location_id')
         .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
-        .whereNotNull('users.shift_id')
         .where('users.is_deleted', 0)
         .where('users.is_active', 1)
         .select(
@@ -185,57 +184,73 @@ async function processUserAttendanceForDate(user, dateStr) {
         .whereRaw('DATE(time_in) = ?', [dateStr]);
 
     if (openSessions.length > 0) {
-        console.log(`⚠️ User ${user.user_id} has ${openSessions.length} open sessions on ${dateStr}. Marking as MISSED_PUNCH.`);
-
-        for (const openSession of openSessions) {
-            // Only flag sessions that haven't already been flagged
-            if (openSession.status === 'MISSED_PUNCH') continue;
-
-            let metadata = {};
+        if (user.shift_id === null) {
+            console.log(`ℹ️ User ${user.user_id} has ${openSessions.length} open sessions on ${dateStr} (Open Shift). Auto-completing session.`);
+            for (const openSession of openSessions) {
+                const checkInDate = new Date(openSession.time_in);
+                const checkOutDate = new Date(checkInDate.getTime() + 9 * 60 * 60 * 1000);
+                
+                const now = new Date();
+                const finalCheckOut = checkOutDate > now ? now : checkOutDate;
+                
+                await attendanceDB('attendance_records')
+                    .where({ attendance_id: openSession.attendance_id })
+                    .update({
+                        time_out: finalCheckOut,
+                        status: 'PRESENT',
+                        updated_at: attendanceDB.fn.now()
+                    });
+            }
             try {
-                metadata = typeof openSession.metadata === 'string'
-                    ? JSON.parse(openSession.metadata)
-                    : (openSession.metadata || {});
-            } catch (e) {
-                console.warn(`Failed to parse metadata for session ${openSession.attendance_id}`);
+                await syncDailyAttendance(user.user_id, dateStr, { status: 'PRESENT' });
+            } catch (err) {
+                console.error(`Failed to sync daily attendance for open shift user ${user.user_id}:`, err);
+            }
+        } else {
+            console.log(`⚠️ User ${user.user_id} has ${openSessions.length} open sessions on ${dateStr}. Marking as MISSED_PUNCH.`);
+
+            for (const openSession of openSessions) {
+                if (openSession.status === 'MISSED_PUNCH') continue;
+
+                let metadata = {};
+                try {
+                    metadata = typeof openSession.metadata === 'string'
+                        ? JSON.parse(openSession.metadata)
+                        : (openSession.metadata || {});
+                } catch (e) {
+                    console.warn(`Failed to parse metadata for session ${openSession.attendance_id}`);
+                }
+
+                metadata.missed_punch = {
+                    flagged_at: new Date().toISOString(),
+                    reason: "Employee did not check out"
+                };
+
+                await attendanceDB('attendance_records')
+                    .where({ attendance_id: openSession.attendance_id })
+                    .update({
+                        status: 'MISSED_PUNCH',
+                        metadata: JSON.stringify(metadata),
+                        updated_at: attendanceDB.fn.now()
+                    });
             }
 
-            metadata.missed_punch = {
-                flagged_at: new Date().toISOString(),
-                reason: "Employee did not check out"
-            };
+            try {
+                await syncDailyAttendance(user.user_id, dateStr, { status: 'MISSED_PUNCH' });
+            } catch (err) {
+                console.error(`Failed to sync daily attendance for user ${user.user_id}:`, err);
+            }
 
-            // Flag the session as MISSED_PUNCH — DO NOT set time_out
-            await attendanceDB('attendance_records')
-                .where({ attendance_id: openSession.attendance_id })
-                .update({
-                    status: 'MISSED_PUNCH',
-                    metadata: JSON.stringify(metadata),
-                    updated_at: attendanceDB.fn.now()
-                });
+            EventBus.emitNotification({
+                org_id: user.org_id,
+                user_id: user.user_id,
+                title: "Missed Time Out",
+                message: `You forgot to check out on ${dateStr}. Please submit a correction request to fix your hours, otherwise it will be marked as absent.`,
+                type: "WARNING",
+                related_entity_type: "ATTENDANCE",
+                related_entity_id: null
+            });
         }
-
-        // Sync daily attendance as MISSED_PUNCH
-        try {
-            await syncDailyAttendance(user.user_id, dateStr, { status: 'MISSED_PUNCH' });
-        } catch (err) {
-            console.error(`Failed to sync daily attendance for user ${user.user_id}:`, err);
-        }
-
-        // Send notification to user
-        EventBus.emitNotification({
-            org_id: user.org_id,
-            user_id: user.user_id,
-            title: "Missed Time Out",
-            message: `You forgot to check out on ${dateStr}. Please submit a correction request to fix your hours, otherwise it will be marked as absent.`,
-            type: "WARNING",
-            related_entity_type: "ATTENDANCE",
-            related_entity_id: null
-        });
-
-        // Even if we found missed punches, we still check the record below 
-        // to handle other fields (like holidays/leaves) if necessary, 
-        // but MISSED_PUNCH status will now persist due to StatusService priority fix.
     }
 
     if (record) {

@@ -52,36 +52,59 @@ export async function processTimeIn(context) {
     return { ok: false, status: 400, message: "Already timed in. Please time out first." };
   }
 
-  // Auto-resolve any open sessions from previous days as MISSED_PUNCH
+  // Auto-resolve any open sessions from previous days
   try {
     const priorOpenSessions = await attendanceDB("attendance_records")
       .where({ user_id })
       .whereNull("time_out")
       .whereRaw("DATE(time_in) < DATE(?)", [todayDate]);
 
-    for (const session of priorOpenSessions) {
-      let metadata = {};
-      try {
-        metadata = typeof session.metadata === 'string'
-          ? JSON.parse(session.metadata)
-          : (session.metadata || {});
-      } catch (e) {
-        metadata = {};
+    if (priorOpenSessions.length > 0) {
+      const userRec = await attendanceDB("users").where({ user_id }).select("shift_id").first();
+      const isOpenShift = !userRec || userRec.shift_id === null;
+
+      for (const session of priorOpenSessions) {
+        if (isOpenShift) {
+          // Auto-checkout for Open Shift: set time_out to time_in + 9 hours
+          const checkInDate = new Date(session.time_in);
+          const checkOutDate = new Date(checkInDate.getTime() + 9 * 60 * 60 * 1000);
+          
+          await attendanceDB("attendance_records")
+            .where({ attendance_id: session.attendance_id })
+            .update({
+              time_out: checkOutDate,
+              status: "PRESENT",
+              updated_at: attendanceDB.fn.now()
+            });
+          
+          const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
+          await syncDailyAttendance(user_id, sessionDate, { status: "PRESENT" }).catch(console.error);
+          continue;
+        }
+
+        let metadata = {};
+        try {
+          metadata = typeof session.metadata === 'string'
+            ? JSON.parse(session.metadata)
+            : (session.metadata || {});
+        } catch (e) {
+          metadata = {};
+        }
+        metadata.missed_punch = {
+          flagged_at: new Date().toISOString(),
+          reason: "System auto-flagged: Checked in on a new day before checking out."
+        };
+        await attendanceDB("attendance_records")
+          .where({ attendance_id: session.attendance_id })
+          .update({
+            status: "MISSED_PUNCH",
+            metadata: JSON.stringify(metadata),
+            updated_at: attendanceDB.fn.now()
+          });
+        
+        const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
+        await syncDailyAttendance(user_id, sessionDate, { status: "MISSED_PUNCH" }).catch(console.error);
       }
-      metadata.missed_punch = {
-        flagged_at: new Date().toISOString(),
-        reason: "System auto-flagged: Checked in on a new day before checking out."
-      };
-      await attendanceDB("attendance_records")
-        .where({ attendance_id: session.attendance_id })
-        .update({
-          status: "MISSED_PUNCH",
-          metadata: JSON.stringify(metadata),
-          updated_at: attendanceDB.fn.now()
-        });
-      
-      const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
-      await syncDailyAttendance(user_id, sessionDate, { status: "MISSED_PUNCH" }).catch(console.error);
     }
   } catch (err) {
     console.error("Error auto-resolving prior open sessions:", err);

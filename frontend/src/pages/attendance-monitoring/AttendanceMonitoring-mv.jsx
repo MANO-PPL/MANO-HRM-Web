@@ -178,6 +178,7 @@ const processAttendanceData = (staff, resolvedTz) => {
             role: u.desg_name || 'Employee',
             avatar: (u.profile_image_url && u.profile_image_url.trim() !== '') ? u.profile_image_url : (u.user_name ? u.user_name.trim().charAt(0).toUpperCase() : 'U') || 'U',
             department: u.dept_name || 'General',
+            shift_id: u.shift_id,
             sessions,
             status,
             allStatuses,
@@ -214,6 +215,7 @@ const MobileAttendanceMonitoring = () => {
     const initialSearch = localStorage.getItem('live_attendance_search_term') || '';
     const initialDept = localStorage.getItem('live_attendance_department_filter') || 'All';
     const initialStatus = localStorage.getItem('live_attendance_status_filter') || 'All';
+    const initialShift = localStorage.getItem('live_attendance_shift_filter') || 'All';
 
     // Synchronous memory cache check
     const cachedResponse = attendanceCacheData.dailySummaryAdmin[initialDate];
@@ -285,10 +287,12 @@ const MobileAttendanceMonitoring = () => {
     const [searchTerm, setSearchTerm] = useState(initialSearch);
     const [selectedDept, setSelectedDept] = useState(initialDept);
     const [selectedDesg, setSelectedDesg] = useState('All');
+    const [selectedShift, setSelectedShift] = useState(initialShift);
     const [statusFilter, setStatusFilter] = useState(initialStatus);
     const [selectedDate, setSelectedDate] = useState(initialDate);
     const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
     const [isDesgDropdownOpen, setIsDesgDropdownOpen] = useState(false);
+    const [isShiftDropdownOpen, setIsShiftDropdownOpen] = useState(false);
 
     // Selection/Popup State
     const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -297,6 +301,7 @@ const MobileAttendanceMonitoring = () => {
 
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
+    const [shifts, setShifts] = useState([]);
 
     useEffect(() => {
         const fetchDepts = async () => {
@@ -321,12 +326,29 @@ const MobileAttendanceMonitoring = () => {
                 console.error("Failed to load designations (mobile)", err);
             }
         };
+        const fetchShifts = async () => {
+            try {
+                const shiftRes = await adminService.getShifts();
+                if (shiftRes && shiftRes.shifts) {
+                    const sortedShifts = [...shiftRes.shifts].sort((a, b) => a.shift_name.localeCompare(b.shift_name));
+                    setShifts(sortedShifts);
+                }
+            } catch (err) {
+                console.error("Failed to load shifts (mobile)", err);
+            }
+        };
         fetchDepts();
         fetchDesgs();
+        fetchShifts();
     }, []);
 
     const DEPARTMENTS = ['All', ...departments.map(d => d.dept_name)];
     const DESIGNATIONS = ['All', ...designations.map(d => d.desg_name)];
+    const SHIFTS = [
+        { value: 'All', label: 'All Shifts' },
+        { value: 'open_shift', label: 'Open Shift' },
+        ...shifts.map(s => ({ value: s.shift_id, label: s.shift_name }))
+    ];
 
     const handleTabChange = (newTab) => {
         const currentIndex = MAIN_TABS.indexOf(activeTab);
@@ -396,6 +418,10 @@ const MobileAttendanceMonitoring = () => {
     useEffect(() => {
         localStorage.setItem('live_attendance_department_filter', selectedDept);
     }, [selectedDept]);
+
+    useEffect(() => {
+        localStorage.setItem('live_attendance_shift_filter', selectedShift);
+    }, [selectedShift]);
 
     useEffect(() => {
         localStorage.setItem('live_attendance_status_filter', statusFilter);
@@ -557,6 +583,7 @@ const MobileAttendanceMonitoring = () => {
         const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesDept = selectedDept === 'All' || (e.department && String(e.department) === String(selectedDept));
         const matchesDesg = selectedDesg === 'All' || (e.role && String(e.role) === String(selectedDesg));
+        const matchesShift = selectedShift === 'All' || (selectedShift === 'open_shift' ? !e.shift_id : String(e.shift_id) === String(selectedShift));
 
         
         let matchesStatus = true;
@@ -570,7 +597,7 @@ const MobileAttendanceMonitoring = () => {
             matchesStatus = e.allStatuses ? e.allStatuses.includes('Active') : e.status.includes('Active');
         }
         
-        return matchesSearch && matchesDept && matchesDesg && matchesStatus;
+        return matchesSearch && matchesDept && matchesDesg && matchesShift && matchesStatus;
     });
 
     const activeEmployees = filteredEmployees.filter(e => e.status !== 'Absent' && e.status !== 'Week Off' && e.status !== 'Holiday' && e.status !== 'Leave');
@@ -855,6 +882,58 @@ const MobileAttendanceMonitoring = () => {
                                                                                             }`}
                                                                                     >
                                                                                         <span>{desgName}</span>
+                                                                                        {isSelected && <Check size={12} className="text-indigo-500" />}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </motion.div>
+                                                                </>
+                                                            )}
+                                                        </AnimatePresence>
+                                                    </div>
+
+                                                    <div className="relative">
+                                                        <button 
+                                                            onClick={() => setIsShiftDropdownOpen(!isShiftDropdownOpen)}
+                                                            className={`w-12 h-12 bg-white dark:bg-dark-card border border-slate-100 dark:border-github-dark-border rounded-lg flex items-center justify-center shadow-sm active:scale-90 transition-transform ${selectedShift !== 'All' ? 'text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-indigo-50/20' : 'text-slate-400'}`}
+                                                            title="Filter by Shift"
+                                                        >
+                                                            <Clock size={18} />
+                                                        </button>
+
+                                                        <AnimatePresence>
+                                                            {isShiftDropdownOpen && (
+                                                                <>
+                                                                    <div 
+                                                                        className="fixed inset-0 z-[80]" 
+                                                                        onClick={() => setIsShiftDropdownOpen(false)} 
+                                                                    />
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                                        transition={{ duration: 0.15 }}
+                                                                        className="absolute right-0 mt-1.5 min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
+                                                                    >
+                                                                        <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
+                                                                            {SHIFTS.map((s, idx) => {
+                                                                                const shiftLabel = s.label;
+                                                                                const shiftVal = s.value;
+                                                                                const isSelected = String(selectedShift) === String(shiftVal);
+                                                                                return (
+                                                                                    <button
+                                                                                        key={idx}
+                                                                                        onClick={() => {
+                                                                                            setSelectedShift(shiftVal);
+                                                                                            setIsShiftDropdownOpen(false);
+                                                                                        }}
+                                                                                        className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
+                                                                                                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                                            }`}
+                                                                                    >
+                                                                                        <span>{shiftLabel}</span>
                                                                                         {isSelected && <Check size={12} className="text-indigo-500" />}
                                                                                     </button>
                                                                                 );

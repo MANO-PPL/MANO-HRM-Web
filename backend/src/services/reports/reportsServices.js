@@ -302,7 +302,9 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
             if (isValidDesgId(desg_id)) {
                 qb.where("u.desg_id", desg_id);
             }
-            if (isValidShiftId(shift_id)) {
+            if (shift_id === 'open_shift') {
+                qb.whereNull("u.shift_id");
+            } else if (isValidShiftId(shift_id)) {
                 qb.where("u.shift_id", shift_id);
             }
         })
@@ -321,7 +323,9 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
                 if (isValidDesgId(desg_id)) {
                     qb.where("u.desg_id", desg_id);
                 }
-                if (isValidShiftId(shift_id)) {
+                if (shift_id === 'open_shift') {
+                    qb.whereNull("u.shift_id");
+                } else if (isValidShiftId(shift_id)) {
                     qb.where("u.shift_id", shift_id);
                 }
             }
@@ -351,7 +355,9 @@ export async function getDetailedRecords({ org_id, startDate, endDate, targetUse
             if (isValidDesgId(desg_id)) {
                 qb.where("u.desg_id", desg_id);
             }
-            if (isValidShiftId(shift_id)) {
+            if (shift_id === 'open_shift') {
+                qb.whereNull("u.shift_id");
+            } else if (isValidShiftId(shift_id)) {
                 qb.where("u.shift_id", shift_id);
             }
         })
@@ -488,7 +494,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 if (isValidDesgId(desg_id)) {
                     qb.where("u.desg_id", desg_id);
                 }
-                if (isValidShiftId(shift_id)) {
+                if (shift_id === 'open_shift') {
+                    qb.whereNull("u.shift_id");
+                } else if (isValidShiftId(shift_id)) {
                     qb.where("u.shift_id", shift_id);
                 }
             })
@@ -1007,7 +1015,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 if (isValidDesgId(desg_id)) {
                     qb.where("u.desg_id", desg_id);
                 }
-                if (isValidShiftId(shift_id)) {
+                if (shift_id === 'open_shift') {
+                    qb.whereNull("u.shift_id");
+                } else if (isValidShiftId(shift_id)) {
                     qb.where("u.shift_id", shift_id);
                 }
             });

@@ -349,7 +349,9 @@ function getDefaultShiftConfig() {
             geofence: false
         },
         correction_deadline: 2,
-        week_off_policy: []
+        week_off_policy: [
+            { day: "Sun", type: "full", frequency: "every" }
+        ]
     };
 }
 

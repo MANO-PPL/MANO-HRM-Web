@@ -547,7 +547,7 @@ const MobileReports = () => {
     const attendanceFilteredEmployees = employees.filter(emp => {
         const matchesDept = !attendanceDeptId || String(emp.dept_id) === String(attendanceDeptId);
         const matchesDesg = !attendanceDesgId || String(emp.desg_id) === String(attendanceDesgId);
-        const matchesShift = !attendanceShiftId || String(emp.shift_id) === String(attendanceShiftId);
+        const matchesShift = !attendanceShiftId || (attendanceShiftId === 'open_shift' ? !emp.shift_id : String(emp.shift_id) === String(attendanceShiftId));
         const matchesQuery = emp.user_name.toLowerCase().includes(attendanceEmpSearchQuery.toLowerCase());
         return matchesDept && matchesDesg && matchesShift && matchesQuery;
     });
@@ -556,7 +556,7 @@ const MobileReports = () => {
     const tableFilteredEmployees = employees.filter(emp => {
         const matchesDept = !tableDeptId || String(emp.dept_id) === String(tableDeptId);
         const matchesDesg = !tableDesgId || String(emp.desg_id) === String(tableDesgId);
-        const matchesShift = !tableShiftId || String(emp.shift_id) === String(tableShiftId);
+        const matchesShift = !tableShiftId || (tableShiftId === 'open_shift' ? !emp.shift_id : String(emp.shift_id) === String(tableShiftId));
         const matchesQuery = emp.user_name.toLowerCase().includes(tableEmpSearchQuery.toLowerCase());
         return matchesDept && matchesDesg && matchesShift && matchesQuery;
     });
@@ -582,7 +582,7 @@ const MobileReports = () => {
             if (emp) {
                 const deptMismatch = attendanceDeptId && String(emp.dept_id) !== String(attendanceDeptId);
                 const desgMismatch = attendanceDesgId && String(emp.desg_id) !== String(attendanceDesgId);
-                const shiftMismatch = attendanceShiftId && String(emp.shift_id) !== String(attendanceShiftId);
+                const shiftMismatch = attendanceShiftId && (attendanceShiftId === 'open_shift' ? emp.shift_id !== null : String(emp.shift_id) !== String(attendanceShiftId));
                 if (deptMismatch || desgMismatch || shiftMismatch) {
                     setAttendanceEmployeeId('');
                 }
@@ -596,7 +596,7 @@ const MobileReports = () => {
             if (emp) {
                 const deptMismatch = tableDeptId && String(emp.dept_id) !== String(tableDeptId);
                 const desgMismatch = tableDesgId && String(emp.desg_id) !== String(tableDesgId);
-                const shiftMismatch = tableShiftId && String(emp.shift_id) !== String(tableShiftId);
+                const shiftMismatch = tableShiftId && (tableShiftId === 'open_shift' ? emp.shift_id !== null : String(emp.shift_id) !== String(tableShiftId));
                 if (deptMismatch || desgMismatch || shiftMismatch) {
                     setTableEmployeeId('');
                 }
@@ -1334,7 +1334,7 @@ const MobileReports = () => {
                                         className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
                                     >
                                         <span className="truncate">
-                                            {shifts.find(s => String(s.shift_id) === String(tableShiftId))?.shift_name || 'All Shifts'}
+                                            {tableShiftId === 'open_shift' ? 'Open Shift' : (shifts.find(s => String(s.shift_id) === String(tableShiftId))?.shift_name || 'All Shifts')}
                                         </span>
                                         <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
                                     </button>
@@ -1365,6 +1365,19 @@ const MobileReports = () => {
                                                         }`}
                                                 >
                                                     All Shifts
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setTableShiftId('open_shift');
+                                                        setTableIsShiftDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableShiftId === 'open_shift'
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                        }`}
+                                                >
+                                                    Open Shift
                                                 </button>
                                                 {shifts.filter(s => s.shift_name.toLowerCase().includes(tableShiftSearchQuery.toLowerCase())).length > 0 ? (
                                                     shifts.filter(s => s.shift_name.toLowerCase().includes(tableShiftSearchQuery.toLowerCase())).map(s => (
@@ -1825,7 +1838,7 @@ const MobileReports = () => {
                                         className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
                                     >
                                         <span className="truncate">
-                                            {shifts.find(s => String(s.shift_id) === String(attendanceShiftId))?.shift_name || 'All Shifts'}
+                                            {attendanceShiftId === 'open_shift' ? 'Open Shift' : (shifts.find(s => String(s.shift_id) === String(attendanceShiftId))?.shift_name || 'All Shifts')}
                                         </span>
                                         <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
                                     </button>
@@ -1856,6 +1869,19 @@ const MobileReports = () => {
                                                         }`}
                                                 >
                                                     All Shifts
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setAttendanceShiftId('open_shift');
+                                                        setAttendanceIsShiftDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceShiftId === 'open_shift'
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                        }`}
+                                                >
+                                                    Open Shift
                                                 </button>
                                                 {shifts.filter(s => s.shift_name.toLowerCase().includes(attendanceShiftSearchQuery.toLowerCase())).length > 0 ? (
                                                     shifts.filter(s => s.shift_name.toLowerCase().includes(attendanceShiftSearchQuery.toLowerCase())).map(s => (

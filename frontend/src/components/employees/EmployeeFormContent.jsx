@@ -705,7 +705,7 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                         className="w-full pl-4 pr-10 py-2.5 text-left text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none flex items-center justify-between cursor-pointer text-slate-800 dark:text-github-dark-text"
                                     >
                                         <span className="truncate">
-                                            {shifts.find(s => String(s.shift_id) === String(formData.shift_id))?.shift_name || "Select Shift"}
+                                            {shifts.find(s => String(s.shift_id) === String(formData.shift_id))?.shift_name || "Open Shift"}
                                         </span>
                                         <ChevronDown size={14} className="text-slate-400 shrink-0" />
                                     </button>
@@ -734,7 +734,7 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                                         !formData.shift_id ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400'
                                                     }`}
                                                 >
-                                                    Select Shift
+                                                    Open Shift
                                                 </button>
                                                 {shifts
                                                     .filter(s => s.shift_name.toLowerCase().includes(shiftSearchQuery.toLowerCase()))
