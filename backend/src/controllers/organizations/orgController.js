@@ -26,18 +26,18 @@ export const createOrganization = catchAsync(async (req, res, next) => {
     }
 
     // Check uniqueness
-    const existingOrg = await attendanceDB('organizations').where('org_code', cleanOrgCode).first();
+    const existingOrg = await attendanceDB('core_organizations').where('org_code', cleanOrgCode).first();
     if (existingOrg) {
         throw new AppError("Organization code is already registered.", 400);
     }
 
-    const existingUser = await attendanceDB('users').where('email', admin_email.trim().toLowerCase()).first();
+    const existingUser = await attendanceDB('core_users').where('email', admin_email.trim().toLowerCase()).first();
     if (existingUser) {
         throw new AppError("Administrator email is already registered.", 400);
     }
 
     if (admin_phone) {
-        const existingPhone = await attendanceDB('users').where('phone_no', admin_phone.trim()).first();
+        const existingPhone = await attendanceDB('core_users').where('phone_no', admin_phone.trim()).first();
         if (existingPhone) {
             throw new AppError("Administrator phone number is already registered.", 400);
         }
@@ -45,7 +45,7 @@ export const createOrganization = catchAsync(async (req, res, next) => {
 
     // Wrap in transaction to ensure both org and admin user are created or neither
     const insertedId = await attendanceDB.transaction(async (trx) => {
-        const [orgId] = await trx('organizations').insert({
+        const [orgId] = await trx('core_organizations').insert({
             org_name,
             org_code: cleanOrgCode,
             contact_name: contact_name || null,
@@ -65,7 +65,7 @@ export const createOrganization = catchAsync(async (req, res, next) => {
         const hashedPassword = await bcrypt.hash(admin_password, 10);
         const userCode = `${cleanOrgCode}-001`;
 
-        await trx('users').insert({
+        await trx('core_users').insert({
             org_id: orgId,
             user_code: userCode,
             user_name: admin_name || contact_name || 'Organization Admin',
@@ -88,8 +88,8 @@ export const getOrganizations = catchAsync(async (req, res, next) => {
     await deactivateExpiredOrganizations();
 
     // Left join users table to get counts
-    const orgs = await attendanceDB('organizations as o')
-        .leftJoin('users as u', 'o.org_id', 'u.org_id')
+    const orgs = await attendanceDB('core_organizations as o')
+        .leftJoin('core_users as u', 'o.org_id', 'u.org_id')
         .select(
             'o.*',
             attendanceDB.raw('COUNT(u.user_id) as total_users'),
@@ -109,7 +109,7 @@ export const updateOrganization = catchAsync(async (req, res, next) => {
         gst_number, pan_number
     } = req.body;
 
-    const org = await attendanceDB('organizations').where('org_id', id).first();
+    const org = await attendanceDB('core_organizations').where('org_id', id).first();
     if (!org) throw new AppError("Organization not found", 404);
 
     const updates = {};
@@ -132,7 +132,7 @@ export const updateOrganization = catchAsync(async (req, res, next) => {
         }
         if (cleanOrgCode !== org.org_code) {
             // Check uniqueness of the new code
-            const existingOrg = await attendanceDB('organizations').where('org_code', cleanOrgCode).first();
+            const existingOrg = await attendanceDB('core_organizations').where('org_code', cleanOrgCode).first();
             if (existingOrg) {
                 throw new AppError("Organization code is already registered.", 400);
             }
@@ -145,7 +145,7 @@ export const updateOrganization = catchAsync(async (req, res, next) => {
             if (updates.org_code) {
                 const oldPrefix = org.org_code;
                 const newPrefix = updates.org_code;
-                const users = await trx('users').where('org_id', id);
+                const users = await trx('core_users').where('org_id', id);
                 for (const user of users) {
                     if (user.user_code) {
                         let newUserCode = '';
@@ -178,7 +178,7 @@ export const updateOrganization = catchAsync(async (req, res, next) => {
                         let isUnique = false;
                         let attempt = 0;
                         while (!isUnique) {
-                            const conflict = await trx('users')
+                            const conflict = await trx('core_users')
                                 .where('user_code', finalUserCode)
                                 .whereNot('user_id', user.user_id)
                                 .first();
@@ -190,11 +190,11 @@ export const updateOrganization = catchAsync(async (req, res, next) => {
                             }
                         }
 
-                        await trx('users').where('user_id', user.user_id).update({ user_code: finalUserCode });
+                        await trx('core_users').where('user_id', user.user_id).update({ user_code: finalUserCode });
                     }
                 }
             }
-            await trx('organizations').where('org_id', id).update(updates);
+            await trx('core_organizations').where('org_id', id).update(updates);
         });
 
         // Immediately sync database status in case expiry date was set to a past date
@@ -207,7 +207,7 @@ export const updateOrganization = catchAsync(async (req, res, next) => {
 export const getOrgAdmins = catchAsync(async (req, res, next) => {
     const { id } = req.params;
 
-    const admins = await attendanceDB('users')
+    const admins = await attendanceDB('core_users')
         .where({ org_id: id, user_type: 'admin' })
         .select('user_id', 'user_code', 'user_name', 'email', 'phone_no', 'is_active')
         .orderBy('created_at', 'asc');
@@ -219,7 +219,7 @@ export const updateOrgAdmin = catchAsync(async (req, res, next) => {
     const { id, adminId } = req.params;
     const { user_name, email, phone_no, is_active, password } = req.body;
 
-    const admin = await attendanceDB('users').where({ user_id: adminId, org_id: id, user_type: 'admin' }).first();
+    const admin = await attendanceDB('core_users').where({ user_id: adminId, org_id: id, user_type: 'admin' }).first();
     if (!admin) throw new AppError("Admin user not found", 404);
 
     const updates = {};
@@ -233,7 +233,7 @@ export const updateOrgAdmin = catchAsync(async (req, res, next) => {
     }
 
     if (Object.keys(updates).length > 0) {
-        await attendanceDB('users').where('user_id', adminId).update(updates);
+        await attendanceDB('core_users').where('user_id', adminId).update(updates);
     }
 
     res.status(200).json({ success: true, message: "Admin user updated successfully" });
@@ -249,7 +249,7 @@ const DELETION_GRACE_DAYS = 75; // ~2.5 months
 export const deleteOrganization = catchAsync(async (req, res, next) => {
     const { id } = req.params;
 
-    const org = await attendanceDB('organizations').where('org_id', id).first();
+    const org = await attendanceDB('core_organizations').where('org_id', id).first();
     if (!org) throw new AppError('Organization not found', 404);
 
     if (org.status === 'pending_deletion') {
@@ -259,7 +259,7 @@ export const deleteOrganization = catchAsync(async (req, res, next) => {
     const deletionDate = new Date();
     deletionDate.setDate(deletionDate.getDate() + DELETION_GRACE_DAYS);
 
-    await attendanceDB('organizations').where('org_id', id).update({
+    await attendanceDB('core_organizations').where('org_id', id).update({
         status: 'pending_deletion',
         deletion_requested_at: attendanceDB.fn.now(),
         deletion_scheduled_at: deletionDate,
@@ -280,14 +280,14 @@ export const deleteOrganization = catchAsync(async (req, res, next) => {
 export const cancelOrgDeletion = catchAsync(async (req, res, next) => {
     const { id } = req.params;
 
-    const org = await attendanceDB('organizations').where('org_id', id).first();
+    const org = await attendanceDB('core_organizations').where('org_id', id).first();
     if (!org) throw new AppError('Organization not found', 404);
 
     if (org.status !== 'pending_deletion') {
         throw new AppError('Organization is not scheduled for deletion', 400);
     }
 
-    await attendanceDB('organizations').where('org_id', id).update({
+    await attendanceDB('core_organizations').where('org_id', id).update({
         status: 'active',
         deletion_requested_at: null,
         deletion_scheduled_at: null,
@@ -300,7 +300,7 @@ export const cancelOrgDeletion = catchAsync(async (req, res, next) => {
 export const getOrgAnalytics = catchAsync(async (req, res, next) => {
     const { id } = req.params;
 
-    const org = await attendanceDB('organizations').where('org_id', id).first();
+    const org = await attendanceDB('core_organizations').where('org_id', id).first();
     if (!org) throw new AppError('Organization not found', 404);
 
     // Parallel fetch basic counts
@@ -314,7 +314,7 @@ export const getOrgAnalytics = catchAsync(async (req, res, next) => {
     ] = await Promise.all([
         attendanceDB('sys_api_logs').where({ org_id: id }).count('* as count').first(),
         attendanceDB('sys_error_logs').where({ org_id: id }).count('error_id as count').first(),
-        attendanceDB('users').where({ org_id: id, is_active: 1, is_deleted: 0 }).count('user_id as count').first(),
+        attendanceDB('core_users').where({ org_id: id, is_active: 1, is_deleted: 0 }).count('user_id as count').first(),
         attendanceDB('sys_api_logs').where({ org_id: id }).select('module_name as module').count('* as count').groupBy('module_name'),
         attendanceDB('sys_api_logs').where({ org_id: id }).select('event_source as platform').count('* as count').groupBy('event_source'),
         attendanceDB('sys_api_logs').where({ org_id: id }).select('duration_ms', 'status_code', 'is_success').orderBy('occurred_at', 'desc').limit(200)
@@ -412,7 +412,7 @@ export const getOrgLogs = catchAsync(async (req, res, next) => {
 
     if (type === 'errors') {
         query = attendanceDB('sys_error_logs as el')
-            .leftJoin('users as u', 'el.user_id', 'u.user_id')
+            .leftJoin('core_users as u', 'el.user_id', 'u.user_id')
             .select('el.*', 'u.user_name', 'u.email')
             .where('el.org_id', id)
             .orderBy('el.occurred_at', 'desc');
@@ -440,7 +440,7 @@ export const getOrgLogs = catchAsync(async (req, res, next) => {
         }
     } else if (type === 'api') {
         query = attendanceDB('sys_api_logs as ar')
-            .leftJoin('users as u', 'ar.user_id', 'u.user_id')
+            .leftJoin('core_users as u', 'ar.user_id', 'u.user_id')
             .select('ar.*', 'u.user_name', 'u.email')
             .where('ar.org_id', id)
             .orderBy('ar.occurred_at', 'desc');
@@ -471,7 +471,7 @@ export const getOrgLogs = catchAsync(async (req, res, next) => {
         }
     } else {
         query = attendanceDB('sys_activity_logs as al')
-            .leftJoin('users as u', 'al.user_id', 'u.user_id')
+            .leftJoin('core_users as u', 'al.user_id', 'u.user_id')
             .select('al.*', 'u.user_name', 'u.email')
             .where('al.org_id', id)
             .orderBy('al.occurred_at', 'desc');
@@ -640,7 +640,7 @@ export const checkOrgCodeAvailability = catchAsync(async (req, res, next) => {
             message: "Invalid code format (letters only)"
         });
     }
-    let query = attendanceDB('organizations').where('org_code', cleanCode);
+    let query = attendanceDB('core_organizations').where('org_code', cleanCode);
     if (excludeId) {
         query = query.andWhereNot('org_id', excludeId);
     }

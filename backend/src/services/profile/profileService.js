@@ -5,7 +5,7 @@ import { uploadCompressedImage, deleteFile } from '../s3/s3Service.js';
  * Upload and update a user's profile picture.
  */
 export async function uploadProfilePicture(user_id, fileBuffer) {
-    const user = await attendanceDB('users').where({ user_id }).select('user_code').first();
+    const user = await attendanceDB('core_users').where({ user_id }).select('user_code').first();
     const userCode = user?.user_code || `user_${user_id}`;
 
     const uploadResult = await uploadCompressedImage({
@@ -15,7 +15,7 @@ export async function uploadProfilePicture(user_id, fileBuffer) {
         quality: 90
     });
 
-    await attendanceDB('users')
+    await attendanceDB('core_users')
         .where({ user_id })
         .update({
             profile_image_url: uploadResult.url,
@@ -29,7 +29,7 @@ export async function uploadProfilePicture(user_id, fileBuffer) {
  * Delete a user's profile picture from S3 and clear the DB field.
  */
 export async function deleteProfilePicture(user_id) {
-    const user = await attendanceDB('users').where({ user_id }).select('user_code', 'profile_image_url').first();
+    const user = await attendanceDB('core_users').where({ user_id }).select('user_code', 'profile_image_url').first();
 
     if (!user) return false;
 
@@ -44,7 +44,7 @@ export async function deleteProfilePicture(user_id) {
         }
     }
 
-    await attendanceDB('users')
+    await attendanceDB('core_users')
         .where({ user_id })
         .update({
             profile_image_url: null,
@@ -58,9 +58,9 @@ export async function deleteProfilePicture(user_id) {
  * Get the current user's profile info.
  */
 export async function getMyProfile(user_id) {
-    const row = await attendanceDB('users as u')
-        .leftJoin('designations as d', 'u.desg_id', 'd.desg_id')
-        .leftJoin('departments as dep', 'u.dept_id', 'dep.dept_id')
+    const row = await attendanceDB('core_users as u')
+        .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
+        .leftJoin('org_departments as dep', 'u.dept_id', 'dep.dept_id')
         .select(
             'u.user_id',
             'u.user_name',
@@ -112,7 +112,7 @@ export async function updatePreferences(user_id, updates) {
             allowedUpdates.pages_tour_seen = JSON.stringify({});
         } else {
             // Fetch existing value and merge
-            const existing = await attendanceDB('users')
+            const existing = await attendanceDB('core_users')
                 .where({ user_id })
                 .select('pages_tour_seen')
                 .first();
@@ -135,7 +135,7 @@ export async function updatePreferences(user_id, updates) {
 
     if (Object.keys(allowedUpdates).length > 0) {
         allowedUpdates.updated_at = attendanceDB.fn.now();
-        await attendanceDB('users')
+        await attendanceDB('core_users')
             .where({ user_id })
             .update(allowedUpdates);
     }

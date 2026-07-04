@@ -36,7 +36,7 @@ async function main() {
 
   try {
     // 1. Get an existing organization ID to perform realistic tests
-    const userRow = await attendanceDB('users').select('org_id').first();
+    const userRow = await attendanceDB('core_users').select('org_id').first();
     if (!userRow) {
       console.warn('⚠ No users or organizations found in database. Using default org_id = 1');
     }

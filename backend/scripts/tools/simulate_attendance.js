@@ -205,7 +205,7 @@ async function fetchTargetUsers() {
     return [];
   }
 
-  let query = attendanceDB('users')
+  let query = attendanceDB('core_users')
     .whereIn('user_id', targetUserIds)
     .where({ is_deleted: 0, is_active: 1 });
 
@@ -448,7 +448,7 @@ async function performSimulationStep() {
           try {
             log(`⏰ Punching In user: ${userState.userName} (ID: ${userId}) for Session ${i + 1}/${userState.sessions.length}`);
             
-            const userRow = await attendanceDB('users').where({ user_id: userId }).first();
+            const userRow = await attendanceDB('core_users').where({ user_id: userId }).first();
             const formattedTimeStr = session.checkInTarget.toISOString().slice(0, 19).replace('T', ' ');
             const localCoords = getRandomCoordinateOffset(userState.baseCity);
 

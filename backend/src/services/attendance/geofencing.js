@@ -55,11 +55,11 @@ export function isWithinGeofence(userLat, userLng, validLocations) {
  * @returns {Promise<boolean>}
  */
 export async function verifyUserGeofence(user_id, latitude, longitude) {
-    const validLocations = await attendanceDB("user_work_locations")
-        .join("work_locations", "user_work_locations.location_id", "work_locations.location_id")
-        .where("user_work_locations.user_id", user_id)
-        .where("work_locations.is_active", true)
-        .select("work_locations.latitude", "work_locations.longitude", "work_locations.radius");
+    const validLocations = await attendanceDB("org_user_work_locations")
+        .join("org_work_locations", "org_user_work_locations.location_id", "org_work_locations.location_id")
+        .where("org_user_work_locations.user_id", user_id)
+        .where("org_work_locations.is_active", true)
+        .select("org_work_locations.latitude", "org_work_locations.longitude", "org_work_locations.radius");
 
     // If user has NO assigned locations, we assume they are allowed everywhere
     if (!validLocations || validLocations.length === 0) {

@@ -11,11 +11,11 @@ export class PayslipService {
      */
     static async generatePayslipPDF(entryId) {
         const entry = await attendanceDB('payroll_entries as pe')
-            .join('users as u', 'pe.employee_id', 'u.user_id')
+            .join('core_users as u', 'pe.employee_id', 'u.user_id')
             .join('payroll_runs as pr', 'pe.run_id', 'pr.run_id')
-            .join('organizations as o', 'pr.org_id', 'o.org_id')
-            .leftJoin('designations as dg', 'u.desg_id', 'dg.desg_id')
-            .leftJoin('departments as d', 'u.dept_id', 'd.dept_id')
+            .join('core_organizations as o', 'pr.org_id', 'o.org_id')
+            .leftJoin('org_designations as dg', 'u.desg_id', 'dg.desg_id')
+            .leftJoin('org_departments as d', 'u.dept_id', 'd.dept_id')
             .select(
                 'pe.*',
                 'u.user_name',

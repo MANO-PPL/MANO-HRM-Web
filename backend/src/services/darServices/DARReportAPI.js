@@ -248,23 +248,23 @@ async function analyzeEmployeeWithMode(orgId, employee, activities, events, date
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchReportData(orgId, employeeIds, dateStart, dateEnd) {
-    const employees = await attendanceDB('users')
-        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('shifts', 'users.shift_id', 'shifts.shift_id')
+    const employees = await attendanceDB('core_users')
+        .leftJoin('org_departments', 'core_users.dept_id', 'org_departments.dept_id')
+        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
         .select(
-            'users.user_id',
-            'users.user_name',
-            'departments.dept_name',
-            'shifts.shift_name',
+            'core_users.user_id',
+            'core_users.user_name',
+            'org_departments.dept_name',
+            'org_shifts.shift_name',
         )
-        .where('users.org_id', orgId)
-        .where('users.is_deleted', 0)
+        .where('core_users.org_id', orgId)
+        .where('core_users.is_deleted', 0)
         .modify(q => {
             if (employeeIds && employeeIds.length > 0) {
-                q.whereIn('users.user_id', employeeIds);
+                q.whereIn('core_users.user_id', employeeIds);
             }
         })
-        .orderBy('users.user_name');
+        .orderBy('core_users.user_name');
 
     const targetIds = employees.map(e => e.user_id);
     if (targetIds.length === 0) return { employees: [], activities: [], events: [] };

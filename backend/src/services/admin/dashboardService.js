@@ -81,7 +81,7 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         prevPeriodLateRes,
         activities
     ] = await Promise.all([
-        attendanceDB("users").where("org_id", org_id).where("user_type", "employee").count("user_id as count").first(),
+        attendanceDB("core_users").where("org_id", org_id).where("user_type", "employee").count("user_id as count").first(),
         attendanceDB("attendance_records").where("org_id", org_id).whereRaw("DATE(time_in) = ?", [today]).countDistinct("user_id as count").first(),
         attendanceDB("attendance_records").where("org_id", org_id).whereRaw("DATE(time_in) = ?", [today]).where("late_minutes", ">", 0).countDistinct("user_id as count").first(),
         attendanceDB("attendance_records").where("org_id", org_id).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [currentStartStr, currentEndStr]).countDistinct("user_id as count").first(),
@@ -89,8 +89,8 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         attendanceDB("attendance_records").where("org_id", org_id).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ? AND late_minutes > 0", [currentStartStr, currentEndStr]).countDistinct("user_id as count").first(),
         attendanceDB("attendance_records").where("org_id", org_id).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ? AND late_minutes > 0", [prevStartStr, prevEndStr]).countDistinct("user_id as count").first(),
         attendanceDB("sys_activity_logs as al")
-            .leftJoin("users as u", "al.user_id", "u.user_id")
-            .leftJoin("designations as d", "u.desg_id", "d.desg_id")
+            .leftJoin("core_users as u", "al.user_id", "u.user_id")
+            .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
             .select("al.activity_id as id", "u.user_name as user", "d.desg_name as role", "al.description as action", "al.occurred_at as time", "u.profile_image_url")
             .where("al.org_id", org_id)
             .whereNot("al.event_type", "API_CALL")

@@ -7,12 +7,12 @@ import { getHistoryLogs, getFilteredLogs } from '../../services/superAdmin/pm2Se
 export const getSecurityAlerts = async (req, res, next) => {
     try {
         const alerts = await attendanceDB('sys_security_alerts')
-            .leftJoin('users', 'sys_security_alerts.user_id', 'users.user_id')
-            .leftJoin('organizations', 'sys_security_alerts.org_id', 'organizations.org_id')
+            .leftJoin('core_users', 'sys_security_alerts.user_id', 'core_users.user_id')
+            .leftJoin('core_organizations', 'sys_security_alerts.org_id', 'core_organizations.org_id')
             .select(
                 'sys_security_alerts.*',
-                'users.user_name', 'users.email',
-                'organizations.org_name'
+                'core_users.user_name', 'core_users.email',
+                'core_organizations.org_name'
             )
             .orderBy('sys_security_alerts.created_at', 'desc');
 
@@ -47,12 +47,12 @@ export const updateSecurityAlertStatus = async (req, res, next) => {
 export const getUserFeedback = async (req, res, next) => {
     try {
         const feedback = await attendanceDB('feedback')
-            .leftJoin('users', 'feedback.user_id', 'users.user_id')
-            .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
+            .leftJoin('core_users', 'feedback.user_id', 'core_users.user_id')
+            .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
             .select(
                 'feedback.*',
-                'users.user_name', 'users.email',
-                'organizations.org_name', 'organizations.org_id'
+                'core_users.user_name', 'core_users.email',
+                'core_organizations.org_name', 'core_organizations.org_id'
             )
             .orderBy('feedback.created_at', 'desc');
 

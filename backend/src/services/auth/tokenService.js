@@ -23,7 +23,7 @@ export async function saveRefreshToken(userId, token, ipAddress, userAgent, reme
     const validityDays = rememberMe ? 30 : 30;
     expiresAt.setDate(expiresAt.getDate() + validityDays);
 
-    await attendanceDB('refresh_tokens').insert({
+    await attendanceDB('core_refresh_tokens').insert({
         user_id: userId,
         token: token,
         expires_at: expiresAt,
@@ -39,7 +39,7 @@ export async function saveRefreshToken(userId, token, ipAddress, userAgent, reme
  * @returns {Promise<{user: any, refreshToken: any} | null>}
  */
 export async function verifyRefreshToken(token) {
-    const refreshTokenRecord = await attendanceDB('refresh_tokens')
+    const refreshTokenRecord = await attendanceDB('core_refresh_tokens')
         .where({ token: token })
         .first();
 
@@ -51,7 +51,7 @@ export async function verifyRefreshToken(token) {
     if (refreshTokenRecord.revoked) {
         // Check for Grace Period (Reuse within 60 seconds of replacement)
         if (refreshTokenRecord.replaced_by_token) {
-            const replacementToken = await attendanceDB('refresh_tokens')
+            const replacementToken = await attendanceDB('core_refresh_tokens')
                 .where({ token: refreshTokenRecord.replaced_by_token })
                 .first();
 
@@ -61,7 +61,7 @@ export async function verifyRefreshToken(token) {
 
                 if (timeDiff < GRACE_PERIOD_MS) {
                     console.log(`Grace period active for token reuse. Returning valid replacement.`);
-                    const user = await attendanceDB('users').where('user_id', refreshTokenRecord.user_id).first();
+                    const user = await attendanceDB('core_users').where('user_id', refreshTokenRecord.user_id).first();
                     return {
                         user,
                         gracePeriodActive: true,
@@ -83,7 +83,7 @@ export async function verifyRefreshToken(token) {
     }
 
     // Token is valid, return user details
-    const user = await attendanceDB('users').where('user_id', refreshTokenRecord.user_id).first();
+    const user = await attendanceDB('core_users').where('user_id', refreshTokenRecord.user_id).first();
 
     if (!user || !user.is_active || user.is_deleted) {
         // Revoke if user is blocked
@@ -100,7 +100,7 @@ export async function verifyRefreshToken(token) {
  * @param {string} replacedByToken optional
  */
 export async function revokeRefreshToken(token, replacedByToken = null) {
-    await attendanceDB('refresh_tokens')
+    await attendanceDB('core_refresh_tokens')
         .where('token', token)
         .update({
             revoked: true,
@@ -113,7 +113,7 @@ export async function revokeRefreshToken(token, replacedByToken = null) {
  * @param {number} userId 
  */
 export async function revokeAllTokensForUser(userId) {
-    await attendanceDB('refresh_tokens')
+    await attendanceDB('core_refresh_tokens')
         .where('user_id', userId)
         .update({ revoked: true });
 }
@@ -123,7 +123,7 @@ export async function revokeAllTokensForUser(userId) {
  * @param {string} token 
  */
 export async function extendRefreshToken(token) {
-    const record = await attendanceDB('refresh_tokens')
+    const record = await attendanceDB('core_refresh_tokens')
         .where('token', token)
         .first();
 
@@ -132,7 +132,7 @@ export async function extendRefreshToken(token) {
     const validityDays = isRememberMe ? 30 : 30;
     expiresAt.setDate(expiresAt.getDate() + validityDays);
 
-    await attendanceDB('refresh_tokens')
+    await attendanceDB('core_refresh_tokens')
         .where('token', token)
         .update({ expires_at: expiresAt });
 }

@@ -34,10 +34,10 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
 
     // Trigger Admin/HR notifications
     try {
-        const employee = await attendanceDB('users').where({ user_id }).select('user_name').first();
+        const employee = await attendanceDB('core_users').where({ user_id }).select('user_name').first();
         const employeeName = employee?.user_name || 'An employee';
 
-        const admins = await attendanceDB('users')
+        const admins = await attendanceDB('core_users')
             .where({ org_id, is_deleted: 0, is_active: 1 })
             .whereIn('user_type', ['admin', 'hr'])
             .select('user_id');
@@ -63,13 +63,13 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
 
 export async function getPendingRequests({ org_id }) {
     const requests = await attendanceDB("dar_requests")
-        .join("users", "dar_requests.user_id", "users.user_id")
-        .leftJoin("departments as dep", "users.dept_id", "dep.dept_id")
+        .join("core_users", "dar_requests.user_id", "core_users.user_id")
+        .leftJoin("org_departments as dep", "core_users.dept_id", "dep.dept_id")
         .select(
             "dar_requests.*",
-            "users.user_name as user_name",
-            "users.email as user_email",
-            "users.user_type as user_role",
+            "core_users.user_name as user_name",
+            "core_users.email as user_email",
+            "core_users.user_type as user_role",
             "dep.dept_name as user_dept",
             attendanceDB.raw("DATE_FORMAT(dar_requests.request_date, '%Y-%m-%d') as request_date_str")
         )

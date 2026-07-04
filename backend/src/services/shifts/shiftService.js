@@ -14,7 +14,7 @@ export async function getShiftsForOrg(org_id) {
     }
 
     // 2. Fetch from DB on Cache Miss
-    const shifts = await attendanceDB('shifts').where({ org_id });
+    const shifts = await attendanceDB('org_shifts').where({ org_id });
 
     // Parse JSON rules for frontend compatibility
     const shiftsData = shifts.map(s => {
@@ -78,7 +78,7 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
         entry_requirements: rules.entry_requirements || { selfie: true, geofence: true },
     };
 
-    const [id] = await attendanceDB('shifts').insert({
+    const [id] = await attendanceDB('org_shifts').insert({
         org_id,
         shift_name,
         is_active: isActiveVal,
@@ -109,7 +109,7 @@ export async function updateShift({ shift_id, org_id, shift_name, is_active, pol
         policy_rules: JSON.stringify(finalRules)
     };
 
-    const affected = await attendanceDB('shifts')
+    const affected = await attendanceDB('org_shifts')
         .where({ shift_id, org_id })
         .update(updates);
 
@@ -124,7 +124,7 @@ export async function updateShift({ shift_id, org_id, shift_name, is_active, pol
  */
 export async function deleteShift({ shift_id, org_id }) {
     // Check if shift is assigned to any user
-    const usersCount = await attendanceDB('users')
+    const usersCount = await attendanceDB('core_users')
         .where({ shift_id })
         .count('user_id as count')
         .first();
@@ -133,7 +133,7 @@ export async function deleteShift({ shift_id, org_id }) {
         throw new Error(`Cannot delete shift. It is assigned to ${usersCount.count} users.`);
     }
 
-    const affected = await attendanceDB('shifts')
+    const affected = await attendanceDB('org_shifts')
         .where({ shift_id, org_id })
         .del();
 
@@ -147,17 +147,17 @@ export async function deleteShift({ shift_id, org_id }) {
  * Get all users with their shift assignments
  */
 export async function getUsersWithShifts(org_id) {
-    const users = await attendanceDB('users')
-        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
-        .where('users.org_id', org_id)
+    const users = await attendanceDB('core_users')
+        .leftJoin('org_designations', 'core_users.desg_id', 'org_designations.desg_id')
+        .where('core_users.org_id', org_id)
         .select(
-            'users.user_id',
-            'users.user_name',
-            'users.shift_id',
-            'users.profile_image_url',
-            'designations.desg_name'
+            'core_users.user_id',
+            'core_users.user_name',
+            'core_users.shift_id',
+            'core_users.profile_image_url',
+            'org_designations.desg_name'
         )
-        .orderBy('users.user_name', 'asc');
+        .orderBy('core_users.user_name', 'asc');
 
     return users;
 }
@@ -166,7 +166,7 @@ export async function getUsersWithShifts(org_id) {
  * Assign or unassign a shift to a user
  */
 export async function assignShiftToUser({ user_id, org_id, shift_id }) {
-    const affected = await attendanceDB('users')
+    const affected = await attendanceDB('core_users')
         .where({ user_id, org_id })
         .update({ shift_id: shift_id || null });
 

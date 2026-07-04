@@ -11,8 +11,8 @@ export const getDashboardStats = async () => {
         moduleDistribution,
         orgStatusDistribution
     ] = await Promise.all([
-        attendanceDB('organizations').count('* as count').first(),
-        attendanceDB('users').count('* as count').where('is_deleted', 0).first(),
+        attendanceDB('core_organizations').count('* as count').first(),
+        attendanceDB('core_users').count('* as count').where('is_deleted', 0).first(),
         attendanceDB('feedback')
             .count('* as count')
             .whereIn('status', ['pending', 'open', 'OPEN', 'PENDING', ''])
@@ -25,7 +25,7 @@ export const getDashboardStats = async () => {
         attendanceDB('sys_api_logs').count('* as count').first(),
         attendanceDB('sys_error_logs').count('error_id as count').first(),
         attendanceDB('sys_api_logs').select('module_name as module').count('* as count').groupBy('module_name'),
-        attendanceDB('organizations').select('status').count('* as count').groupBy('status')
+        attendanceDB('core_organizations').select('status').count('* as count').groupBy('status')
     ]);
 
     // Clean module distribution names

@@ -503,18 +503,18 @@ async function runGenerateSimulation(orgId, payload) {
         throw new Error('dateRange.start cannot be later than dateRange.end.');
     }
 
-    let employeeQuery = attendanceDB('users')
-        .leftJoin('shifts', 'users.shift_id', 'shifts.shift_id')
-        .select('users.user_id', 'users.user_name', 'users.is_active', 'users.is_deleted', 'shifts.policy_rules')
-        .where('users.org_id', orgId)
-        .where('users.is_deleted', 0);
+    let employeeQuery = attendanceDB('core_users')
+        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+        .select('core_users.user_id', 'core_users.user_name', 'core_users.is_active', 'core_users.is_deleted', 'org_shifts.policy_rules')
+        .where('core_users.org_id', orgId)
+        .where('core_users.is_deleted', 0);
 
     // By default target all user types; restrict to specific types if provided
     const targetUserTypes = Array.isArray(target.userTypes) && target.userTypes.length > 0
         ? target.userTypes
         : null;
     if (targetUserTypes) {
-        employeeQuery = employeeQuery.whereIn('users.user_type', targetUserTypes);
+        employeeQuery = employeeQuery.whereIn('core_users.user_type', targetUserTypes);
     }
 
     const userIds = target.userIds;
@@ -868,7 +868,7 @@ async function runImportSimulation(orgId, payload) {
         throw new Error('Each import record must include a valid user_id.');
     }
 
-    const employees = await attendanceDB('users')
+    const employees = await attendanceDB('core_users')
         .select('user_id', 'user_name')
         .where({ org_id: orgId })
         .whereIn('user_id', employeeIds);
@@ -1073,9 +1073,9 @@ export async function listActivities({ org_id, user_id, date, date_from, date_to
 
 export async function getAllActivitiesAdmin({ org_id, date, startDate, endDate }) {
     let query = attendanceDB('daily_activities as da')
-        .join('users as u', 'da.user_id', 'u.user_id')
-        .leftJoin('departments as dep', 'u.dept_id', 'dep.dept_id')
-        .leftJoin('shifts as s', 'u.shift_id', 's.shift_id')
+        .join('core_users as u', 'da.user_id', 'u.user_id')
+        .leftJoin('org_departments as dep', 'u.dept_id', 'dep.dept_id')
+        .leftJoin('org_shifts as s', 'u.shift_id', 's.shift_id')
         .select(
             'da.activity_id',
             'da.activity_id as id',

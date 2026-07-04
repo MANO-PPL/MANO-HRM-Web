@@ -20,11 +20,11 @@ const db = knex({
 async function main() {
   console.log('Checking for tour_dismissed column in users table using admin credentials...');
   try {
-    const hasColumn = await db.schema.hasColumn('users', 'tour_dismissed');
+    const hasColumn = await db.schema.hasColumn('core_users', 'tour_dismissed');
     
     if (!hasColumn) {
       console.log('Adding tour_dismissed column to users table...');
-      await db.schema.alterTable('users', (table) => {
+      await db.schema.alterTable('core_users', (table) => {
         table.boolean('tour_dismissed').defaultTo(false).notNullable();
       });
       console.log('Successfully added tour_dismissed column.');

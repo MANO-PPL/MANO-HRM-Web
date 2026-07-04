@@ -178,19 +178,19 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
     }
 
     // Check uniqueness
-    const existingOrg = await attendanceDB('organizations').where('org_code', cleanOrgCode).first();
+    const existingOrg = await attendanceDB('core_organizations').where('org_code', cleanOrgCode).first();
     if (existingOrg) {
         throw new AppError("Organization code is already registered.", 400);
     }
 
-    const existingUser = await attendanceDB('users').where('email', finalAdminEmail).first();
+    const existingUser = await attendanceDB('core_users').where('email', finalAdminEmail).first();
     if (existingUser) {
         throw new AppError("Administrator email is already registered.", 400);
     }
 
     const finalPhone = admin_phone || contact_phone;
     if (finalPhone) {
-        const existingPhone = await attendanceDB('users').where('phone_no', finalPhone.trim()).first();
+        const existingPhone = await attendanceDB('core_users').where('phone_no', finalPhone.trim()).first();
         if (existingPhone) {
             throw new AppError("Administrator phone number is already registered.", 400);
         }
@@ -200,7 +200,7 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
     subscription_expiry.setDate(subscription_expiry.getDate() + 30); // 30-day trial
 
     const insertedId = await attendanceDB.transaction(async (trx) => {
-        const [orgId] = await trx('organizations').insert({
+        const [orgId] = await trx('core_organizations').insert({
             org_name: org_name.trim(),
             org_code: cleanOrgCode,
             contact_name: contact_name.trim(),
@@ -222,7 +222,7 @@ export const onboardOrganization = catchAsync(async (req, res, next) => {
         const hashedPassword = await bcrypt.hash(finalAdminPassword, 10);
         const userCode = `${cleanOrgCode}-001`;
 
-        await trx('users').insert({
+        await trx('core_users').insert({
             org_id: orgId,
             user_code: userCode,
             user_name: (admin_name || contact_name).trim(),

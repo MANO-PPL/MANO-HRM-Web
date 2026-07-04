@@ -155,7 +155,7 @@ async function runSimulation() {
     process.exit(1);
   }
 
-  let usersQuery = attendanceDB('users')
+  let usersQuery = attendanceDB('core_users')
     .whereIn('user_id', target_user_ids)
     .where({ is_deleted: 0, is_active: 1 });
 

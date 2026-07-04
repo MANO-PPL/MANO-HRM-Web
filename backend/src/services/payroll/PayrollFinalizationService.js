@@ -152,7 +152,7 @@ export class PayrollFinalizationService {
      */
     static async getRunEntries(runId) {
         return await attendanceDB('payroll_entries as pe')
-            .join('users as u', 'pe.employee_id', 'u.user_id')
+            .join('core_users as u', 'pe.employee_id', 'u.user_id')
             .select(
                 'pe.*',
                 'u.user_name',
@@ -206,9 +206,9 @@ export class PayrollFinalizationService {
 
             // Get employee active salary config
             const activeSalaryDate = `${year}-${String(month).padStart(2, '0')}-01`;
-            const emp = await trx('users as u')
+            const emp = await trx('core_users as u')
                 .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
-                .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+                .leftJoin('org_shifts as sh', 'u.shift_id', 'sh.shift_id')
                 .leftJoin('payroll_packages as p', function() {
                     this.on('s.package_group_id', '=', 'p.package_group_id')
                         .andOn('p.effective_from', '<=', trx.raw('?', [activeSalaryDate]))
@@ -364,9 +364,9 @@ export class PayrollFinalizationService {
             } else {
                 // If they haven't been locked yet, we run calculations and lock/pay them
                 const activeSalaryDate = `${year}-${String(month).padStart(2, '0')}-01`;
-                const emp = await trx('users as u')
+                const emp = await trx('core_users as u')
                     .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
-                    .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+                    .leftJoin('org_shifts as sh', 'u.shift_id', 'sh.shift_id')
                     .leftJoin('payroll_packages as p', function() {
                         this.on('s.package_group_id', '=', 'p.package_group_id')
                             .andOn('p.effective_from', '<=', trx.raw('?', [activeSalaryDate]))

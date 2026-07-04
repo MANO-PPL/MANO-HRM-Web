@@ -19,7 +19,7 @@ export async function getTodayStr(org_id) {
 
     let timezone = 'UTC';
     try {
-        const org = await attendanceDB('organizations')
+        const org = await attendanceDB('core_organizations')
             .where('org_id', org_id)
             .select('timezone')
             .first();
@@ -286,10 +286,10 @@ export const resolveDateRange = ({ type, month, date, startDate: customStart, en
 };
 
 export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id }) {
-    return attendanceDB("users as u")
-        .leftJoin("departments as d", "u.dept_id", "d.dept_id")
-        .leftJoin("designations as dg", "u.desg_id", "dg.desg_id")
-        .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
+    return attendanceDB("core_users as u")
+        .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
+        .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
+        .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
         .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type", "s.policy_rules", "s.shift_name")
         .where("u.org_id", org_id)
         .modify(qb => {
@@ -315,7 +315,7 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
     return attendanceDB("attendance_records as ar")
         .modify(qb => {
             if (isValidDeptId(dept_id) || isValidDesgId(desg_id) || isValidShiftId(shift_id)) {
-                qb.join("users as u", "ar.user_id", "u.user_id")
+                qb.join("core_users as u", "ar.user_id", "u.user_id")
                   .select("ar.*");
                 if (isValidDeptId(dept_id)) {
                     qb.where("u.dept_id", dept_id);
@@ -338,9 +338,9 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
 
 export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
     return attendanceDB("attendance_records as ar")
-        .join("users as u", "ar.user_id", "u.user_id")
-        .leftJoin("departments as d", "u.dept_id", "d.dept_id")
-        .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
+        .join("core_users as u", "ar.user_id", "u.user_id")
+        .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
+        .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
         .select("ar.time_in", "u.user_id", "u.user_name", "d.dept_name", "s.shift_name", "ar.time_out", "ar.status", "ar.time_in_address", "ar.time_out_address", "ar.late_minutes", "ar.overtime_hours")
         .where("ar.org_id", org_id)
         .whereRaw("DATE(ar.time_in) >= ?", [startDate])
@@ -478,10 +478,10 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
     const todayStr = await getTodayStr(org_id);
 
     if (type.startsWith("matrix_") || type.startsWith("attendance_matrix_")) {
-        const users = await attendanceDB("users as u")
-            .leftJoin("departments as d", "u.dept_id", "d.dept_id")
-            .leftJoin("designations as dg", "u.desg_id", "dg.desg_id")
-            .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
+        const users = await attendanceDB("core_users as u")
+            .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
+            .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
+            .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
             .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "s.policy_rules", "s.shift_name")
             .where("u.org_id", org_id)
             .modify(qb => {
@@ -999,10 +999,10 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         const [year, monthNum] = month.split("-").map(Number);
         const totalDaysInMonth = new Date(year, monthNum, 0).getDate();
 
-        const users = await attendanceDB("users as u")
-            .leftJoin("departments as d", "u.dept_id", "d.dept_id")
-            .leftJoin("designations as dg", "u.desg_id", "dg.desg_id")
-            .leftJoin("shifts as s", "u.shift_id", "s.shift_id")
+        const users = await attendanceDB("core_users as u")
+            .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
+            .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
+            .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
             .select("u.user_id", "u.user_name", "d.dept_name", "s.policy_rules", "s.shift_name")
             .where("u.org_id", org_id)
             .modify(qb => {
@@ -1171,9 +1171,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         data.rows = [...baseRows, totalsRow];
 
     } else if (type === "employee_master") {
-        const users = await attendanceDB("users as u")
-            .leftJoin("departments as d", "u.dept_id", "d.dept_id")
-            .leftJoin("designations as dg", "u.desg_id", "dg.desg_id")
+        const users = await attendanceDB("core_users as u")
+            .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
+            .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
             .select("u.user_id", "u.user_name", "u.email", "u.phone_no", "d.dept_name", "dg.desg_name", "u.user_type")
             .where("u.org_id", org_id)
             .modify(qb => {

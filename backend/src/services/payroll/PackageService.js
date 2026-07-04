@@ -290,8 +290,8 @@ export class PackageService {
         const todayStr = new Date().toISOString().split('T')[0];
 
         // Fetch all employees in the org
-        const employees = await attendanceDB('users as u')
-            .leftJoin('designations as d', 'u.desg_id', 'd.desg_id')
+        const employees = await attendanceDB('core_users as u')
+            .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
             .where('u.org_id', orgId)
             .where('u.is_deleted', 0)
             .select(

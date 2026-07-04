@@ -12,7 +12,7 @@ export async function getAllLocations({ org_id }) {
     }
 
     // 2. Fetch from DB on Cache Miss
-    const locations = await attendanceDB('work_locations').where({ org_id });
+    const locations = await attendanceDB('org_work_locations').where({ org_id });
 
     // 3. Write cache for future hits
     await cacheService.set(cacheKey, locations);
@@ -21,7 +21,7 @@ export async function getAllLocations({ org_id }) {
 }
 
 export async function createLocation({ org_id, location_name, address, latitude, longitude, radius }) {
-    const [id] = await attendanceDB('work_locations').insert({
+    const [id] = await attendanceDB('org_work_locations').insert({
         org_id,
         location_name,
         address,
@@ -37,7 +37,7 @@ export async function createLocation({ org_id, location_name, address, latitude,
 }
 
 export async function updateLocation({ id, org_id, updates }) {
-    const count = await attendanceDB('work_locations')
+    const count = await attendanceDB('org_work_locations')
         .where({ location_id: id, org_id })
         .update(updates);
 
@@ -48,7 +48,7 @@ export async function updateLocation({ id, org_id, updates }) {
 }
 
 export async function softDeleteLocation({ id, org_id }) {
-    await attendanceDB('work_locations')
+    await attendanceDB('org_work_locations')
         .where({ location_id: id, org_id })
         .update({ is_active: 0 });
 
@@ -65,7 +65,7 @@ export async function bulkAssign({ org_id, assignments }) {
     const requestedLocIds = [...new Set(assignments.map(a => a.work_location_id).filter(id => id))];
 
     if (requestedLocIds.length > 0) {
-        const validLocations = await attendanceDB('work_locations')
+        const validLocations = await attendanceDB('org_work_locations')
             .whereIn('location_id', requestedLocIds)
             .where({ org_id })
             .select('location_id');
@@ -86,7 +86,7 @@ export async function bulkAssign({ org_id, assignments }) {
             if (!work_location_id) continue;
 
             if (remove && Array.isArray(remove) && remove.length > 0) {
-                await trx('user_work_locations')
+                await trx('org_user_work_locations')
                     .where('location_id', work_location_id)
                     .whereIn('user_id', remove)
                     .del();
@@ -98,7 +98,7 @@ export async function bulkAssign({ org_id, assignments }) {
                     location_id: work_location_id
                 }));
 
-                await trx('user_work_locations')
+                await trx('org_user_work_locations')
                     .insert(dataToInsert)
                     .onConflict(['user_id', 'location_id'])
                     .ignore();

@@ -53,7 +53,7 @@ export async function submitFeedback(user_id, { title, description, type = 'FEED
 
     // 3. Send email & push notifications
     try {
-        const user = await attendanceDB('users').where('user_id', user_id).first();
+        const user = await attendanceDB('core_users').where('user_id', user_id).first();
         const submittedAt = new Date().toLocaleString('en-US', {
             dateStyle: 'medium',
             timeStyle: 'short'
@@ -76,7 +76,7 @@ export async function submitFeedback(user_id, { title, description, type = 'FEED
 
         // Trigger standard browser/push notifications to admins
         if (user && user.org_id) {
-            const admins = await attendanceDB('users')
+            const admins = await attendanceDB('core_users')
                 .where({ org_id: user.org_id, user_type: 'admin', is_deleted: 0, is_active: 1 })
                 .select('user_id');
 
@@ -104,8 +104,8 @@ export async function submitFeedback(user_id, { title, description, type = 'FEED
  */
 export async function getFeedbackList({ status, type, limit = 50 } = {}) {
     let query = attendanceDB('feedback')
-        .join('users', 'feedback.user_id', 'users.user_id')
-        .select('feedback.*', 'users.user_name', 'users.email')
+        .join('core_users', 'feedback.user_id', 'core_users.user_id')
+        .select('feedback.*', 'core_users.user_name', 'core_users.email')
         .orderBy('feedback.created_at', 'desc')
         .limit(Math.min(parseInt(limit), 100));
 
@@ -156,7 +156,7 @@ export async function updateStatus(id, status) {
 
     if (updated > 0) {
         try {
-            const user = await attendanceDB('users').where('user_id', feedback.user_id).first();
+            const user = await attendanceDB('core_users').where('user_id', feedback.user_id).first();
             if (user) {
                 EventBus.emitNotification({
                     org_id: user.org_id,

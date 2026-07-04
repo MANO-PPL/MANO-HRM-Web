@@ -541,31 +541,31 @@ export function resolveNoShowStatus({ dateStr, rules, holiday, leave }) {
  */
 export async function getDailySummary({ org_id, user_id = null, date_from, date_to }) {
     // 1. Fetch users with shift + designation info
-    let usersQuery = attendanceDB('users')
-        .leftJoin('shifts', 'users.shift_id', 'shifts.shift_id')
-        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
-        .where('users.org_id', org_id)
-        .where(function () { this.where('users.is_active', 1).orWhereNull('users.is_active'); })
-        .where(function () { this.where('users.is_deleted', 0).orWhereNull('users.is_deleted'); })
+    let usersQuery = attendanceDB('core_users')
+        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+        .leftJoin('org_designations', 'core_users.desg_id', 'org_designations.desg_id')
+        .where('core_users.org_id', org_id)
+        .where(function () { this.where('core_users.is_active', 1).orWhereNull('core_users.is_active'); })
+        .where(function () { this.where('core_users.is_deleted', 0).orWhereNull('core_users.is_deleted'); })
         .select(
-            'users.user_id', 'users.user_name', 'users.org_id', 'users.shift_id',
-            'users.profile_image_url',
-            'users.user_type',
-            'designations.desg_name',
-            'shifts.shift_name',
-            'shifts.policy_rules'
+            'core_users.user_id', 'core_users.user_name', 'core_users.org_id', 'core_users.shift_id',
+            'core_users.profile_image_url',
+            'core_users.user_type',
+            'org_designations.desg_name',
+            'org_shifts.shift_name',
+            'org_shifts.policy_rules'
         );
 
-    if (user_id) usersQuery = usersQuery.where('users.user_id', user_id);
+    if (user_id) usersQuery = usersQuery.where('core_users.user_id', user_id);
     const users = await usersQuery;
 
     // Try to resolve department names (graceful if table missing)
     let deptMap = {};
     try {
-        const deptRows = await attendanceDB('users')
-            .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
-            .whereIn('users.user_id', users.map(u => u.user_id))
-            .select('users.user_id', 'departments.dept_name');
+        const deptRows = await attendanceDB('core_users')
+            .leftJoin('org_departments', 'core_users.dept_id', 'org_departments.dept_id')
+            .whereIn('core_users.user_id', users.map(u => u.user_id))
+            .select('core_users.user_id', 'org_departments.dept_name');
         for (const r of deptRows) if (r.dept_name) deptMap[r.user_id] = r.dept_name;
     } catch (_) { /* departments table may not exist */ }
 
@@ -584,7 +584,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
             .where('date', '>=', date_from)
             .where('date', '<=', date_to)
             .modify(qb => { if (user_id) qb.where('user_id', user_id); }),
-        attendanceDB('holidays')
+        attendanceDB('org_holidays')
             .where('org_id', org_id)
             .where('holiday_date', '>=', date_from)
             .where('holiday_date', '<=', date_to),
@@ -630,7 +630,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
     // Fetch organization timezone for timezone-aware todayStr calculation
     let timezone = 'UTC';
     try {
-        const org = await attendanceDB('organizations')
+        const org = await attendanceDB('core_organizations')
             .where('org_id', org_id)
             .select('timezone')
             .first();

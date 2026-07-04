@@ -17,20 +17,20 @@ const MISSED_PUNCH_GRACE_DAYS = 2;
 export async function processHourlyAttendance() {
     console.log('⏰ Hourly Attendance Check Started...');
 
-    const users = await attendanceDB('users')
-        .leftJoin('shifts', 'users.shift_id', 'shifts.shift_id')
-        .leftJoin('user_work_locations', 'users.user_id', 'user_work_locations.user_id')
-        .leftJoin('work_locations', 'user_work_locations.location_id', 'work_locations.location_id')
-        .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
-        .where('users.is_deleted', 0)
-        .where('users.is_active', 1)
+    const users = await attendanceDB('core_users')
+        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+        .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
+        .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
+        .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
+        .where('core_users.is_deleted', 0)
+        .where('core_users.is_active', 1)
         .select(
-            'users.user_id',
-            'users.shift_id',
-            'shifts.*',
-            'users.org_id',
-            'work_locations.timezone',
-            'organizations.timezone as org_timezone'
+            'core_users.user_id',
+            'core_users.shift_id',
+            'org_shifts.*',
+            'core_users.org_id',
+            'org_work_locations.timezone',
+            'core_organizations.timezone as org_timezone'
         );
 
     for (const user of users) {
@@ -258,7 +258,7 @@ async function processUserAttendanceForDate(user, dateStr) {
         // or during the day. No further action needed here for existing records.
     } else if (openSessions.length === 0) {
         // Missing record: determine status using the centralized no-show resolver
-        const holiday = await attendanceDB('holidays')
+        const holiday = await attendanceDB('org_holidays')
             .where({ org_id: user.org_id, holiday_date: dateStr })
             .first();
 
@@ -303,16 +303,16 @@ async function escalateExpiredMissedPunches() {
     for (const record of records) {
         try {
             // Fetch user, shift rules, and timezone settings
-            const user = await attendanceDB('users')
-                .leftJoin('shifts', 'users.shift_id', 'shifts.shift_id')
-                .leftJoin('user_work_locations', 'users.user_id', 'user_work_locations.user_id')
-                .leftJoin('work_locations', 'user_work_locations.location_id', 'work_locations.location_id')
-                .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
-                .where('users.user_id', record.user_id)
+            const user = await attendanceDB('core_users')
+                .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+                .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
+                .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
+                .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
+                .where('core_users.user_id', record.user_id)
                 .select(
-                    'shifts.*',
-                    'work_locations.timezone',
-                    'organizations.timezone as org_timezone'
+                    'org_shifts.*',
+                    'org_work_locations.timezone',
+                    'core_organizations.timezone as org_timezone'
                 )
                 .first();
 
@@ -437,21 +437,21 @@ async function escalateExpiredMissedPunches() {
  * Check if users need a time-in or time-out reminder (10 minutes before shift start/end)
  */
 export async function checkAndSendShiftReminders() {
-    const users = await attendanceDB('users')
-        .leftJoin('shifts', 'users.shift_id', 'shifts.shift_id')
-        .leftJoin('user_work_locations', 'users.user_id', 'user_work_locations.user_id')
-        .leftJoin('work_locations', 'user_work_locations.location_id', 'work_locations.location_id')
-        .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
-        .whereNotNull('users.shift_id')
-        .where('users.is_deleted', 0)
-        .where('users.is_active', 1)
+    const users = await attendanceDB('core_users')
+        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+        .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
+        .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
+        .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
+        .whereNotNull('core_users.shift_id')
+        .where('core_users.is_deleted', 0)
+        .where('core_users.is_active', 1)
         .select(
-            'users.user_id',
-            'users.shift_id',
-            'shifts.*',
-            'users.org_id',
-            'work_locations.timezone',
-            'organizations.timezone as org_timezone'
+            'core_users.user_id',
+            'core_users.shift_id',
+            'org_shifts.*',
+            'core_users.org_id',
+            'org_work_locations.timezone',
+            'core_organizations.timezone as org_timezone'
         );
 
     for (const user of users) {

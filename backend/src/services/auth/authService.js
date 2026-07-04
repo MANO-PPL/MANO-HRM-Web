@@ -10,21 +10,21 @@ import { sendEmail } from './emailService.js';
 const ACCESS_TOKEN_EXPIRY = '15m';
 
 export const authenticateUser = async (userInput, password, reqInfo, rememberMe = false) => {
-    const user = await attendanceDB('users')
-        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
-        .leftJoin('shifts', 'users.shift_id', 'shifts.shift_id')
-        .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
+    const user = await attendanceDB('core_users')
+        .leftJoin('org_departments', 'core_users.dept_id', 'org_departments.dept_id')
+        .leftJoin('org_designations', 'core_users.desg_id', 'org_designations.desg_id')
+        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+        .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
         .select(
-            'users.user_id', 'users.user_code', 'users.user_name', 'users.user_password', 'users.email', 'users.phone_no', 'users.org_id', 'users.user_type',
-            'users.profile_image_url', 'users.is_active', 'users.is_deleted', 'users.force_password_change',
-            'departments.dept_name', 'designations.desg_name', 'shifts.shift_name', 'shifts.shift_id',
-            'organizations.status as org_status', 'organizations.max_users as org_max_users',
-            'organizations.subscription_expiry as org_subscription_expiry',
-            'organizations.grace_period_days as org_grace_period_days'
+            'core_users.user_id', 'core_users.user_code', 'core_users.user_name', 'core_users.user_password', 'core_users.email', 'core_users.phone_no', 'core_users.org_id', 'core_users.user_type',
+            'core_users.profile_image_url', 'core_users.is_active', 'core_users.is_deleted', 'core_users.force_password_change',
+            'org_departments.dept_name', 'org_designations.desg_name', 'org_shifts.shift_name', 'org_shifts.shift_id',
+            'core_organizations.status as org_status', 'core_organizations.max_users as org_max_users',
+            'core_organizations.subscription_expiry as org_subscription_expiry',
+            'core_organizations.grace_period_days as org_grace_period_days'
         )
-        .where('users.email', userInput)
-        .orWhere('users.phone_no', userInput)
+        .where('core_users.email', userInput)
+        .orWhere('core_users.phone_no', userInput)
         .first();
 
     if (!user) throw new AppError('User not found', 401);
@@ -116,7 +116,7 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
 };
 
 export const authenticateSuperAdmin = async (email, password, reqInfo) => {
-    const admin = await attendanceDB('super_admins').where('email', email).first();
+    const admin = await attendanceDB('core_super_admins').where('email', email).first();
     if (!admin) throw new AppError('Invalid credentials', 401);
     if (!admin.is_active) throw new AppError('Your account is inactive.', 403);
 
@@ -166,7 +166,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
     try {
         const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
         if (decoded.user_type === 'super_admin_refresh') {
-            const admin = await attendanceDB('super_admins').where('id', decoded.id).first();
+            const admin = await attendanceDB('core_super_admins').where('id', decoded.id).first();
             if (!admin || !admin.is_active) throw new AppError('Admin inactive or deleted', 403);
 
             const tokenPayload = {
@@ -193,7 +193,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
     const { user, gracePeriodActive, activeRefreshToken, refreshTokenRecord } = result;
 
     if (user.org_id) {
-        const org = await attendanceDB('organizations').where('org_id', user.org_id).first();
+        const org = await attendanceDB('core_organizations').where('org_id', user.org_id).first();
         if (!org || org.status === 'pending_deletion') {
             throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403);
         }
@@ -247,7 +247,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
 
 export const getCurrentUser = async (userId, userType) => {
     if (userType === 'super_admin') {
-        const admin = await attendanceDB('super_admins').where('id', userId).first();
+        const admin = await attendanceDB('core_super_admins').where('id', userId).first();
         if (!admin) throw new AppError("Admin not found", 404);
         return {
             user_id: admin.id,
@@ -259,16 +259,16 @@ export const getCurrentUser = async (userId, userType) => {
         };
     }
 
-    const user = await attendanceDB('users')
-        .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
-        .where('users.user_id', userId)
+    const user = await attendanceDB('core_users')
+        .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
+        .where('core_users.user_id', userId)
         .select(
-            'users.user_code', 'users.user_name', 'users.email', 'users.user_type', 'users.org_id', 'users.profile_image_url', 'users.force_password_change',
-            'users.tour_dismissed', 'users.pages_tour_seen',
-            'organizations.max_users as org_max_users',
-            'organizations.status as org_status',
-            'organizations.subscription_expiry as org_subscription_expiry',
-            'organizations.grace_period_days as org_grace_period_days'
+            'core_users.user_code', 'core_users.user_name', 'core_users.email', 'core_users.user_type', 'core_users.org_id', 'core_users.profile_image_url', 'core_users.force_password_change',
+            'core_users.tour_dismissed', 'core_users.pages_tour_seen',
+            'core_organizations.max_users as org_max_users',
+            'core_organizations.status as org_status',
+            'core_organizations.subscription_expiry as org_subscription_expiry',
+            'core_organizations.grace_period_days as org_grace_period_days'
         )
         .first();
 
@@ -322,7 +322,7 @@ export const logoutUser = async (refreshToken) => {
 };
 
 export const validatePasswordResetRequest = async (email, reqInfo) => {
-    const user = await attendanceDB('users').where('email', email).first();
+    const user = await attendanceDB('core_users').where('email', email).first();
     if (!user) throw new AppError("User does not exist", 404);
 
     // Construct mock req object for backward compatibility with OtpService
@@ -357,7 +357,7 @@ export const verifyPasswordResetOtp = async (email, otp, reqInfo) => {
 
     if (!isValid) throw new AppError("Invalid or expired OTP", 400);
 
-    const user = await attendanceDB('users').where('email', email).first();
+    const user = await attendanceDB('core_users').where('email', email).first();
     if (!user) throw new AppError("User not found", 400);
 
     const resetToken = jwt.sign(
@@ -377,7 +377,7 @@ export const executePasswordReset = async (resetToken, newPassword) => {
         if (decoded.type !== "password_reset") throw new AppError("Invalid token type", 403);
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await attendanceDB("users").where("user_id", decoded.user_id).update({ user_password: hashedPassword });
+        await attendanceDB("core_users").where("user_id", decoded.user_id).update({ user_password: hashedPassword });
 
         return true;
     } catch (err) {
@@ -393,7 +393,7 @@ export const changePassword = async (userId, newPassword) => {
         throw new AppError("Password must be at least 6 characters long", 400);
     }
     const hashedPassword = await bcrypt.hash(newPassword, 12);
-    await attendanceDB("users").where({ user_id: userId }).update({
+    await attendanceDB("core_users").where({ user_id: userId }).update({
         user_password: hashedPassword,
         force_password_change: false
     });

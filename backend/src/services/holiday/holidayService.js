@@ -10,7 +10,7 @@ import EventBus from '../../utils/EventBus.js';
 // Helper to notify employees when new holidays are declared
 async function notifyNewHolidays(org_id, holidays) {
     try {
-        const users = await attendanceDB('users')
+        const users = await attendanceDB('core_users')
             .where({ org_id, is_deleted: 0, is_active: 1 })
             .select('user_id');
 
@@ -43,7 +43,7 @@ export const getHolidays = async (org_id) => {
     }
 
     // 2. Fetch from DB on Cache Miss
-    const holidays = await attendanceDB('holidays')
+    const holidays = await attendanceDB('org_holidays')
         .select(
             '*',
             attendanceDB.raw(
@@ -94,7 +94,7 @@ export const createHolidays = async (org_id, holidaysToInsert) => {
 
     await attendanceDB.transaction(async (trx) => {
 
-        await trx('holidays').insert(prepareData);
+        await trx('org_holidays').insert(prepareData);
 
     });
 
@@ -146,9 +146,9 @@ export const updateHoliday = async (id, org_id, data) => {
             JSON.stringify(data.applicable_json);
 
 
-    const holiday = await attendanceDB('holidays').where({ holiday_id: id, org_id }).first();
+    const holiday = await attendanceDB('org_holidays').where({ holiday_id: id, org_id }).first();
 
-    const count = await attendanceDB('holidays')
+    const count = await attendanceDB('org_holidays')
         .where({
             holiday_id: id,
             org_id
@@ -189,9 +189,9 @@ export const updateHoliday = async (id, org_id, data) => {
 //Delete Holidays
 export const deleteHolidays = async (org_id, ids) => {
 
-    const holidays = await attendanceDB('holidays').whereIn('holiday_id', ids).andWhere({ org_id }).select('holiday_date');
+    const holidays = await attendanceDB('org_holidays').whereIn('holiday_id', ids).andWhere({ org_id }).select('holiday_date');
 
-    const count = await attendanceDB('holidays')
+    const count = await attendanceDB('org_holidays')
         .whereIn('holiday_id', ids)
         .andWhere({ org_id })
         .del();
@@ -249,7 +249,7 @@ export const validateBulkHolidays = async (org_id, holidays) => {
     });
 
     if (inputDates.size > 0) {
-        const existingHolidays = await attendanceDB('holidays')
+        const existingHolidays = await attendanceDB('org_holidays')
             .where({ org_id })
             .whereIn('holiday_date', Array.from(inputDates))
             .select(
@@ -324,7 +324,7 @@ export const bulkCreateFromJson = async (org_id, holidays) => {
     if (prepareData.length > 0) {
         try {
             await attendanceDB.transaction(async (trx) => {
-                await trx('holidays').insert(prepareData);
+                await trx('org_holidays').insert(prepareData);
             });
             results.success_count = prepareData.length;
             // Invalidate Cache
@@ -396,7 +396,7 @@ export const bulkUploadFromFile = async (org_id, file) => {
     const prepareData = [];
     const seenDates = new Set();
 
-    const existingHolidays = await attendanceDB('holidays')
+    const existingHolidays = await attendanceDB('org_holidays')
         .where({ org_id })
         .select(attendanceDB.raw("DATE_FORMAT(holiday_date, '%Y-%m-%d') as holiday_date"));
     const existingDates = new Set(existingHolidays.map(h => h.holiday_date));
@@ -431,7 +431,7 @@ export const bulkUploadFromFile = async (org_id, file) => {
     if (prepareData.length > 0) {
         try {
             await attendanceDB.transaction(async (trx) => {
-                await trx('holidays').insert(prepareData);
+                await trx('org_holidays').insert(prepareData);
             });
             results.success_count = prepareData.length;
             // Invalidate Cache

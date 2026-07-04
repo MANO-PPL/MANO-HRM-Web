@@ -6,7 +6,7 @@ import { PayrollCalculationService } from '../payroll/PayrollCalculationService.
 
 export async function getMyHistory({ user_id, org_id }) {
     const leaves = await attendanceDB('leave_request as lr')
-        .join('users as u', 'lr.user_id', 'u.user_id')
+        .join('core_users as u', 'lr.user_id', 'u.user_id')
         .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
         .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
         .select(
@@ -213,11 +213,11 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
     }
 
     try {
-        const employee = await attendanceDB('users').where({ user_id }).select('user_name').first();
+        const employee = await attendanceDB('core_users').where({ user_id }).select('user_name').first();
         const employeeName = employee?.user_name || 'An employee';
         const statusLabel = wasApproved ? 'approved' : 'pending';
 
-        const admins = await attendanceDB('users')
+        const admins = await attendanceDB('core_users')
             .where({ org_id, is_deleted: 0, is_active: 1 })
             .whereIn('user_type', ['admin', 'hr'])
             .select('user_id');
@@ -241,7 +241,7 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
 
 export async function getPendingRequests({ org_id }) {
     const requests = await attendanceDB('leave_request as lr')
-        .join('users as u', 'lr.user_id', 'u.user_id')
+        .join('core_users as u', 'lr.user_id', 'u.user_id')
         .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
         .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
         .select(
@@ -280,7 +280,7 @@ export async function getPendingRequests({ org_id }) {
 
 export async function getAdminHistory({ org_id, user_id, status, start_date, end_date }) {
     let query = attendanceDB('leave_request as lr')
-        .join('users as u', 'lr.user_id', 'u.user_id')
+        .join('core_users as u', 'lr.user_id', 'u.user_id')
         .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
         .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
         .select(
@@ -460,7 +460,7 @@ export async function getEmployeeLeaveBalance({ org_id, user_id, year }) {
     const balances = await attendanceDB('leave_balances as lb')
         .join('leave_policies_rules as lpr', 'lb.rule_id', 'lpr.rule_id')
         .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .join('users as u', 'lb.user_id', 'u.user_id')
+        .join('core_users as u', 'lb.user_id', 'u.user_id')
         .select(
             'lb.*',
             'lpr.name as leave_type',
@@ -492,7 +492,7 @@ export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id }) {
     let query = attendanceDB('leave_balances as lb')
         .join('leave_policies_rules as lpr', 'lb.rule_id', 'lpr.rule_id')
         .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .join('users as u', 'lb.user_id', 'u.user_id')
+        .join('core_users as u', 'lb.user_id', 'u.user_id')
         .select(
             'lb.*',
             'lpr.name as leave_type',
@@ -531,7 +531,7 @@ export async function setLeaveBalance({ org_id, user_id, rule_id, year, allocate
     }
 
     // Validate user belongs to org
-    const user = await attendanceDB('users').where({ user_id, org_id }).first();
+    const user = await attendanceDB('core_users').where({ user_id, org_id }).first();
     if (!user) {
         throw { status: 404, message: "User not found in this organization" };
     }
@@ -999,7 +999,7 @@ export async function assignPolicyToEmployees({ org_id, lp_id, user_ids, year })
     }
 
     // Verify users belong to org
-    const users = await attendanceDB('users')
+    const users = await attendanceDB('core_users')
         .where({ org_id, is_deleted: 0 })
         .whereIn('user_id', user_ids);
 

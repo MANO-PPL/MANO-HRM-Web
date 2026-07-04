@@ -68,7 +68,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
     try {
         if (!text || typeof text !== 'string') return [];
 
-        const sender = await attendanceDB('users')
+        const sender = await attendanceDB('core_users')
             .where({ user_id: sender_id })
             .select('user_name')
             .first();
@@ -85,19 +85,19 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
         }
 
         // Fetch active coworkers in the organization (optionally filtered by org_id)
-        let orgUsersQuery = attendanceDB('users')
-            .where({ 'users.is_deleted': 0, 'users.is_active': 1 })
-            .whereNot({ 'users.user_id': sender_id });
+        let orgUsersQuery = attendanceDB('core_users')
+            .where({ 'core_users.is_deleted': 0, 'core_users.is_active': 1 })
+            .whereNot({ 'core_users.user_id': sender_id });
 
         if (org_id !== null && org_id !== undefined) {
-            orgUsersQuery = orgUsersQuery.where({ 'users.org_id': org_id });
+            orgUsersQuery = orgUsersQuery.where({ 'core_users.org_id': org_id });
         }
 
         if (allowedMemberIds) {
-            orgUsersQuery = orgUsersQuery.whereIn('users.user_id', allowedMemberIds);
+            orgUsersQuery = orgUsersQuery.whereIn('core_users.user_id', allowedMemberIds);
         }
 
-        const orgUsers = await orgUsersQuery.select('users.user_id', 'users.user_name');
+        const orgUsers = await orgUsersQuery.select('core_users.user_id', 'core_users.user_name');
 
         // Regex to find mentions (e.g. @John Doe)
         const mentionRegex = /@([a-zA-Z0-9\s._-]+)/g;
@@ -202,7 +202,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
 
                     // 5. Emit real-time WebSocket update event
                     if (io) {
-                        const sender = await attendanceDB('users')
+                        const sender = await attendanceDB('core_users')
                             .where({ user_id: sender_id })
                             .select('user_name', 'profile_image_url')
                             .first();

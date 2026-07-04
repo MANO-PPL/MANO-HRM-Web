@@ -22,10 +22,10 @@ const ALLOWED_UPDATE_FIELDS = new Set([
 ]);
 
 export const getAllUsers = async (orgId, includeWorkLocation = false) => {
-    let usersQuery = attendanceDB('users as u')
-        .leftJoin('designations as d', 'u.desg_id', 'd.desg_id')
-        .leftJoin('departments as dep', 'u.dept_id', 'dep.dept_id')
-        .leftJoin('shifts as s', 'u.shift_id', 's.shift_id')
+    let usersQuery = attendanceDB('core_users as u')
+        .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
+        .leftJoin('org_departments as dep', 'u.dept_id', 'dep.dept_id')
+        .leftJoin('org_shifts as s', 'u.shift_id', 's.shift_id')
         .select(
             'u.user_id', 'u.user_name', 'u.email', 'u.phone_no', 'u.user_type',
             'd.desg_name', 'd.desg_id', 'dep.dept_name', 'dep.dept_id',
@@ -37,8 +37,8 @@ export const getAllUsers = async (orgId, includeWorkLocation = false) => {
     const users = await usersQuery;
 
     if (includeWorkLocation) {
-        const workLocationsData = await attendanceDB('user_work_locations as uwl')
-            .join('work_locations as wl', 'uwl.location_id', 'wl.location_id')
+        const workLocationsData = await attendanceDB('org_user_work_locations as uwl')
+            .join('org_work_locations as wl', 'uwl.location_id', 'wl.location_id')
             .select('uwl.user_id', 'wl.location_id as loc_id', 'wl.location_name as loc_name', 'wl.latitude', 'wl.longitude', 'wl.radius', 'wl.is_active');
 
         const workLocationMap = {};
@@ -56,10 +56,10 @@ export const getAllUsers = async (orgId, includeWorkLocation = false) => {
 };
 
 export const getUserById = async (userId, orgId) => {
-    const user = await attendanceDB('users as u')
-        .leftJoin('designations as d', 'u.desg_id', 'd.desg_id')
-        .leftJoin('departments as dep', 'u.dept_id', 'dep.dept_id')
-        .leftJoin('shifts as s', 'u.shift_id', 's.shift_id')
+    const user = await attendanceDB('core_users as u')
+        .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
+        .leftJoin('org_departments as dep', 'u.dept_id', 'dep.dept_id')
+        .leftJoin('org_shifts as s', 'u.shift_id', 's.shift_id')
         .select(
             'u.user_id', 'u.user_name', 'u.email', 'u.phone_no', 'u.user_type', 'u.desg_id', 'u.dept_id', 'u.shift_id', 'u.org_id',
             'u.profile_image_url', 'u.is_active', 'u.is_deleted', 'u.deleted_at', 'u.force_password_change',
@@ -71,8 +71,8 @@ export const getUserById = async (userId, orgId) => {
 
     if (!user) throw new AppError("User not found", 404);
 
-    const workLocations = await attendanceDB('user_work_locations as uwl')
-        .join('work_locations as wl', 'uwl.location_id', 'wl.location_id')
+    const workLocations = await attendanceDB('org_user_work_locations as uwl')
+        .join('org_work_locations as wl', 'uwl.location_id', 'wl.location_id')
         .select('wl.location_id', 'wl.location_name', 'wl.latitude', 'wl.longitude', 'wl.radius')
         .where('uwl.user_id', userId);
 
@@ -88,13 +88,13 @@ export const createUser = async (userData, authInfo, profileImageBuffer = null) 
     if (!user_name || !user_password || (!email && !phone_no)) throw new AppError("Missing required fields (Name, Password, Email or Phone)", 400);
 
     if (email) {
-        const existingEmail = await attendanceDB("users").where({ email }).first();
+        const existingEmail = await attendanceDB("core_users").where({ email }).first();
         if (existingEmail) throw new AppError("Email is already taken", 400);
     }
 
     const phoneToSave = phone_no?.trim() || null;
     if (phoneToSave) {
-        const existingPhone = await attendanceDB("users").where({ phone_no: phoneToSave }).first();
+        const existingPhone = await attendanceDB("core_users").where({ phone_no: phoneToSave }).first();
         if (existingPhone) throw new AppError("Mobile number is already taken", 400);
     }
 
@@ -103,10 +103,10 @@ export const createUser = async (userData, authInfo, profileImageBuffer = null) 
     let userCode;
 
     await attendanceDB.transaction(async (trx) => {
-        const org = await trx("organizations").where({ org_id: authInfo.orgId }).forUpdate().first();
+        const org = await trx("core_organizations").where({ org_id: authInfo.orgId }).forUpdate().first();
         if (!org) throw new AppError("Organization not found", 404);
 
-        const currentUsersResult = await trx("users")
+        const currentUsersResult = await trx("core_users")
             .where({ org_id: authInfo.orgId, is_deleted: false })
             .count('user_id as count')
             .first();
@@ -119,9 +119,9 @@ export const createUser = async (userData, authInfo, profileImageBuffer = null) 
         const nextNumber = org.last_user_number + 1;
         userCode = `${org.org_code}-${String(nextNumber).padStart(3, "0")}`;
 
-        await trx("organizations").where({ org_id: authInfo.orgId }).update({ last_user_number: nextNumber });
+        await trx("core_organizations").where({ org_id: authInfo.orgId }).update({ last_user_number: nextNumber });
 
-        const [insertedId] = await trx("users").insert({
+        const [insertedId] = await trx("core_users").insert({
             org_id: authInfo.orgId, user_name, user_code: userCode, user_password: hashedPassword,
             email, phone_no: phoneToSave, desg_id: desg_id || null, dept_id: dept_id || null,
             shift_id: shift_id || null, user_type: user_type || "employee",
@@ -154,7 +154,7 @@ export const createUser = async (userData, authInfo, profileImageBuffer = null) 
                 quality: 90
             });
             profileImageUrl = uploadResult.url;
-            await attendanceDB('users').where({ user_id: newUserId }).update({
+            await attendanceDB('core_users').where({ user_id: newUserId }).update({
                 profile_image_url: profileImageUrl
             });
         } catch (uploadErr) {
@@ -168,7 +168,7 @@ export const createUser = async (userData, authInfo, profileImageBuffer = null) 
 
 export const updateUser = async (userId, updatesData, authInfo, profileImageBuffer = null, io = null) => {
     const updates = {};
-    const targetUser = await attendanceDB("users").where({ user_id: userId, org_id: authInfo.orgId }).first();
+    const targetUser = await attendanceDB("core_users").where({ user_id: userId, org_id: authInfo.orgId }).first();
 
     if (!targetUser) throw new AppError("User not found", 404);
 
@@ -186,12 +186,12 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
     if (updatesData.user_type === 'admin' && targetUser.user_type !== 'admin') throw new AppError("Cannot promote user to Admin", 403);
 
     if (updatesData.email) {
-        const existing = await attendanceDB("users").where({ email: updatesData.email }).andWhereNot({ user_id: userId }).first();
+        const existing = await attendanceDB("core_users").where({ email: updatesData.email }).andWhereNot({ user_id: userId }).first();
         if (existing) throw new AppError("Email is already taken", 400);
     }
 
     if (updatesData.phone_no?.trim()) {
-        const existing = await attendanceDB("users").where({ phone_no: updatesData.phone_no.trim() }).andWhereNot({ user_id: userId }).first();
+        const existing = await attendanceDB("core_users").where({ phone_no: updatesData.phone_no.trim() }).andWhereNot({ user_id: userId }).first();
         if (existing) throw new AppError("Mobile number is already taken", 400);
     }
 
@@ -211,7 +211,7 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
 
     await attendanceDB.transaction(async (trx) => {
         if (Object.keys(updates).length > 0) {
-            const affected = await trx('users').where('user_id', userId).andWhere('org_id', authInfo.orgId).update(updates);
+            const affected = await trx('core_users').where('user_id', userId).andWhere('org_id', authInfo.orgId).update(updates);
             if (affected === 0) throw new AppError("User not found or unauthorized", 404);
         }
     });
@@ -228,7 +228,7 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
                 quality: 90
             });
             profileImageUrl = uploadResult.url;
-            await attendanceDB('users').where({ user_id: userId }).update({
+            await attendanceDB('core_users').where({ user_id: userId }).update({
                 profile_image_url: profileImageUrl
             });
         } catch (uploadErr) {
@@ -312,7 +312,7 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
 
                         if (io) {
                             try {
-                                const sender = await attendanceDB('users').where({ user_id: msg.sender_id }).select('user_name', 'profile_image_url').first();
+                                const sender = await attendanceDB('core_users').where({ user_id: msg.sender_id }).select('user_name', 'profile_image_url').first();
                                 const formattedResponseMsg = {
                                     message_id: msg.id,
                                     room_id: Number(msg.conversation_id),
@@ -344,12 +344,12 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
 export const softDeleteUser = async (userId, authInfo) => {
     if (parseInt(userId) === authInfo.initiatorId) throw new AppError("You cannot delete your own account", 400);
 
-    const targetUser = await attendanceDB('users').where({ user_id: userId, org_id: authInfo.orgId }).first();
+    const targetUser = await attendanceDB('core_users').where({ user_id: userId, org_id: authInfo.orgId }).first();
     if (!targetUser) throw new AppError("User not found", 404);
     if (targetUser.user_type === 'admin') throw new AppError("Cannot delete Admin users", 403);
     if (authInfo.initiatorRole === 'hr' && targetUser.user_type === 'hr') throw new AppError("HR cannot delete other HR users", 403);
 
-    const affected = await attendanceDB('users').where('user_id', userId).andWhere('org_id', authInfo.orgId).update({
+    const affected = await attendanceDB('core_users').where('user_id', userId).andWhere('org_id', authInfo.orgId).update({
         is_deleted: true, is_active: false, deleted_at: attendanceDB.fn.now()
     });
 
@@ -369,10 +369,10 @@ export const softDeleteUser = async (userId, authInfo) => {
 };
 
 export const restoreUser = async (userId, authInfo) => {
-    const targetUser = await attendanceDB('users').where({ user_id: userId, org_id: authInfo.orgId }).first();
+    const targetUser = await attendanceDB('core_users').where({ user_id: userId, org_id: authInfo.orgId }).first();
     if (!targetUser) throw new AppError("User not found", 404);
 
-    await attendanceDB('users').where('user_id', userId).update({ is_deleted: false, deleted_at: null, is_active: false });
+    await attendanceDB('core_users').where('user_id', userId).update({ is_deleted: false, deleted_at: null, is_active: false });
 
     try {
         EventBus.emitActivityLog({
@@ -386,7 +386,7 @@ export const restoreUser = async (userId, authInfo) => {
 };
 
 export const toggleUserStatus = async (userId, isActive, authInfo) => {
-    const targetUser = await attendanceDB('users').where({ user_id: userId, org_id: authInfo.orgId }).select('user_type', 'user_name').first();
+    const targetUser = await attendanceDB('core_users').where({ user_id: userId, org_id: authInfo.orgId }).select('user_type', 'user_name').first();
     if (!targetUser) throw new AppError("User not found", 404);
 
     if (authInfo.initiatorRole === 'hr' && (targetUser.user_type === 'admin' || targetUser.user_type === 'hr')) {
@@ -397,7 +397,7 @@ export const toggleUserStatus = async (userId, isActive, authInfo) => {
         throw new AppError("Cannot deactivate Admin users", 403);
     }
 
-    await attendanceDB('users').where('user_id', userId).where('org_id', authInfo.orgId).update({ is_active: isActive });
+    await attendanceDB('core_users').where('user_id', userId).where('org_id', authInfo.orgId).update({ is_active: isActive });
 
     return true;
 };
@@ -429,13 +429,13 @@ const extractKeyFromUrl = (url) => {
 export const permanentlyDeleteUser = async (userId) => {
     const trx = await attendanceDB.transaction();
     try {
-        const user = await trx('users').where('user_id', userId).first();
+        const user = await trx('core_users').where('user_id', userId).first();
         if (!user) {
             await trx.rollback();
             return false;
         }
 
-        await trx('refresh_tokens').where('user_id', userId).del();
+        await trx('core_refresh_tokens').where('user_id', userId).del();
         await trx('notifications').where('user_id', userId).del();
         await trx('sys_activity_logs').where('user_id', userId).del();
         await trx('sys_error_logs').where('user_id', userId).del();
@@ -447,7 +447,7 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('leave_request').where('reviewed_by', userId).update({ reviewed_by: null });
 
         await trx('attendance_correction_requests').where('user_id', userId).del();
-        await trx('user_work_locations').where('user_id', userId).del();
+        await trx('org_user_work_locations').where('user_id', userId).del();
         await trx('daily_activities').where('user_id', userId).del();
         await trx('daily_attendance').where('user_id', userId).del();
         await trx('dar_requests').where('user_id', userId).del();
@@ -519,7 +519,7 @@ export const permanentlyDeleteUser = async (userId) => {
             if (key) await safeDeleteS3(key);
         }
 
-        await trx('users').where('user_id', userId).del();
+        await trx('core_users').where('user_id', userId).del();
         await trx.commit();
         return true;
     } catch (error) {
@@ -578,20 +578,20 @@ export const bulkCreateUsers = async (file, authInfo) => {
     const deptMap = {}, desgMap = {}, shiftMap = {};
 
     await attendanceDB.transaction(async (trx) => {
-        const org = await trx("organizations").where({ org_id: authInfo.orgId }).forUpdate().first();
+        const org = await trx("core_organizations").where({ org_id: authInfo.orgId }).forUpdate().first();
         if (!org) throw new AppError("Organization not found", 404);
         let nextUserNumber = org.last_user_number;
 
-        const currentUsersResult = await trx("users")
+        const currentUsersResult = await trx("core_users")
             .where({ org_id: authInfo.orgId, is_deleted: false })
             .count('user_id as count')
             .first();
         let currentCount = parseInt(currentUsersResult.count || 0, 10);
 
         for (const deptName of uniqueDepts) {
-            let dept = await trx("departments").where({ dept_name: deptName, org_id: authInfo.orgId }).first();
+            let dept = await trx("org_departments").where({ dept_name: deptName, org_id: authInfo.orgId }).first();
             if (!dept) {
-                const [newId] = await trx("departments").insert({ dept_name: deptName, org_id: authInfo.orgId });
+                const [newId] = await trx("org_departments").insert({ dept_name: deptName, org_id: authInfo.orgId });
                 deptMap[deptName.toLowerCase()] = newId;
             } else {
                 deptMap[deptName.toLowerCase()] = dept.dept_id;
@@ -599,16 +599,16 @@ export const bulkCreateUsers = async (file, authInfo) => {
         }
 
         for (const desgName of uniqueDesgs) {
-            let desg = await trx("designations").where({ desg_name: desgName, org_id: authInfo.orgId }).first();
+            let desg = await trx("org_designations").where({ desg_name: desgName, org_id: authInfo.orgId }).first();
             if (!desg) {
-                const [newId] = await trx("designations").insert({ desg_name: desgName, org_id: authInfo.orgId });
+                const [newId] = await trx("org_designations").insert({ desg_name: desgName, org_id: authInfo.orgId });
                 desgMap[desgName.toLowerCase()] = newId;
             } else {
                 desgMap[desgName.toLowerCase()] = desg.desg_id;
             }
         }
 
-        const allShifts = await trx("shifts").where({ org_id: authInfo.orgId }).select("shift_id", "shift_name");
+        const allShifts = await trx("org_shifts").where({ org_id: authInfo.orgId }).select("shift_id", "shift_name");
         for (const sh of allShifts) shiftMap[sh.shift_name.toLowerCase()] = sh.shift_id;
 
         for (const { row, rowNumber } of rowsData) {
@@ -631,7 +631,7 @@ export const bulkCreateUsers = async (file, authInfo) => {
                 results.failure_count++; results.errors.push(`Row ${rowNumber}: Missing Name, Email or Phone`); continue;
             }
 
-            const existing = await trx("users")
+            const existing = await trx("core_users")
                 .where(function () {
                     if (email) this.orWhere({ email });
                     if (phone) this.orWhere({ phone_no: phone });
@@ -650,7 +650,7 @@ export const bulkCreateUsers = async (file, authInfo) => {
             nextUserNumber++;
             const userCode = `${org.org_code || org.org_name}-${String(nextUserNumber).padStart(3, "0")}`;
 
-            await trx("users").insert({
+            await trx("core_users").insert({
                 org_id: authInfo.orgId, user_name: name, user_code: userCode, email, phone_no: phone || "",
                 user_password: hashedPassword, user_type: type,
                 dept_id: deptMap[(getVal(row, "department") || getVal(row, "dept"))?.toLowerCase()],
@@ -663,7 +663,7 @@ export const bulkCreateUsers = async (file, authInfo) => {
             results.success_count++;
         }
 
-        await trx("organizations").where({ org_id: authInfo.orgId }).update({ last_user_number: nextUserNumber });
+        await trx("core_organizations").where({ org_id: authInfo.orgId }).update({ last_user_number: nextUserNumber });
     });
 
     return results;
@@ -671,15 +671,15 @@ export const bulkCreateUsers = async (file, authInfo) => {
 
 // --- Lookups & Helpers ---
 export const getDepartments = async (orgId) => {
-    return await attendanceDB("departments").where({ org_id: orgId }).select("dept_id", "dept_name");
+    return await attendanceDB("org_departments").where({ org_id: orgId }).select("dept_id", "dept_name");
 };
 
 export const createDepartment = async (deptName, orgId) => {
     if (!deptName) throw new AppError("Department name is required", 400);
-    const existing = await attendanceDB("departments").where({ dept_name: deptName, org_id: orgId }).first();
+    const existing = await attendanceDB("org_departments").where({ dept_name: deptName, org_id: orgId }).first();
     if (existing) throw new AppError("Department already exists", 400);
 
-    const [newId] = await attendanceDB("departments").insert({ dept_name: deptName, org_id: orgId });
+    const [newId] = await attendanceDB("org_departments").insert({ dept_name: deptName, org_id: orgId });
     return { dept_id: newId, dept_name: deptName };
 };
 
@@ -687,24 +687,24 @@ export const updateDepartment = async (deptId, deptName, orgId) => {
     if (!deptName || !deptName.trim()) throw new AppError("Department name is required", 400);
     const trimmed = deptName.trim();
 
-    const dept = await attendanceDB("departments").where({ dept_id: deptId, org_id: orgId }).first();
+    const dept = await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).first();
     if (!dept) throw new AppError("Department not found", 404);
 
-    const existing = await attendanceDB("departments")
+    const existing = await attendanceDB("org_departments")
         .where({ dept_name: trimmed, org_id: orgId })
         .whereNot({ dept_id: deptId })
         .first();
     if (existing) throw new AppError("Another department with this name already exists", 400);
 
-    await attendanceDB("departments").where({ dept_id: deptId, org_id: orgId }).update({ dept_name: trimmed });
+    await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).update({ dept_name: trimmed });
     return { dept_id: deptId, dept_name: trimmed };
 };
 
 export const deleteDepartment = async (deptId, orgId) => {
-    const dept = await attendanceDB("departments").where({ dept_id: deptId, org_id: orgId }).first();
+    const dept = await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).first();
     if (!dept) throw new AppError("Department not found", 404);
 
-    const userInDept = await attendanceDB('users')
+    const userInDept = await attendanceDB('core_users')
         .where({ dept_id: deptId, org_id: orgId })
         .where(builder => builder.where('is_deleted', false).orWhereNull('is_deleted'))
         .first();
@@ -712,20 +712,20 @@ export const deleteDepartment = async (deptId, orgId) => {
         throw new AppError("Cannot delete department because it is currently assigned to employee(s)", 400);
     }
 
-    await attendanceDB("departments").where({ dept_id: deptId, org_id: orgId }).del();
+    await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).del();
     return { success: true };
 };
 
 export const getDesignations = async (orgId) => {
-    return await attendanceDB("designations").where({ org_id: orgId }).select("desg_id", "desg_name");
+    return await attendanceDB("org_designations").where({ org_id: orgId }).select("desg_id", "desg_name");
 };
 
 export const createDesignation = async (desgName, orgId) => {
     if (!desgName) throw new AppError("Designation name is required", 400);
-    const existing = await attendanceDB("designations").where({ desg_name: desgName, org_id: orgId }).first();
+    const existing = await attendanceDB("org_designations").where({ desg_name: desgName, org_id: orgId }).first();
     if (existing) throw new AppError("Designation already exists", 400);
 
-    const [newId] = await attendanceDB("designations").insert({ desg_name: desgName, org_id: orgId });
+    const [newId] = await attendanceDB("org_designations").insert({ desg_name: desgName, org_id: orgId });
     return { desg_id: newId, desg_name: desgName };
 };
 
@@ -733,24 +733,24 @@ export const updateDesignation = async (desgId, desgName, orgId) => {
     if (!desgName || !desgName.trim()) throw new AppError("Designation name is required", 400);
     const trimmed = desgName.trim();
 
-    const desg = await attendanceDB("designations").where({ desg_id: desgId, org_id: orgId }).first();
+    const desg = await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).first();
     if (!desg) throw new AppError("Designation not found", 404);
 
-    const existing = await attendanceDB("designations")
+    const existing = await attendanceDB("org_designations")
         .where({ desg_name: trimmed, org_id: orgId })
         .whereNot({ desg_id: desgId })
         .first();
     if (existing) throw new AppError("Another designation with this name already exists", 400);
 
-    await attendanceDB("designations").where({ desg_id: desgId, org_id: orgId }).update({ desg_name: trimmed });
+    await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).update({ desg_name: trimmed });
     return { desg_id: desgId, desg_name: trimmed };
 };
 
 export const deleteDesignation = async (desgId, orgId) => {
-    const desg = await attendanceDB("designations").where({ desg_id: desgId, org_id: orgId }).first();
+    const desg = await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).first();
     if (!desg) throw new AppError("Designation not found", 404);
 
-    const userInDesg = await attendanceDB('users')
+    const userInDesg = await attendanceDB('core_users')
         .where({ desg_id: desgId, org_id: orgId })
         .where(builder => builder.where('is_deleted', false).orWhereNull('is_deleted'))
         .first();
@@ -758,13 +758,13 @@ export const deleteDesignation = async (desgId, orgId) => {
         throw new AppError("Cannot delete designation because it is currently assigned to employee(s)", 400);
     }
 
-    await attendanceDB("designations").where({ desg_id: desgId, org_id: orgId }).del();
+    await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).del();
     return { success: true };
 };
 
 
 export const getShifts = async (orgId) => {
-    const shifts = await attendanceDB("shifts").where({ org_id: orgId });
+    const shifts = await attendanceDB("org_shifts").where({ org_id: orgId });
     return shifts.map(s => {
         const rules = typeof s.policy_rules === 'string' ? JSON.parse(s.policy_rules) : (s.policy_rules || {});
         return {
@@ -791,7 +791,7 @@ export const createShift = async (shiftData, orgId) => {
 
     if (!shift_name) throw new AppError("Missing required shift fields", 400);
 
-    const existing = await attendanceDB("shifts").where({ shift_name, org_id }).first();
+    const existing = await attendanceDB("org_shifts").where({ shift_name, org_id }).first();
     if (existing) throw new AppError("Shift already exists", 400);
 
     const rules = policy_rules || {};
@@ -814,7 +814,7 @@ export const createShift = async (shiftData, orgId) => {
         entry_requirements: rules.entry_requirements || { selfie: true, geofence: true }
     };
 
-    const [newId] = await attendanceDB("shifts").insert({
+    const [newId] = await attendanceDB("org_shifts").insert({
         org_id,
         shift_name,
         is_active: isActiveVal,
@@ -845,24 +845,24 @@ export const updateShift = async (shiftId, shiftData, orgId) => {
         });
     }
 
-    const affected = await attendanceDB("shifts").where({ shift_id: shiftId, org_id }).update(updates);
+    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id }).update(updates);
     if (affected === 0) throw new AppError("Shift not found", 404);
     return true;
 };
 
 export const deleteShift = async (shiftId, orgId) => {
-    const usersCount = await attendanceDB('users').where({ shift_id: shiftId }).count('user_id as count').first();
+    const usersCount = await attendanceDB('core_users').where({ shift_id: shiftId }).count('user_id as count').first();
     if (usersCount.count > 0) {
         throw new AppError(`Cannot delete shift. It is assigned to ${usersCount.count} users.`, 400);
     }
 
-    const affected = await attendanceDB("shifts").where({ shift_id: shiftId, org_id }).del();
+    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id }).del();
     if (affected === 0) throw new AppError("Shift not found", 404);
     return true;
 };
 
 export const getWorkLocations = async (orgId) => {
-    return await attendanceDB("work_locations").where({ org_id: orgId }).select(
+    return await attendanceDB("org_work_locations").where({ org_id: orgId }).select(
         "location_id", "location_name", "latitude", "longitude", "radius", "is_active"
     );
 };
@@ -896,9 +896,9 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
     await attendanceDB.transaction(async (trx) => {
         for (const deptName of uniqueDepts) {
             if (!deptName) continue;
-            let dept = await trx("departments").where({ dept_name: deptName, org_id: orgId }).first();
+            let dept = await trx("org_departments").where({ dept_name: deptName, org_id: orgId }).first();
             if (!dept) {
-                const [newId] = await trx("departments").insert({ dept_name: deptName, org_id: orgId });
+                const [newId] = await trx("org_departments").insert({ dept_name: deptName, org_id: orgId });
                 deptMap[deptName.toLowerCase()] = newId;
             } else {
                 deptMap[deptName.toLowerCase()] = dept.dept_id;
@@ -907,24 +907,24 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
 
         for (const desgName of uniqueDesgs) {
             if (!desgName) continue;
-            let desg = await trx("designations").where({ desg_name: desgName, org_id: orgId }).first();
+            let desg = await trx("org_designations").where({ desg_name: desgName, org_id: orgId }).first();
             if (!desg) {
-                const [newId] = await trx("designations").insert({ desg_name: desgName, org_id: orgId });
+                const [newId] = await trx("org_designations").insert({ desg_name: desgName, org_id: orgId });
                 desgMap[desgName.toLowerCase()] = newId;
             } else {
                 desgMap[desgName.toLowerCase()] = desg.desg_id;
             }
         }
 
-        const allShifts = await trx("shifts").where({ org_id: orgId }).select('shift_id', 'shift_name');
+        const allShifts = await trx("org_shifts").where({ org_id: orgId }).select('shift_id', 'shift_name');
         for (const sh of allShifts) {
             shiftMap[sh.shift_name.toLowerCase()] = sh.shift_id;
         }
 
-        const org = await trx("organizations").where({ org_id: orgId }).forUpdate().first();
+        const org = await trx("core_organizations").where({ org_id: orgId }).forUpdate().first();
         if (!org) throw new AppError("Organization not found", 404);
 
-        const currentUsersResult = await trx("users")
+        const currentUsersResult = await trx("core_users")
             .where({ org_id: orgId, is_deleted: false })
             .count('user_id as count')
             .first();
@@ -957,7 +957,7 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
             try {
                 let existing = null;
                 if (email || phone) {
-                    existing = await trx("users")
+                    existing = await trx("core_users")
                         .where(function () {
                             if (email) this.orWhere({ email });
                             if (phone) this.orWhere({ phone_no: phone });
@@ -985,7 +985,7 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
                 nextUserNumber++;
                 const userCode = `${org.org_code}-${String(nextUserNumber).padStart(3, "0")}`;
 
-                await trx("users").insert({
+                await trx("core_users").insert({
                     org_id: orgId,
                     user_name: name,
                     user_code: userCode,
@@ -1007,7 +1007,7 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
             }
         }
 
-        await trx("organizations")
+        await trx("core_organizations")
             .where({ org_id: orgId })
             .update({ last_user_number: nextUserNumber });
     });
@@ -1033,7 +1033,7 @@ export const bulkValidateUsers = async (users, orgId) => {
     });
 
     if (inputDepts.size > 0) {
-        const existingDepts = await attendanceDB("departments")
+        const existingDepts = await attendanceDB("org_departments")
             .where('org_id', orgId)
             .whereIn(attendanceDB.raw('LOWER(dept_name)'), Array.from(inputDepts))
             .select('dept_name');
@@ -1049,7 +1049,7 @@ export const bulkValidateUsers = async (users, orgId) => {
     }
 
     if (inputDesgs.size > 0) {
-        const existingDesgs = await attendanceDB("designations")
+        const existingDesgs = await attendanceDB("org_designations")
             .where('org_id', orgId)
             .whereIn(attendanceDB.raw('LOWER(desg_name)'), Array.from(inputDesgs))
             .select('desg_name');

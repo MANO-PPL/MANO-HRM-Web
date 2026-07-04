@@ -57,13 +57,13 @@ try {
  */
 export const registerToken = async (userId, token, deviceType = 'android') => {
   try {
-    const existing = await attendanceDB('user_fcm_tokens')
+    const existing = await attendanceDB('core_user_fcm_tokens')
       .where({ token })
       .first();
 
     if (existing) {
       if (existing.user_id !== userId) {
-        await attendanceDB('user_fcm_tokens')
+        await attendanceDB('core_user_fcm_tokens')
           .where({ token })
           .update({
             user_id: userId,
@@ -72,7 +72,7 @@ export const registerToken = async (userId, token, deviceType = 'android') => {
           });
       }
     } else {
-      await attendanceDB('user_fcm_tokens').insert({
+      await attendanceDB('core_user_fcm_tokens').insert({
         user_id: userId,
         token,
         device_type: deviceType,
@@ -93,7 +93,7 @@ export const registerToken = async (userId, token, deviceType = 'android') => {
 export const sendPushNotification = async (userId, title, body, data = {}) => {
   try {
     // Get all active tokens for the user
-    const tokensRows = await attendanceDB('user_fcm_tokens')
+    const tokensRows = await attendanceDB('core_user_fcm_tokens')
       .where({ user_id: userId })
       .select('token');
 
@@ -179,7 +179,7 @@ export const sendPushNotification = async (userId, title, body, data = {}) => {
     // Clean up stale/invalid tokens
     if (invalidTokens.length > 0) {
       console.log(`FCM: Cleaning up ${invalidTokens.length} stale tokens for user ${userId}.`);
-      await attendanceDB('user_fcm_tokens')
+      await attendanceDB('core_user_fcm_tokens')
         .whereIn('token', invalidTokens)
         .delete();
     }

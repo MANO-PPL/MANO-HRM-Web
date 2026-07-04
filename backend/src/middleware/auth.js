@@ -25,7 +25,7 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
 
         // Check if token belongs to super admin
         if (decoded.user_type === 'super_admin') {
-            user = await attendanceDB('super_admins').where({ id: decoded.user_id }).first();
+            user = await attendanceDB('core_super_admins').where({ id: decoded.user_id }).first();
             if (!user) {
                 return res.status(403).json({ message: "Forbidden: Invalid token user" });
             }
@@ -43,15 +43,15 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         }
 
         // Token belongs to regular user
-        user = await attendanceDB('users')
-            .leftJoin('organizations', 'users.org_id', 'organizations.org_id')
+        user = await attendanceDB('core_users')
+            .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
             .select(
-                'users.*',
-                'organizations.status as org_status',
-                'organizations.subscription_expiry as org_subscription_expiry',
-                'organizations.grace_period_days as org_grace_period_days'
+                'core_users.*',
+                'core_organizations.status as org_status',
+                'core_organizations.subscription_expiry as org_subscription_expiry',
+                'core_organizations.grace_period_days as org_grace_period_days'
             )
-            .where({ 'users.user_id': decoded.user_id })
+            .where({ 'core_users.user_id': decoded.user_id })
             .first();
 
         if (!user) {
@@ -138,7 +138,7 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
 export const requireActiveOrg = catchAsync(async (req, res, next) => {
     // If the user belongs to an org, and it is NOT active, block them from using platform features
     if (req.user && req.user.org_id) {
-        const org = await attendanceDB('organizations')
+        const org = await attendanceDB('core_organizations')
             .where({ org_id: req.user.org_id })
             .select('status', 'subscription_expiry', 'grace_period_days')
             .first();
@@ -195,7 +195,7 @@ export const checkFeature = (requiredFeatureColumn) => {
             return res.status(403).json({ message: "Action Denied: No organization context found." });
         }
 
-        const org = await attendanceDB('organizations')
+        const org = await attendanceDB('core_organizations')
             .where({ org_id: req.user.org_id })
             .select(requiredFeatureColumn)
             .first();

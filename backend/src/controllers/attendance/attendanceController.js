@@ -603,7 +603,7 @@ export const getAdminDailySummary = catchAsync(async (req, res) => {
 
   let timezone = "UTC";
   try {
-    const org = await attendanceDB("organizations")
+    const org = await attendanceDB("core_organizations")
       .where("org_id", org_id)
       .select("timezone")
       .first();

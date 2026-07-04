@@ -138,9 +138,9 @@ export const getPayrollDashboard = catchAsync(async (req, res, next) => {
 
     // Get all eligible employees for this month
     const activeSalaryDate = `${year}-${String(monthNum).padStart(2, '0')}-01`;
-    const employees = await attendanceDB('users as u')
+    const employees = await attendanceDB('core_users as u')
         .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
-        .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+        .leftJoin('org_shifts as sh', 'u.shift_id', 'sh.shift_id')
         .where('u.org_id', orgId)
         .where('u.is_deleted', 0)
         .where('s.effective_from', '<=', activeSalaryDate)
@@ -262,9 +262,9 @@ export const getEmployeeProjectedDetails = catchAsync(async (req, res, next) => 
 
     // Realtime projection (fallback if no run or entry was seeded/precalculated)
     const activeSalaryDate = `${year}-${String(monthNum).padStart(2, '0')}-01`;
-    const emp = await attendanceDB('users as u')
+    const emp = await attendanceDB('core_users as u')
         .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
-        .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+        .leftJoin('org_shifts as sh', 'u.shift_id', 'sh.shift_id')
         .where('u.user_id', employeeId)
         .where('s.effective_from', '<=', activeSalaryDate)
         .andWhere(function() {
@@ -392,8 +392,8 @@ export const finalizeEmployeePayroll = catchAsync(async (req, res, next) => {
 
     // Write audit log
     try {
-        const empUser = await attendanceDB('users').where('user_id', employeeId).first();
-        const performer = await attendanceDB('users').where('user_id', finalizedBy).first();
+        const empUser = await attendanceDB('core_users').where('user_id', employeeId).first();
+        const performer = await attendanceDB('core_users').where('user_id', finalizedBy).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
             action: 'LOCK',
@@ -433,8 +433,8 @@ export const payEmployeePayroll = catchAsync(async (req, res, next) => {
 
     // Write audit log
     try {
-        const empUser = await attendanceDB('users').where('user_id', employeeId).first();
-        const performer = await attendanceDB('users').where('user_id', paidBy).first();
+        const empUser = await attendanceDB('core_users').where('user_id', employeeId).first();
+        const performer = await attendanceDB('core_users').where('user_id', paidBy).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
             action: 'PAY',
@@ -526,8 +526,8 @@ export const updateEntryAdjustments = catchAsync(async (req, res, next) => {
 
     // Write audit log
     try {
-        const empUser = await attendanceDB('users').where('user_id', entry.employee_id).first();
-        const performer = await attendanceDB('users').where('user_id', req.user.id).first();
+        const empUser = await attendanceDB('core_users').where('user_id', entry.employee_id).first();
+        const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         const run = await attendanceDB('payroll_runs').where('run_id', entry.run_id).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
@@ -578,7 +578,7 @@ export const createPackageGroup = catchAsync(async (req, res, next) => {
 
     // Write audit log
     try {
-        const performer = await attendanceDB('users').where('user_id', req.user.id).first();
+        const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
             action: 'PACKAGE_CREATE',
@@ -624,7 +624,7 @@ export const createPackageRevision = catchAsync(async (req, res, next) => {
     // Write audit log
     try {
         const pGroup = await attendanceDB('payroll_package_groups').where('package_group_id', packageGroupId).first();
-        const performer = await attendanceDB('users').where('user_id', req.user.id).first();
+        const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
             action: 'PACKAGE_REVISION_CREATE',
@@ -660,7 +660,7 @@ export const updatePackageGroup = catchAsync(async (req, res, next) => {
 
     // Write audit log
     try {
-        const performer = await attendanceDB('users').where('user_id', req.user.id).first();
+        const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         const updatedFields = [];
         if (packageName !== undefined) updatedFields.push(`name to "${packageName}"`);
         if (isActive !== undefined) updatedFields.push(`status to ${isActive ? 'Active' : 'Inactive'}`);
@@ -691,7 +691,7 @@ export const deletePackageGroup = catchAsync(async (req, res, next) => {
 
     // Write audit log
     try {
-        const performer = await attendanceDB('users').where('user_id', req.user.id).first();
+        const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
             action: 'PACKAGE_DELETE',
@@ -737,8 +737,8 @@ export const assignPackageToEmployee = catchAsync(async (req, res, next) => {
 
     // Write audit log
     try {
-        const empUser = await attendanceDB('users').where('user_id', employeeId).first();
-        const performer = await attendanceDB('users').where('user_id', req.user.id).first();
+        const empUser = await attendanceDB('core_users').where('user_id', employeeId).first();
+        const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         const pGroup = await attendanceDB('payroll_package_groups').where('package_group_id', packageGroupId).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
@@ -779,8 +779,8 @@ export const unassignPackageFromEmployee = catchAsync(async (req, res, next) => 
 
     // Write audit log
     try {
-        const empUser = await attendanceDB('users').where('user_id', employeeId).first();
-        const performer = await attendanceDB('users').where('user_id', req.user.id).first();
+        const empUser = await attendanceDB('core_users').where('user_id', employeeId).first();
+        const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
             action: 'PACKAGE_UNASSIGN',
@@ -901,8 +901,8 @@ export const unlockEmployeePayroll = catchAsync(async (req, res, next) => {
 
     // Write audit log
     try {
-        const empUser = await attendanceDB('users').where('user_id', employeeId).first();
-        const performer = await attendanceDB('users').where('user_id', req.user.id).first();
+        const empUser = await attendanceDB('core_users').where('user_id', employeeId).first();
+        const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         await attendanceDB('payroll_audit_logs').insert({
             org_id: orgId,
             action: 'UNLOCK',

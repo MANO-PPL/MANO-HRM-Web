@@ -87,21 +87,21 @@ const enrichRoomDetails = async (room, userId) => {
 
     // Fetch details of all room members
     const roomMembers = await attendanceDB('chat_conversation_members')
-        .join('users', 'chat_conversation_members.user_id', 'users.user_id')
-        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
+        .join('core_users', 'chat_conversation_members.user_id', 'core_users.user_id')
+        .leftJoin('org_departments', 'core_users.dept_id', 'org_departments.dept_id')
+        .leftJoin('org_designations', 'core_users.desg_id', 'org_designations.desg_id')
         .where({ 'chat_conversation_members.org_id': orgId, 'chat_conversation_members.conversation_id': room.id })
-        .where('users.is_deleted', 0)
+        .where('core_users.is_deleted', 0)
         .select(
             'chat_conversation_members.user_id',
             'chat_conversation_members.role',
             'chat_conversation_members.is_archived',
             'chat_conversation_members.updated_at',
-            'users.user_name',
-            'users.profile_image_url',
-            'users.email',
-            'departments.dept_name',
-            'designations.desg_name'
+            'core_users.user_name',
+            'core_users.profile_image_url',
+            'core_users.email',
+            'org_departments.dept_name',
+            'org_designations.desg_name'
         );
 
     const cleanMembers = roomMembers.map(u => ({
@@ -184,28 +184,28 @@ export const getOrgUsers = catchAsync(async (req, res, next) => {
     const currentUserId = req.user.user_id ?? req.user.id;
     const isSuperAdmin = req.user.user_type === 'super_admin';
 
-    let query = attendanceDB('users')
-        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
-        .where('users.is_deleted', 0)
-        .where('users.is_active', 1)
-        .whereNot('users.user_id', currentUserId);
+    let query = attendanceDB('core_users')
+        .leftJoin('org_departments', 'core_users.dept_id', 'org_departments.dept_id')
+        .leftJoin('org_designations', 'core_users.desg_id', 'org_designations.desg_id')
+        .where('core_users.is_deleted', 0)
+        .where('core_users.is_active', 1)
+        .whereNot('core_users.user_id', currentUserId);
 
     if (!isSuperAdmin && orgId !== null && orgId !== undefined) {
-        query = query.where('users.org_id', orgId);
+        query = query.where('core_users.org_id', orgId);
     }
 
     const users = await query
         .select(
-            'users.user_id',
-            'users.user_name',
-            'users.email',
-            'users.user_type',
-            'users.profile_image_url',
-            'departments.dept_name',
-            'designations.desg_name'
+            'core_users.user_id',
+            'core_users.user_name',
+            'core_users.email',
+            'core_users.user_type',
+            'core_users.profile_image_url',
+            'org_departments.dept_name',
+            'org_designations.desg_name'
         )
-        .orderBy('users.user_name', 'asc');
+        .orderBy('core_users.user_name', 'asc');
 
     const cleanUsers = users.map(u => ({
         ...u,
@@ -240,23 +240,23 @@ export const getRooms = catchAsync(async (req, res, next) => {
 
     // Fetch all members of these conversations
     const allMembersList = await attendanceDB('chat_conversation_members')
-        .join('users', 'chat_conversation_members.user_id', 'users.user_id')
-        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
+        .join('core_users', 'chat_conversation_members.user_id', 'core_users.user_id')
+        .leftJoin('org_departments', 'core_users.dept_id', 'org_departments.dept_id')
+        .leftJoin('org_designations', 'core_users.desg_id', 'org_designations.desg_id')
         .where({ 'chat_conversation_members.org_id': orgId })
         .whereIn('chat_conversation_members.conversation_id', conversationIds)
-        .where('users.is_deleted', 0)
+        .where('core_users.is_deleted', 0)
         .select(
             'chat_conversation_members.conversation_id',
             'chat_conversation_members.role',
             'chat_conversation_members.is_archived',
             'chat_conversation_members.updated_at',
-            'users.user_id',
-            'users.user_name',
-            'users.profile_image_url',
-            'users.email',
-            'departments.dept_name',
-            'designations.desg_name'
+            'core_users.user_id',
+            'core_users.user_name',
+            'core_users.profile_image_url',
+            'core_users.email',
+            'org_departments.dept_name',
+            'org_designations.desg_name'
         );
 
     // Fetch the last messages
@@ -479,7 +479,7 @@ export const getRoomMessages = catchAsync(async (req, res, next) => {
     const senderIds = Array.from(new Set(msgs.map(m => m.sender_id)));
     let senders = [];
     if (senderIds.length > 0) {
-        senders = await attendanceDB('users')
+        senders = await attendanceDB('core_users')
             .whereIn('user_id', senderIds)
             .select('user_id', 'user_name', 'profile_image_url');
     }
@@ -609,7 +609,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
     });
 
     // Resolve user details for response
-    const sender = await attendanceDB('users')
+    const sender = await attendanceDB('core_users')
         .where({ user_id: userId })
         .select('user_name', 'profile_image_url')
         .first();
@@ -855,7 +855,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
     }
 
     // Enforce multi-tenancy guard: confirm all new member_ids belong to the same organization
-    const validUsers = await attendanceDB('users')
+    const validUsers = await attendanceDB('core_users')
         .where({ org_id: orgId, is_deleted: 0 })
         .whereIn('user_id', member_ids)
         .select('user_id');
@@ -912,7 +912,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
     });
 
     // Generate WhatsApp-style system text event
-    const usersInfo = await attendanceDB('users')
+    const usersInfo = await attendanceDB('core_users')
         .whereIn('user_id', [Number(userId), ...addedUserIds, ...removedUserIds])
         .select('user_id', 'user_name');
 
@@ -955,18 +955,18 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
         });
 
     const enrichedMembersList = await attendanceDB('chat_conversation_members')
-        .join('users', 'chat_conversation_members.user_id', 'users.user_id')
-        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
+        .join('core_users', 'chat_conversation_members.user_id', 'core_users.user_id')
+        .leftJoin('org_departments', 'core_users.dept_id', 'org_departments.dept_id')
+        .leftJoin('org_designations', 'core_users.desg_id', 'org_designations.desg_id')
         .where({ 'chat_conversation_members.org_id': orgId, 'chat_conversation_members.conversation_id': roomId })
         .where('chat_conversation_members.is_archived', false)
         .select(
             'chat_conversation_members.user_id',
-            'users.user_name',
-            'users.profile_image_url',
-            'users.email',
-            'departments.dept_name',
-            'designations.desg_name'
+            'core_users.user_name',
+            'core_users.profile_image_url',
+            'core_users.email',
+            'org_departments.dept_name',
+            'org_designations.desg_name'
         );
 
     const formattedSystemMsgResponse = {

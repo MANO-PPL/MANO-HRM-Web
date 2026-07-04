@@ -147,7 +147,7 @@ export async function sendSystemAlert({ org_id, sender_id, recipient_id, card_ty
 
         // Emit real-time WebSocket update event
         if (io) {
-            const sender = await attendanceDB('users')
+            const sender = await attendanceDB('core_users')
                 .where({ user_id: sender_id })
                 .select('user_name', 'profile_image_url')
                 .first();
@@ -181,7 +181,7 @@ export async function sendSystemAlert({ org_id, sender_id, recipient_id, card_ty
  * Fetch all active Admin & HR users in the organization
  */
 async function getAdminsAndHrs(orgId) {
-    return attendanceDB('users')
+    return attendanceDB('core_users')
         .where({ org_id: orgId, is_deleted: 0, is_active: 1 })
         .whereIn('user_type', ['admin', 'hr'])
         .select('user_id');
@@ -199,7 +199,7 @@ export async function notifyLeaveApplied({ org_id, sender_id, leave_id, attachme
             .first();
         if (!leave) return;
 
-        const employee = await attendanceDB('users').where({ user_id: sender_id }).select('user_name').first();
+        const employee = await attendanceDB('core_users').where({ user_id: sender_id }).select('user_name').first();
         const employeeName = employee?.user_name || 'An employee';
 
         const admins = await getAdminsAndHrs(org_id);
@@ -260,7 +260,7 @@ export async function notifyLeaveStatusUpdated({ org_id, reviewer_id, leave_id, 
             .first();
         if (!leave) return;
 
-        const reviewer = await attendanceDB('users').where({ user_id: reviewer_id }).select('user_name').first();
+        const reviewer = await attendanceDB('core_users').where({ user_id: reviewer_id }).select('user_name').first();
         const reviewerName = reviewer?.user_name || 'Supervisor';
 
         // Load attachments if any
@@ -318,7 +318,7 @@ export async function notifyCorrectionApplied({ org_id, sender_id, acr_id, io })
         const correction = await attendanceDB('attendance_correction_requests').where({ acr_id }).first();
         if (!correction) return;
 
-        const employee = await attendanceDB('users').where({ user_id: sender_id }).select('user_name').first();
+        const employee = await attendanceDB('core_users').where({ user_id: sender_id }).select('user_name').first();
         const employeeName = employee?.user_name || 'An employee';
 
         const admins = await getAdminsAndHrs(org_id);
@@ -370,7 +370,7 @@ export async function notifyCorrectionStatusUpdated({ org_id, reviewer_id, acr_i
         const correction = await attendanceDB('attendance_correction_requests').where({ acr_id }).first();
         if (!correction) return;
 
-        const reviewer = await attendanceDB('users').where({ user_id: reviewer_id }).select('user_name').first();
+        const reviewer = await attendanceDB('core_users').where({ user_id: reviewer_id }).select('user_name').first();
         const reviewerName = reviewer?.user_name || 'Supervisor';
 
         const payload = {
@@ -414,7 +414,7 @@ export async function notifyCorrectionStatusUpdated({ org_id, reviewer_id, acr_i
  */
 export async function notifyShiftAssigned({ org_id, admin_id, recipient_id, shift_id, io }) {
     try {
-        const shift = await attendanceDB('shifts').where({ shift_id }).first();
+        const shift = await attendanceDB('org_shifts').where({ shift_id }).first();
         if (!shift) return;
 
         const rules = typeof shift.policy_rules === 'string' ? JSON.parse(shift.policy_rules) : (shift.policy_rules || {});
@@ -422,7 +422,7 @@ export async function notifyShiftAssigned({ org_id, admin_id, recipient_id, shif
         const endTime = rules.shift_timing?.end_time || null;
         const graceMins = rules.grace_period?.minutes || 0;
 
-        const admin = await attendanceDB('users').where({ user_id: admin_id }).select('user_name').first();
+        const admin = await attendanceDB('core_users').where({ user_id: admin_id }).select('user_name').first();
         const adminName = admin?.user_name || 'Administrator';
 
         const payload = {
@@ -465,10 +465,10 @@ export async function notifyShiftAssigned({ org_id, admin_id, recipient_id, shif
  */
 export async function notifyGeofenceAssigned({ org_id, admin_id, recipient_id, location_id, io }) {
     try {
-        const location = await attendanceDB('work_locations').where({ location_id }).first();
+        const location = await attendanceDB('org_work_locations').where({ location_id }).first();
         if (!location) return;
 
-        const admin = await attendanceDB('users').where({ user_id: admin_id }).select('user_name').first();
+        const admin = await attendanceDB('core_users').where({ user_id: admin_id }).select('user_name').first();
         const adminName = admin?.user_name || 'Administrator';
 
         const payload = {

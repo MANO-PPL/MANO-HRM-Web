@@ -215,6 +215,7 @@ async function main() {
     // 1. PRE-FLIGHT VALIDATION FOR BATCH
     console.log('🔄 Running pre-flight validations...');
     const plans = [];
+    const oldToNewMap = new Map(batch.map(p => [p.old, p.new]));
 
     for (const pair of batch) {
       const oldTable = pair.old;
@@ -380,11 +381,13 @@ async function main() {
         if (res.manualReview) {
           plan.manualReviewItems.push({ type: 'fk', name: fkName, reason: res.reason });
         } else {
+          const mappedRefTable = oldToNewMap.get(fk.refTable) || fk.refTable;
           plan.fksToRename.push({
             old: fkName,
             new: res.newName,
             columns: fk.columns,
-            refTable: fk.refTable,
+            refTable: mappedRefTable,
+            oldRefTable: fk.refTable,
             refColumns: fk.refColumns,
             onDelete: fk.onDelete,
             onUpdate: fk.onUpdate
@@ -457,13 +460,14 @@ async function main() {
 
     if (!parsedArgs.dryRun) {
       console.log('🚀 Executing DDL statements against the database...');
+      
+      // PASS 1: RENAME TABLES & CREATE VIEWS
+      console.log('👉 Pass 1: Renaming tables and creating compatibility views...');
       for (let i = 0; i < plans.length; i++) {
         const plan = plans[i];
         const oldTable = plan.table.old;
         const newTable = plan.table.new;
         const report = reports[i];
-
-        console.log(`\nProcessing table "${oldTable}" ➔ "${newTable}"...`);
 
         try {
           // A. Rename Table
@@ -514,103 +518,142 @@ async function main() {
               report.viewCreated = 'yes';
             }
           }
-
-          // C. Recreate FKs
-          failedStep = 'Drop/Recreate FKs';
-          for (const fk of plan.fksToRename) {
-            const newFkCheck = await db('information_schema.TABLE_CONSTRAINTS')
-              .select('CONSTRAINT_NAME')
-              .where({ TABLE_SCHEMA: db.raw('DATABASE()'), TABLE_NAME: newTable, CONSTRAINT_NAME: fk.new, CONSTRAINT_TYPE: 'FOREIGN KEY' })
-              .first();
-
-            if (newFkCheck) {
-              console.log(`ℹ️ Foreign Key "${fk.new}" already exists. Skipping.`);
-              report.fksRenamed.push(`${fk.old} ➔ ${fk.new} (Skipped, already existed)`);
-            } else {
-              const oldFkCheck = await db('information_schema.TABLE_CONSTRAINTS')
-                .select('CONSTRAINT_NAME')
-                .where({ TABLE_SCHEMA: db.raw('DATABASE()'), TABLE_NAME: newTable, CONSTRAINT_NAME: fk.old, CONSTRAINT_TYPE: 'FOREIGN KEY' })
-                .first();
-
-              if (oldFkCheck) {
-                const alterSql = db.raw(
-                  `ALTER TABLE ?? DROP FOREIGN KEY ??, ADD CONSTRAINT ?? FOREIGN KEY (??) REFERENCES ?? (??) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`,
-                  [newTable, fk.old, fk.new, fk.columns, fk.refTable, fk.refColumns]
-                ).toString();
-                console.log(`[SQL] ${alterSql}`);
-                await db.raw(
-                  `ALTER TABLE ?? DROP FOREIGN KEY ??, ADD CONSTRAINT ?? FOREIGN KEY (??) REFERENCES ?? (??) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`,
-                  [newTable, fk.old, fk.new, fk.columns, fk.refTable, fk.refColumns]
-                );
-                report.fksRenamed.push(`${fk.old} ➔ ${fk.new} (Recreated)`);
-              } else {
-                const addSql = db.raw(
-                  `ALTER TABLE ?? ADD CONSTRAINT ?? FOREIGN KEY (??) REFERENCES ?? (??) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`,
-                  [newTable, fk.new, fk.columns, fk.refTable, fk.refColumns]
-                ).toString();
-                console.log(`[SQL] ${addSql}`);
-                await db.raw(
-                  `ALTER TABLE ?? ADD CONSTRAINT ?? FOREIGN KEY (??) REFERENCES ?? (??) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`,
-                  [newTable, fk.new, fk.columns, fk.refTable, fk.refColumns]
-                );
-                report.fksRenamed.push(`${fk.old} ➔ ${fk.new} (Added directly)`);
-              }
-            }
-          }
-
-          // D. Rename Indexes
-          failedStep = 'Rename Indexes';
-          const indexRows = await db('information_schema.STATISTICS')
-            .select('INDEX_NAME')
-            .where({ TABLE_SCHEMA: db.raw('DATABASE()'), TABLE_NAME: newTable });
-          const currentIndexes = new Set(indexRows.map(r => r.INDEX_NAME));
-
-          for (const idx of plan.indexesToRename) {
-            if (currentIndexes.has(idx.new)) {
-              console.log(`ℹ️ Index "${idx.new}" already exists. Skipping.`);
-              report.indexesRenamed.push(`${idx.old} ➔ ${idx.new} (Skipped, already existed)`);
-            } else if (currentIndexes.has(idx.old)) {
-              const renameIdxSql = db.raw('ALTER TABLE ?? RENAME INDEX ?? TO ??', [newTable, idx.old, idx.new]).toString();
-              console.log(`[SQL] ${renameIdxSql}`);
-              await db.raw('ALTER TABLE ?? RENAME INDEX ?? TO ??', [newTable, idx.old, idx.new]);
-              report.indexesRenamed.push(`${idx.old} ➔ ${idx.new} (Renamed)`);
-            } else {
-              console.log(`⚠️ Index "${idx.old}" not found. Skipping rename.`);
-              report.indexesRenamed.push(`${idx.old} ➔ ${idx.new} (Skipped, source index not found)`);
-            }
-          }
-
-          // 6. VERIFICATION
-          failedStep = 'Verification';
-          console.log('🔍 Verifying changes...');
-          const verification = await verifyTableRename(db, plan, parsedArgs.noView);
-          if (!verification.success) {
-            throw new Error(`Verification Failed: ${verification.reason}`);
-          }
-          console.log(`✅ Verification passed for "${oldTable}" ➔ "${newTable}".`);
-
-          // Confirm parent FKs updated
-          for (const parentFk of plan.fksReferencingThisTable) {
-            const curParentFk = await db('information_schema.KEY_COLUMN_USAGE')
-              .select('REFERENCED_TABLE_NAME')
-              .where({
-                TABLE_SCHEMA: db.raw('DATABASE()'),
-                CONSTRAINT_NAME: parentFk.fkName,
-                TABLE_NAME: parentFk.childTable
-              })
-              .first();
-
-            const isUpdated = curParentFk?.REFERENCED_TABLE_NAME === newTable;
-            report.parentFksUpdated.push(`${parentFk.childTable}.${parentFk.fkName}: ${isUpdated ? 'AUTO-UPDATED' : 'NOT UPDATED'}`);
-          }
-
-          report.status = 'SUCCESS';
         } catch (err) {
           console.error(`❌ Error at step "${failedStep}" during table processing:`, err.message);
           report.status = 'FAILED';
           executionFailed = true;
           failedTable = oldTable;
           break; // Stop batch run immediately
+        }
+      }
+
+      // PASS 2: RECREATE FOREIGN KEYS & RENAME INDEXES
+      if (!executionFailed) {
+        console.log('\n👉 Pass 2: Recreating foreign keys and renaming indexes...');
+        for (let i = 0; i < plans.length; i++) {
+          const plan = plans[i];
+          const oldTable = plan.table.old;
+          const newTable = plan.table.new;
+          const report = reports[i];
+
+          console.log(`Processing dependencies for "${newTable}"...`);
+
+          try {
+            // C. Recreate FKs
+            failedStep = 'Drop/Recreate FKs';
+            for (const fk of plan.fksToRename) {
+              const newFkCheck = await db('information_schema.TABLE_CONSTRAINTS')
+                .select('CONSTRAINT_NAME')
+                .where({ TABLE_SCHEMA: db.raw('DATABASE()'), TABLE_NAME: newTable, CONSTRAINT_NAME: fk.new, CONSTRAINT_TYPE: 'FOREIGN KEY' })
+                .first();
+
+              if (newFkCheck) {
+                console.log(`ℹ️ Foreign Key "${fk.new}" already exists. Skipping.`);
+                report.fksRenamed.push(`${fk.old} ➔ ${fk.new} (Skipped, already existed)`);
+              } else {
+                const oldFkCheck = await db('information_schema.TABLE_CONSTRAINTS')
+                  .select('CONSTRAINT_NAME')
+                  .where({ TABLE_SCHEMA: db.raw('DATABASE()'), TABLE_NAME: newTable, CONSTRAINT_NAME: fk.old, CONSTRAINT_TYPE: 'FOREIGN KEY' })
+                  .first();
+
+                if (oldFkCheck) {
+                  const alterSql = db.raw(
+                    `ALTER TABLE ?? DROP FOREIGN KEY ??, ADD CONSTRAINT ?? FOREIGN KEY (??) REFERENCES ?? (??) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`,
+                    [newTable, fk.old, fk.new, fk.columns, fk.refTable, fk.refColumns]
+                  ).toString();
+                  console.log(`[SQL] ${alterSql}`);
+                  await db.raw(
+                    `ALTER TABLE ?? DROP FOREIGN KEY ??, ADD CONSTRAINT ?? FOREIGN KEY (??) REFERENCES ?? (??) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`,
+                    [newTable, fk.old, fk.new, fk.columns, fk.refTable, fk.refColumns]
+                  );
+                  report.fksRenamed.push(`${fk.old} ➔ ${fk.new} (Recreated)`);
+                } else {
+                  const addSql = db.raw(
+                    `ALTER TABLE ?? ADD CONSTRAINT ?? FOREIGN KEY (??) REFERENCES ?? (??) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`,
+                    [newTable, fk.new, fk.columns, fk.refTable, fk.refColumns]
+                  ).toString();
+                  console.log(`[SQL] ${addSql}`);
+                  await db.raw(
+                    `ALTER TABLE ?? ADD CONSTRAINT ?? FOREIGN KEY (??) REFERENCES ?? (??) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`,
+                    [newTable, fk.new, fk.columns, fk.refTable, fk.refColumns]
+                  );
+                  report.fksRenamed.push(`${fk.old} ➔ ${fk.new} (Added directly)`);
+                }
+              }
+            }
+
+            // D. Rename Indexes
+            failedStep = 'Rename Indexes';
+            const indexRows = await db('information_schema.STATISTICS')
+              .select('INDEX_NAME')
+              .where({ TABLE_SCHEMA: db.raw('DATABASE()'), TABLE_NAME: newTable });
+            const currentIndexes = new Set(indexRows.map(r => r.INDEX_NAME));
+
+            for (const idx of plan.indexesToRename) {
+              if (currentIndexes.has(idx.new)) {
+                console.log(`ℹ️ Index "${idx.new}" already exists. Skipping.`);
+                report.indexesRenamed.push(`${idx.old} ➔ ${idx.new} (Skipped, already existed)`);
+              } else if (currentIndexes.has(idx.old)) {
+                const renameIdxSql = db.raw('ALTER TABLE ?? RENAME INDEX ?? TO ??', [newTable, idx.old, idx.new]).toString();
+                console.log(`[SQL] ${renameIdxSql}`);
+                await db.raw('ALTER TABLE ?? RENAME INDEX ?? TO ??', [newTable, idx.old, idx.new]);
+                report.indexesRenamed.push(`${idx.old} ➔ ${idx.new} (Renamed)`);
+              } else {
+                console.log(`⚠️ Index "${idx.old}" not found. Skipping rename.`);
+                report.indexesRenamed.push(`${idx.old} ➔ ${idx.new} (Skipped, source index not found)`);
+              }
+            }
+          } catch (err) {
+            console.error(`❌ Error at step "${failedStep}" during table dependency processing:`, err.message);
+            report.status = 'FAILED';
+            executionFailed = true;
+            failedTable = oldTable;
+            break; // Stop batch run immediately
+          }
+        }
+      }
+
+      // PASS 3: VERIFICATION
+      if (!executionFailed) {
+        console.log('\n👉 Pass 3: Running verification...');
+        for (let i = 0; i < plans.length; i++) {
+          const plan = plans[i];
+          const oldTable = plan.table.old;
+          const newTable = plan.table.new;
+          const report = reports[i];
+
+          try {
+            failedStep = 'Verification';
+            console.log(`Verifying "${newTable}"...`);
+            const verification = await verifyTableRename(db, plan, parsedArgs.noView);
+            if (!verification.success) {
+              throw new Error(`Verification Failed: ${verification.reason}`);
+            }
+            console.log(`✅ Verification passed for "${oldTable}" ➔ "${newTable}".`);
+
+            // Confirm parent FKs updated
+            for (const parentFk of plan.fksReferencingThisTable) {
+              const curParentFk = await db('information_schema.KEY_COLUMN_USAGE')
+                .select('REFERENCED_TABLE_NAME')
+                .where({
+                  TABLE_SCHEMA: db.raw('DATABASE()'),
+                  CONSTRAINT_NAME: parentFk.fkName,
+                  TABLE_NAME: parentFk.childTable
+                })
+                .first();
+
+              const isUpdated = curParentFk?.REFERENCED_TABLE_NAME === newTable;
+              report.parentFksUpdated.push(`${parentFk.childTable}.${parentFk.fkName}: ${isUpdated ? 'AUTO-UPDATED' : 'NOT UPDATED'}`);
+            }
+
+            report.status = 'SUCCESS';
+          } catch (err) {
+            console.error(`❌ Error at step "${failedStep}" during verification:`, err.message);
+            report.status = 'FAILED';
+            executionFailed = true;
+            failedTable = oldTable;
+            break;
+          }
         }
       }
     }
@@ -789,7 +832,7 @@ function generateRollbackSql(plan, noView) {
       const cols = fk.columns.map(c => `\`${c}\``).join(', ');
       const refCols = fk.refColumns.map(c => `\`${c}\``).join(', ');
       sqlLines.push(
-        `ALTER TABLE \`${newTable}\` DROP FOREIGN KEY \`${fk.new}\`,\n  ADD CONSTRAINT \`${fk.old}\` FOREIGN KEY (${cols}) REFERENCES \`${fk.refTable}\` (${refCols}) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate};`
+        `ALTER TABLE \`${newTable}\` DROP FOREIGN KEY \`${fk.new}\`,\n  ADD CONSTRAINT \`${fk.old}\` FOREIGN KEY (${cols}) REFERENCES \`${fk.oldRefTable || fk.refTable}\` (${refCols}) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate};`
       );
     }
     sqlLines.push(``);

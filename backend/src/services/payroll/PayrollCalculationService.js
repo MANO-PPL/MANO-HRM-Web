@@ -15,9 +15,9 @@ export class PayrollCalculationService {
         const activeSalaryDate = `${year}-${String(month).padStart(2, '0')}-01`;
         
         // Fetch employees who have a salary configuration for this month
-        const employees = await attendanceDB('users as u')
+        const employees = await attendanceDB('core_users as u')
             .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
-            .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+            .leftJoin('org_shifts as sh', 'u.shift_id', 'sh.shift_id')
             .leftJoin('payroll_packages as p', function() {
                 this.on('s.package_group_id', '=', 'p.package_group_id')
                     .andOn('p.effective_from', '<=', attendanceDB.raw('?', [activeSalaryDate]))
@@ -114,7 +114,7 @@ export class PayrollCalculationService {
             .where('end_date', '>=', startDateStr);
 
         // Fetch holidays
-        const holidays = await attendanceDB('holidays')
+        const holidays = await attendanceDB('org_holidays')
             .where('org_id', orgId)
             .whereBetween('holiday_date', [startDateStr, endDateStr]);
 
@@ -345,9 +345,9 @@ export class PayrollCalculationService {
 
             // Get active salary config for employee
             const activeSalaryDate = `${year}-${String(month).padStart(2, '0')}-01`;
-            const emp = await attendanceDB('users as u')
+            const emp = await attendanceDB('core_users as u')
                 .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
-                .leftJoin('shifts as sh', 'u.shift_id', 'sh.shift_id')
+                .leftJoin('org_shifts as sh', 'u.shift_id', 'sh.shift_id')
                 .leftJoin('payroll_packages as p', function() {
                     this.on('s.package_group_id', '=', 'p.package_group_id')
                         .andOn('p.effective_from', '<=', attendanceDB.raw('?', [activeSalaryDate]))
@@ -461,7 +461,7 @@ export class PayrollCalculationService {
     static async updateDraftEntriesForOrg(orgId, year, month) {
         try {
             const activeSalaryDate = `${year}-${String(month).padStart(2, '0')}-01`;
-            const employees = await attendanceDB('users as u')
+            const employees = await attendanceDB('core_users as u')
                 .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
                 .where('u.org_id', orgId)
                 .where('u.is_deleted', 0)
@@ -492,7 +492,7 @@ export class PayrollCalculationService {
             const year = date.getFullYear();
             const month = date.getMonth() + 1;
 
-            const user = await attendanceDB('users').where('user_id', userId).select('org_id').first();
+            const user = await attendanceDB('core_users').where('user_id', userId).select('org_id').first();
             if (user) {
                 this.updateDraftEntry(user.org_id, year, month, userId).catch(err => {
                     console.error("Background payroll calculation failed:", err);

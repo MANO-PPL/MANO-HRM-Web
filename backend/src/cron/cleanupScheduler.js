@@ -15,11 +15,11 @@ async function cleanupRefreshTokens() {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - gracePeriodDays);
 
-        const expiredCount = await attendanceDB('refresh_tokens')
+        const expiredCount = await attendanceDB('core_refresh_tokens')
             .where('expires_at', '<', cutoffDate)
             .del();
 
-        const revokedCount = await attendanceDB('refresh_tokens')
+        const revokedCount = await attendanceDB('core_refresh_tokens')
             .where('revoked', true)
             .where('created_at', '<', cutoffDate)
             .del();
@@ -98,7 +98,7 @@ async function cleanupDeletedUsers() {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-        const usersToDelete = await attendanceDB('users')
+        const usersToDelete = await attendanceDB('core_users')
             .where('is_deleted', true)
             .andWhere('deleted_at', '<', cutoffDate)
             .select('user_id');
@@ -128,7 +128,7 @@ async function cleanupDeletedOrganizations() {
 
         const now = new Date();
 
-        const orgsToDelete = await attendanceDB('organizations')
+        const orgsToDelete = await attendanceDB('core_organizations')
             .where('status', 'pending_deletion')
             .andWhere('deletion_scheduled_at', '<=', now)
             .select('org_id', 'org_name', 'org_code');
@@ -140,8 +140,8 @@ async function cleanupDeletedOrganizations() {
             // Add more tables here as your schema grows.
             await attendanceDB.transaction(async (trx) => {
                 // Delete from child tables referencing users/organizations
-                await trx('refresh_tokens')
-                    .whereIn('user_id', trx('users').select('user_id').where('org_id', org.org_id))
+                await trx('core_refresh_tokens')
+                    .whereIn('user_id', trx('core_users').select('user_id').where('org_id', org.org_id))
                     .del();
 
                 await trx('notifications').where('org_id', org.org_id).del();
@@ -149,8 +149,8 @@ async function cleanupDeletedOrganizations() {
                 await trx('sys_error_logs').where('org_id', org.org_id).del();
                 await trx('attendance_correction_requests').where('org_id', org.org_id).del();
 
-                await trx('user_work_locations')
-                    .whereIn('user_id', trx('users').select('user_id').where('org_id', org.org_id))
+                await trx('org_user_work_locations')
+                    .whereIn('user_id', trx('core_users').select('user_id').where('org_id', org.org_id))
                     .del();
 
                 await trx('daily_activities').where('org_id', org.org_id).del();
@@ -176,8 +176,8 @@ async function cleanupDeletedOrganizations() {
                 await trx('chat_message_reactions').where('org_id', org.org_id).del();
 
                 // Now delete users and finally the organization
-                await trx('users').where('org_id', org.org_id).del();
-                await trx('organizations').where('org_id', org.org_id).del();
+                await trx('core_users').where('org_id', org.org_id).del();
+                await trx('core_organizations').where('org_id', org.org_id).del();
             });
 
             console.log(`🗑️  Permanently deleted organization: ${org.org_name} (${org.org_code})`);
@@ -202,7 +202,7 @@ export async function deactivateExpiredOrganizations() {
         const now = new Date();
         
         // Find all active organizations with subscription_expiry in the past (including grace period)
-        const expiredOrgs = await attendanceDB('organizations')
+        const expiredOrgs = await attendanceDB('core_organizations')
             .where('status', 'active')
             .whereNotNull('subscription_expiry')
             .andWhereRaw('DATE_ADD(subscription_expiry, INTERVAL grace_period_days DAY) < ?', [now]);
@@ -210,7 +210,7 @@ export async function deactivateExpiredOrganizations() {
         console.log(`Found ${expiredOrgs.length} expired organization(s) to deactivate.`);
 
         for (const org of expiredOrgs) {
-            await attendanceDB('organizations')
+            await attendanceDB('core_organizations')
                 .where('org_id', org.org_id)
                 .update({
                     status: 'inactive',

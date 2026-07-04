@@ -10,10 +10,10 @@ import { PayrollCalculationService } from '../payroll/PayrollCalculationService.
  * Fetch User Shift
  */
 export async function getUserShift(user_id) {
-  const user = await attendanceDB("users")
-    .join("shifts", "users.shift_id", "shifts.shift_id")
-    .where("users.user_id", user_id)
-    .select("shifts.*")
+  const user = await attendanceDB("core_users")
+    .join("org_shifts", "core_users.shift_id", "org_shifts.shift_id")
+    .where("core_users.user_id", user_id)
+    .select("org_shifts.*")
     .first();
   return user;
 }
@@ -60,7 +60,7 @@ export async function processTimeIn(context) {
       .whereRaw("DATE(time_in) < DATE(?)", [todayDate]);
 
     if (priorOpenSessions.length > 0) {
-      const userRec = await attendanceDB("users").where({ user_id }).select("shift_id").first();
+      const userRec = await attendanceDB("core_users").where({ user_id }).select("shift_id").first();
       const isOpenShift = !userRec || userRec.shift_id === null;
 
       for (const session of priorOpenSessions) {
@@ -500,17 +500,17 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
  */
 export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, limit }) {
   let query = attendanceDB("attendance_records")
-    .join("users", "attendance_records.user_id", "users.user_id")
-    .leftJoin("designations", "users.desg_id", "designations.desg_id")
+    .join("core_users", "attendance_records.user_id", "core_users.user_id")
+    .leftJoin("org_designations", "core_users.desg_id", "org_designations.desg_id")
     .select(
       "attendance_records.*",
       attendanceDB.raw("DATE_FORMAT(attendance_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
       attendanceDB.raw("DATE_FORMAT(attendance_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
       attendanceDB.raw("DATE_FORMAT(attendance_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
       attendanceDB.raw("DATE_FORMAT(attendance_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts"),
-      "users.user_name",
-      "users.email",
-      "designations.desg_name as designation"
+      "core_users.user_name",
+      "core_users.email",
+      "org_designations.desg_name as designation"
     )
     .orderBy("time_in", "desc")
     .limit(Math.min(parseInt(limit), 100));
@@ -688,7 +688,7 @@ export async function fetchCorrectionRequests({
   const offset = (page - 1) * limit;
 
   const data = await attendanceDB("attendance_correction_requests as acr")
-    .join("users as u", "u.user_id", "acr.user_id")
+    .join("core_users as u", "u.user_id", "acr.user_id")
     .where("acr.org_id", org_id)
     .modify(qb => {
       const lowerType = String(user_type || "").toLowerCase();
@@ -740,8 +740,8 @@ export async function fetchCorrectionRequests({
  */
 export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role }) {
   let query = attendanceDB("attendance_correction_requests as acr")
-    .join("users as u", "u.user_id", "acr.user_id")
-    .leftJoin("designations as d", "d.desg_id", "u.desg_id")
+    .join("core_users as u", "u.user_id", "acr.user_id")
+    .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
     .select(
       "acr.acr_id",
       "acr.correction_type",
