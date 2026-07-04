@@ -8,7 +8,7 @@ import EventBus from '../../utils/EventBus.js';
  */
 export async function submitFeedback(user_id, { title, description, type = 'FEEDBACK', files = [] }) {
     // 1. Insert feedback record
-    const [feedback_id] = await attendanceDB('feedback').insert({
+    const [feedback_id] = await attendanceDB('feedback_tickets').insert({
         user_id,
         type,
         title,
@@ -103,14 +103,14 @@ export async function submitFeedback(user_id, { title, description, type = 'FEED
  * Get list of feedback for admin view with attachments and signed URLs.
  */
 export async function getFeedbackList({ status, type, limit = 50 } = {}) {
-    let query = attendanceDB('feedback')
-        .join('core_users', 'feedback.user_id', 'core_users.user_id')
-        .select('feedback.*', 'core_users.user_name', 'core_users.email')
-        .orderBy('feedback.created_at', 'desc')
+    let query = attendanceDB('feedback_tickets')
+        .join('core_users', 'feedback_tickets.user_id', 'core_users.user_id')
+        .select('feedback_tickets.*', 'core_users.user_name', 'core_users.email')
+        .orderBy('feedback_tickets.created_at', 'desc')
         .limit(Math.min(parseInt(limit), 100));
 
-    if (status) query = query.where('feedback.status', status);
-    if (type) query = query.where('feedback.type', type);
+    if (status) query = query.where('feedback_tickets.status', status);
+    if (type) query = query.where('feedback_tickets.type', type);
 
     const feedbackRecords = await query;
 
@@ -144,13 +144,13 @@ export async function getFeedbackList({ status, type, limit = 50 } = {}) {
  * Update feedback status.
  */
 export async function updateStatus(id, status) {
-    const feedback = await attendanceDB('feedback')
+    const feedback = await attendanceDB('feedback_tickets')
         .where('feedback_id', id)
         .first();
 
     if (!feedback) return false;
 
-    const updated = await attendanceDB('feedback')
+    const updated = await attendanceDB('feedback_tickets')
         .where('feedback_id', id)
         .update({ status, updated_at: attendanceDB.fn.now() });
 

@@ -41,7 +41,7 @@ export async function processTimeIn(context) {
 
   // 1. Check Existing Session — only block if open session is from TODAY
   const todayDate = localTime.split('T')[0];
-  const openSession = await attendanceDB("attendance_records")
+  const openSession = await attendanceDB("attn_records")
     .where({ user_id })
     .whereNull("time_out")
     .whereRaw("DATE(time_in) = DATE(?)", [todayDate])
@@ -54,7 +54,7 @@ export async function processTimeIn(context) {
 
   // Auto-resolve any open sessions from previous days
   try {
-    const priorOpenSessions = await attendanceDB("attendance_records")
+    const priorOpenSessions = await attendanceDB("attn_records")
       .where({ user_id })
       .whereNull("time_out")
       .whereRaw("DATE(time_in) < DATE(?)", [todayDate]);
@@ -69,7 +69,7 @@ export async function processTimeIn(context) {
           const checkInDate = new Date(session.time_in);
           const checkOutDate = new Date(checkInDate.getTime() + 9 * 60 * 60 * 1000);
           
-          await attendanceDB("attendance_records")
+          await attendanceDB("attn_records")
             .where({ attendance_id: session.attendance_id })
             .update({
               time_out: checkOutDate,
@@ -94,7 +94,7 @@ export async function processTimeIn(context) {
           flagged_at: new Date().toISOString(),
           reason: "System auto-flagged: Checked in on a new day before checking out."
         };
-        await attendanceDB("attendance_records")
+        await attendanceDB("attn_records")
           .where({ attendance_id: session.attendance_id })
           .update({
             status: "MISSED_PUNCH",
@@ -160,7 +160,7 @@ export async function processTimeIn(context) {
   };
 
   // DB Insert
-  const [attendance_id] = await attendanceDB("attendance_records").insert({
+  const [attendance_id] = await attendanceDB("attn_records").insert({
     user_id,
     org_id,
     late_reason: sessionContext.is_first_session ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
@@ -192,7 +192,7 @@ export async function processTimeIn(context) {
       directory: "attendance_images"
     });
     imageKey = uploadResult.key;
-    await attendanceDB("attendance_records")
+    await attendanceDB("attn_records")
       .where({ attendance_id })
       .update({
         time_in_image_key: imageKey,
@@ -251,7 +251,7 @@ export async function processTimeOut(context) {
   } = context;
 
   // 1. Check Existing Session (Find most recent open session - NO TIME LIMIT)
-  const openSession = await attendanceDB("attendance_records")
+  const openSession = await attendanceDB("attn_records")
     .where({ user_id })
     .whereNull("time_out")
     .orderBy("time_in", "desc")
@@ -309,7 +309,7 @@ export async function processTimeOut(context) {
       directory: "attendance_images"
     });
     imageKey = uploadResult.key;
-    await attendanceDB("attendance_records")
+    await attendanceDB("attn_records")
       .where({ attendance_id: openSession.attendance_id })
       .update({
         time_out_image_key: imageKey,
@@ -357,7 +357,7 @@ export async function processTimeOut(context) {
   metadata.session_context_at_checkout = currentSessionContext;
 
   // DB Update
-  await attendanceDB("attendance_records")
+  await attendanceDB("attn_records")
     .where({ attendance_id: openSession.attendance_id })
     .update({
       time_out: localTime,
@@ -421,7 +421,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
   try {
     // 1. Fetch all records for the day (Sanitize date to ensure match)
     const sanitizedDate = dateStr.split('T')[0];
-    const records = await attendanceDB("attendance_records")
+    const records = await attendanceDB("attn_records")
       .where({ user_id })
       .whereRaw("DATE(time_in) = ?", [sanitizedDate])
       .orderBy("time_in", "asc");
@@ -432,14 +432,14 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     const lastRec = records[records.length - 1];
 
     // 2. Ensure Daily Record Exists
-    const existingDaily = await attendanceDB("daily_attendance")
+    const existingDaily = await attendanceDB("attn_daily_summary")
       .where({ user_id, date: dateStr })
       .first();
 
     if (!existingDaily) {
       const shift = await getUserShift(user_id);
 
-      await attendanceDB("daily_attendance").insert({
+      await attendanceDB("attn_daily_summary").insert({
         user_id,
         org_id: records[0].org_id,
         date: dateStr,
@@ -478,7 +478,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       ...overrides
     };
 
-    await attendanceDB("daily_attendance")
+    await attendanceDB("attn_daily_summary")
       .where({ user_id, date: dateStr })
       .update(updateData);
 
@@ -499,11 +499,11 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
  * Fetch attendance records for admin view with user details
  */
 export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, limit }) {
-  let query = attendanceDB("attendance_records")
-    .join("core_users", "attendance_records.user_id", "core_users.user_id")
+  let query = attendanceDB("attn_records")
+    .join("core_users", "attn_records.user_id", "core_users.user_id")
     .leftJoin("org_designations", "core_users.desg_id", "org_designations.desg_id")
     .select(
-      "attendance_records.*",
+      "attn_records.*",
       attendanceDB.raw("DATE_FORMAT(attendance_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
       attendanceDB.raw("DATE_FORMAT(attendance_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
       attendanceDB.raw("DATE_FORMAT(attendance_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
@@ -515,8 +515,8 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
     .orderBy("time_in", "desc")
     .limit(Math.min(parseInt(limit), 100));
 
-  if (user_id) query = query.where("attendance_records.user_id", user_id);
-  query = query.where("attendance_records.org_id", org_id);
+  if (user_id) query = query.where("attn_records.user_id", user_id);
+  query = query.where("attn_records.org_id", org_id);
   if (date_from) query = query.whereRaw("DATE(time_in) >= DATE(?)", [date_from]);
   if (date_to) query = query.whereRaw("DATE(time_in) <= DATE(?)", [date_to]);
 
@@ -561,10 +561,10 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
  * Fetch attendance records for a specific user
  */
 export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
-  let query = attendanceDB("attendance_records")
+  let query = attendanceDB("attn_records")
     .where("user_id", user_id)
     .select(
-      "attendance_records.*",
+      "attn_records.*",
       attendanceDB.raw("DATE_FORMAT(attendance_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
       attendanceDB.raw("DATE_FORMAT(attendance_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
       attendanceDB.raw("DATE_FORMAT(attendance_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
@@ -650,11 +650,11 @@ export async function createCorrectionRequest({
   }
 
   // ENFORCE SINGLE REQUEST PER DAY: Delete any existing request for this date
-  await attendanceDB("attendance_correction_requests")
+  await attendanceDB("attn_correction_requests")
     .where({ user_id, org_id, request_date })
     .del();
 
-  const [id] = await attendanceDB("attendance_correction_requests").insert({
+  const [id] = await attendanceDB("attn_correction_requests").insert({
     org_id,
     user_id,
     correction_type,
@@ -687,7 +687,7 @@ export async function fetchCorrectionRequests({
 }) {
   const offset = (page - 1) * limit;
 
-  const data = await attendanceDB("attendance_correction_requests as acr")
+  const data = await attendanceDB("attn_correction_requests as acr")
     .join("core_users as u", "u.user_id", "acr.user_id")
     .where("acr.org_id", org_id)
     .modify(qb => {
@@ -716,7 +716,7 @@ export async function fetchCorrectionRequests({
     .limit(limit)
     .offset(offset);
 
-  const countResult = await attendanceDB("attendance_correction_requests")
+  const countResult = await attendanceDB("attn_correction_requests")
     .where("org_id", org_id)
     .modify(qb => {
       const lowerType = String(user_type || "").toLowerCase();
@@ -739,7 +739,7 @@ export async function fetchCorrectionRequests({
  * Fetch a single correction request by ID
  */
 export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role }) {
-  let query = attendanceDB("attendance_correction_requests as acr")
+  let query = attendanceDB("attn_correction_requests as acr")
     .join("core_users as u", "u.user_id", "acr.user_id")
     .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
     .select(
@@ -803,7 +803,7 @@ export async function reviewCorrectionRequest({
   review_comments,
   adminOverrideSessions
 }) {
-  const correction = await attendanceDB("attendance_correction_requests")
+  const correction = await attendanceDB("attn_correction_requests")
     .where({ acr_id, org_id })
     .first();
 
@@ -864,7 +864,7 @@ export async function reviewCorrectionRequest({
   };
   if (updatedProposedData) dbUpdate.proposed_data = updatedProposedData;
 
-  await attendanceDB("attendance_correction_requests")
+  await attendanceDB("attn_correction_requests")
     .where({ acr_id, org_id })
     .update(dbUpdate);
 
@@ -882,7 +882,7 @@ export async function reviewCorrectionRequest({
     const rules = ShiftService.getShiftRules(shift);
 
     // Delete all existing records for the day
-    await attendanceDB("attendance_records")
+    await attendanceDB("attn_records")
       .where({ user_id: correction.user_id })
       .whereRaw("DATE(time_in) = ?", [finalDateStr])
       .del();
@@ -909,7 +909,7 @@ export async function reviewCorrectionRequest({
       };
     });
 
-    await attendanceDB("attendance_records").insert(newRecords);
+    await attendanceDB("attn_records").insert(newRecords);
 
     // Sync Daily Summary (Now uses the combined state of the sessions)
     const manualBase = {
@@ -936,7 +936,7 @@ export async function exportRecordsToExcel({ user_id, org_id, month, year, month
   const lastDay = new Date(year, monthNum, 0).getDate();
   const endDate = `${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
 
-  const records = await attendanceDB("attendance_records")
+  const records = await attendanceDB("attn_records")
     .where({ user_id, org_id })
     .whereRaw("DATE(time_in) >= ?", [startDate])
     .whereRaw("DATE(time_in) <= ?", [endDate])

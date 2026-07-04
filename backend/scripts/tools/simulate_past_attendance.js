@@ -347,7 +347,7 @@ async function runSimulation() {
             updated_at: attendanceDB.fn.now()
           };
 
-          await attendanceDB("attendance_records").insert(insertData);
+          await attendanceDB("attn_records").insert(insertData);
         }
 
         // Sync daily calculations

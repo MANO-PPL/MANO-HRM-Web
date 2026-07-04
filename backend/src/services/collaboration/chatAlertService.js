@@ -315,7 +315,7 @@ export async function notifyLeaveStatusUpdated({ org_id, reviewer_id, leave_id, 
  */
 export async function notifyCorrectionApplied({ org_id, sender_id, acr_id, io }) {
     try {
-        const correction = await attendanceDB('attendance_correction_requests').where({ acr_id }).first();
+        const correction = await attendanceDB('attn_correction_requests').where({ acr_id }).first();
         if (!correction) return;
 
         const employee = await attendanceDB('core_users').where({ user_id: sender_id }).select('user_name').first();
@@ -367,7 +367,7 @@ export async function notifyCorrectionApplied({ org_id, sender_id, acr_id, io })
  */
 export async function notifyCorrectionStatusUpdated({ org_id, reviewer_id, acr_id, io }) {
     try {
-        const correction = await attendanceDB('attendance_correction_requests').where({ acr_id }).first();
+        const correction = await attendanceDB('attn_correction_requests').where({ acr_id }).first();
         if (!correction) return;
 
         const reviewer = await attendanceDB('core_users').where({ user_id: reviewer_id }).select('user_name').first();

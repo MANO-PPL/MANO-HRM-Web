@@ -2,7 +2,7 @@ import { attendanceDB } from '../../config/database.js';
 import EventBus from '../../utils/EventBus.js';
 
 export async function upsertRequest({ org_id, user_id, request_date, original_data, proposed_data, reason }) {
-    const existingRequest = await attendanceDB("dar_requests")
+    const existingRequest = await attendanceDB("attn_dar_requests")
         .where({ user_id, request_date, status: 'PENDING' })
         .first();
 
@@ -10,7 +10,7 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
     const isUpdate = !!existingRequest;
 
     if (existingRequest) {
-        await attendanceDB("dar_requests")
+        await attendanceDB("attn_dar_requests")
             .where({ request_id: existingRequest.request_id })
             .update({
                 proposed_data: JSON.stringify(proposed_data),
@@ -19,7 +19,7 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
             });
         request_id = existingRequest.request_id;
     } else {
-        const [id] = await attendanceDB("dar_requests").insert({
+        const [id] = await attendanceDB("attn_dar_requests").insert({
             org_id,
             user_id,
             request_date,
@@ -62,20 +62,20 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
 }
 
 export async function getPendingRequests({ org_id }) {
-    const requests = await attendanceDB("dar_requests")
-        .join("core_users", "dar_requests.user_id", "core_users.user_id")
+    const requests = await attendanceDB("attn_dar_requests")
+        .join("core_users", "attn_dar_requests.user_id", "core_users.user_id")
         .leftJoin("org_departments as dep", "core_users.dept_id", "dep.dept_id")
         .select(
-            "dar_requests.*",
+            "attn_dar_requests.*",
             "core_users.user_name as user_name",
             "core_users.email as user_email",
             "core_users.user_type as user_role",
             "dep.dept_name as user_dept",
             attendanceDB.raw("DATE_FORMAT(dar_requests.request_date, '%Y-%m-%d') as request_date_str")
         )
-        .where("dar_requests.org_id", org_id)
-        .where("dar_requests.status", 'PENDING')
-        .orderBy("dar_requests.created_at", "desc");
+        .where("attn_dar_requests.org_id", org_id)
+        .where("attn_dar_requests.status", 'PENDING')
+        .orderBy("attn_dar_requests.created_at", "desc");
 
     return requests.map(r => ({
         ...r,
@@ -86,7 +86,7 @@ export async function getPendingRequests({ org_id }) {
 }
 
 export async function approveRequest({ id, org_id }) {
-    const request = await attendanceDB("dar_requests")
+    const request = await attendanceDB("attn_dar_requests")
         .select("*", attendanceDB.raw("DATE_FORMAT(request_date, '%Y-%m-%d') as request_date_str"))
         .where({ request_id: id, org_id })
         .first();
@@ -98,7 +98,7 @@ export async function approveRequest({ id, org_id }) {
     const targetDate = request.request_date_str;
 
     await attendanceDB.transaction(async (trx) => {
-        await trx("daily_activities")
+        await trx("attn_daily_activities")
             .where({ user_id: request.user_id, org_id })
             .whereRaw("DATE(activity_date) = ?", [targetDate])
             .del();
@@ -116,10 +116,10 @@ export async function approveRequest({ id, org_id }) {
                 status: 'COMPLETED',
                 created_at: attendanceDB.fn.now()
             }));
-            await trx("daily_activities").insert(inserts);
+            await trx("attn_daily_activities").insert(inserts);
         }
 
-        await trx("dar_requests")
+        await trx("attn_dar_requests")
             .where({ request_id: id })
             .update({ status: 'APPROVED', updated_at: attendanceDB.fn.now() });
     });
@@ -140,7 +140,7 @@ export async function approveRequest({ id, org_id }) {
 }
 
 export async function rejectRequest({ id, org_id, comment }) {
-    const request = await attendanceDB("dar_requests")
+    const request = await attendanceDB("attn_dar_requests")
         .select("*", attendanceDB.raw("DATE_FORMAT(request_date, '%Y-%m-%d') as request_date_str"))
         .where({ request_id: id, org_id })
         .first();
@@ -148,7 +148,7 @@ export async function rejectRequest({ id, org_id, comment }) {
     if (!request) throw { status: 404, message: "Request not found" };
     if (request.status !== 'PENDING') throw { status: 400, message: "Request already processed" };
 
-    await attendanceDB("dar_requests")
+    await attendanceDB("attn_dar_requests")
         .where({ request_id: id, org_id })
         .update({
             status: 'REJECTED',

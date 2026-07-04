@@ -1,7 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 
 export async function createEvent({ org_id, user_id, title, description, event_date, start_time, end_time, location, type }) {
-    const [event_id] = await attendanceDB("events_meetings").insert({
+    const [event_id] = await attendanceDB("comm_events_meetings").insert({
         org_id,
         user_id,
         title,
@@ -18,7 +18,7 @@ export async function createEvent({ org_id, user_id, title, description, event_d
 }
 
 export async function listEvents({ org_id, user_id, date_from, date_to, type }) {
-    let query = attendanceDB("events_meetings")
+    let query = attendanceDB("comm_events_meetings")
         .select(
             "*",
             attendanceDB.raw("DATE_FORMAT(event_date, '%Y-%m-%d') as event_date")
@@ -41,19 +41,19 @@ export async function updateEvent({ event_id, org_id, updates }) {
 
     updates.updated_at = attendanceDB.fn.now();
 
-    await attendanceDB("events_meetings")
+    await attendanceDB("comm_events_meetings")
         .where({ event_id, org_id })
         .update(updates);
 }
 
 export async function deleteEvent({ event_id, org_id }) {
-    await attendanceDB("events_meetings")
+    await attendanceDB("comm_events_meetings")
         .where({ event_id, org_id })
         .del();
 }
 
 export async function getAllEventsAdmin({ org_id, date_from, date_to }) {
-    let query = attendanceDB("events_meetings")
+    let query = attendanceDB("comm_events_meetings")
         .select(
             "*",
             attendanceDB.raw("DATE_FORMAT(event_date, '%Y-%m-%d') as event_date")

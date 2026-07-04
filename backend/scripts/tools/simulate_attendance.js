@@ -245,7 +245,7 @@ async function initializeDailyState() {
       const profile = SIM_CONFIG?.profiles?.[mappedProfileName] || DEFAULT_PROFILE;
 
       // 3. Look for existing attendance records today (resiliency on restart)
-      const existingRecords = await attendanceDB('attendance_records')
+      const existingRecords = await attendanceDB('attn_records')
         .where({ user_id: user.user_id })
         .whereRaw('DATE(time_in) = ?', [todayStr])
         .orderBy('time_in', 'asc');
@@ -465,7 +465,7 @@ async function performSimulationStep() {
               session_context: { is_first_session: i === 0 }
             };
 
-            const [recordId] = await attendanceDB("attendance_records").insert({
+            const [recordId] = await attendanceDB("attn_records").insert({
               user_id: userId,
               org_id: userRow.org_id,
               time_in: formattedTimeStr,
@@ -507,7 +507,7 @@ async function performSimulationStep() {
             log(`⏰ Punching Out user: ${userState.userName} (ID: ${userId}) for Session ${i + 1}/${userState.sessions.length}`);
             const formattedTimeStr = session.checkOutTarget.toISOString().slice(0, 19).replace('T', ' ');
 
-            const existingRecord = await attendanceDB("attendance_records")
+            const existingRecord = await attendanceDB("attn_records")
               .where({ attendance_id: session.recordId })
               .first();
 
@@ -526,7 +526,7 @@ async function performSimulationStep() {
 
             const rowImageKey = await uploadSimulatedSelfie(userId, userState.orgId || 1, "time_out");
 
-            await attendanceDB("attendance_records")
+            await attendanceDB("attn_records")
               .where({ attendance_id: session.recordId })
               .update({
                 time_out: formattedTimeStr,

@@ -42,7 +42,7 @@ async function cleanupAttendanceImages() {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-        const oldRecords = await attendanceDB('attendance_records')
+        const oldRecords = await attendanceDB('attn_records')
             .where('time_in', '<', cutoffDate)
             .where(function () {
                 this.whereNotNull('time_in_image_key')
@@ -71,7 +71,7 @@ async function cleanupAttendanceImages() {
                 }
             }
 
-            await attendanceDB('attendance_records')
+            await attendanceDB('attn_records')
                 .where('attendance_id', record.attendance_id)
                 .update({
                     time_in_image_key: null,
@@ -144,29 +144,29 @@ async function cleanupDeletedOrganizations() {
                     .whereIn('user_id', trx('core_users').select('user_id').where('org_id', org.org_id))
                     .del();
 
-                await trx('notifications').where('org_id', org.org_id).del();
+                await trx('comm_notifications').where('org_id', org.org_id).del();
                 await trx('sys_activity_logs').where('org_id', org.org_id).del();
                 await trx('sys_error_logs').where('org_id', org.org_id).del();
-                await trx('attendance_correction_requests').where('org_id', org.org_id).del();
+                await trx('attn_correction_requests').where('org_id', org.org_id).del();
 
                 await trx('org_user_work_locations')
                     .whereIn('user_id', trx('core_users').select('user_id').where('org_id', org.org_id))
                     .del();
 
-                await trx('daily_activities').where('org_id', org.org_id).del();
-                await trx('daily_attendance').where('org_id', org.org_id).del();
-                await trx('dar_requests').where('org_id', org.org_id).del();
-                await trx('events_meetings').where('org_id', org.org_id).del();
+                await trx('attn_daily_activities').where('org_id', org.org_id).del();
+                await trx('attn_daily_summary').where('org_id', org.org_id).del();
+                await trx('attn_dar_requests').where('org_id', org.org_id).del();
+                await trx('comm_events_meetings').where('org_id', org.org_id).del();
                 await trx('sys_security_alerts').where('org_id', org.org_id).del();
 
                 await trx('feedback_attachments')
-                    .whereIn('feedback_id', trx('feedback').select('feedback_id').where('org_id', org.org_id))
+                    .whereIn('feedback_id', trx('feedback_tickets').select('feedback_id').where('org_id', org.org_id))
                     .del();
-                await trx('feedback').where('org_id', org.org_id).del();
+                await trx('feedback_tickets').where('org_id', org.org_id).del();
 
                 await trx('leave_request').where('org_id', org.org_id).del();
 
-                await trx('attendance_records').where('org_id', org.org_id).del();
+                await trx('attn_records').where('org_id', org.org_id).del();
                 // Relational chat tables cleanup
                 await trx('chat_conversations').where('org_id', org.org_id).del();
                 await trx('chat_conversation_members').where('org_id', org.org_id).del();

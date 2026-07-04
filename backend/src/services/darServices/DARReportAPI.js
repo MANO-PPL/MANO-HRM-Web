@@ -270,7 +270,7 @@ export async function fetchReportData(orgId, employeeIds, dateStart, dateEnd) {
     if (targetIds.length === 0) return { employees: [], activities: [], events: [] };
 
     const [activities, events] = await Promise.all([
-        attendanceDB('daily_activities')
+        attendanceDB('attn_daily_activities')
             .select(
                 'user_id',
                 'title',
@@ -283,7 +283,7 @@ export async function fetchReportData(orgId, employeeIds, dateStart, dateEnd) {
             .whereIn('user_id', targetIds)
             .whereRaw('DATE(activity_date) BETWEEN ? AND ?', [dateStart, dateEnd]),
 
-        attendanceDB('events_meetings')
+        attendanceDB('comm_events_meetings')
             .select(
                 'user_id',
                 'title',

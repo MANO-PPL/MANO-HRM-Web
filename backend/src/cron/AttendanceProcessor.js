@@ -90,7 +90,7 @@ export async function processHourlyAttendance() {
 
             // Only query DB to fetch custom timezone override when baseHour matches targetHour
             let timeZone = baseTimeZone;
-            const lastRecord = await attendanceDB('attendance_records')
+            const lastRecord = await attendanceDB('attn_records')
                 .where({ user_id: user.user_id })
                 .orderBy('created_at', 'desc')
                 .limit(1)
@@ -170,7 +170,7 @@ export async function processHourlyAttendance() {
  * - If they never showed up → mark ABSENT/WEEK_OFF/HOLIDAY/LEAVE
  */
 async function processUserAttendanceForDate(user, dateStr) {
-    const record = await attendanceDB('daily_attendance')
+    const record = await attendanceDB('attn_daily_summary')
         .where({ user_id: user.user_id, date: dateStr })
         .first();
 
@@ -178,7 +178,7 @@ async function processUserAttendanceForDate(user, dateStr) {
     const rules = ShiftService.getShiftRules(user);
 
     // 1. Check for any open sessions (forgot to checkout)
-    const openSessions = await attendanceDB('attendance_records')
+    const openSessions = await attendanceDB('attn_records')
         .where({ user_id: user.user_id })
         .whereNull('time_out')
         .whereRaw('DATE(time_in) = ?', [dateStr]);
@@ -193,7 +193,7 @@ async function processUserAttendanceForDate(user, dateStr) {
                 const now = new Date();
                 const finalCheckOut = checkOutDate > now ? now : checkOutDate;
                 
-                await attendanceDB('attendance_records')
+                await attendanceDB('attn_records')
                     .where({ attendance_id: openSession.attendance_id })
                     .update({
                         time_out: finalCheckOut,
@@ -226,7 +226,7 @@ async function processUserAttendanceForDate(user, dateStr) {
                     reason: "Employee did not check out"
                 };
 
-                await attendanceDB('attendance_records')
+                await attendanceDB('attn_records')
                     .where({ attendance_id: openSession.attendance_id })
                     .update({
                         status: 'MISSED_PUNCH',
@@ -272,7 +272,7 @@ async function processUserAttendanceForDate(user, dateStr) {
 
         const { status, remarks } = resolveNoShowStatus({ dateStr, rules, holiday, leave });
 
-        await attendanceDB('daily_attendance').insert({
+        await attendanceDB('attn_daily_summary').insert({
             user_id: user.user_id,
             org_id: user.org_id,
             date: dateStr,
@@ -297,7 +297,7 @@ async function processUserAttendanceForDate(user, dateStr) {
  */
 async function escalateExpiredMissedPunches() {
     // Find all MISSED_PUNCH daily records
-    const records = await attendanceDB('daily_attendance')
+    const records = await attendanceDB('attn_daily_summary')
         .where({ status: 'MISSED_PUNCH' });
 
     for (const record of records) {
@@ -382,7 +382,7 @@ async function escalateExpiredMissedPunches() {
             }
 
             // Check if user has submitted an approved/pending correction for this date
-            const correction = await attendanceDB('attendance_correction_requests')
+            const correction = await attendanceDB('attn_correction_requests')
                 .where({ user_id: record.user_id, request_date: record.date })
                 .whereIn('status', ['pending', 'approved'])
                 .first();
@@ -393,7 +393,7 @@ async function escalateExpiredMissedPunches() {
             }
 
             // No correction submitted — escalate to ABSENT
-            await attendanceDB('daily_attendance')
+            await attendanceDB('attn_daily_summary')
                 .where({ user_id: record.user_id, date: record.date })
                 .update({
                     status: 'ABSENT',
@@ -406,7 +406,7 @@ async function escalateExpiredMissedPunches() {
             });
 
             // Also update the attendance_records status
-            await attendanceDB('attendance_records')
+            await attendanceDB('attn_records')
                 .where({ user_id: record.user_id })
                 .whereRaw('DATE(time_in) = ?', [record.date])
                 .where({ status: 'MISSED_PUNCH' })
@@ -488,7 +488,7 @@ export async function checkAndSendShiftReminders() {
                 const dateStr = `${yyyy}-${mm}-${dd}`;
 
                 // Check if user has already timed in today
-                const record = await attendanceDB('attendance_records')
+                const record = await attendanceDB('attn_records')
                     .where({ user_id: user.user_id })
                     .whereRaw('DATE(time_in) = ?', [dateStr])
                     .first();
@@ -513,7 +513,7 @@ export async function checkAndSendShiftReminders() {
 
             if (currentMinutes === timeOutReminderMinutes) {
                 // Check if user has an active open session
-                const openSession = await attendanceDB('attendance_records')
+                const openSession = await attendanceDB('attn_records')
                     .where({ user_id: user.user_id })
                     .whereNull('time_out')
                     .first();

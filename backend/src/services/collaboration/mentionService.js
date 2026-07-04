@@ -154,7 +154,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
                     let mentionDesc = '';
 
                     if (context_type === 'dar_activity') {
-                        const activity = await attendanceDB('daily_activities')
+                        const activity = await attendanceDB('attn_daily_activities')
                             .where({ activity_id: context_id })
                             .first();
                         if (activity) {
@@ -162,7 +162,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
                             mentionDesc = activity.description || '';
                         }
                     } else if (context_type === 'dar_meeting') {
-                        const event = await attendanceDB('events_meetings')
+                        const event = await attendanceDB('comm_events_meetings')
                             .where({ event_id: context_id })
                             .first();
                         if (event) {

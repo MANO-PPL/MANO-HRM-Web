@@ -426,7 +426,7 @@ export const exportRecords = catchAsync(async (req, res) => {
   const lastDay = new Date(year, monthNum, 0).getDate();
   const endDate = `${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
 
-  const records = await attendanceDB("attendance_records")
+  const records = await attendanceDB("attn_records")
     .where({ user_id, org_id })
     .whereRaw("DATE(time_in) >= ?", [startDate])
     .whereRaw("DATE(time_in) <= ?", [endDate])

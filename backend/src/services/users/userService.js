@@ -436,22 +436,22 @@ export const permanentlyDeleteUser = async (userId) => {
         }
 
         await trx('core_refresh_tokens').where('user_id', userId).del();
-        await trx('notifications').where('user_id', userId).del();
+        await trx('comm_notifications').where('user_id', userId).del();
         await trx('sys_activity_logs').where('user_id', userId).del();
         await trx('sys_error_logs').where('user_id', userId).del();
         
         // Nullify reviewer/altered references where this user is referenced
-        await trx('attendance_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null });
-        await trx('attendance_records').where('altered_by', userId).update({ altered_by: null });
-        await trx('daily_attendance').where('adjusted_by', userId).update({ adjusted_by: null });
+        await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null });
+        await trx('attn_records').where('altered_by', userId).update({ altered_by: null });
+        await trx('attn_daily_summary').where('adjusted_by', userId).update({ adjusted_by: null });
         await trx('leave_request').where('reviewed_by', userId).update({ reviewed_by: null });
 
-        await trx('attendance_correction_requests').where('user_id', userId).del();
+        await trx('attn_correction_requests').where('user_id', userId).del();
         await trx('org_user_work_locations').where('user_id', userId).del();
-        await trx('daily_activities').where('user_id', userId).del();
-        await trx('daily_attendance').where('user_id', userId).del();
-        await trx('dar_requests').where('user_id', userId).del();
-        await trx('events_meetings').where('user_id', userId).del();
+        await trx('attn_daily_activities').where('user_id', userId).del();
+        await trx('attn_daily_summary').where('user_id', userId).del();
+        await trx('attn_dar_requests').where('user_id', userId).del();
+        await trx('comm_events_meetings').where('user_id', userId).del();
         await trx('sys_security_alerts').where('user_id', userId).del();
 
         // Clean up relational chat room memberships and DM rooms
@@ -498,21 +498,21 @@ export const permanentlyDeleteUser = async (userId) => {
         }
         await trx('leave_request').where('user_id', userId).del();
 
-        const feedbacks = await trx('feedback').where('user_id', userId).select('feedback_id');
+        const feedbacks = await trx('feedback_tickets').where('user_id', userId).select('feedback_id');
         const feedbackIds = feedbacks.map(f => f.feedback_id);
         if (feedbackIds.length > 0) {
             const feedbackAttachments = await trx('feedback_attachments').whereIn('feedback_id', feedbackIds).select('file_key');
             for (const attachment of feedbackAttachments) await safeDeleteS3(attachment.file_key);
             await trx('feedback_attachments').whereIn('feedback_id', feedbackIds).del();
-            await trx('feedback').whereIn('feedback_id', feedbackIds).del();
+            await trx('feedback_tickets').whereIn('feedback_id', feedbackIds).del();
         }
 
-        const attendanceRecords = await trx('attendance_records').where('user_id', userId).select('time_in_image_key', 'time_out_image_key');
+        const attendanceRecords = await trx('attn_records').where('user_id', userId).select('time_in_image_key', 'time_out_image_key');
         for (const record of attendanceRecords) {
             if (record.time_in_image_key) await safeDeleteS3(record.time_in_image_key);
             if (record.time_out_image_key) await safeDeleteS3(record.time_out_image_key);
         }
-        await trx('attendance_records').where('user_id', userId).del();
+        await trx('attn_records').where('user_id', userId).del();
 
         if (user.profile_image_url) {
             const key = extractKeyFromUrl(user.profile_image_url);

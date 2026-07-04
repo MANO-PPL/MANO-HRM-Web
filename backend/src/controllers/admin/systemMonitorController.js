@@ -46,15 +46,15 @@ export const updateSecurityAlertStatus = async (req, res, next) => {
 // --- User Feedback ---
 export const getUserFeedback = async (req, res, next) => {
     try {
-        const feedback = await attendanceDB('feedback')
-            .leftJoin('core_users', 'feedback.user_id', 'core_users.user_id')
+        const feedback = await attendanceDB('feedback_tickets')
+            .leftJoin('core_users', 'feedback_tickets.user_id', 'core_users.user_id')
             .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
             .select(
-                'feedback.*',
+                'feedback_tickets.*',
                 'core_users.user_name', 'core_users.email',
                 'core_organizations.org_name', 'core_organizations.org_id'
             )
-            .orderBy('feedback.created_at', 'desc');
+            .orderBy('feedback_tickets.created_at', 'desc');
 
         // Fetch attachments for all feedback
         const feedbackIds = feedback.map(f => f.feedback_id);
@@ -106,7 +106,7 @@ export const updateFeedbackStatus = async (req, res, next) => {
             throw new AppError("Invalid feedback status", 400);
         }
 
-        const affected = await attendanceDB('feedback')
+        const affected = await attendanceDB('feedback_tickets')
             .where({ feedback_id: id })
             .update({ status, updated_at: attendanceDB.fn.now() });
 

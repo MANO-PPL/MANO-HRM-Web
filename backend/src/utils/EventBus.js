@@ -107,10 +107,10 @@ class AppEventBus extends EventEmitter {
                     is_read: 0,
                     created_at: attendanceDB.fn.now()
                 };
-                const [insertedId] = await attendanceDB('notifications').insert(notificationData);
+                const [insertedId] = await attendanceDB('comm_notifications').insert(notificationData);
                 
                 // Fetch the fully inserted database row to get exact timestamps and auto-generated fields
-                const savedNotification = await attendanceDB('notifications')
+                const savedNotification = await attendanceDB('comm_notifications')
                     .where({ notification_id: insertedId })
                     .first();
 

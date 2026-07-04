@@ -13,7 +13,7 @@ export const getDashboardStats = async () => {
     ] = await Promise.all([
         attendanceDB('core_organizations').count('* as count').first(),
         attendanceDB('core_users').count('* as count').where('is_deleted', 0).first(),
-        attendanceDB('feedback')
+        attendanceDB('feedback_tickets')
             .count('* as count')
             .whereIn('status', ['pending', 'open', 'OPEN', 'PENDING', ''])
             .orWhereNull('status')

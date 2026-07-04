@@ -312,7 +312,7 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
 }
 
 export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
-    return attendanceDB("attendance_records as ar")
+    return attendanceDB("attn_records as ar")
         .modify(qb => {
             if (isValidDeptId(dept_id) || isValidDesgId(desg_id) || isValidShiftId(shift_id)) {
                 qb.join("core_users as u", "ar.user_id", "u.user_id")
@@ -337,7 +337,7 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
 }
 
 export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
-    return attendanceDB("attendance_records as ar")
+    return attendanceDB("attn_records as ar")
         .join("core_users as u", "ar.user_id", "u.user_id")
         .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
         .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")

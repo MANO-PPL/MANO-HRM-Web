@@ -293,7 +293,7 @@ export async function buildSessionContext(user_id, localTime, eventType) {
     // Extract date portion from the local time string for DB filtering
     const dateOnly = sanitizedLocalTime.split(' ')[0];
 
-    const todaySessions = await attendanceDB("attendance_records")
+    const todaySessions = await attendanceDB("attn_records")
         .where({ user_id })
         .whereRaw("DATE(time_in) = ?", [dateOnly])
         .orderBy("time_in", "asc");
@@ -573,13 +573,13 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
 
     // 2. Fetch all supporting data in parallel
     const [records, dailyRecords, holidays, leaves] = await Promise.all([
-        attendanceDB('attendance_records')
+        attendanceDB('attn_records')
             .where('org_id', org_id)
             .whereRaw('DATE(time_in) >= ?', [date_from])
             .whereRaw('DATE(time_in) <= ?', [date_to])
             .modify(qb => { if (user_id) qb.where('user_id', user_id); })
             .orderBy('time_in', 'asc'),
-        attendanceDB('daily_attendance')
+        attendanceDB('attn_daily_summary')
             .where('org_id', org_id)
             .where('date', '>=', date_from)
             .where('date', '<=', date_to)

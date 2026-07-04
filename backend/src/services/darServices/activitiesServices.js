@@ -538,7 +538,7 @@ async function runGenerateSimulation(orgId, payload) {
         };
     }
 
-    const settings = await attendanceDB('dar_settings').where({ org_id: orgId }).first();
+    const settings = await attendanceDB('attn_dar_settings').where({ org_id: orgId }).first();
     let categories = [];
     if (settings?.categories) {
         try {
@@ -557,7 +557,7 @@ async function runGenerateSimulation(orgId, payload) {
     const employeeIds = employees.map((employee) => employee.user_id);
     const dateList = buildDateRange(dateStart, dateEnd);
 
-    const attendanceRecords = await attendanceDB('attendance_records')
+    const attendanceRecords = await attendanceDB('attn_records')
         .select(
             'attendance_id',
             'user_id',
@@ -574,7 +574,7 @@ async function runGenerateSimulation(orgId, payload) {
         .orderBy('user_id', 'asc')
         .orderBy('time_in', 'asc');
 
-    const existingActivities = await attendanceDB('daily_activities')
+    const existingActivities = await attendanceDB('attn_daily_activities')
         .select(
             'user_id',
             'title',
@@ -588,7 +588,7 @@ async function runGenerateSimulation(orgId, payload) {
         .whereRaw('DATE(activity_date) <= ?', [dateEnd]);
 
     // Also fetch events/meetings so simulated activities never overlap with them
-    const existingEvents = await attendanceDB('events_meetings')
+    const existingEvents = await attendanceDB('comm_events_meetings')
         .select(
             'user_id',
             attendanceDB.raw("DATE_FORMAT(event_date, '%Y-%m-%d') as activity_date"),
@@ -635,7 +635,7 @@ async function runGenerateSimulation(orgId, payload) {
             const userEvents = eventsByUser.get(employee.user_id) || [];
 
             if (overwriteExisting) {
-                await trx('daily_activities')
+                await trx('attn_daily_activities')
                     .where({ org_id: orgId, user_id: employee.user_id })
                     .whereRaw('DATE(activity_date) >= ?', [dateStart])
                     .whereRaw('DATE(activity_date) <= ?', [dateEnd])
@@ -700,7 +700,7 @@ async function runGenerateSimulation(orgId, payload) {
             if (overwriteExisting) {
                 // Remove previously simulated events (keep only ones created before the simulator existed,
                 // i.e. ones with a description matching our template pattern)
-                await trx('events_meetings')
+                await trx('comm_events_meetings')
                     .where({ org_id: orgId, user_id: employee.user_id })
                     .whereRaw('DATE(event_date) >= ?', [dateStart])
                     .whereRaw('DATE(event_date) <= ?', [dateEnd])
@@ -725,7 +725,7 @@ async function runGenerateSimulation(orgId, payload) {
                     created_at: attendanceDB.fn.now(),
                     updated_at: attendanceDB.fn.now()
                 }));
-                await trx('events_meetings').insert(eventInserts);
+                await trx('comm_events_meetings').insert(eventInserts);
             }
 
             const coverageCandidates = ensureDailyCoverage
@@ -820,7 +820,7 @@ async function runGenerateSimulation(orgId, payload) {
             }
 
             if (inserts.length > 0) {
-                await trx('daily_activities').insert(inserts);
+                await trx('attn_daily_activities').insert(inserts);
                 totalInserted += inserts.length;
             }
 
@@ -908,7 +908,7 @@ async function runImportSimulation(orgId, payload) {
         };
     });
 
-    await attendanceDB('daily_activities').insert(inserts);
+    await attendanceDB('attn_daily_activities').insert(inserts);
 
     return {
         mode: 'import',
@@ -925,7 +925,7 @@ async function runImportSimulation(orgId, payload) {
 
 // Helper: Get Org Buffer Settings
 export async function getOrgBuffer(org_id) {
-    const settings = await attendanceDB("dar_settings").where({ org_id }).first();
+    const settings = await attendanceDB("attn_dar_settings").where({ org_id }).first();
     return settings ? settings.buffer_minutes : 30;
 }
 
@@ -970,7 +970,7 @@ export async function validateActivityTime(user_id, date, start_time, end_time, 
     const fromStr = from.toISOString().split('T')[0];
     const toStr = to.toISOString().split('T')[0];
 
-    const attendance = await attendanceDB('attendance_records')
+    const attendance = await attendanceDB('attn_records')
         .where('user_id', user_id)
         .whereRaw('DATE(time_in) BETWEEN ? AND ?', [fromStr, toStr])
         .orderBy('time_in', 'asc');
@@ -1018,7 +1018,7 @@ export async function processActivityValidation(org_id, user_id, body) {
 }
 
 export async function createActivity({ org_id, user_id, activity_date, start_time, end_time, title, description, activity_type, status }) {
-    const [activity_id] = await attendanceDB("daily_activities").insert({
+    const [activity_id] = await attendanceDB("attn_daily_activities").insert({
         org_id,
         user_id,
         activity_date,
@@ -1034,7 +1034,7 @@ export async function createActivity({ org_id, user_id, activity_date, start_tim
 }
 
 export async function updateActivity({ activity_id, org_id, user_id, activity_date, start_time, end_time, title, description, activity_type, status }) {
-    await attendanceDB("daily_activities")
+    await attendanceDB("attn_daily_activities")
         .where({ activity_id, org_id, user_id })
         .update({
             activity_date,
@@ -1049,13 +1049,13 @@ export async function updateActivity({ activity_id, org_id, user_id, activity_da
 }
 
 export async function deleteActivity({ activity_id, org_id, user_id }) {
-    return attendanceDB("daily_activities")
+    return attendanceDB("attn_daily_activities")
         .where({ activity_id, org_id, user_id })
         .del();
 }
 
 export async function listActivities({ org_id, user_id, date, date_from, date_to }) {
-    let query = attendanceDB("daily_activities")
+    let query = attendanceDB("attn_daily_activities")
         .select(
             "*",
             attendanceDB.raw("DATE_FORMAT(activity_date, '%Y-%m-%d') as activity_date")
@@ -1072,7 +1072,7 @@ export async function listActivities({ org_id, user_id, date, date_from, date_to
 }
 
 export async function getAllActivitiesAdmin({ org_id, date, startDate, endDate }) {
-    let query = attendanceDB('daily_activities as da')
+    let query = attendanceDB('attn_daily_activities as da')
         .join('core_users as u', 'da.user_id', 'u.user_id')
         .leftJoin('org_departments as dep', 'u.dept_id', 'dep.dept_id')
         .leftJoin('org_shifts as s', 'u.shift_id', 's.shift_id')

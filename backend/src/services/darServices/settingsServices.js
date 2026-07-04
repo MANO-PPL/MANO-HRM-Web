@@ -3,11 +3,11 @@ import { attendanceDB } from '../../config/database.js';
 const DEFAULT_CATEGORIES = ["Site Visit", "Inspection", "Office Work", "Material Check", "Meeting", "Safety", "Documentation"];
 
 export async function getOrInitSettings({ org_id }) {
-    let settings = await attendanceDB("dar_settings").where({ org_id }).first();
+    let settings = await attendanceDB("attn_dar_settings").where({ org_id }).first();
 
     if (!settings) {
         const defaultCats = JSON.stringify(DEFAULT_CATEGORIES);
-        await attendanceDB("dar_settings").insert({
+        await attendanceDB("attn_dar_settings").insert({
             org_id,
             buffer_minutes: 30,
             categories: defaultCats
@@ -30,7 +30,7 @@ export async function updateSettings({ org_id, buffer_minutes, categories }) {
     if (buffer_minutes !== undefined) updates.buffer_minutes = buffer_minutes;
     if (categories !== undefined) updates.categories = JSON.stringify(categories);
 
-    await attendanceDB("dar_settings")
+    await attendanceDB("attn_dar_settings")
         .where({ org_id })
         .update({ ...updates, updated_at: attendanceDB.fn.now() });
 }

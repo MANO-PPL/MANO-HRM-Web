@@ -8,7 +8,7 @@ export const getNotifications = async (
     limit,
     unread_only
 ) => {
-    let query = attendanceDB('notifications')
+    let query = attendanceDB('comm_notifications')
         .where({ user_id })
         .orderBy('created_at', 'desc')
         .limit(Math.min(parseInt(limit), 50));
@@ -26,7 +26,7 @@ export const getNotifications = async (
         return n;
     });
 
-    const unreadResult = await attendanceDB('notifications')
+    const unreadResult = await attendanceDB('comm_notifications')
         .where({
             user_id,
             is_read: 0
@@ -49,7 +49,7 @@ export const markNotificationAsRead = async (
     user_id,
     notification_id
 ) => {
-    const count = await attendanceDB('notifications')
+    const count = await attendanceDB('comm_notifications')
         .where({
             notification_id,
             user_id
@@ -62,7 +62,7 @@ export const markNotificationAsRead = async (
 
 export const markAllNotificationsAsRead = async (user_id) => {
 
-    const count = await attendanceDB('notifications')
+    const count = await attendanceDB('comm_notifications')
         .where({
             user_id,
             is_read: 0
@@ -77,7 +77,7 @@ export const markAllNotificationsAsRead = async (user_id) => {
 };
 
 export const createNotification = async ({ org_id, user_id, type, title, message, related_entity_type, related_entity_id }) => {
-    const [notification_id] = await attendanceDB('notifications').insert({
+    const [notification_id] = await attendanceDB('comm_notifications').insert({
         org_id,
         user_id,
         type: type || 'INFO',
