@@ -141,4 +141,10 @@ router.patch("/correct-request/:acr_id",
  */
 router.get("/my-shift", authenticateJWT, AttendanceController.getMyShift);
 
+/**
+ * POST /attendance/ai-summary
+ * Fetch AI summary from the Python microservice (port 8001)
+ */
+router.post("/ai-summary", authenticateJWT, AttendanceController.getAiSummary);
+
 export default router;

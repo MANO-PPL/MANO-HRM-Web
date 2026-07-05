@@ -48,7 +48,8 @@ import {
     Users,
     X,
     LogIn,
-    Camera
+    Camera,
+    Sparkles
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
@@ -61,6 +62,7 @@ import {
     AreaChart, Area
 } from 'recharts';
 import { useTour } from '../../context/TourContext';
+import axios from 'axios';
 
 
 
@@ -762,6 +764,176 @@ const AttendanceMonitoring = () => {
     const [selectedDate, setSelectedDate] = React.useState(initialDate);
     const [lastSynced, setLastSynced] = React.useState(new Date());
 
+    // AI Summary State
+    const [isAiSummaryOpen, setIsAiSummaryOpen] = useState(false);
+    const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+    const [aiSummaryData, setAiSummaryData] = useState(null);
+    const [aiSummaryError, setAiSummaryError] = useState(null);
+
+    const presentStaffChartData = React.useMemo(() => {
+        return attendanceData
+            .filter(emp => {
+                const statusLower = emp.status ? emp.status.toLowerCase() : '';
+                return statusLower.includes('present') || statusLower.includes('late') || statusLower.includes('active') || statusLower.includes('overtime');
+            })
+            .map(emp => {
+                let totalMin = 0;
+                if (emp.sessions && emp.sessions.length > 0) {
+                    emp.sessions.forEach(r => {
+                        const inTime = r.rawIn;
+                        const outTime = r.rawOut;
+                        const isActive = r.isActive;
+                        if (outTime && inTime) {
+                            totalMin += Math.max(0, (outTime - inTime) / 60000);
+                        } else if (isActive && inTime) {
+                            const now = getCurrentTimeInTimezone(orgTimezone);
+                            totalMin += Math.max(0, (now - inTime) / 60000);
+                        }
+                    });
+                }
+                const logged = Number((totalMin / 60).toFixed(2));
+                
+                const expectedHoursDecimal = parseFloat(emp.expectedHours);
+                const expected = isNaN(expectedHoursDecimal) ? 8.0 : expectedHoursDecimal;
+                
+                const truncatedName = emp.name.length > 15 ? `${emp.name.slice(0, 12)}...` : emp.name;
+                
+                return {
+                    name: truncatedName,
+                    fullName: emp.name,
+                    logged: logged,
+                    expected: expected
+                };
+            });
+    }, [attendanceData, orgTimezone]);
+
+    const localAnalytics = React.useMemo(() => {
+        let presentCount = 0;
+        let lateCount = 0;
+        attendanceData.forEach(emp => {
+            const statusLower = emp.status ? emp.status.toLowerCase() : '';
+            const isPresent = statusLower.includes('present') || statusLower.includes('late') || statusLower.includes('active') || statusLower.includes('overtime');
+            const isLate = statusLower.includes('late');
+            if (isPresent) presentCount++;
+            if (isLate) lateCount++;
+        });
+        const total = attendanceData.length || 1;
+        return {
+            presentRate: Math.round((presentCount / total) * 100),
+            lateRate: Math.round((lateCount / total) * 100)
+        };
+    }, [attendanceData]);
+
+    const generateAiSummary = async () => {
+        if (!attendanceData || attendanceData.length === 0) {
+            toast.error("No attendance data available for the selected date to analyze.");
+            return;
+        }
+
+        setIsAiSummaryOpen(true);
+        setAiSummaryLoading(true);
+        setAiSummaryError(null);
+        try {
+            const token = localStorage.getItem('accessToken');
+            
+            // Construct payload matching Python schema
+            let presentCount = 0;
+            let lateCount = 0;
+            const deptStats = {};
+            
+            attendanceData.forEach(emp => {
+                const statusLower = emp.status ? emp.status.toLowerCase() : '';
+                const isPresent = statusLower.includes('present') || statusLower.includes('late') || statusLower.includes('active') || statusLower.includes('overtime');
+                const isLate = statusLower.includes('late');
+                
+                if (isPresent) presentCount++;
+                if (isLate) lateCount++;
+                
+                const dept = emp.department || 'Unassigned';
+                if (!deptStats[dept]) deptStats[dept] = { present: 0, absent: 0, late: 0 };
+                
+                if (isPresent) deptStats[dept].present++;
+                if (isLate) deptStats[dept].late++;
+                if (statusLower.includes('absent')) deptStats[dept].absent++;
+            });
+            
+            const total = attendanceData.length || 1;
+            const analytics = {
+                present_rate: Math.round((presentCount / total) * 100),
+                late_rate: Math.round((lateCount / total) * 100),
+                avg_work_hours: 8.0,
+                department_breakdown: Object.keys(deptStats).map(dept => ({
+                    department: dept,
+                    present: deptStats[dept].present,
+                    absent: deptStats[dept].absent,
+                    late: deptStats[dept].late
+                })),
+                timeline_peaks: ["09:00", "17:00"]
+            };
+
+            const employees = attendanceData.map(emp => {
+                const firstSession = emp.sessions && emp.sessions.length > 0 ? emp.sessions[0] : null;
+                const lastSession = emp.sessions && emp.sessions.length > 0 ? emp.sessions[emp.sessions.length - 1] : null;
+                
+                let status = 'absent';
+                const statusLower = emp.status ? emp.status.toLowerCase() : '';
+                if (statusLower.includes('active') || statusLower.includes('present') || statusLower.includes('overtime')) {
+                    status = 'present';
+                }
+                if (statusLower.includes('late')) {
+                    status = 'late';
+                }
+                if (statusLower.includes('leave')) {
+                    status = 'on_leave';
+                }
+                if (statusLower.includes('absent')) {
+                    status = 'absent';
+                }
+                if (statusLower.includes('week off') || statusLower.includes('holiday')) {
+                    status = 'on_leave';
+                }
+
+                return {
+                    name: emp.name || 'Unknown',
+                    department: emp.department || 'Unassigned',
+                    status: status,
+                    check_in: firstSession && firstSession.in !== '-' ? firstSession.in : null,
+                    check_out: lastSession && lastSession.out !== '-' ? lastSession.out : null
+                };
+            });
+
+            const payload = {
+                date: selectedDate,
+                total_employees: attendanceData.length,
+                employees: employees,
+                analytics: analytics
+            };
+
+            const res = await axios.post('/api/attendance/ai-summary', payload, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setAiSummaryData(res.data);
+        } catch (err) {
+            console.error("AI Summary Error:", err);
+            let errorMessage = "Failed to generate AI summary. Please try again.";
+            if (err.response?.data?.message) {
+                errorMessage = err.response.data.message;
+            } else if (typeof err.response?.data?.error === 'string') {
+                errorMessage = err.response.data.error;
+            } else if (err.response?.data?.error?.message) {
+                errorMessage = err.response.data.error.message;
+            }
+            setAiSummaryError(errorMessage);
+        } finally {
+            setAiSummaryLoading(false);
+        }
+    };
+    
+    // Automatically clear AI Summary data when date changes
+    useEffect(() => {
+        setAiSummaryData(null);
+    }, [selectedDate]);
+
     const handlePrevDay = () => {
         const current = new Date(selectedDate);
         current.setDate(current.getDate() - 1);
@@ -1452,6 +1624,13 @@ const AttendanceMonitoring = () => {
                                                     className="pl-11 pr-4 py-2.5 text-xs w-full rounded-lg border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 text-slate-900 dark:text-github-dark-text focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-dark-card outline-none transition-all shadow-inner"
                                                 />
                                             </div>
+                                            <button
+                                                onClick={generateAiSummary}
+                                                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-xs rounded-lg shadow-md hover:shadow-lg transition-all"
+                                            >
+                                                <Sparkles size={14} className="animate-pulse" />
+                                                AI Summary
+                                            </button>
                                             <div className="relative">
                                                 <button
                                                     onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
@@ -2329,6 +2508,44 @@ const AttendanceMonitoring = () => {
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            {/* Shift Hours Progress */}
+                                            <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
+                                                        <Clock size={20} className="text-indigo-500" /> Shift Hours Progress
+                                                    </h3>
+                                                    <span className="text-xs font-semibold text-slate-500 dark:text-github-dark-muted">
+                                                        Actual logged hours vs. Expected shift duration today
+                                                    </span>
+                                                </div>
+                                                {presentStaffChartData.length === 0 ? (
+                                                    <p className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-12">
+                                                        No checked-in employees to track shift hours.
+                                                    </p>
+                                                ) : (
+                                                    <div className="h-[400px] w-full overflow-y-auto pr-2 custom-scrollbar">
+                                                        <div style={{ height: Math.max(350, presentStaffChartData.length * 45) }}>
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <BarChart
+                                                                    data={presentStaffChartData}
+                                                                    layout="vertical"
+                                                                    margin={{ top: 10, right: 30, left: 20, bottom: 10 }}
+                                                                    barGap={4}
+                                                                >
+                                                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" opacity={0.3} />
+                                                                    <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} domain={[0, 'dataMax + 1']} />
+                                                                    <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={100} />
+                                                                    <Tooltip content={<CustomHoursTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} />
+                                                                    <Legend verticalAlign="top" height={36} iconType="circle" />
+                                                                    <Bar dataKey="logged" name="Logged Hours" fill="#10b981" radius={[0, 4, 4, 0]} barSize={12} />
+                                                                    <Bar dataKey="expected" name="Expected Hours" fill="#94a3b8" radius={[0, 4, 4, 0]} barSize={12} opacity={0.5} />
+                                                                </BarChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     ) : null}
                                 </div>
@@ -2847,6 +3064,187 @@ const AttendanceMonitoring = () => {
 
                 </div>
             </div>
+                {/* AI Summary Panel */}
+                <AnimatePresence>
+                    {isAiSummaryOpen && (
+                        <motion.div key="ai-panel-wrapper" className="fixed inset-0 z-[10000] flex justify-end">
+                            {/* Backdrop */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => setIsAiSummaryOpen(false)}
+                                className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm"
+                            />
+
+                            {/* Sidebar Drawer */}
+                            <motion.div
+                                initial={{ x: '100%' }}
+                                animate={{ x: 0 }}
+                                exit={{ x: '100%' }}
+                                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                                className="relative w-full sm:w-[80vw] md:w-[60vw] lg:w-[50vw] bg-white dark:bg-[#0d1117] border-l border-slate-200 dark:border-github-dark-border flex flex-col shadow-2xl"
+                            >
+                                {/* Header */}
+                                <div className="p-5 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between bg-white dark:bg-[#0d1117] sticky top-0 z-10 shrink-0">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg text-white shadow-md">
+                                            <Sparkles size={20} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-black text-slate-800 dark:text-github-dark-text tracking-tight flex items-center gap-2">
+                                                AI Attendance Insights
+                                                {aiSummaryLoading && <span className="flex h-2 w-2 relative ml-1">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                                </span>}
+                                            </h3>
+                                            <p className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">
+                                                Generated for {selectedDate}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsAiSummaryOpen(false)}
+                                        className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                {/* Content */}
+                                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-50/50 dark:bg-[#0d1117]">
+                                    {aiSummaryError && !aiSummaryLoading ? (
+                                        <div className="flex flex-col items-center justify-center h-64 text-center">
+                                            <AlertTriangle size={48} className="text-rose-500 mb-4 opacity-80" />
+                                            <h4 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-2">Analysis Failed</h4>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">{aiSummaryError}</p>
+                                            <button 
+                                                onClick={generateAiSummary}
+                                                className="mt-6 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                                Try Again
+                                            </button>
+                                        </div>
+                                    ) : aiSummaryLoading && !aiSummaryData ? (
+                                        <div className="space-y-6">
+                                            {/* Skeletons */}
+                                            <div className="h-24 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="h-32 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
+                                                <div className="h-32 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
+                                            </div>
+                                            <div className="h-64 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse"></div>
+                                        </div>
+                                    ) : aiSummaryData ? (
+                                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                            {/* Overall Summary */}
+                                            <div className="p-5 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm">
+                                                <h4 className="text-xs font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                    <FileText size={14} className="text-indigo-500" /> Executive Summary
+                                                </h4>
+                                                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                                                    {aiSummaryData.overall_summary}
+                                                </p>
+                                            </div>
+
+                                            {/* Key Insights Grid */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-900/20 dark:to-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-500/20">
+                                                    <h4 className="text-[10px] font-black text-emerald-500 dark:text-emerald-400 uppercase tracking-widest mb-1">Present Rate</h4>
+                                                    <div className="text-3xl font-black text-emerald-700 dark:text-emerald-300">
+                                                        {localAnalytics.presentRate}%
+                                                    </div>
+                                                </div>
+                                                <div className="p-4 bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-900/20 dark:to-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-500/20">
+                                                    <h4 className="text-[10px] font-black text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-1">Late Rate</h4>
+                                                    <div className="text-3xl font-black text-amber-700 dark:text-amber-300">
+                                                        {localAnalytics.lateRate}%
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Highlights */}
+                                            {aiSummaryData.analytics_insights.highlights && aiSummaryData.analytics_insights.highlights.length > 0 && (
+                                                <div className="space-y-3">
+                                                    <h4 className="text-xs font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest flex items-center gap-2">
+                                                        <Activity size={14} className="text-indigo-500" /> Key Observations
+                                                    </h4>
+                                                    <div className="space-y-2">
+                                                        {aiSummaryData.analytics_insights.highlights.map((highlight, idx) => (
+                                                            <div key={idx} className="flex gap-3 p-3 bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm">
+                                                                <div className="mt-0.5">
+                                                                    <CheckCircle size={16} className="text-emerald-500" />
+                                                                </div>
+                                                                <p className="text-sm text-slate-600 dark:text-slate-300 leading-snug">{highlight}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Notable Employees */}
+                                            {(aiSummaryData.absent_employees.length > 0 || aiSummaryData.present_employees.length > 0) && (
+                                                <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-github-dark-border">
+                                                    <h4 className="text-xs font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest flex items-center gap-2">
+                                                        <Users size={14} className="text-indigo-500" /> Attendance Breakdown
+                                                    </h4>
+                                                    
+                                                    {aiSummaryData.present_employees.length > 0 && (
+                                                        <div className="mb-4">
+                                                            <h5 className="text-xs font-bold text-emerald-500 mb-2">Present ({aiSummaryData.present_employees.length})</h5>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {aiSummaryData.present_employees.map((emp, i) => (
+                                                                    <div key={i} className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-md flex items-center gap-2">
+                                                                        <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">{emp.name}</span>
+                                                                        <span className="text-[10px] text-emerald-500 dark:text-emerald-500/70 uppercase">{emp.department}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {aiSummaryData.absent_employees.length > 0 && (
+                                                        <div className="mb-4">
+                                                            <h5 className="text-xs font-bold text-rose-500 mb-2">Absences ({aiSummaryData.absent_employees.length})</h5>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {aiSummaryData.absent_employees.map((emp, i) => (
+                                                                    <div key={i} className="px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-md flex items-center gap-2">
+                                                                        <span className="text-xs font-bold text-rose-700 dark:text-rose-400">{emp.name}</span>
+                                                                        <span className="text-[10px] text-rose-500 dark:text-rose-500/70 uppercase">{emp.department}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {aiSummaryData.present_employees.filter(e => e.note).length > 0 && (
+                                                        <div>
+                                                            <h5 className="text-xs font-bold text-indigo-500 mb-2">Notes</h5>
+                                                            <div className="space-y-2">
+                                                                {aiSummaryData.present_employees.filter(e => e.note).map((emp, i) => (
+                                                                    <div key={i} className="flex justify-between items-center p-3 bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm">
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{emp.name}</span>
+                                                                            <span className="text-[10px] text-slate-500 dark:text-slate-400">{emp.department}</span>
+                                                                        </div>
+                                                                        <div className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 rounded">
+                                                                            {emp.note}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </DashboardLayout>
         </>
     );
@@ -3072,6 +3470,42 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
         </>,
         document.body
     );
+};
+
+const CustomHoursTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+        const data = payload[0].payload;
+        const loggedHrs = data.logged;
+        const expectedHrs = data.expected;
+        
+        const totalMin = Math.round(loggedHrs * 60);
+        const h = Math.floor(totalMin / 60);
+        const m = totalMin % 60;
+        const loggedFormatted = `${h}h ${m}m`;
+        
+        const pct = expectedHrs > 0 ? Math.round((loggedHrs / expectedHrs) * 100) : 0;
+        
+        return (
+            <div className="bg-slate-800/95 dark:bg-[#161b22]/95 border border-slate-700 dark:border-github-dark-border p-3 rounded-xl text-white shadow-xl text-xs backdrop-blur-sm">
+                <p className="font-bold mb-1.5 text-slate-200">{data.fullName}</p>
+                <div className="space-y-1 font-medium">
+                    <p className="flex justify-between gap-4">
+                        <span className="text-slate-400 font-bold">Logged:</span> 
+                        <span className="font-bold text-indigo-400">{loggedFormatted}</span>
+                    </p>
+                    <p className="flex justify-between gap-4">
+                        <span className="text-slate-400 font-bold">Expected:</span> 
+                        <span className="font-bold text-slate-300">{expectedHrs} hrs</span>
+                    </p>
+                    <p className="flex justify-between gap-4 border-t border-slate-700/50 pt-1 mt-1 font-bold">
+                        <span className="text-slate-400 font-bold">Progress:</span> 
+                        <span className={pct >= 100 ? "text-emerald-400" : "text-amber-400"}>{pct}%</span>
+                    </p>
+                </div>
+            </div>
+        );
+    }
+    return null;
 };
 
 export default AttendanceMonitoring;

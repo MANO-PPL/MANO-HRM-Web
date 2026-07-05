@@ -1,4 +1,5 @@
 import catchAsync from "../../utils/catchAsync.js";
+import axios from "axios";
 import * as MapsService from "../../services/google_api_services/maps.js";
 import { getEventSource } from "../../utils/clientInfo.js";
 import * as AttendanceService from "../../services/attendance/attendanceService.js";
@@ -653,3 +654,24 @@ export const getAdminDailySummary = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * POST /attendance/ai-summary
+ * Proxy request to Python FastAPI microservice
+ */
+export const getAiSummary = catchAsync(async (req, res) => {
+  try {
+    const response = await axios.post("http://127.0.0.1:8001/summarize", req.body);
+    res.json(response.data);
+  } catch (error) {
+    if (error.response) {
+      // Python service responded with an error (e.g., 422 Validation Error)
+      return res.status(error.response.status).json(error.response.data);
+    } else if (error.request) {
+      // Request was made but no response received (Python service down)
+      return res.status(503).json({ detail: "AI Summary service is currently unreachable." });
+    } else {
+      // Something happened in setting up the request
+      return res.status(500).json({ detail: "An unexpected error occurred while contacting AI service." });
+    }
+  }
+});

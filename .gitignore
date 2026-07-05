@@ -132,3 +132,15 @@ dist
 # custom
 temp
 backend/firebase-service-account.json
+
+# Python runtime and environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+.venv-1/
+venv/
+env/
+chroma_data/

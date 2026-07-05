@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "concurrently \"npm run server\" \"npm run client\" \"cd backend/services/ai_summary && uvicorn main:app --port 8001 --reload\"",
     "server": "cd backend && npm run dev",
     "client": "cd frontend && npm run dev",
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
