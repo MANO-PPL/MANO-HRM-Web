@@ -1061,7 +1061,7 @@ const MobileReports = () => {
                                 <FileText size={16} />
                             </div>
                             <div>
-                                <h3 className="text-[10px] font-black text-slate-800 dark:text-white uppercase leading-none">{reportType.replace(/_/g, ' ')}</h3>
+                                <h3 className="text-[10px] font-black text-slate-800 dark:text-white uppercase leading-none">{activeFilters.reportType.replace(/_/g, ' ')}</h3>
                                 <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5">Live Data & Past Exports</p>
                             </div>
                         </div>
