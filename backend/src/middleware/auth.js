@@ -27,10 +27,10 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         if (decoded.user_type === 'super_admin') {
             user = await attendanceDB('core_super_admins').where({ id: decoded.user_id }).first();
             if (!user) {
-                return res.status(403).json({ message: "Forbidden: Invalid token user" });
+                return res.status(401).json({ message: "Forbidden: Invalid token user", code: "INVALID_USER" });
             }
             if (!user.is_active) {
-                return res.status(403).json({ message: "Access Denied: Your account is inactive." });
+                return res.status(403).json({ message: "Access Denied: Your account is inactive.", code: "ACCOUNT_INACTIVE" });
             }
 
             req.user = {
@@ -55,7 +55,7 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
             .first();
 
         if (!user) {
-            return res.status(403).json({ message: "Forbidden: Invalid token user" });
+            return res.status(401).json({ message: "Forbidden: Invalid token user", code: "INVALID_USER" });
         }
 
         // STRICT SECURITY CHECK: Block Inactive/Suspended Orgs and Inactive Users
@@ -63,7 +63,7 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         let isOrgExpired = false;
         if (user.org_id) {
             if (!user.org_status || user.org_status === 'pending_deletion') {
-                return res.status(403).json({ message: "Access Denied: Your organization has been deleted or is scheduled for deletion." });
+                return res.status(403).json({ message: "Access Denied: Your organization has been deleted or is scheduled for deletion.", code: "ORG_DELETED" });
             }
 
             if (user.org_subscription_expiry) {
@@ -79,16 +79,16 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
             const orgStatus = isOrgExpired ? 'inactive' : user.org_status;
 
             if (orgStatus !== 'active' && user.user_type !== 'admin') {
-                return res.status(403).json({ message: `Access Denied: Your organization account is inactive or expired.` });
+                return res.status(403).json({ message: `Access Denied: Your organization account is inactive or expired.`, code: "ORG_INACTIVE" });
             }
         }
 
         if (!user.is_active) {
-            return res.status(403).json({ message: "Access Denied: Your account is inactive. Please contact HR for more information." });
+            return res.status(403).json({ message: "Access Denied: Your account is inactive. Please contact HR for more information.", code: "ACCOUNT_INACTIVE" });
         }
 
         if (user.is_deleted) {
-            return res.status(403).json({ message: "Access Denied: Your account has been deleted. Please contact HR for more information." });
+            return res.status(403).json({ message: "Access Denied: Your account has been deleted. Please contact HR for more information.", code: "ACCOUNT_DELETED" });
         }
 
         const isForcePasswordChange = user.force_password_change === 1 || user.force_password_change === true || user.force_password_change === 'true';
@@ -118,7 +118,8 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
                 return res.status(403).json({
                     success: false,
                     forcePasswordChange: true,
-                    message: "Password change is required before using the platform."
+                    message: "Password change is required before using the platform.",
+                    code: "FORCE_PASSWORD_CHANGE"
                 });
             }
         }
@@ -127,10 +128,10 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
 
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
-            return res.status(403).json({ message: "Forbidden: Token expired" });
+            return res.status(401).json({ message: "Forbidden: Token expired", code: "TOKEN_EXPIRED" });
         }
         console.error("Auth Middleware Error:", err);
-        return res.status(403).json({ message: "Forbidden: Invalid or expired token" });
+        return res.status(401).json({ message: "Forbidden: Invalid or expired token", code: "TOKEN_INVALID" });
     }
 });
 

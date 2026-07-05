@@ -161,13 +161,13 @@ export const authenticateSuperAdmin = async (email, password, reqInfo) => {
 };
 
 export const refreshAuthTokens = async (refreshToken, reqInfo) => {
-    if (!refreshToken) throw new AppError("No refresh token provided", 401);
+    if (!refreshToken) throw new AppError("No refresh token provided", 401, "NO_REFRESH_TOKEN");
 
     try {
         const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
         if (decoded.user_type === 'super_admin_refresh') {
             const admin = await attendanceDB('core_super_admins').where('id', decoded.id).first();
-            if (!admin || !admin.is_active) throw new AppError('Admin inactive or deleted', 403);
+            if (!admin || !admin.is_active) throw new AppError('Admin inactive or deleted', 403, "ADMIN_INACTIVE");
 
             const tokenPayload = {
                 user_id: admin.id,
@@ -180,22 +180,22 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
             return { accessToken: newAccessToken, refreshToken: newRefreshToken, rememberMe: false };
         }
     } catch (err) {
-        if (err.name === 'TokenExpiredError') throw new AppError("Session expired. Please re-login.", 403);
+        if (err.name === 'TokenExpiredError') throw new AppError("Session expired. Please re-login.", 401, "SESSION_EXPIRED");
         // Important: if jwt.verify failed for other reasons (e.g standard user's non-jwt token), let it fall through
     }
 
     const result = await TokenService.verifyRefreshToken(refreshToken);
 
-    if (!result) throw new AppError("Invalid refresh token", 403);
+    if (!result) throw new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
 
-    if (result.error) throw new AppError("Security Alert: Token reuse detected. Re-login required.", 403);
+    if (result.error) throw new AppError("Security Alert: Token reuse detected. Re-login required.", 401, "TOKEN_REUSE_DETECTED");
 
     const { user, gracePeriodActive, activeRefreshToken, refreshTokenRecord } = result;
 
     if (user.org_id) {
         const org = await attendanceDB('core_organizations').where('org_id', user.org_id).first();
         if (!org || org.status === 'pending_deletion') {
-            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403);
+            throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403, "ORG_DELETED");
         }
 
         let isOrgExpired = false;
@@ -212,7 +212,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
         const orgStatus = isOrgExpired ? 'inactive' : org.status;
 
         if (orgStatus !== 'active' && user.user_type !== 'admin') {
-            throw new AppError(`Access Denied: Your organization account is currently ${orgStatus}.`, 403);
+            throw new AppError(`Access Denied: Your organization account is currently ${orgStatus}.`, 403, "ORG_INACTIVE");
         }
     }
 

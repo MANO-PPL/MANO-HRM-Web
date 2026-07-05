@@ -54,6 +54,7 @@ const errorHandler = (err, req, res, next) => {
         ok: false,
         status: err.status,
         message: message,
+        ...(err.code && { code: err.code }),
         ...(isDevelopment && { stack: err.stack, error: err })
     });
 };
