@@ -504,10 +504,10 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
     .leftJoin("org_designations", "core_users.desg_id", "org_designations.desg_id")
     .select(
       "attn_records.*",
-      attendanceDB.raw("DATE_FORMAT(attendance_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
-      attendanceDB.raw("DATE_FORMAT(attendance_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
-      attendanceDB.raw("DATE_FORMAT(attendance_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
-      attendanceDB.raw("DATE_FORMAT(attendance_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts"),
+      attendanceDB.raw("DATE_FORMAT(attn_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
+      attendanceDB.raw("DATE_FORMAT(attn_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
+      attendanceDB.raw("DATE_FORMAT(attn_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
+      attendanceDB.raw("DATE_FORMAT(attn_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts"),
       "core_users.user_name",
       "core_users.email",
       "org_designations.desg_name as designation"
@@ -565,10 +565,10 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
     .where("user_id", user_id)
     .select(
       "attn_records.*",
-      attendanceDB.raw("DATE_FORMAT(attendance_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
-      attendanceDB.raw("DATE_FORMAT(attendance_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
-      attendanceDB.raw("DATE_FORMAT(attendance_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
-      attendanceDB.raw("DATE_FORMAT(attendance_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts")
+      attendanceDB.raw("DATE_FORMAT(attn_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
+      attendanceDB.raw("DATE_FORMAT(attn_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
+      attendanceDB.raw("DATE_FORMAT(attn_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
+      attendanceDB.raw("DATE_FORMAT(attn_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts")
     )
     .orderBy("time_in", "desc")
     .limit(Math.min(parseInt(limit), 100));
