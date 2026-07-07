@@ -298,8 +298,8 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
                 <span className="text-xs font-bold text-slate-800 dark:text-white">{org.subscription_plan}</span>
               </div>
               <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl border border-slate-100 dark:border-white/5">
-                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Max Users</span>
-                <span className="text-xs font-bold text-slate-800 dark:text-white">{org.max_users} Users</span>
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Active / Inactive / Max</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-white">{org.active_users || 0} / {org.inactive_users || 0} / {org.max_users}</span>
               </div>
               <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl border border-slate-100 dark:border-white/5 col-span-2">
                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Expiry Date</span>

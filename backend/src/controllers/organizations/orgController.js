@@ -92,8 +92,9 @@ export const getOrganizations = catchAsync(async (req, res, next) => {
         .leftJoin('core_users as u', 'o.org_id', 'u.org_id')
         .select(
             'o.*',
-            attendanceDB.raw('COUNT(u.user_id) as total_users'),
-            attendanceDB.raw('SUM(CASE WHEN u.is_active = 1 AND u.is_deleted = 0 THEN 1 ELSE 0 END) as active_users')
+            attendanceDB.raw("COALESCE(SUM(CASE WHEN u.user_type != 'admin' AND u.is_deleted = 0 THEN 1 ELSE 0 END), 0) as total_users"),
+            attendanceDB.raw("COALESCE(SUM(CASE WHEN u.user_type != 'admin' AND u.is_active = 1 AND u.is_deleted = 0 THEN 1 ELSE 0 END), 0) as active_users"),
+            attendanceDB.raw("COALESCE(SUM(CASE WHEN u.user_type != 'admin' AND u.is_active = 0 AND u.is_deleted = 0 THEN 1 ELSE 0 END), 0) as inactive_users")
         )
         .groupBy('o.org_id')
         .orderBy('o.created_at', 'desc');
