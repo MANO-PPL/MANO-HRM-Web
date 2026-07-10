@@ -386,7 +386,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         }
     } else if (dayRecords.length > 0) {
         // ── Has punch records – derive status dynamically ──
-        const hasOpenSession = dayRecords.some(r => !r.time_out && r.status !== 'MISSED_PUNCH');
+        const hasOpenSession = dayRecords.some(r => !r.time_out && r.status !== 'MISSED_PUNCH' && r.status !== 'ABSENT');
         const hasMissedPunch = dayRecords.some(r => r.status === 'MISSED_PUNCH');
 
         const localNow = getLocalNow(timezone);
@@ -394,7 +394,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         for (const r of dayRecords) {
             if (r.time_in && r.time_out) {
                 totalHours += calculateDurationHours(r.time_in, r.time_out);
-            } else if (r.time_in && !r.time_out && r.status !== 'MISSED_PUNCH') {
+            } else if (r.time_in && !r.time_out && r.status !== 'MISSED_PUNCH' && r.status !== 'ABSENT') {
                 // Active session – count running hours using local time
                 totalHours += calculateDurationHours(r.time_in, localNow);
             }

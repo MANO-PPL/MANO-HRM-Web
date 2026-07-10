@@ -483,7 +483,7 @@ const processAttendanceData = (staff, resolvedTz) => {
 
             const inStr = formatTime(inTime);
             let outStr = '-';
-            let isActive = !r.time_out && r.status !== 'MISSED_PUNCH';
+            let isActive = !r.time_out && r.status !== 'MISSED_PUNCH' && r.status !== 'ABSENT';
 
             const outTime = parseTimeInTimezone(r, true, resolvedTz);
             if (outTime) {
