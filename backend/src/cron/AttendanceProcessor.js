@@ -359,12 +359,8 @@ async function escalateExpiredMissedPunches() {
             const latestCheckout = endH + (endM / 60) + maxOvertime;
             const escalationHour = Math.ceil(latestCheckout + 2) % 24;
 
-            if (currentHour !== escalationHour) {
-                continue;
-            }
-
             const rules = ShiftService.getShiftRules(user);
-            const graceDays = rules.correction_deadline || 2;
+            const graceDays = rules.correction_deadline ?? 2;
 
             // Calculate if the record is expired
             const recordDate = new Date(record.date);
@@ -376,9 +372,14 @@ async function escalateExpiredMissedPunches() {
             const diffTime = today - recordDate;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-            if (diffDays <= graceDays) {
-                // Still within grace period
-                continue;
+            // If the record is past the grace period, escalate it immediately.
+            // If it is exactly on the deadline day, only escalate once the escalation hour is reached.
+            const isFullyExpired = diffDays > graceDays;
+            if (!isFullyExpired) {
+                const isExpirationDay = diffDays === graceDays;
+                if (!isExpirationDay || currentHour !== escalationHour) {
+                    continue;
+                }
             }
 
             // Check if user has submitted an approved/pending correction for this date
