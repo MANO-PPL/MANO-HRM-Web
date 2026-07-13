@@ -764,7 +764,7 @@ export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role
     .andWhere("acr.org_id", org_id);
 
   // Access control
-  if (role !== "admin") {
+  if (role !== "admin" && role !== "hr") {
     query.andWhere("acr.user_id", user_id);
   }
 
