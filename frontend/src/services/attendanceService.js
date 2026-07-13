@@ -395,16 +395,35 @@ export const attendanceService = {
     async getUpcomingHolidays() {
         try {
             const res = await this.getHolidays();
-            const holidays = res.data || [];
+            const holidays = res.holidays || [];
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
             const upcoming = holidays
-                .filter(holiday => new Date(holiday.date) >= today)
-                .sort((a, b) => new Date(a.date) - new Date(b.date));
+                .filter(holiday => {
+                    if (!holiday.holiday_date) return false;
+                    const dateParts = holiday.holiday_date.split('-');
+                    if (dateParts.length !== 3) return false;
+                    const hDate = new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10));
+                    return hDate >= today;
+                })
+                .sort((a, b) => {
+                    const aParts = a.holiday_date.split('-');
+                    const bParts = b.holiday_date.split('-');
+                    const aDate = new Date(parseInt(aParts[0], 10), parseInt(aParts[1], 10) - 1, parseInt(aParts[2], 10));
+                    const bDate = new Date(parseInt(bParts[0], 10), parseInt(bParts[1], 10) - 1, parseInt(bParts[2], 10));
+                    return aDate - bDate;
+                })
+                .map(holiday => ({
+                    id: holiday.holiday_id,
+                    name: holiday.holiday_name,
+                    date: holiday.holiday_date,
+                    type: holiday.holiday_type
+                }));
 
             return { success: true, data: upcoming };
         } catch (error) {
+            console.error("getUpcomingHolidays error:", error);
             return { success: false, data: [] };
         }
     },

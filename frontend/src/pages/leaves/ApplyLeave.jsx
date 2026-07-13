@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import { leaveService } from '../../services/leaveService';
-import { holidayService } from '../../services/holidayService';
+import { holidayService, parseLocalDate } from '../../services/holidayService';
 import { toast } from 'react-toastify';
 import {
     Calendar as CalendarIcon,
@@ -444,19 +444,19 @@ const ApplyLeave = () => {
                             <div className="mt-4 border-t border-slate-100 dark:border-github-dark-border pt-4">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Holidays in {currentDate.toLocaleString('default', { month: 'long' })}</h4>
                                 {holidays.filter(h => {
-                                    const hDate = new Date(h.holiday_date);
+                                    const hDate = parseLocalDate(h.holiday_date);
                                     return hDate.getMonth() === currentDate.getMonth() && hDate.getFullYear() === currentDate.getFullYear();
                                 }).length === 0 ? (
                                     <p className="text-xs text-slate-400 italic">No holidays this month</p>
                                 ) : (
                                     <div className="space-y-2">
                                         {holidays.filter(h => {
-                                            const hDate = new Date(h.holiday_date);
+                                            const hDate = parseLocalDate(h.holiday_date);
                                             return hDate.getMonth() === currentDate.getMonth() && hDate.getFullYear() === currentDate.getFullYear();
                                         }).map(h => (
                                             <div key={h.holiday_id} className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                                                 <span className="font-bold bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded">
-                                                    {new Date(h.holiday_date).getDate()}
+                                                    {parseLocalDate(h.holiday_date).getDate()}
                                                 </span>
                                                 <span>{h.holiday_name}</span>
                                             </div>

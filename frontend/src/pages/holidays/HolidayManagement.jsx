@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import { useTour } from '../../context/TourContext';
-import { holidayService } from '../../services/holidayService';
+import { holidayService, parseLocalDate } from '../../services/holidayService';
 import { toast } from 'react-toastify';
 import {
     Calendar,
@@ -323,7 +323,7 @@ const HolidayManagement = () => {
 
         // Group by Month-Year (though for selected month it will be just one group usually)
         const groups = list.reduce((groups, holiday) => {
-            const date = new Date(holiday.date);
+            const date = parseLocalDate(holiday.date);
             const key = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
             if (!groups[key]) groups[key] = [];
             groups[key].push(holiday);
@@ -331,7 +331,7 @@ const HolidayManagement = () => {
         }, {});
 
         const sortedKeys = Object.keys(groups).sort((a, b) => {
-            return new Date(groups[a][0].date) - new Date(groups[b][0].date);
+            return parseLocalDate(groups[a][0].date) - parseLocalDate(groups[b][0].date);
         });
 
         return (
@@ -355,15 +355,15 @@ const HolidayManagement = () => {
 
                                 {/* List of Holidays */}
                                 <div className="space-y-2.5">
-                                    {groups[monthYear].sort((a, b) => new Date(a.date) - new Date(b.date)).map(holiday => (
+                                    {groups[monthYear].sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date)).map(holiday => (
                                         <div key={holiday.id} className="p-3 bg-slate-50/30 dark:bg-github-dark-subtle/10 border border-slate-200 dark:border-github-dark-border rounded-xl hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-all group flex items-center gap-4">
                                             {/* Date Box */}
-                                            <div className="shrink-0 w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex flex-col items-center justify-center border border-indigo-100 dark:border-indigo-800/30">
+                                            <div className="shrink-0 w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-650 dark:text-indigo-400 flex flex-col items-center justify-center border border-indigo-100 dark:border-indigo-800/30">
                                                 <span className="text-[9px] font-black uppercase leading-none opacity-60 mb-0.5">
-                                                    {new Date(holiday.date).toLocaleDateString('en-US', { weekday: 'short' })}
+                                                    {parseLocalDate(holiday.date).toLocaleDateString('en-US', { weekday: 'short' })}
                                                 </span>
                                                 <span className="text-lg font-black leading-tight">
-                                                    {new Date(holiday.date).getDate()}
+                                                    {parseLocalDate(holiday.date).getDate()}
                                                 </span>
                                             </div>
 

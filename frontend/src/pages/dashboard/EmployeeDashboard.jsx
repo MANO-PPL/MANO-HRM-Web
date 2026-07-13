@@ -49,12 +49,25 @@ const EmployeeDashboard = () => {
     });
     const [upcomingHolidays, setUpcomingHolidays] = useState(() => {
         const cached = attendanceCacheData.holidays;
-        if (cached?.data) {
+        if (cached?.holidays) {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            return cached.data
-                .filter(holiday => new Date(holiday.date) >= today)
-                .sort((a, b) => new Date(a.date) - new Date(b.date));
+            return cached.holidays
+                .filter(holiday => {
+                    const dateObj = attendanceService.safeParseDate(holiday.holiday_date);
+                    return dateObj >= today;
+                })
+                .sort((a, b) => {
+                    const aDate = attendanceService.safeParseDate(a.holiday_date);
+                    const bDate = attendanceService.safeParseDate(b.holiday_date);
+                    return aDate - bDate;
+                })
+                .map(holiday => ({
+                    id: holiday.holiday_id,
+                    name: holiday.holiday_name,
+                    date: holiday.holiday_date,
+                    type: holiday.holiday_type
+                }));
         }
         return [];
     });
@@ -578,12 +591,12 @@ const EmployeeDashboard = () => {
                                 upcomingHolidays.slice(0, 3).map((holiday, index) => (
                                     <div key={index} className="flex items-center gap-4 p-3.5 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200/50 dark:border-github-dark-border">
                                         <div className="flex flex-col items-center justify-center w-11 h-11 bg-white dark:bg-slate-700 rounded-xl shadow-sm text-center border border-slate-200 dark:border-github-dark-border shrink-0">
-                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-tighter">{new Date(holiday.date).toLocaleString('default', { month: 'short' })}</span>
-                                            <span className="text-base font-black text-slate-800 dark:text-github-dark-text mt-0.5 leading-none">{new Date(holiday.date).getDate()}</span>
+                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-tighter">{attendanceService.safeParseDate(holiday.date).toLocaleString('default', { month: 'short' })}</span>
+                                            <span className="text-base font-black text-slate-800 dark:text-github-dark-text mt-0.5 leading-none">{attendanceService.safeParseDate(holiday.date).getDate()}</span>
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="text-sm font-bold text-slate-800 dark:text-github-dark-text truncate">{holiday.name}</h4>
-                                            <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-0.5">{new Date(holiday.date).toLocaleDateString(undefined, { weekday: 'long' })}</p>
+                                            <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-0.5">{attendanceService.safeParseDate(holiday.date).toLocaleDateString(undefined, { weekday: 'long' })}</p>
                                         </div>
                                     </div>
                                 ))

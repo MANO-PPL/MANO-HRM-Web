@@ -32,6 +32,89 @@ async function notifyNewHolidays(org_id, holidays) {
     }
 }
 
+// Standardizes date strings (DD-MM-YYYY, DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD) to YYYY-MM-DD
+function standardizeDate(dateVal) {
+    if (!dateVal) return null;
+    
+    // 1. If it's a JS Date object
+    if (dateVal instanceof Date) {
+        if (isNaN(dateVal.getTime())) return null;
+        // ExcelJS dates are parsed as UTC midnight.
+        // We use UTC methods to prevent local timezone shifts (e.g. UTC-5/UTC+5:30 shifting the day).
+        const year = dateVal.getUTCFullYear();
+        const month = String(dateVal.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(dateVal.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // 2. If it's a string, standardize it
+    let dateStr = String(dateVal).trim();
+    if (!dateStr) return null;
+
+    // Remove any timestamp part if it exists (e.g. "2025-08-15T00:00:00.000Z" or "2025-08-15 00:00:00")
+    dateStr = dateStr.split(/[T ]/)[0];
+
+    // Check if it matches YYYY-MM-DD
+    const matchYMD = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (matchYMD) {
+        const year = matchYMD[1];
+        const month = matchYMD[2].padStart(2, '0');
+        const day = matchYMD[3].padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // Check if it matches DD-MM-YYYY or MM-DD-YYYY or DD/MM/YYYY or MM/DD/YYYY
+    const matchDMY = dateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+    if (matchDMY) {
+        const p0 = parseInt(matchDMY[1], 10);
+        const p1 = parseInt(matchDMY[2], 10);
+        let yearStr = matchDMY[3];
+        if (yearStr.length === 2) {
+            yearStr = `20${yearStr}`;
+        }
+
+        let day, month;
+        // If p0 > 12, then p0 must be day, p1 is month (e.g. 26-01-2025)
+        if (p0 > 12) {
+            day = p0;
+            month = p1;
+        } 
+        // If p1 > 12, then p1 must be day, p0 is month (e.g. 01-26-2025)
+        else if (p1 > 12) {
+            day = p1;
+            month = p0;
+        } 
+        // Ambiguous (both <= 12). Default to DD-MM-YYYY
+        else {
+            day = p0;
+            month = p1;
+        }
+
+        return `${yearStr}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+
+    // Try parsing other formats using native Date only as a last resort
+    const parsed = new Date(dateVal);
+    if (!isNaN(parsed.getTime())) {
+        const year = parsed.getUTCFullYear();
+        const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(parsed.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    return null;
+}
+
+// Extract raw value or formula result from ExcelJS cell and format to YYYY-MM-DD
+function getCleanDate(cell) {
+    if (!cell) return null;
+    let val = cell.value;
+    if (val && typeof val === 'object' && 'result' in val) {
+        val = val.result;
+    }
+    return standardizeDate(val);
+}
+
 //Get All Holidays
 export const getHolidays = async (org_id) => {
     const cacheKey = `mano-cache:holidays:org:${org_id}`;
@@ -62,34 +145,23 @@ export const getHolidays = async (org_id) => {
 export const createHolidays = async (org_id, holidaysToInsert) => {
 
     const prepareData = holidaysToInsert.map(h => {
-
-        if (!h.holiday_name || !h.holiday_date) {
-
+        const cleanDate = standardizeDate(h.holiday_date);
+        if (!h.holiday_name || !cleanDate) {
             const error = new Error(
-                'Missing required fields (holiday_name, holiday_date)'
+                'Missing or invalid required fields (holiday_name, holiday_date)'
             );
-
             error.statusCode = 400;
-
             throw error;
-
         }
         return {
-
             org_id,
-
             holiday_name: h.holiday_name,
-
-            holiday_date: h.holiday_date,
-
+            holiday_date: cleanDate,
             holiday_type: h.holiday_type || 'Public',
-
             applicable_json: JSON.stringify(
                 h.applicable_json || []
             )
-
         };
-
     });
 
     await attendanceDB.transaction(async (trx) => {
@@ -135,8 +207,10 @@ export const updateHoliday = async (id, org_id, data) => {
     if (data.holiday_name)
         updates.holiday_name = data.holiday_name;
 
-    if (data.holiday_date)
-        updates.holiday_date = data.holiday_date;
+    if (data.holiday_date) {
+        const cleanDate = standardizeDate(data.holiday_date);
+        if (cleanDate) updates.holiday_date = cleanDate;
+    }
 
     if (data.holiday_type)
         updates.holiday_type = data.holiday_type;
@@ -233,19 +307,21 @@ export const validateBulkHolidays = async (org_id, holidays) => {
     };
 
     const inputDates = new Set();
-    holidays.forEach((h, index) => {
+    const standardizedHolidays = holidays.map((h, index) => {
         const name = h['Holiday Name'] || h['holiday_name'] || h['name'];
-        const date = h['Date'] || h['holiday_date'] || h['date'];
+        const rawDate = h['Date'] || h['holiday_date'] || h['date'];
+        const cleanDate = standardizeDate(rawDate);
 
-        if (!name || !date) {
+        if (!name || !cleanDate) {
             response.invalid_rows.push({
                 row: index + 1,
-                reason: 'Missing Holiday Name or Date'
+                reason: 'Missing Holiday Name or Invalid/Missing Date'
             });
-            return;
+            return null;
         }
 
-        inputDates.add(date);
+        inputDates.add(cleanDate);
+        return { name, date: cleanDate, type: h['Type'] || h['holiday_type'] || h['type'] || 'Public' };
     });
 
     if (inputDates.size > 0) {
@@ -259,30 +335,23 @@ export const validateBulkHolidays = async (org_id, holidays) => {
 
         const existingDateMap = new Map(existingHolidays.map(h => [h.holiday_date, h.holiday_name]));
 
-        holidays.forEach((h, index) => {
-            const date = h['Date'] || h['holiday_date'] || h['date'];
-            const name = h['Holiday Name'] || h['holiday_name'] || h['name'];
+        standardizedHolidays.forEach((h, index) => {
+            if (!h) return;
 
-            if (!date) return;
-
-            const isDuplicate = existingDateMap.has(date);
-            const hasRequiredFields = name && date;
+            const isDuplicate = existingDateMap.has(h.date);
 
             if (isDuplicate) {
                 response.duplicates.push({
                     row: index + 1,
-                    date,
-                    reason: `Holiday already exists on this date: ${existingDateMap.get(date)}`
+                    date: h.date,
+                    reason: `Holiday already exists on this date: ${existingDateMap.get(h.date)}`
                 });
-            } else if (hasRequiredFields && !response.invalid_rows.some(r => r.row === index + 1)) {
+            } else if (!response.invalid_rows.some(r => r.row === index + 1)) {
                 response.valid_count++;
             }
         });
     } else {
-        response.valid_count = holidays.filter(h =>
-            (h['Holiday Name'] || h['holiday_name'] || h['name']) &&
-            (h['Date'] || h['holiday_date'] || h['date'])
-        ).length;
+        response.valid_count = standardizedHolidays.filter(Boolean).length;
     }
 
     return response;
@@ -303,17 +372,18 @@ export const bulkCreateFromJson = async (org_id, holidays) => {
         const name = row['Holiday Name'] || row['holiday_name'] || row['name'];
         const date = row['Date'] || row['holiday_date'] || row['date'];
         const type = row['Type'] || row['holiday_type'] || row['type'] || 'Public';
+        const cleanDate = standardizeDate(date);
 
-        if (!name || !date) {
+        if (!name || !cleanDate) {
             results.failure_count++;
-            results.errors.push(`Row missing required fields: name="${name}", date="${date}"`);
+            results.errors.push(`Row missing required fields or has invalid date: name="${name}", date="${date}"`);
             continue;
         }
 
         prepareData.push({
             org_id,
             holiday_name: name,
-            holiday_date: date,
+            holiday_date: cleanDate,
             holiday_type: type,
             applicable_json: JSON.stringify(['All Locations'])
         });
@@ -403,26 +473,29 @@ export const bulkUploadFromFile = async (org_id, file) => {
 
     for (const { row, rowNumber } of rowsData) {
         const name = getVal(row, 'holiday name', 'holiday_name', 'name');
-        const date = getVal(row, 'date', 'holiday_date');
         const type = getVal(row, 'type', 'holiday_type') || 'Public';
 
-        if (!name || !date) {
+        const dateCol = headerMap['date'] || headerMap['holiday_date'];
+        const dateCell = dateCol ? row.getCell(dateCol) : null;
+        const cleanDate = getCleanDate(dateCell);
+
+        if (!name || !cleanDate) {
             results.failure_count++;
-            results.errors.push(`Row ${rowNumber}: Missing Holiday Name or Date`);
+            results.errors.push(`Row ${rowNumber}: Missing Holiday Name or Invalid Date`);
             continue;
         }
 
-        if (seenDates.has(date) || existingDates.has(date)) {
+        if (seenDates.has(cleanDate) || existingDates.has(cleanDate)) {
             results.failure_count++;
-            results.errors.push(`Row ${rowNumber}: Holiday date ${date} already exists`);
+            results.errors.push(`Row ${rowNumber}: Holiday date ${cleanDate} already exists`);
             continue;
         }
 
-        seenDates.add(date);
+        seenDates.add(cleanDate);
         prepareData.push({
             org_id,
             holiday_name: name,
-            holiday_date: date,
+            holiday_date: cleanDate,
             holiday_type: type,
             applicable_json: JSON.stringify(['All Locations'])
         });

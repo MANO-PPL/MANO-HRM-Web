@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { useAuth } from '../../context/AuthContext';
-import { holidayService } from '../../services/holidayService';
+import { holidayService, parseLocalDate } from '../../services/holidayService';
 import api from '../../services/api';
 import DatePicker from '../../components/DatePicker';
 import { toast } from 'react-toastify';
@@ -438,8 +438,8 @@ const HolidayManagement = () => {
                                     >
                                         {/* Date Badge - Ultra Compact */}
                                         <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex flex-col items-center justify-center text-white flex-shrink-0 shadow-sm shadow-indigo-200 dark:shadow-none">
-                                            <span className="text-[9px] font-medium uppercase leading-none opacity-80">{new Date(holiday.holiday_date).toLocaleDateString('en-US', { month: 'short' })}</span>
-                                            <span className="text-lg font-medium leading-none mt-0.5">{new Date(holiday.holiday_date).getDate()}</span>
+                                            <span className="text-[9px] font-medium uppercase leading-none opacity-80">{parseLocalDate(holiday.holiday_date).toLocaleDateString('en-US', { month: 'short' })}</span>
+                                            <span className="text-lg font-medium leading-none mt-0.5">{parseLocalDate(holiday.holiday_date).getDate()}</span>
                                         </div>
 
                                         <div className="flex-1 min-w-0">
@@ -447,7 +447,7 @@ const HolidayManagement = () => {
                                                 {holiday.holiday_name}
                                             </h4>
                                             <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[10px] font-medium text-slate-400">{new Date(holiday.holiday_date).toLocaleDateString('en-US', { weekday: 'long' })}</span>
+                                                <span className="text-[10px] font-medium text-slate-400">{parseLocalDate(holiday.holiday_date).toLocaleDateString('en-US', { weekday: 'long' })}</span>
                                                 <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium uppercase tracking-wider ${holiday.holiday_type === 'Public' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'}`}>
                                                     {holiday.holiday_type || 'Public'}
                                                 </span>
@@ -700,7 +700,7 @@ const HolidayManagement = () => {
                         <div className="text-center mb-6">
                             <h3 className="text-lg font-semibold text-slate-900 dark:text-github-dark-text">{holidayActionSheet.holiday_name}</h3>
                             <p className="text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider">
-                                {new Date(holidayActionSheet.holiday_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                {parseLocalDate(holidayActionSheet.holiday_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                             </p>
                         </div>
 
@@ -1079,12 +1079,12 @@ const HolidayManagement = () => {
                         
                         <div className="text-center mb-10">
                             <div className="w-24 h-24 bg-indigo-600 text-white rounded-[2rem] flex flex-col items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-100 dark:shadow-none">
-                                <span className="text-[12px] font-bold uppercase tracking-widest leading-none opacity-80">{new Date(selectedHoliday.holiday_date).toLocaleDateString('en-US', { month: 'short' })}</span>
-                                <span className="text-4xl font-semibold leading-none mt-2">{new Date(selectedHoliday.holiday_date).getDate()}</span>
+                                <span className="text-[12px] font-bold uppercase tracking-widest leading-none opacity-80">{parseLocalDate(selectedHoliday.holiday_date).toLocaleDateString('en-US', { month: 'short' })}</span>
+                                <span className="text-4xl font-semibold leading-none mt-2">{parseLocalDate(selectedHoliday.holiday_date).getDate()}</span>
                             </div>
                             <h3 className="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight px-4">{selectedHoliday.holiday_name}</h3>
                             <p className="text-sm font-semibold text-slate-400 mt-2">
-                                {new Date(selectedHoliday.holiday_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric' })}
+                                {parseLocalDate(selectedHoliday.holiday_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric' })}
                             </p>
                         </div>
 
