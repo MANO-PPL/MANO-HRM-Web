@@ -39,10 +39,10 @@ const createRedisConnection = () => {
   const redisPort = Number(process.env.REDIS_PORT) || 6379;
   const redisPassword = process.env.REDIS_PASSWORD || undefined;
 
-  // Detect if it is a Redis Cluster (AWS ElastiCache Clustered mode enabled)
-  const isCluster = redisHost.startsWith('clustercfg.') || 
+  const isCluster = (redisHost.startsWith('clustercfg.') || 
                     redisHost.includes('-cluster') ||
-                    process.env.REDIS_IS_CLUSTER === 'true';
+                    process.env.REDIS_IS_CLUSTER === 'true') &&
+                    process.env.REDIS_IS_CLUSTER !== 'false';
 
   if (isCluster) {
     console.log(`🌀 [Queue] Initializing Redis Cluster connection for ${redisHost}...`);
