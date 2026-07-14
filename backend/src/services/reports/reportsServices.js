@@ -2,6 +2,8 @@ import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../s3/s3Service.js';
 import { getShiftRules, getDayType, getExpectedHours } from '../attendance/shiftManagementService.js';
 
+export { getShiftRules, getDayType, getExpectedHours };
+
 const isValidDeptId = (deptId) => {
     return deptId && deptId !== 'All' && deptId !== 'undefined' && deptId !== 'null' && String(deptId).trim() !== '';
 };
