@@ -241,7 +241,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
     return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
-        rememberMe: refreshTokenRecord?.remember_me === 1
+        rememberMe: refreshTokenRecord?.remember_me == 1 || refreshTokenRecord?.remember_me === true
     };
 };
 

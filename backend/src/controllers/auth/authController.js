@@ -19,7 +19,7 @@ export const login = catchAsync(async (req, res, next) => {
         userAgent: req.get('User-Agent') || 'Unknown'
     };
 
-    const { accessToken, refreshToken, user } = await authService.authenticateUser(user_input, user_password, reqInfo, rememberMe === true);
+    const { accessToken, refreshToken, user } = await authService.authenticateUser(user_input, user_password, reqInfo, rememberMe === true || rememberMe === 'true');
 
     const cookieOptions = {
         httpOnly: true,
@@ -28,7 +28,7 @@ export const login = catchAsync(async (req, res, next) => {
         path: '/'
     };
 
-    if (rememberMe === true) {
+    if (rememberMe === true || rememberMe === 'true') {
         cookieOptions.maxAge = REFRESH_TOKEN_COOKIE_MAX_AGE;
     }
 
@@ -110,7 +110,7 @@ export const refreshToken = catchAsync(async (req, res, next) => {
             path: '/'
         };
 
-        if (rememberMe === true) {
+        if (rememberMe === true || rememberMe === 'true') {
             cookieOptions.maxAge = REFRESH_TOKEN_COOKIE_MAX_AGE;
         }
 
