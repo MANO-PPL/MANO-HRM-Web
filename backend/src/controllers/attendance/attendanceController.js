@@ -521,10 +521,11 @@ export const exportRecords = catchAsync(async (req, res) => {
  */
 export async function getMyShift(req, res) {
   try {
-    const userId = req.user?.id || req.user?.user_id;
+    const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(400).json({ ok: false, message: "Missing authenticated user id" });
+      console.error("getMyShift called without req.user.id", req.user);
+      return res.status(401).json({ ok: false, message: "Unauthorized: missing authenticated user id" });
     }
 
     const shift = await AttendanceService.getUserShift(userId);
