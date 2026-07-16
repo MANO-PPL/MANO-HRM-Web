@@ -1,5 +1,8 @@
 import catchAsync from "../../utils/catchAsync.js";
 import axios from "axios";
+import fs from "fs/promises";
+import path from "path";
+import crypto from "crypto";
 import * as MapsService from "../../services/google_api_services/maps.js";
 import { getEventSource } from "../../utils/clientInfo.js";
 import * as AttendanceService from "../../services/attendance/attendanceService.js";
@@ -9,6 +12,8 @@ import { attendanceDB } from "../../config/database.js";
 import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
 import { calculateWorkHours, deriveStatus } from "../../services/reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
+import { getLocalNow } from "../../services/attendance/statusEvaluationService.js";
+import { attendanceQueue } from "../../config/queues.js";
 
 
 /**
@@ -25,23 +30,24 @@ export const timeIn = catchAsync(async (req, res) => {
   const late_reason = req.body.late_reason || null;
   const file = req.file;
 
-  // 2. CONTEXT LOADING (Google Maps)
-  const nowUTC = new Date().toISOString();
-  let tz = { localTime: nowUTC, tzName: "UTC" };
-  let address = "Unknown Location";
-
+  // 2. QUICK TIMEZONE LOOKUP (Fast: ~2ms DB lookup + local date conversion)
+  let timezone = 'UTC';
   try {
-    if (!isNaN(latitude) && !isNaN(longitude)) {
-      tz = await MapsService.fetchTimeStamp(latitude, longitude, nowUTC);
-      const addrRes = await MapsService.coordsToAddress(latitude, longitude);
-      if (addrRes) address = addrRes.address;
+    const org = await attendanceDB('core_organizations')
+        .where({ org_id })
+        .select('timezone')
+        .first();
+    if (org && org.timezone) {
+        timezone = org.timezone;
     }
-  } catch (e) {
-    console.error("Maps API Error:", e);
+  } catch (err) {
+    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  // 3. DELEGATE TO SERVICE
-  const result = await AttendanceService.processTimeIn({
+  const localTime = getLocalNow(timezone).toISOString();
+
+  // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB insertion)
+  const result = await AttendanceService.processTimeInSync({
     user_id: userId,
     org_id,
     latitude,
@@ -49,25 +55,58 @@ export const timeIn = catchAsync(async (req, res) => {
     accuracy,
     late_reason,
     file,
-    localTime: tz.localTime,
-    address,
-    timezone: tz.timezone,
+    localTime,
+    timezone,
     ip: req.clientIp || req.ip,
-    user_agent: req.get('User-Agent'),
-    event_source: getEventSource(req)
+    user_agent: req.get('User-Agent')
   });
 
   if (!result.ok) {
     return res.status(result.status || 400).json(result);
   }
 
+  // 4. SAVE UPLOADED SELFIE TO TEMP DISK FILE (Fast buffer write)
+  let tempFilePath = null;
+  if (file) {
+    try {
+      const tempDir = path.join(process.cwd(), 'uploads', 'temp');
+      await fs.mkdir(tempDir, { recursive: true });
+      const ext = path.extname(file.originalname) || '.jpg';
+      const filename = `${crypto.randomUUID()}${ext}`;
+      tempFilePath = path.join(tempDir, filename);
+      await fs.writeFile(tempFilePath, file.buffer);
+    } catch (err) {
+      console.error("Failed to write temp check-in selfie to disk:", err);
+    }
+  }
+
+  // 5. QUEUE HEAVY TASKS TO REDIS
+  try {
+    await attendanceQueue.add('attendance-checkin', {
+      attendance_id: result.attendance_id,
+      isTimeIn: true,
+      tempFilePath,
+      latitude,
+      longitude,
+      accuracy,
+      ip: req.clientIp || req.ip,
+      user_agent: req.get('User-Agent'),
+      event_source: getEventSource(req),
+      timezone,
+      org_id,
+      user_id: userId,
+      session_number: result.session_number
+    }, {
+      attempts: 3,
+      backoff: 5000
+    });
+  } catch (err) {
+    console.error("Failed to queue check-in background task:", err);
+  }
+
   return res.json(result);
 });
 
-/**
- * POST /attendance/timeout
- * Handle user check-out with location and optional image
- */
 export const timeOut = catchAsync(async (req, res) => {
   // 1. DATA PREPARATION
   const userId = req.user.id || req.user.user_id;
@@ -77,39 +116,77 @@ export const timeOut = catchAsync(async (req, res) => {
   const accuracy = Number(req.body.accuracy);
   const file = req.file;
 
-  // 2. CONTEXT LOADING
-  const nowUTC = new Date().toISOString();
-  let tz = { localTime: nowUTC, tzName: "UTC" };
-  let address = "Unknown Location";
-
+  // 2. QUICK TIMEZONE LOOKUP
+  let timezone = 'UTC';
   try {
-    if (!isNaN(latitude) && !isNaN(longitude)) {
-      tz = await MapsService.fetchTimeStamp(latitude, longitude, nowUTC);
-      const addrRes = await MapsService.coordsToAddress(latitude, longitude);
-      if (addrRes) address = addrRes.address;
+    const org = await attendanceDB('core_organizations')
+        .where({ org_id })
+        .select('timezone')
+        .first();
+    if (org && org.timezone) {
+        timezone = org.timezone;
     }
-  } catch (e) {
-    console.error("Maps API Error", e);
+  } catch (err) {
+    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  // 3. DELEGATE TO SERVICE
-  const result = await AttendanceService.processTimeOut({
+  const localTime = getLocalNow(timezone).toISOString();
+
+  // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB checkout status/hours update)
+  const result = await AttendanceService.processTimeOutSync({
     user_id: userId,
     org_id,
     latitude,
     longitude,
     accuracy,
     file,
-    localTime: tz.localTime,
-    address,
-    timezone: tz.timezone,
+    localTime,
+    timezone,
     ip: req.clientIp || req.ip,
-    user_agent: req.get('User-Agent'),
-    event_source: getEventSource(req)
+    user_agent: req.get('User-Agent')
   });
 
   if (!result.ok) {
     return res.status(result.status || 400).json(result);
+  }
+
+  // 4. SAVE UPLOADED SELFIE TO TEMP DISK FILE
+  let tempFilePath = null;
+  if (file) {
+    try {
+      const tempDir = path.join(process.cwd(), 'uploads', 'temp');
+      await fs.mkdir(tempDir, { recursive: true });
+      const ext = path.extname(file.originalname) || '.jpg';
+      const filename = `${crypto.randomUUID()}${ext}`;
+      tempFilePath = path.join(tempDir, filename);
+      await fs.writeFile(tempFilePath, file.buffer);
+    } catch (err) {
+      console.error("Failed to write temp check-out selfie to disk:", err);
+    }
+  }
+
+  // 5. QUEUE HEAVY TASKS TO REDIS
+  try {
+    await attendanceQueue.add('attendance-checkout', {
+      attendance_id: result.attendance_id,
+      isTimeIn: false,
+      tempFilePath,
+      latitude,
+      longitude,
+      accuracy,
+      ip: req.clientIp || req.ip,
+      user_agent: req.get('User-Agent'),
+      event_source: getEventSource(req),
+      timezone,
+      org_id,
+      user_id: userId,
+      status: result.status
+    }, {
+      attempts: 3,
+      backoff: 5000
+    });
+  } catch (err) {
+    console.error("Failed to queue check-out background task:", err);
   }
 
   return res.json(result);

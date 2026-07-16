@@ -11,6 +11,7 @@ import { sendPushNotification } from './src/services/notifications/fcmService.js
 import EventBus from './src/utils/EventBus.js';
 import { attendanceDB } from './src/config/database.js';
 import './src/workers/reportWorker.js';
+import './src/workers/attendanceWorker.js';
 import fs from 'fs';
 import { getLogPaths, parseLogLine } from './src/services/superAdmin/pm2Service.js';
 import { cacheService } from './src/services/cache/cacheService.js';

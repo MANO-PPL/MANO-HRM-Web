@@ -1035,3 +1035,305 @@ const getTimeStr = (d) => {
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(dateObj.getUTCHours())}:${pad(dateObj.getUTCMinutes())}:${pad(dateObj.getUTCSeconds())}`;
 };
+
+/**
+ * Process Time In (Synchronous Part)
+ * Checks compliance and creates DB record. Returns minimal metadata and attendance_id.
+ */
+export async function processTimeInSync(context) {
+  const {
+    user_id,
+    org_id,
+    latitude,
+    longitude,
+    accuracy,
+    late_reason,
+    file,
+    localTime,
+    ip,
+    user_agent
+  } = context;
+
+  // 1. Check Existing Session
+  const todayDate = localTime.split('T')[0];
+  const openSession = await attendanceDB("attn_records")
+    .where({ user_id })
+    .whereNull("time_out")
+    .whereRaw("DATE(time_in) = DATE(?)", [todayDate])
+    .orderBy("time_in", "desc")
+    .first();
+
+  if (openSession) {
+    return { ok: false, status: 400, message: "Already timed in. Please time out first." };
+  }
+
+  // Auto-resolve open sessions from prior days
+  try {
+    const priorOpenSessions = await attendanceDB("attn_records")
+      .where({ user_id })
+      .whereNull("time_out")
+      .whereRaw("DATE(time_in) < DATE(?)", [todayDate]);
+
+    if (priorOpenSessions.length > 0) {
+      const userRec = await attendanceDB("core_users").where({ user_id }).select("shift_id").first();
+      const isOpenShift = !userRec || userRec.shift_id === null;
+
+      for (const session of priorOpenSessions) {
+        if (isOpenShift) {
+          const checkInDate = new Date(session.time_in);
+          const checkOutDate = new Date(checkInDate.getTime() + 9 * 60 * 60 * 1000);
+          
+          await attendanceDB("attn_records")
+            .where({ attendance_id: session.attendance_id })
+            .update({
+              time_out: checkOutDate,
+              status: "PRESENT",
+              updated_at: attendanceDB.fn.now()
+            });
+          
+          const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
+          await syncDailyAttendance(user_id, sessionDate, { status: "PRESENT" }).catch(console.error);
+          continue;
+        }
+
+        let metadata = {};
+        try {
+          metadata = typeof session.metadata === 'string'
+            ? JSON.parse(session.metadata)
+            : (session.metadata || {});
+        } catch (e) {
+          metadata = {};
+        }
+        metadata.missed_punch = {
+          flagged_at: new Date().toISOString(),
+          reason: "System auto-flagged: Checked in on a new day before checking out."
+        };
+        await attendanceDB("attn_records")
+          .where({ attendance_id: session.attendance_id })
+          .update({
+            status: "MISSED_PUNCH",
+            metadata: JSON.stringify(metadata),
+            updated_at: attendanceDB.fn.now()
+          });
+        
+        const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
+        await syncDailyAttendance(user_id, sessionDate, { status: "MISSED_PUNCH" }).catch(console.error);
+      }
+    }
+  } catch (err) {
+    console.error("Error auto-resolving prior open sessions:", err);
+  }
+
+  // 2. Shift Context
+  const sessionContext = await StatusService.buildSessionContext(user_id, localTime, "time_in");
+  const shift = await getUserShift(user_id);
+  const rules = ShiftService.getShiftRules(shift);
+
+  // 3. Compliance Checks
+  const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.entry_requirements);
+  if (!geoCheck.ok) {
+    return { ok: false, status: 400, message: "Shift Policy Violation: " + geoCheck.error };
+  }
+
+  const bioCheck = ShiftService.checkBiometricCompliance(file, rules.entry_requirements);
+  if (!bioCheck.ok) {
+    return { ok: false, status: 400, message: "Shift Policy Violation: " + bioCheck.error };
+  }
+
+  // 4. Late Calculation
+  let lateCheck = { minutesLate: 0, isLate: false, gracePeriod: 0 };
+  if (sessionContext.is_first_session) {
+    lateCheck = StatusService.calculateLateArrival(localTime, rules);
+  }
+  const minutesLate = lateCheck.minutesLate;
+
+  // VALIDATION: Late Reason Compulsory
+  if (lateCheck.isLate && !late_reason) {
+    return {
+      ok: false,
+      status: 400,
+      message: `You are ${minutesLate} minutes late. Please provide a reason to check in.`
+    };
+  }
+
+  // Metadata
+  const metadata = {
+    time_in: {
+      accuracy: Math.round(accuracy),
+      ip_address: ip,
+      user_agent: user_agent,
+      timestamp_utc: new Date().toISOString(),
+      timezone: context.timezone || "N/A"
+    },
+    session_context: sessionContext
+  };
+
+  // DB Insert
+  const [attendance_id] = await attendanceDB("attn_records").insert({
+    user_id,
+    org_id,
+    late_reason: sessionContext.is_first_session ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
+    late_minutes: minutesLate,
+    time_in: localTime,
+    time_in_lat: latitude,
+    time_in_lng: longitude,
+    time_in_address: "Locating...",
+    status: "PRESENT",
+    metadata: JSON.stringify(metadata),
+    created_at: attendanceDB.fn.now(),
+    updated_at: attendanceDB.fn.now(),
+  });
+
+  // Daily Sync
+  try {
+    const dateStr = localTime.split('T')[0];
+    await syncDailyAttendance(user_id, dateStr);
+  } catch (dailyErr) {
+    console.error("Daily Sync Error:", dailyErr);
+  }
+
+  const expectedHours = ShiftService.getExpectedHours(localTime, rules.week_off_policy, rules);
+
+  return {
+    ok: true,
+    attendance_id,
+    local_time: localTime,
+    address: "Locating...",
+    tz_name: context.timezone,
+    session_number: sessionContext.session_number,
+    is_first_session: sessionContext.is_first_session,
+    working_hours: expectedHours,
+    message: "Timed in successfully",
+  };
+}
+
+/**
+ * Process Time Out (Synchronous Part)
+ * Checks compliance, calculates hours, and updates DB record.
+ */
+export async function processTimeOutSync(context) {
+  const {
+    user_id,
+    org_id,
+    latitude,
+    longitude,
+    accuracy,
+    file,
+    localTime,
+    ip,
+    user_agent
+  } = context;
+
+  // 1. Check Existing Session
+  const openSession = await attendanceDB("attn_records")
+    .where({ user_id })
+    .whereNull("time_out")
+    .orderBy("time_in", "desc")
+    .first();
+
+  if (!openSession) {
+    return { ok: false, status: 400, message: "No active time-in found to time out." };
+  }
+
+  if (openSession.status === 'MISSED_PUNCH') {
+    return {
+      ok: false,
+      status: 400,
+      message: "This session has been flagged as a missed punch. Please submit a correction request to adjust your hours."
+    };
+  }
+
+  const durationHours = (new Date(localTime) - new Date(openSession.time_in)) / (1000 * 60 * 60);
+  if (durationHours > 24) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Your active session is older than 24 hours. Please submit a correction request to adjust your hours."
+    };
+  }
+
+  // 2. Shift Context
+  const sessionContext = await StatusService.buildSessionContext(user_id, localTime, "time_out");
+  const shift = await getUserShift(user_id);
+  const rules = ShiftService.getShiftRules(shift);
+
+  // 3. Compliance Checks
+  const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.exit_requirements);
+  if (!geoCheck.ok) {
+    return { ok: false, status: 400, message: "Shift Policy Violation: " + geoCheck.error };
+  }
+
+  const bioCheck = ShiftService.checkBiometricCompliance(file, rules.exit_requirements);
+  if (!bioCheck.ok) {
+    return { ok: false, status: 400, message: "Shift Policy Violation: " + bioCheck.error };
+  }
+
+  // 4. Calculations
+  const totalHours = StatusService.calculateDurationHours(openSession.time_in, localTime);
+  const minutesLate = openSession.late_minutes || 0;
+
+  const sessionDateStr  = new Date(openSession.time_in).toISOString().split('T')[0];
+  const checkoutDateStr = new Date(localTime).toISOString().split('T')[0];
+  const contextRefTime  = sessionDateStr !== checkoutDateStr ? new Date(openSession.time_in).toISOString() : new Date(localTime).toISOString();
+  const currentSessionContext = await StatusService.buildSessionContext(user_id, contextRefTime, "time_out");
+  currentSessionContext.total_hours = totalHours;
+  currentSessionContext.minutes_late = minutesLate;
+  currentSessionContext.total_hours_today = parseFloat((currentSessionContext.total_hours_today + totalHours).toFixed(2));
+  const status = StatusService.evaluateStatus(rules, currentSessionContext);
+
+  // Metadata Update
+  let metadata = {};
+  try {
+    if (typeof openSession.metadata === 'string') {
+      metadata = JSON.parse(openSession.metadata);
+    } else if (typeof openSession.metadata === 'object' && openSession.metadata !== null) {
+      metadata = openSession.metadata;
+    }
+  } catch (e) {
+    console.error("Metadata parse error", e);
+  }
+
+  metadata.time_out = {
+    accuracy: Math.round(accuracy),
+    ip_address: ip,
+    user_agent: user_agent,
+    timestamp_utc: new Date().toISOString(),
+    timezone: context.timezone || "N/A",
+    total_hours: parseFloat(totalHours.toFixed(2))
+  };
+  metadata.session_context_at_checkout = currentSessionContext;
+
+  // DB Update
+  await attendanceDB("attn_records")
+    .where({ attendance_id: openSession.attendance_id })
+    .update({
+      time_out: localTime,
+      time_out_lat: latitude,
+      time_out_lng: longitude,
+      time_out_address: "Locating...",
+      overtime_hours: StatusService.calculateOvertime(totalHours, rules),
+      status: status,
+      metadata: JSON.stringify(metadata),
+      updated_at: attendanceDB.fn.now(),
+    });
+
+  // Daily Sync
+  try {
+    const sessionDate = new Date(openSession.time_in).toISOString().split('T')[0];
+    await syncDailyAttendance(user_id, sessionDate, { status });
+  } catch (dailyErr) {
+    console.error("Daily Sync Error (Timeout):", dailyErr);
+  }
+
+  const expectedHours = ShiftService.getExpectedHours(localTime, rules.week_off_policy, rules);
+
+  return {
+    ok: true,
+    attendance_id: openSession.attendance_id,
+    local_time_out: localTime,
+    address: "Locating...",
+    tz_name: context.timezone,
+    working_hours: expectedHours,
+    message: "Timed out successfully",
+  };
+}

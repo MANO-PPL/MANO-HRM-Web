@@ -103,3 +103,9 @@ export const reportQueue = new Queue('{ReportQueue}', { connection: redisConnect
 reportQueue.on('error', (err) => {
   // Silent fallback: redisConnection error handler manages console logging
 });
+
+export const attendanceQueue = new Queue('{AttendanceQueue}', { connection: redisConnection });
+
+attendanceQueue.on('error', (err) => {
+  // Silent fallback: redisConnection error handler manages console logging
+});
