@@ -543,16 +543,16 @@ export async function getMyShift(req, res) {
     res.json({
       ok: true,
       shift: {
-        id: shift.shift_id,
-        name: shift.shift_name,
-        start_time: shift.start_time || rules.shift_timing?.start_time,
-        end_time: shift.end_time || rules.shift_timing?.end_time,
+        id: shift.shift_id || null,
+        name: shift.shift_name || "Open Shift",
+        start_time: shift.start_time || rules.shift_timing?.start_time || null,
+        end_time: shift.end_time || rules.shift_timing?.end_time || null,
         rules
       }
     });
   } catch (error) {
     console.error("Error fetching my shift:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ ok: false, message: "Failed to fetch shift details" });
   }
 }
 

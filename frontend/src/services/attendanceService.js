@@ -526,12 +526,16 @@ export const attendanceService = {
         const promise = (async () => {
             try {
                 const res = await api.get(`${API_BASE_URL}/my-shift`);
-                attendanceCacheData.shiftPolicy = res.data;
-                return res.data;
+                const responseData = res.data;
+                // Store the full response for consistency, but also cache the shift
+                attendanceCacheData.shiftPolicy = responseData;
+                cache.shiftPolicy = responseData; // Store resolved data, not promise
+                return responseData;
             } catch (error) {
                 cache.shiftPolicy = null;
+                attendanceCacheData.shiftPolicy = null;
                 console.error("Failed to fetch shift policy", error);
-                return { success: false, shift: null };
+                return { ok: false, shift: null };
             }
         })();
 

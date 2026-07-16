@@ -269,7 +269,13 @@ const MobileAttendancePage = () => {
     const [loading, setLoading] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
     const [fileFormat, setFileFormat] = useState('xlsx');
-    const [myShift, setMyShift] = useState(() => attendanceCacheData.shiftPolicy?.shift || attendanceCacheData.shiftPolicy || null);
+    const [myShift, setMyShift] = useState(() => {
+        // Handle both response structure { ok, shift } and direct shift object
+        const cached = attendanceCacheData.shiftPolicy;
+        if (cached?.shift) return cached.shift;
+        if (cached?.id || cached?.name) return cached; // If it's already a shift object
+        return null;
+    });
 
     // Reports Self-Service States
     const [reportsSelectedMonth, setReportsSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
