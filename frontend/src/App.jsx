@@ -54,6 +54,7 @@ import SecurityAlerts from "./pages/super-admin/SecurityAlerts"
 import UserFeedback from "./pages/super-admin/UserFeedback"
 import PM2LogsConsole from "./pages/super-admin/PM2LogsConsole"
 import APIAnalytics from "./pages/super-admin/APIAnalytics"
+import DebugConsole from "./pages/super-admin/DebugConsole"
 
 // Mobile View Imports
 
@@ -367,6 +368,7 @@ function App() {
               <Route path="/super-admin/feedback" element={<ResponsiveRoute DesktopComponent={UserFeedback} MobileComponent={UserFeedbackMobile} />} />
               <Route path="/super-admin/logs" element={<ResponsiveRoute DesktopComponent={PM2LogsConsole} MobileComponent={PM2LogsConsole} />} />
               <Route path="/super-admin/api-analytics" element={<ResponsiveRoute DesktopComponent={APIAnalytics} MobileComponent={APIAnalytics} />} />
+              <Route path="/super-admin/debug" element={<ResponsiveRoute DesktopComponent={DebugConsole} MobileComponent={DebugConsole} />} />
             </Route>
           </Route>
 

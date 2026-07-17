@@ -369,3 +369,166 @@ export const getAPIAnalytics = async (req, res, next) => {
     }
 };
 
+// --- Post Client Error ---
+export const postClientError = async (req, res, next) => {
+    try {
+        const { errorMessage, stackTrace, requestPath, platform, extraContext } = req.body;
+
+        if (!errorMessage) {
+            throw new AppError("Error message is required", 400);
+        }
+
+        const occurredAt = new Date();
+
+        await attendanceDB('sys_error_logs').insert({
+            level: 'CLIENT_ERROR',
+            service_name: platform === 'MOBILE_APP' ? 'frontend-mobile' : 'frontend-web',
+            environment: process.env.NODE_ENV || 'production',
+            user_id: req.user?.user_id || req.user?.id || null,
+            org_id: req.user?.org_id || null,
+            error_message: errorMessage,
+            stack_trace: stackTrace || null,
+            request_path: requestPath || null,
+            client_ip: req.clientIp || req.ip || null,
+            extra_context: JSON.stringify({
+                platform: platform || 'WEB',
+                userAgent: req.get('User-Agent') || 'Unknown',
+                ...extraContext
+            }),
+            occurred_at: occurredAt
+        });
+
+        res.status(201).json({
+            status: 'success',
+            message: 'Client error logged successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// --- Get Debug Logs ---
+export const getDebugLogs = async (req, res, next) => {
+    try {
+        const { 
+            userId, 
+            orgId, 
+            platform, // 'WEB' or 'MOBILE_APP'
+            type = 'all', // 'all', 'errors' (500), 'api_failures' (4xx), 'client_errors'
+            search, 
+            limit = 50, 
+            page = 1 
+        } = req.query;
+
+        const parsedLimit = Math.min(parseInt(limit), 200);
+        const parsedPage = Math.max(parseInt(page), 1);
+        const offset = (parsedPage - 1) * parsedLimit;
+
+        let query;
+        let countQuery;
+
+        if (type === 'errors' || type === 'client_errors') {
+            query = attendanceDB('sys_error_logs as el')
+                .leftJoin('core_users as u', 'el.user_id', 'u.user_id')
+                .leftJoin('core_organizations as o', 'el.org_id', 'o.org_id')
+                .select('el.*', 'u.user_name', 'u.email', 'o.org_name')
+                .orderBy('el.occurred_at', 'desc');
+
+            countQuery = attendanceDB('sys_error_logs');
+
+            if (type === 'client_errors') {
+                query = query.where('el.level', 'CLIENT_ERROR');
+                countQuery = countQuery.where('level', 'CLIENT_ERROR');
+            } else {
+                query = query.where('el.level', '!=', 'CLIENT_ERROR');
+                countQuery = countQuery.where('level', '!=', 'CLIENT_ERROR');
+            }
+
+            if (userId) {
+                query = query.where('el.user_id', userId);
+                countQuery = countQuery.where('user_id', userId);
+            }
+            if (orgId) {
+                query = query.where('el.org_id', orgId);
+                countQuery = countQuery.where('org_id', orgId);
+            }
+            if (platform) {
+                const searchPlatform = `%"platform":"${platform}"%`;
+                query = query.where('el.extra_context', 'like', searchPlatform);
+                countQuery = countQuery.where('extra_context', 'like', searchPlatform);
+            }
+            if (search) {
+                const searchQuery = `%${search}%`;
+                query = query.andWhere(function() {
+                    this.where('el.error_message', 'like', searchQuery)
+                        .orWhere('el.request_path', 'like', searchQuery)
+                        .orWhere('u.user_name', 'like', searchQuery)
+                        .orWhere('o.org_name', 'like', searchQuery);
+                });
+                countQuery = countQuery.andWhere(function() {
+                    this.where('error_message', 'like', searchQuery)
+                        .orWhere('request_path', 'like', searchQuery);
+                });
+            }
+        } else {
+            // Default: api_failures or all (ONLY return failures)
+            query = attendanceDB('sys_api_logs as al')
+                .leftJoin('core_users as u', 'al.user_id', 'u.user_id')
+                .leftJoin('core_organizations as o', 'al.org_id', 'o.org_id')
+                .select('al.*', 'u.user_name', 'u.email', 'o.org_name')
+                .where('al.is_success', 0)
+                .orderBy('al.occurred_at', 'desc');
+
+            countQuery = attendanceDB('sys_api_logs').where('is_success', 0);
+
+            if (userId) {
+                query = query.where('al.user_id', userId);
+                countQuery = countQuery.where('user_id', userId);
+            }
+            if (orgId) {
+                query = query.where('al.org_id', orgId);
+                countQuery = countQuery.where('org_id', orgId);
+            }
+            if (platform) {
+                query = query.where('al.event_source', platform);
+                countQuery = countQuery.where('event_source', platform);
+            }
+            if (search) {
+                const searchQuery = `%${search}%`;
+                query = query.andWhere(function() {
+                    this.where('al.request_path', 'like', searchQuery)
+                        .orWhere('al.route_pattern', 'like', searchQuery)
+                        .orWhere('u.user_name', 'like', searchQuery)
+                        .orWhere('o.org_name', 'like', searchQuery)
+                        .orWhere('al.client_os', 'like', searchQuery)
+                        .orWhere('al.device_type', 'like', searchQuery);
+                });
+                countQuery = countQuery.andWhere(function() {
+                    this.where('request_path', 'like', searchQuery)
+                        .orWhere('route_pattern', 'like', searchQuery);
+                });
+            }
+        }
+
+        const [totalRes, logs] = await Promise.all([
+            countQuery.count('* as count').first(),
+            query.limit(parsedLimit).offset(offset)
+        ]);
+
+        const total = totalRes ? parseInt(totalRes.count) : 0;
+
+        res.status(200).json({
+            status: 'success',
+            data: logs,
+            pagination: {
+                total,
+                page: parsedPage,
+                limit: parsedLimit,
+                pages: Math.ceil(total / parsedLimit)
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+

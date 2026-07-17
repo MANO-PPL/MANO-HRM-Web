@@ -22,7 +22,8 @@ import {
     Code,
     Hammer,
     Layers,
-    HelpCircle
+    HelpCircle,
+    Terminal
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTour } from '../context/TourContext';
@@ -72,6 +73,7 @@ const getNavItems = (userType) => {
         { icon: <TrendingUp size={18} />, text: "API Analytics", to: "/super-admin/api-analytics", roles: ['super_admin'] },
         { icon: <MessageSquare size={18} />, text: "User Feedback", to: "/super-admin/feedback", roles: ['super_admin'] },
         { icon: <Code size={18} />, text: "System Logs", to: "/super-admin/logs", roles: ['super_admin'] },
+        { icon: <Terminal size={18} />, text: "Debug Console", to: "/super-admin/debug", roles: ['super_admin'] },
         { icon: <Users size={18} />, text: "Employees", to: "/employees", roles: ['admin', 'hr'] },
         { icon: <Hammer size={18} />, text: "Labour Management", to: "/labour-management", roles: ['admin', 'hr'] },
         { icon: <Calendar size={18} />, text: "Attendance", to: "/attendance", roles: ['admin', 'hr', 'employee'] },

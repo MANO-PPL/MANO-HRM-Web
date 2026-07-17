@@ -29,4 +29,8 @@ router.get('/pm2-logs', monitorController.getPM2Logs);
 // API Analytics
 router.get('/api-analytics', monitorController.getAPIAnalytics);
 
+// Debug Logs & Client Errors
+router.get('/debug-logs', monitorController.getDebugLogs);
+router.post('/client-errors', monitorController.postClientError);
+
 export default router;
