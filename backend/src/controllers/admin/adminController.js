@@ -302,3 +302,34 @@ export const getDashboardStats = catchAsync(async (req, res) => {
 
     res.json({ success: true, ...result });
 });
+
+// UPDATE user avatar
+export const updateUserAvatar = catchAsync(async (req, res, next) => {
+    if (req.user.user_type !== "admin" && req.user.user_type !== "hr") {
+        throw new AppError("Only admin and HR can update user avatars", 403);
+    }
+
+    const { user_id } = req.params;
+    const file = req.file;
+
+    if (!file) {
+        throw new AppError("No image file provided", 400);
+    }
+
+    const authInfo = {
+        initiatorRole: req.user.user_type,
+        initiatorId: req.user.user_id,
+        orgId: req.user.org_id,
+        clientIp: req.clientIp || req.ip,
+        userAgent: req.get("User-Agent")
+    };
+
+    const io = req.app.get('io');
+    const result = await userService.updateUser(user_id, {}, authInfo, file.buffer, io);
+
+    res.json({
+        success: true,
+        message: "Avatar updated successfully",
+        profile_image_url: result.profileImageUrl || null
+    });
+});

@@ -5,7 +5,11 @@ import * as adminController from '../../controllers/admin/adminController.js';
 import * as shiftController from '../../controllers/shifts/shiftController.js';
 
 const router = express.Router();
-const upload = multer(); // memory storage
+const upload = multer({
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB limit
+    }
+}); // memory storage
 
 // Protected by JWT
 router.use(authenticateJWT, requireActiveOrg);
@@ -15,6 +19,7 @@ router.get('/users', adminController.getAllUsers);
 router.get('/user/:user_id', adminController.getUserById);
 router.post('/user', upload.single('profile_image'), adminController.createUser);
 router.put('/user/:user_id', upload.single('profile_image'), adminController.updateUser);
+router.post('/user/:user_id/avatar', upload.single('avatar'), adminController.updateUserAvatar);
 router.delete('/user/:user_id', adminController.softDeleteUser);
 router.delete('/user/:user_id/force', adminController.forceDeleteUser);
 router.post('/user/:user_id/restore', adminController.restoreUser);

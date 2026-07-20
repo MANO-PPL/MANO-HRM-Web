@@ -8,6 +8,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const errorHandler = (err, req, res, next) => {
+    if (err.name === 'MulterError') {
+        err.statusCode = 400;
+        err.status = 'fail';
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            err.message = 'File is too large. Maximum allowed size is 5MB for profile pictures/avatars and 10MB for leave documents.';
+        } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            err.message = 'Unexpected upload field.';
+        } else {
+            err.message = `File upload failed: ${err.message}`;
+        }
+    }
+
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
 
