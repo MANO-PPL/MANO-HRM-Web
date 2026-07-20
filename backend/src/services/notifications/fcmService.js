@@ -62,15 +62,13 @@ export const registerToken = async (userId, token, deviceType = 'android') => {
       .first();
 
     if (existing) {
-      if (existing.user_id !== userId) {
-        await attendanceDB('core_user_fcm_tokens')
-          .where({ token })
-          .update({
-            user_id: userId,
-            device_type: deviceType,
-            updated_at: attendanceDB.fn.now()
-          });
-      }
+      await attendanceDB('core_user_fcm_tokens')
+        .where({ token })
+        .update({
+          user_id: userId,
+          device_type: deviceType,
+          updated_at: attendanceDB.fn.now()
+        });
     } else {
       await attendanceDB('core_user_fcm_tokens').insert({
         user_id: userId,
@@ -83,6 +81,21 @@ export const registerToken = async (userId, token, deviceType = 'android') => {
     return true;
   } catch (error) {
     console.error(`Error saving FCM token for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Unregister/delete a specific FCM token for a user (called on logout)
+ */
+export const unregisterToken = async (userId, token) => {
+  try {
+    await attendanceDB('core_user_fcm_tokens')
+      .where({ user_id: userId, token })
+      .delete();
+    return true;
+  } catch (error) {
+    console.error(`Error deleting FCM token for user ${userId}:`, error);
     throw error;
   }
 };
@@ -138,6 +151,7 @@ export const sendPushNotification = async (userId, title, body, data = {}) => {
           color: '#5B60F6',
           clickAction: 'FLUTTER_NOTIFICATION_CLICK',
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          tag: data.notification_id ? String(data.notification_id) : undefined,
         },
       },
       // ── iOS / macOS config ───────────────────────────────────────────────
@@ -155,26 +169,30 @@ export const sendPushNotification = async (userId, title, body, data = {}) => {
       },
     };
 
-    // Send to each token
-    const invalidTokens = [];
-    for (const token of tokens) {
+    // Send to each token in parallel
+    const sendPromises = tokens.map(async (token) => {
       try {
         await messagingInstance.send({
           token,
           ...message,
         });
+        return null;
       } catch (err) {
         console.error(`Error sending push notification to token:`, err.message);
-        // If token is invalid/expired, queue it for cleanup
+        // If token is invalid/expired, return it for cleanup
         if (
           err.code === 'messaging/registration-token-not-registered' ||
           err.code === 'messaging/invalid-registration-token' ||
           err.code === 'messaging/third-party-auth-error'
         ) {
-          invalidTokens.push(token);
+          return token;
         }
+        return null;
       }
-    }
+    });
+
+    const sendResults = await Promise.all(sendPromises);
+    const invalidTokens = sendResults.filter(token => token !== null);
 
     // Clean up stale/invalid tokens
     if (invalidTokens.length > 0) {

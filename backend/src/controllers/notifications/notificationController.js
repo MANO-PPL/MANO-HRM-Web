@@ -2,7 +2,7 @@ import express from 'express';
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
 import { getNotifications as getNotificationsService, markNotificationAsRead, markAllNotificationsAsRead } from '../../services/notifications/notificationService.js';
-import { registerToken, sendPushNotification } from '../../services/notifications/fcmService.js';
+import { registerToken, sendPushNotification, unregisterToken } from '../../services/notifications/fcmService.js';
 
 export const getNotifications = catchAsync(async (req, res, next) => {
 
@@ -122,6 +122,22 @@ export const registerFCMToken = catchAsync(async (req, res, next) => {
     res.json({
         ok: true,
         message: 'FCM token registered successfully'
+    });
+});
+
+export const unregisterFCMToken = catchAsync(async (req, res, next) => {
+    const user_id = req.user.user_id ?? req.user.id;
+    const { token } = req.body;
+
+    if (!token) {
+        throw new AppError('FCM token is required', 400);
+    }
+
+    await unregisterToken(user_id, token);
+
+    res.json({
+        ok: true,
+        message: 'FCM token unregistered successfully'
     });
 });
 
