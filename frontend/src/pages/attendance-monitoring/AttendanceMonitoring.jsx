@@ -1542,7 +1542,7 @@ const AttendanceMonitoring = () => {
                         </button>
                     </div>
 
-                    <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`} style={{ zoom: 0.8 }}>
+                    <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`}>
 
                     {activeTab === 'live' ? (
                         <>
@@ -1581,7 +1581,7 @@ const AttendanceMonitoring = () => {
                             <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} transition-colors duration-300 flex flex-col space-y-4`}>
 
                                 {/* Premium Control Center */}
-                                <div data-tour-id="attendance-controls" className="p-6 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border space-y-6 shrink-0">
+                                <div data-tour-id="attendance-controls" className="p-4 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border space-y-4 shrink-0">
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-3">
@@ -1607,8 +1607,6 @@ const AttendanceMonitoring = () => {
                                                 {activeView === 'graph' && 'Deep dive into attendance metrics, trends, and department KPIs.'}
                                                 {activeView === 'table' && 'High-density Gantt visualization of daily employee movements.'}
                                             </p>
-                                        </div>
-
                                         </div>
                                     </div>
 
@@ -2201,7 +2199,7 @@ const AttendanceMonitoring = () => {
                                         </div>
                                     ) : activeView === 'map' ? (
                                         /* Map View Layout */
-                                        <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]" style={{ zoom: 1.25 }}>
+                                        <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]">
                                             <div className="flex-1 h-full relative">
                                                 <MapContainer
                                                     center={[20, 78]}
@@ -2549,6 +2547,7 @@ const AttendanceMonitoring = () => {
                                         </div>
                                     ) : null}
                                 </div>
+                            </div>
                         </>
                     ) : (
                     // Approvals Tab Content
