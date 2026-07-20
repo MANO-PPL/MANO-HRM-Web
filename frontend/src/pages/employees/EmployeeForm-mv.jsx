@@ -319,7 +319,7 @@ const EmployeeForm = () => {
         }
 
         if (file.size > 5 * 1024 * 1024) {
-            toast.error('Image size must be less than 5MB');
+            toast.error('Image size exceeds the 5MB limit');
             return;
         }
 
