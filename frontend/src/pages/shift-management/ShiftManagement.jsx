@@ -12,6 +12,16 @@ import { useAuth } from '../../context/AuthContext';
 import { useTour } from '../../context/TourContext';
 import { buildPolicy, parsePolicy } from '../../utils/weekOffPolicy';
 
+const DEFAULT_MAX_OT_HOURS = 3;
+
+const normalizeUiMaxOtHours = (value) => {
+    if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+        return DEFAULT_MAX_OT_HOURS;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MAX_OT_HOURS;
+};
+
 const PAGE_KEY = 'admin_shifts';
 const TOUR_STEPS = [
     {
@@ -53,7 +63,7 @@ const ShiftManagement = ({ embedded = false }) => {
     const [isOtEnabled, setIsOtEnabled] = useState(false);
     const [shiftForm, setShiftForm] = useState({
         name: '', start: '09:00', end: '18:00', grace: 0,
-        otThreshold: 9.0, otBuffer: 0.5, correctionDeadline: 2,
+        otThreshold: 9.0, otBuffer: 0.5, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
         reqEntrySelfie: true, reqEntryGeofence: true,
         reqExitSelfie: false, reqExitGeofence: true,
         workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -99,7 +109,7 @@ const ShiftManagement = ({ embedded = false }) => {
                     overtime: !!s.is_overtime_enabled,
                     otThreshold: parseFloat(s.overtime_threshold_hours),
                     otBuffer: parseFloat(s.overtime_buffer_hours ?? s.policy_rules?.overtime?.buffer ?? 0.5),
-                    otMaxHours: parseFloat(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime ?? 0),
+                    otMaxHours: normalizeUiMaxOtHours(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime),
                     correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 2),
                     policy_rules: s.policy_rules || {},
                     is_active: s.is_active !== 0
@@ -151,7 +161,7 @@ const ShiftManagement = ({ embedded = false }) => {
                 name: editingShift.name, start: editingShift.start, end: editingShift.end,
                 grace: editingShift.grace, otThreshold: editingShift.otThreshold || 8.0,
                 otBuffer: editingShift.otBuffer ?? 0.5,
-                otMaxHours: editingShift.otMaxHours ?? 0,
+                otMaxHours: normalizeUiMaxOtHours(editingShift.otMaxHours),
                 correctionDeadline: editingShift.correctionDeadline ?? 2,
                 reqEntrySelfie: !!rules.entry_requirements?.selfie,
                 reqEntryGeofence: true, // GPS is mandatory
@@ -167,7 +177,7 @@ const ShiftManagement = ({ embedded = false }) => {
             setShowAdvancedSettings(false);
         } else if (showShiftForm && !editingShift) {
             setShiftForm({ 
-                name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otBuffer: 0.5, otMaxHours: 0, correctionDeadline: 2,
+                name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otBuffer: 0.5, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
                 reqEntrySelfie: true, reqEntryGeofence: true, reqExitSelfie: false, reqExitGeofence: true, // GPS is mandatory
                 workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], weekOffRules: [], halfDayRules: [],
                 is_active: true
@@ -183,6 +193,7 @@ const ShiftManagement = ({ embedded = false }) => {
         e.preventDefault();
         const baseRules = editingShift ? (editingShift.policy_rules || {}) : {};
         const week_off_policy = buildPolicy(shiftForm.workingDays, shiftForm.weekOffRules, shiftForm.halfDayRules);
+        const maxOvertime = normalizeUiMaxOtHours(shiftForm.otMaxHours);
         const policies = {
             ...baseRules,
             is_active: shiftForm.is_active,
@@ -192,7 +203,7 @@ const ShiftManagement = ({ embedded = false }) => {
                 enabled: isOtEnabled, 
                 threshold: parseFloat(shiftForm.otThreshold) || 0, 
                 buffer: parseFloat(shiftForm.otBuffer) || 0,
-                max_overtime: parseFloat(shiftForm.otMaxHours) > 0 ? parseFloat(shiftForm.otMaxHours) : null
+                max_overtime: maxOvertime
             },
             correction_deadline: parseInt(shiftForm.correctionDeadline) || 2,
             entry_requirements: { selfie: shiftForm.reqEntrySelfie, geofence: true }, // GPS is mandatory
@@ -675,21 +686,21 @@ const ShiftManagement = ({ embedded = false }) => {
                                                             <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Maximum Overtime Allowed</label>
                                                             <div className="flex gap-2">
                                                                 <div className="relative flex-1">
-                                                                    <input type="number" min="0" placeholder="0" value={otMaxHoursHr || ''}
+                                                                    <input type="number" min="0" step="0.25" placeholder={String(DEFAULT_MAX_OT_HOURS)} value={otMaxHoursHr}
                                                                         onChange={e => handleOtMaxHoursChange(e.target.value, otMaxHoursMin)}
                                                                         className="w-full pl-3 pr-8 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     />
                                                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">hr</span>
                                                                 </div>
                                                                 <div className="relative flex-1">
-                                                                    <input type="number" min="0" max="59" placeholder="0" value={otMaxHoursMin || ''}
+                                                                    <input type="number" min="0" max="59" placeholder="0" value={otMaxHoursMin}
                                                                         onChange={e => handleOtMaxHoursChange(otMaxHoursHr, e.target.value)}
                                                                         className="w-full pl-3 pr-9 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                                     />
                                                                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">min</span>
                                                                 </div>
                                                             </div>
-                                                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Leave 0 or empty for unlimited overtime.</p>
+                                                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Default is 3 hours. Enter 0 to disable overtime. Cron adds a 30-minute checkout buffer.</p>
                                                         </div>
                                                     </div>
                                                 )}
@@ -1040,9 +1051,7 @@ const ShiftManagement = ({ embedded = false }) => {
                                                     {selectedShift.otBuffer > 0 && (
                                                         <span className="text-[10px] text-slate-500">Buffer grace period: {formatDecimalHours(selectedShift.otBuffer)}</span>
                                                     )}
-                                                    {selectedShift.otMaxHours > 0 && (
-                                                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">Max Overtime limit: {formatDecimalHours(selectedShift.otMaxHours)}</span>
-                                                    )}
+                                                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">Max Overtime limit: {formatDecimalHours(Number.isFinite(selectedShift.otMaxHours) ? selectedShift.otMaxHours : DEFAULT_MAX_OT_HOURS)}</span>
                                                 </div>
                                             </div>
                                         </div>

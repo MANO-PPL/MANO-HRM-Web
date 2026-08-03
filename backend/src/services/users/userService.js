@@ -6,6 +6,7 @@ import { deleteFile, uploadCompressedImage } from '../s3/s3Service.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { encryptText, decryptText } from '../../utils/encryption.js';
+import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js
 
@@ -767,6 +768,16 @@ export const getShifts = async (orgId) => {
     const shifts = await attendanceDB("org_shifts").where({ org_id: orgId });
     return shifts.map(s => {
         const rules = typeof s.policy_rules === 'string' ? JSON.parse(s.policy_rules) : (s.policy_rules || {});
+        const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
+            ? rules.overtime.max_overtime
+            : rules.overtime?.maxOvertime;
+        const normalizedRules = {
+            ...rules,
+            overtime: {
+                ...(rules.overtime || {}),
+                max_overtime: normalizeMaxOvertimeHours(rawMaxOvertime)
+            }
+        };
         return {
             shift_id: s.shift_id,
             shift_name: s.shift_name,
@@ -777,7 +788,7 @@ export const getShifts = async (orgId) => {
             is_overtime_enabled: rules.overtime?.enabled ? 1 : 0,
             overtime_threshold_hours: rules.overtime?.threshold || 8.0,
             is_active: rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : (s.is_active !== undefined ? s.is_active : 1),
-            policy_rules: rules
+            policy_rules: normalizedRules
         };
     });
 };
@@ -808,8 +819,14 @@ export const createShift = async (shiftData, orgId) => {
             minutes: Number(grace_period_mins) || 0
         },
         overtime: {
+            ...(rules.overtime || {}),
             enabled: is_overtime_enabled ? true : false,
-            threshold: Number(overtime_threshold_hours) || 8
+            threshold: Number(overtime_threshold_hours) || 8,
+            max_overtime: normalizeMaxOvertimeHours(
+                rules.overtime?.max_overtime !== undefined
+                    ? rules.overtime.max_overtime
+                    : rules.overtime?.maxOvertime
+            )
         },
         entry_requirements: rules.entry_requirements || { selfie: true, geofence: true }
     };
@@ -841,7 +858,15 @@ export const updateShift = async (shiftId, shiftData, orgId) => {
     if (shiftData.policy_rules || is_active !== undefined) {
         updates.policy_rules = JSON.stringify({
             ...rules,
-            is_active: isActiveVal === 1
+            is_active: isActiveVal === 1,
+            overtime: {
+                ...(rules.overtime || {}),
+                max_overtime: normalizeMaxOvertimeHours(
+                    rules.overtime?.max_overtime !== undefined
+                        ? rules.overtime.max_overtime
+                        : rules.overtime?.maxOvertime
+                )
+            }
         });
     }
 

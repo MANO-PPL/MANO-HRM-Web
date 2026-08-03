@@ -5,17 +5,25 @@ import * as ShiftService from '../services/attendance/shiftManagementService.js'
 import { resolveNoShowStatus } from '../services/attendance/statusEvaluationService.js';
 import EventBus from '../utils/EventBus.js';
 import { PayrollCalculationService } from '../services/payroll/PayrollCalculationService.js';
+import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../services/shifts/shiftService.js';
 
 // Grace period (in days) before an uncorrected MISSED_PUNCH becomes ABSENT
 const MISSED_PUNCH_GRACE_DAYS = 2;
+// Time allowed after the configured maximum overtime before an open checkout is flagged.
+const MISSED_PUNCH_BUFFER_MINUTES = 30;
+const CRON_INTERVAL_MINUTES = 30;
+
+function getNextCronSlotMinutes(totalMinutes) {
+    return (Math.ceil(totalMinutes / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES) % (24 * 60);
+}
 
 /**
- * Hourly Attendance Processor
- * Runs every hour to check which users have completed their logical "Yesterday"
+ * Attendance Processor
+ * Runs every 30 minutes to check which users have completed their logical "Yesterday"
  * matching the processing window in their timezone.
  */
 export async function processHourlyAttendance() {
-    console.log('⏰ Hourly Attendance Check Started...');
+    console.log('⏰ Attendance Check Started...');
 
     const users = await attendanceDB('core_users')
         .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
@@ -35,8 +43,7 @@ export async function processHourlyAttendance() {
 
     for (const user of users) {
         try {
-            // 1. Calculate target hour in-memory first (no DB queries)
-            let targetHour = 2;
+            // 1. Calculate target processing slot in-memory first (no DB queries)
             let endTime = '18:00:00';
             if (user.end_time) {
                 endTime = user.end_time;
@@ -50,26 +57,27 @@ export async function processHourlyAttendance() {
                 } catch (e) {}
             }
 
-            let maxOvertime = 2.5; // Default max overtime fallback
+            let maxOvertime = DEFAULT_MAX_OVERTIME_HOURS;
             try {
                 let rules = user.policy_rules;
                 if (typeof rules === 'string') rules = JSON.parse(rules);
-                if (rules?.overtime?.max_overtime !== undefined) {
-                    maxOvertime = Number(rules.overtime.max_overtime);
+                if (rules?.overtime?.enabled === false) {
+                    maxOvertime = 0;
+                } else if (rules?.overtime?.max_overtime !== undefined) {
+                    maxOvertime = normalizeMaxOvertimeHours(rules.overtime.max_overtime);
                 } else if (rules?.overtime?.maxOvertime !== undefined) {
-                    maxOvertime = Number(rules.overtime.maxOvertime);
+                    maxOvertime = normalizeMaxOvertimeHours(rules.overtime.maxOvertime);
                 }
             } catch (e) {}
 
             const [endH, endM] = endTime.split(':').map(Number);
-            const latestCheckout = endH + (endM / 60) + maxOvertime;
-            const calculatedHour = Math.ceil(latestCheckout + 2) % 24;
+            const latestCheckoutMinutes = (endH * 60) + endM + (maxOvertime * 60) + MISSED_PUNCH_BUFFER_MINUTES;
+            const calculatedSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
 
+            let targetSlotMinutes = calculatedSlotMinutes;
             if (user.processing_time && user.processing_time !== '02:00:00') {
-                const [h] = user.processing_time.split(':');
-                targetHour = parseInt(h, 10);
-            } else {
-                targetHour = calculatedHour;
+                const [h, m] = user.processing_time.split(':').map(Number);
+                targetSlotMinutes = getNextCronSlotMinutes((h * 60) + (m || 0));
             }
 
             // Quick timezone check with the default timezone (no DB query needed)
@@ -81,14 +89,14 @@ export async function processHourlyAttendance() {
             }
 
             const tempNow = new Date(new Date().toLocaleString('en-US', { timeZone: baseTimeZone }));
-            const baseHour = tempNow.getHours();
+            const baseSlotMinutes = (tempNow.getHours() * 60) + (Math.floor(tempNow.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
 
-            // Skip database queries for 96% of loops where it's not the user's processing hour
-            if (baseHour !== targetHour) {
+            // Skip database queries when it is not the user's processing slot
+            if (baseSlotMinutes !== targetSlotMinutes) {
                 continue;
             }
 
-            // Only query DB to fetch custom timezone override when baseHour matches targetHour
+            // Only query DB to fetch custom timezone override when the base slot matches
             let timeZone = baseTimeZone;
             const lastRecord = await attendanceDB('attn_records')
                 .where({ user_id: user.user_id })
@@ -115,7 +123,7 @@ export async function processHourlyAttendance() {
             }
 
             const nowInUserTZ = new Date(new Date().toLocaleString('en-US', { timeZone }));
-            const currentHour = nowInUserTZ.getHours();
+            const currentSlotMinutes = (nowInUserTZ.getHours() * 60) + (Math.floor(nowInUserTZ.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
 
             // Determine if the shift is a night shift
             let isNightShift = false;
@@ -139,9 +147,9 @@ export async function processHourlyAttendance() {
                 isNightShift = (endH < startH) || (startH >= 17 || startH < 6);
             }
 
-            const isNextDayCheck = isNightShift || (endH + (endM / 60) + maxOvertime + 2) >= 24;
+            const isNextDayCheck = isNightShift || latestCheckoutMinutes >= (24 * 60);
 
-            if (currentHour === targetHour) {
+            if (currentSlotMinutes === targetSlotMinutes) {
                 const targetDateObj = new Date(nowInUserTZ);
                 if (isNextDayCheck) {
                     targetDateObj.setDate(targetDateObj.getDate() - 1);
@@ -161,7 +169,7 @@ export async function processHourlyAttendance() {
     // --- SECOND PASS: Escalate expired MISSED_PUNCH to ABSENT ---
     await escalateExpiredMissedPunches();
 
-    console.log('✅ Hourly Attendance Check Completed.');
+    console.log('✅ Attendance Check Completed.');
 }
 
 /**
@@ -328,9 +336,8 @@ async function escalateExpiredMissedPunches() {
             }
 
             const nowInUserTZ = new Date(new Date().toLocaleString('en-US', { timeZone }));
-            const currentHour = nowInUserTZ.getHours();
 
-            // Determine escalation hour (latest checkout + 2 hours buffer, modulo 24)
+            // Determine escalation slot (latest checkout + 30-minute buffer, rounded to a cron slot)
             let endTime = '18:00:00';
             if (user.end_time) {
                 endTime = user.end_time;
@@ -344,20 +351,22 @@ async function escalateExpiredMissedPunches() {
                 } catch (e) {}
             }
 
-            let maxOvertime = 2.5; // Default max overtime fallback
+            let maxOvertime = DEFAULT_MAX_OVERTIME_HOURS;
             try {
                 let rules = user.policy_rules;
                 if (typeof rules === 'string') rules = JSON.parse(rules);
-                if (rules?.overtime?.max_overtime !== undefined) {
-                    maxOvertime = Number(rules.overtime.max_overtime);
+                if (rules?.overtime?.enabled === false) {
+                    maxOvertime = 0;
+                } else if (rules?.overtime?.max_overtime !== undefined) {
+                    maxOvertime = normalizeMaxOvertimeHours(rules.overtime.max_overtime);
                 } else if (rules?.overtime?.maxOvertime !== undefined) {
-                    maxOvertime = Number(rules.overtime.maxOvertime);
+                    maxOvertime = normalizeMaxOvertimeHours(rules.overtime.maxOvertime);
                 }
             } catch (e) {}
 
             const [endH, endM] = endTime.split(':').map(Number);
-            const latestCheckout = endH + (endM / 60) + maxOvertime;
-            const escalationHour = Math.ceil(latestCheckout + 2) % 24;
+            const latestCheckoutMinutes = (endH * 60) + endM + (maxOvertime * 60) + MISSED_PUNCH_BUFFER_MINUTES;
+            const escalationSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
 
             const rules = ShiftService.getShiftRules(user);
             const graceDays = rules.correction_deadline ?? 2;
@@ -371,13 +380,14 @@ async function escalateExpiredMissedPunches() {
 
             const diffTime = today - recordDate;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const currentSlotMinutes = (nowInUserTZ.getHours() * 60) + (Math.floor(nowInUserTZ.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
 
             // If the record is past the grace period, escalate it immediately.
             // If it is exactly on the deadline day, only escalate once the escalation hour is reached.
             const isFullyExpired = diffDays > graceDays;
             if (!isFullyExpired) {
                 const isExpirationDay = diffDays === graceDays;
-                if (!isExpirationDay || currentHour !== escalationHour) {
+                if (!isExpirationDay || currentSlotMinutes !== escalationSlotMinutes) {
                     continue;
                 }
             }
@@ -538,10 +548,10 @@ export async function checkAndSendShiftReminders() {
 }
 
 /**
- * Initialize the hourly attendance processor cron job.
+ * Initialize the attendance processor cron job.
  */
 export function initAttendanceProcessor() {
-    cron.schedule('0 * * * *', processHourlyAttendance);
+    cron.schedule('*/30 * * * *', processHourlyAttendance);
     cron.schedule('* * * * *', checkAndSendShiftReminders);
-    console.log('🚀 Hourly Attendance Processor Scheduled');
+    console.log('🚀 Attendance Processor Scheduled (every 30 minutes)');
 }
