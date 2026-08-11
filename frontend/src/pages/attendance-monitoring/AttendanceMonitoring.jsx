@@ -130,6 +130,7 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
         selectedCluster.data.length === 1 ? selectedCluster.data[0] : null
     );
     const [searchQuery, setSearchQuery] = useState('');
+    const [previewImage, setPreviewImage] = useState(null);
 
     useEffect(() => {
         setSelectedUser(selectedCluster.data.length === 1 ? selectedCluster.data[0] : null);
@@ -406,6 +407,36 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
                     </AnimatePresence>
                 </div>
             </motion.div>
+
+            {/* Image Preview Lightbox */}
+            {previewImage && createPortal(
+                <AnimatePresence>
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setPreviewImage(null)}
+                    >
+                        <button
+                            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
+                            onClick={() => setPreviewImage(null)}
+                        >
+                            <XCircle size={32} />
+                        </button>
+                        <motion.img
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            src={previewImage}
+                            alt="Selfie Preview"
+                            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </motion.div>
+                </AnimatePresence>,
+                document.body
+            )}
         </>,
         document.body
     );
@@ -668,9 +699,9 @@ const AttendanceMonitoring = () => {
     }, [window.location.search]);
 
     const MAP_THEMES = {
-        dark: { name: 'Night Mode', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' },
-        light: { name: 'Light Mode', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' },
-        voyager: { name: 'Day Mode', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png' },
+        dark: { name: 'Night Mode', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png' },
+        light: { name: 'Light Mode', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png' },
+        voyager: { name: 'Day Mode', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png' },
         satellite: { name: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
         streets: { name: 'Streets', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' }
     };
@@ -678,6 +709,7 @@ const AttendanceMonitoring = () => {
     const [selectedLiveUser, setSelectedLiveUser] = useState(null); // For Live Attendance Detail Modal
     const [selectedCluster, setSelectedCluster] = useState(null);
     const [clusterGroupElement, setClusterGroupElement] = useState(null);
+    const [previewImage, setPreviewImage] = useState(null);
 
     useEffect(() => {
         if (!clusterGroupElement) return;
@@ -3253,6 +3285,36 @@ const AttendanceMonitoring = () => {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {/* Image Preview Lightbox */}
+                {previewImage && createPortal(
+                    <AnimatePresence>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+                            onClick={() => setPreviewImage(null)}
+                        >
+                            <button
+                                className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
+                                onClick={() => setPreviewImage(null)}
+                            >
+                                <XCircle size={32} />
+                            </button>
+                            <motion.img
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                src={previewImage}
+                                alt="Selfie Preview"
+                                className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </motion.div>
+                    </AnimatePresence>,
+                    document.body
+                )}
             </DashboardLayout>
         </>
     );
