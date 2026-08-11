@@ -1,49 +1,27 @@
 import { attendanceDB } from '../../config/database.js';
 // S3 helper lives in the top-level services/s3 folder
 import * as S3Service from '../s3/s3Service.js';
-import EventBus from '../../utils/EventBus.js';
-import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 
 export async function getMyHistory({ user_id, org_id }) {
-    const leaves = await attendanceDB('leave_request as lr')
-        .join('core_users as u', 'lr.user_id', 'u.user_id')
-        .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
-        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .select(
-            'lr.*',
-            'u.user_name',
-            'u.profile_image_url',
-            'lpr.name as leave_type',
-            'lpr.code as leave_code',
-            'lp.name as policy_name'
-        )
+    const leaves = await attendanceDB('leave_requests as lr')
+        .join('users as u', 'lr.user_id', 'u.user_id')
+        .select('lr.*', 'u.user_name', 'u.profile_image_url')
         .where({ 'lr.user_id': user_id, 'lr.org_id': org_id })
         .orderBy('lr.applied_at', 'desc');
 
-    const leaveIds = leaves.map(l => l.lr_id);
-    if (leaveIds.length > 0) {
-        const attachments = await attendanceDB('leave_attachments').whereIn('leave_id', leaveIds);
-
-        const attachmentMap = new Map();
-
-        await Promise.all(attachments.map(async (a) => {
+    const parsedLeaves = await Promise.all(leaves.map(async (leave) => {
+        const atts = typeof leave.attachments === 'string' ? JSON.parse(leave.attachments) : (leave.attachments || []);
+        const signedAttachments = await Promise.all((atts || []).map(async (a) => {
             const { url } = await S3Service.getFileUrl({ key: a.file_key });
-            const item = { ...a, file_url: url };
-
-            if (!attachmentMap.has(a.leave_id)) {
-                attachmentMap.set(a.leave_id, []);
-            }
-            attachmentMap.get(a.leave_id).push(item);
+            return { ...a, file_url: url };
         }));
+        return {
+            ...leave,
+            attachments: signedAttachments
+        };
+    }));
 
-        leaves.forEach(leave => {
-            leave.attachments = attachmentMap.get(leave.lr_id) || [];
-        });
-    } else {
-        leaves.forEach(l => l.attachments = []);
-    }
-
-    return leaves;
+    return parsedLeaves;
 }
 
 export async function submitLeaveRequest({ user_id, org_id, leave_type, start_date, end_date, reason, files }) {
@@ -101,7 +79,7 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
     const sqlStart = formatSQLDate(start);
     const sqlEnd = formatSQLDate(end);
 
-    const overlap = await attendanceDB('leave_request')
+    const overlap = await attendanceDB('leave_requests')
         .where({ user_id, org_id })
         .whereIn('status', ['pending', 'approved'])
         .where(builder => {
@@ -115,21 +93,17 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
         .first();
 
     if (overlap) {
-        throw { status: 400, message: "Use has an overlapping leave request." };
+        throw { status: 400, message: "User has an overlapping leave request." };
     }
 
-    // Calculate total days
-    const totalDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
-
-    const [insertId] = await attendanceDB('leave_request').insert({
+    const [insertId] = await attendanceDB('leave_requests').insert({
         user_id,
         org_id,
-        rule_id: resolvedRuleId,
+        leave_type,
         start_date: sqlStart,
         end_date: sqlEnd,
-        total_days: totalDays,
         reason,
-        status: 'pending',
+        status: 'Pending',
         applied_at: new Date()
     });
 
@@ -151,7 +125,6 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
             const { url: signedUrl } = await S3Service.getFileUrl({ key: key, directory: `leaves/${insertId}` });
 
             return {
-                leave_id: insertId,
                 file_key: `leaves/${insertId}/${key}`,
                 file_type: file.mimetype,
                 _signedUrl: signedUrl
@@ -160,8 +133,11 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
 
         const attachmentsData = await Promise.all(attachmentPromises);
 
-        const dbInserts = attachmentsData.map(({ _signedUrl, ...rest }) => rest);
-        await attendanceDB('leave_attachments').insert(dbInserts);
+        const dbAttachments = attachmentsData.map(({ _signedUrl, ...rest }) => rest);
+        
+        await attendanceDB('leave_request')
+            .where({ lr_id: insertId })
+            .update({ attachments: JSON.stringify(dbAttachments) });
 
         responseAttachments = attachmentsData.map(a => ({
             file_key: a.file_key,
@@ -203,93 +179,36 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
         }
     }
 
-    await attendanceDB('leave_request').where({ lr_id: id }).del();
-
-    // Trigger payroll recalculation if the withdrawn leave was approved (affects salary)
-    if (wasApproved) {
-        PayrollCalculationService.triggerLeaveRecalculation({ ...request, org_id }).catch(err => {
-            console.error("Failed to trigger payroll recalculation after leave withdrawal:", err);
-        });
-    }
-
-    try {
-        const employee = await attendanceDB('core_users').where({ user_id }).select('user_name').first();
-        const employeeName = employee?.user_name || 'An employee';
-        const statusLabel = wasApproved ? 'approved' : 'pending';
-
-        const admins = await attendanceDB('core_users')
-            .where({ org_id, is_deleted: 0, is_active: 1 })
-            .whereIn('user_type', ['admin', 'hr'])
-            .select('user_id');
-
-        for (const admin of admins) {
-            if (Number(admin.user_id) === Number(user_id)) continue;
-            EventBus.emitNotification({
-                org_id,
-                user_id: admin.user_id,
-                title: 'Leave Request Withdrawn',
-                message: `${employeeName} has withdrawn their ${statusLabel} leave request for ${request.start_date} to ${request.end_date}.`,
-                type: 'WARNING',
-                related_entity_type: 'LEAVE',
-                related_entity_id: id
-            });
-        }
-    } catch (err) {
-        console.error('Error sending leave withdrawal notification:', err);
-    }
+    await attendanceDB('leave_requests').where({ lr_id: id }).del();
 }
 
 export async function getPendingRequests({ org_id }) {
-    const requests = await attendanceDB('leave_request as lr')
-        .join('core_users as u', 'lr.user_id', 'u.user_id')
-        .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
-        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .select(
-            'lr.*',
-            'u.user_name', 'u.email', 'u.phone_no', 'u.profile_image_url',
-            'lpr.name as leave_type',
-            'lpr.code as leave_code',
-            'lp.name as policy_name'
-        )
+    const requests = await attendanceDB('leave_requests as lr')
+        .join('users as u', 'lr.user_id', 'u.user_id')
+        .select('lr.*', 'u.user_name', 'u.email', 'u.phone_no', 'u.profile_image_url')
         .where('lr.org_id', org_id)
         .where('lr.status', 'pending')
         .orderBy('lr.applied_at', 'asc');
 
-    const leaveIds = requests.map(l => l.lr_id);
-    if (leaveIds.length > 0) {
-        const attachments = await attendanceDB('leave_attachments').whereIn('leave_id', leaveIds);
-        const attachmentMap = new Map();
-
-        await Promise.all(attachments.map(async (a) => {
+    const parsedRequests = await Promise.all(requests.map(async (req) => {
+        const atts = typeof req.attachments === 'string' ? JSON.parse(req.attachments) : (req.attachments || []);
+        const signedAttachments = await Promise.all((atts || []).map(async (a) => {
             const { url } = await S3Service.getFileUrl({ key: a.file_key });
-            const item = { ...a, file_url: url };
-
-            if (!attachmentMap.has(a.leave_id)) {
-                attachmentMap.set(a.leave_id, []);
-            }
-            attachmentMap.get(a.leave_id).push(item);
+            return { ...a, file_url: url };
         }));
+        return {
+            ...req,
+            attachments: signedAttachments
+        };
+    }));
 
-        requests.forEach(req => {
-            req.attachments = attachmentMap.get(req.lr_id) || [];
-        });
-    }
-
-    return requests;
+    return parsedRequests;
 }
 
 export async function getAdminHistory({ org_id, user_id, status, start_date, end_date }) {
-    let query = attendanceDB('leave_request as lr')
-        .join('core_users as u', 'lr.user_id', 'u.user_id')
-        .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
-        .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .select(
-            'lr.*',
-            'u.user_name', 'u.profile_image_url',
-            'lpr.name as leave_type',
-            'lpr.code as leave_code',
-            'lp.name as policy_name'
-        )
+    let query = attendanceDB('leave_requests as lr')
+        .join('users as u', 'lr.user_id', 'u.user_id')
+        .select('lr.*', 'u.user_name', 'u.profile_image_url')
         .where('lr.org_id', org_id);
 
     if (user_id) query = query.where('lr.user_id', user_id);
@@ -299,27 +218,19 @@ export async function getAdminHistory({ org_id, user_id, status, start_date, end
 
     const history = await query.orderBy('lr.applied_at', 'desc');
 
-    const leaveIds = history.map(l => l.lr_id);
-    if (leaveIds.length > 0) {
-        const attachments = await attendanceDB('leave_attachments').whereIn('leave_id', leaveIds);
-        const attachmentMap = new Map();
-
-        await Promise.all(attachments.map(async (a) => {
+    const parsedHistory = await Promise.all(history.map(async (h) => {
+        const atts = typeof h.attachments === 'string' ? JSON.parse(h.attachments) : (h.attachments || []);
+        const signedAttachments = await Promise.all((atts || []).map(async (a) => {
             const { url } = await S3Service.getFileUrl({ key: a.file_key });
-            const item = { ...a, file_url: url };
-
-            if (!attachmentMap.has(a.leave_id)) {
-                attachmentMap.set(a.leave_id, []);
-            }
-            attachmentMap.get(a.leave_id).push(item);
+            return { ...a, file_url: url };
         }));
+        return {
+            ...h,
+            attachments: signedAttachments
+        };
+    }));
 
-        history.forEach(h => {
-            h.attachments = attachmentMap.get(h.lr_id) || [];
-        });
-    }
-
-    return history;
+    return parsedHistory;
 }
 
 export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_percentage, admin_comment, reviewed_by }) {
@@ -346,12 +257,12 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
         reviewed_at: new Date()
     };
 
-    if (lowerStatus === 'approved') {
+    if (status === 'Approved') {
         updateData.pay_type = pay_type;
         updateData.pay_percentage = pay_type === 'Partial' ? (pay_percentage || 50) : (pay_type === 'Paid' ? 100 : 0);
     }
 
-    await attendanceDB('leave_request')
+    const affected = await attendanceDB('leave_requests')
         .where({ lr_id: id, org_id })
         .update(updateData);
 
@@ -631,180 +542,8 @@ export async function createLeavePolicy({ org_id, name, description }) {
     return { lp_id, org_id, name, description, is_active: 1 };
 }
 
-export async function getLeavePolicies({ org_id }) {
-    const policies = await attendanceDB('leave_policies')
-        .where({ org_id })
-        .orderBy('created_at', 'desc');
-
-    // Attach rules to each policy for rich details
-    const policyIds = policies.map(p => p.lp_id);
-    let rules = [];
-    if (policyIds.length > 0) {
-        rules = await attendanceDB('leave_policies_rules')
-            .whereIn('lp_id', policyIds)
-            .orderBy('name', 'asc');
-    }
-
-    const rulesMap = new Map();
-    rules.forEach(rule => {
-        if (!rulesMap.has(rule.lp_id)) {
-            rulesMap.set(rule.lp_id, []);
-        }
-        rulesMap.get(rule.lp_id).push(rule);
-    });
-
-    return policies.map(p => ({
-        ...p,
-        rules: rulesMap.get(p.lp_id) || []
-    }));
-}
-
-export async function getMyLeavePolicies({ user_id, org_id }) {
-    // Find all unique lp_ids assigned to this user through leave_balances
-    const assignedPolicies = await attendanceDB('leave_balances as lb')
-        .join('leave_policies_rules as lpr', 'lb.rule_id', 'lpr.rule_id')
-        .join('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .where({ 'lb.user_id': user_id, 'lb.org_id': org_id })
-        .select('lp.lp_id')
-        .distinct();
-
-    const lpIds = assignedPolicies.map(p => p.lp_id);
-    if (lpIds.length === 0) {
-        return [];
-    }
-
-    // Now fetch the details for these policies
-    const policies = await attendanceDB('leave_policies')
-        .whereIn('lp_id', lpIds)
-        .andWhere({ is_active: 1 });
-
-    const rules = await attendanceDB('leave_policies_rules')
-        .whereIn('lp_id', lpIds)
-        .andWhere({ is_active: 1 })
-        .orderBy('name', 'asc');
-
-    const rulesMap = new Map();
-    rules.forEach(rule => {
-        if (!rulesMap.has(rule.lp_id)) {
-            rulesMap.set(rule.lp_id, []);
-        }
-        rulesMap.get(rule.lp_id).push(rule);
-    });
-
-    return policies.map(p => ({
-        ...p,
-        rules: rulesMap.get(p.lp_id) || []
-    }));
-}
-
-
-export async function getLeavePolicyById({ org_id, lp_id }) {
-    const policy = await attendanceDB('leave_policies')
-        .where({ org_id, lp_id })
-        .first();
-
-    if (!policy) {
-        throw { status: 404, message: "Leave policy not found" };
-    }
-
-    const rules = await attendanceDB('leave_policies_rules')
-        .where({ lp_id })
-        .orderBy('name', 'asc');
-
-    return {
-        ...policy,
-        rules
-    };
-}
-
-export async function updateLeavePolicy({ org_id, lp_id, name, description, is_active }) {
-    const policy = await attendanceDB('leave_policies')
-        .where({ org_id, lp_id })
-        .first();
-
-    if (!policy) {
-        throw { status: 404, message: "Leave policy not found" };
-    }
-
-    if (name && name !== policy.name) {
-        const existingName = await attendanceDB('leave_policies')
-            .where({ org_id, name })
-            .whereNot({ lp_id })
-            .first();
-        if (existingName) {
-            throw { status: 400, message: "Another policy with this name already exists" };
-        }
-    }
-
-    const updateData = {};
-    if (name !== undefined) updateData.name = name;
-    if (description !== undefined) updateData.description = description;
-    if (is_active !== undefined) updateData.is_active = is_active ? 1 : 0;
-
-    if (Object.keys(updateData).length > 0) {
-        await attendanceDB('leave_policies')
-            .where({ lp_id })
-            .update(updateData);
-    }
-
-    return {
-        ...policy,
-        ...updateData
-    };
-}
-
-export async function deleteLeavePolicy({ org_id, lp_id }) {
-    const policy = await attendanceDB('leave_policies')
-        .where({ org_id, lp_id })
-        .first();
-
-    if (!policy) {
-        throw { status: 404, message: "Leave policy not found" };
-    }
-
-    // Get rules of this policy
-    const rules = await attendanceDB('leave_policies_rules')
-        .where({ lp_id })
-        .select('rule_id');
-
-    const ruleIds = rules.map(r => r.rule_id);
-
-    if (ruleIds.length > 0) {
-        // Check if any rule is referenced in leave_request or leave_balances
-        const hasRequests = await attendanceDB('leave_request')
-            .whereIn('rule_id', ruleIds)
-            .first();
-
-        const hasBalances = await attendanceDB('leave_balances')
-            .whereIn('rule_id', ruleIds)
-            .first();
-
-        if (hasRequests || hasBalances) {
-            throw {
-                status: 400,
-                message: "Cannot delete policy. One or more rules under this policy are referenced by existing leave requests or user balances. Consider setting is_active to 0 instead."
-            };
-        }
-
-        // Delete policy rules first
-        await attendanceDB('leave_policies_rules')
-            .whereIn('rule_id', ruleIds)
-            .del();
-    }
-
-    // Delete the policy
-    await attendanceDB('leave_policies')
-        .where({ lp_id })
-        .del();
-
-    return { ok: true, message: "Policy deleted successfully" };
-}
-
-/* ==========================================================================
-   Leave Policy Rule CRUD Services
-   ========================================================================== */
-
 export async function createLeavePolicyRule({ org_id, lp_id, ruleData }) {
+    // Verify policy ownership
     const policy = await attendanceDB('leave_policies')
         .where({ org_id, lp_id })
         .first();
@@ -956,7 +695,7 @@ export async function deleteLeavePolicyRule({ org_id, lp_id, rule_id }) {
     }
 
     // Check if referenced in requests or balances
-    const hasRequests = await attendanceDB('leave_request')
+    const hasRequests = await attendanceDB('leave_requests')
         .where({ rule_id })
         .first();
 

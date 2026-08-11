@@ -444,7 +444,7 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null });
         await trx('attn_records').where('altered_by', userId).update({ altered_by: null });
         await trx('attn_daily_summary').where('adjusted_by', userId).update({ adjusted_by: null });
-        await trx('leave_request').where('reviewed_by', userId).update({ reviewed_by: null });
+        await trx('leave_requests').where('reviewed_by', userId).update({ reviewed_by: null });
 
         await trx('attn_correction_requests').where('user_id', userId).del();
         await trx('org_user_work_locations').where('user_id', userId).del();
