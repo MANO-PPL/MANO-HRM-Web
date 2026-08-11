@@ -1,5 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import { verifyUserGeofence } from "./geofencing.js";
+import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
 
 /**
  * Shift Management Service
@@ -296,6 +297,10 @@ export function getShiftRules(shift) {
     // Buffer time (in hours) after shift ends before overtime starts counting
     // e.g. 0.5 = 30 minutes buffer — employee can stay 30min past shift without triggering OT
     const overtimeBuffer = Number(shift.overtime_buffer_hours ?? rules.overtime?.buffer ?? 0.5);
+    const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
+        ? rules.overtime.max_overtime
+        : rules.overtime?.maxOvertime;
+    const maxOvertime = normalizeMaxOvertimeHours(rawMaxOvertime);
 
     return {
         shift_timing: {
@@ -308,7 +313,8 @@ export function getShiftRules(shift) {
         overtime: {
             enabled: overtimeEnabled,
             threshold: overtimeThreshold,
-            buffer: overtimeBuffer
+            buffer: overtimeBuffer,
+            max_overtime: maxOvertime
         },
         entry_requirements: rules.entry_requirements || {
             selfie: true,
@@ -338,7 +344,8 @@ function getDefaultShiftConfig() {
         overtime: {
             enabled: false,
             threshold: 0,
-            buffer: 0
+            buffer: 0,
+            max_overtime: DEFAULT_MAX_OVERTIME_HOURS
         },
         entry_requirements: {
             selfie: false,
@@ -405,4 +412,3 @@ export function checkBiometricCompliance(file, requirements) {
 
     return { ok: true };
 }
-

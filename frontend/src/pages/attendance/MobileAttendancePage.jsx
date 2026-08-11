@@ -253,6 +253,11 @@ const MobileAttendancePage = () => {
     const webcamRef = useRef(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Late Reason
+    const [requireLateReason, setRequireLateReason] = useState(false);
+    const [lateReasonMessage, setLateReasonMessage] = useState('');
+    const [lateReasonText, setLateReasonText] = useState('');
+
     // Data
     const [dailySessions, setDailySessions] = useState([]);
     const [monthlySessions, setMonthlySessions] = useState(() => {
@@ -591,6 +596,9 @@ const MobileAttendancePage = () => {
         setCameraMode(mode);
         setShowCamera(true);
         setImgSrc(null);
+        setRequireLateReason(false);
+        setLateReasonMessage('');
+        setLateReasonText('');
     };
 
     const handlePunchClick = async (mode) => {
@@ -624,6 +632,10 @@ const MobileAttendancePage = () => {
                 accuracy: location.lat ? 10 : null
             };
 
+            if (requireLateReason && lateReasonText.trim()) {
+                payload.late_reason = lateReasonText.trim();
+            }
+
             if (mode === 'IN') {
                 await attendanceService.timeIn(payload);
                 toast.success("Checked In Successfully!");
@@ -632,13 +644,31 @@ const MobileAttendancePage = () => {
                 toast.success("Checked Out Successfully!");
             }
 
-            setCameraMode(null);
-            fetchDailyRecords();
-            fetchMonthlyRecords();
+            closeCamera();
+
+            try {
+                await fetchDailyRecords();
+                await fetchMonthlyRecords(true);
+            } catch (refErr) {
+                console.error("Failed to refresh records after punch:", refErr);
+            }
         } catch (error) {
             console.error(error);
-            setCameraMode(null);
-            toast.error(error.message || "Attendance failed");
+            const errorMsg = error.message || "Attendance failed";
+            const errorLower = errorMsg.toLowerCase();
+
+            if (mode === 'IN' && errorLower.includes("late") && errorLower.includes("reason")) {
+                setCameraMode(mode);
+                setImgSrc(null);
+                setRequireLateReason(true);
+                setLateReasonMessage(errorMsg);
+                setLateReasonText("");
+                setShowCamera(true);
+                toast.warning(errorMsg);
+            } else {
+                closeCamera();
+                toast.error(errorMsg);
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -648,6 +678,9 @@ const MobileAttendancePage = () => {
         setShowCamera(false);
         setImgSrc(null);
         setCameraMode(null);
+        setRequireLateReason(false);
+        setLateReasonMessage('');
+        setLateReasonText('');
     };
 
     const capture = useCallback(() => {
@@ -683,6 +716,11 @@ const MobileAttendancePage = () => {
             return;
         }
 
+        if (requireLateReason && !lateReasonText.trim()) {
+            toast.warning("Please provide a reason for being late");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const payload = {
@@ -695,6 +733,10 @@ const MobileAttendancePage = () => {
                 payload.imageFile = imageBlob;
             }
 
+            if (requireLateReason && lateReasonText.trim()) {
+                payload.late_reason = lateReasonText.trim();
+            }
+
             if (cameraMode === 'IN') {
                 await attendanceService.timeIn(payload);
                 toast.success("Checked In Successfully!");
@@ -704,11 +746,26 @@ const MobileAttendancePage = () => {
             }
 
             closeCamera();
-            fetchDailyRecords();
-            fetchMonthlyRecords();
+
+            try {
+                await fetchDailyRecords();
+                await fetchMonthlyRecords(true);
+            } catch (refErr) {
+                console.error("Failed to refresh records after punch:", refErr);
+            }
         } catch (error) {
             console.error(error);
-            toast.error(error.message || "Attendance failed");
+            const errorMsg = error.message || "Attendance failed";
+            const errorLower = errorMsg.toLowerCase();
+
+            if (cameraMode === 'IN' && errorLower.includes("late") && errorLower.includes("reason")) {
+                setRequireLateReason(true);
+                setLateReasonMessage(errorMsg);
+                toast.warning(errorMsg);
+            } else {
+                closeCamera();
+                toast.error(errorMsg);
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -2411,56 +2468,117 @@ const MobileAttendancePage = () => {
                         : (myShift?.rules?.exit_requirements?.selfie ?? false);
 
                     return (
-                        <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
-                            <div className="flex-1 relative">
-                                {isSelfieRequired ? (
-                                    imgSrc ? (
-                                        <img src={imgSrc} alt="Captured" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <Webcam
-                                            audio={false}
-                                            ref={webcamRef}
-                                            screenshotFormat="image/jpeg"
-                                            className="w-full h-full object-cover"
-                                            videoConstraints={{ facingMode: "user" }}
-                                        />
-                                    )
-                                ) : (
-                                    <div className="w-full h-full bg-slate-900/50 backdrop-blur-md flex flex-col items-center justify-center text-center p-6">
-                                        <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center mb-4 text-indigo-400 border border-indigo-500/20">
-                                            <Clock size={36} />
-                                        </div>
-                                        <h4 className="text-xl font-bold text-white mb-2">Ready to {cameraMode === 'IN' ? 'Time In' : 'Time Out'}</h4>
-                                        <p className="text-sm text-slate-400 max-w-xs">
-                                            Selfie verification is not required. Click confirm below to record your attendance.
-                                        </p>
-                                    </div>
-                                )}
-                                <button onClick={closeCamera} className="absolute top-6 right-6 p-4 bg-black/50 text-white rounded-full backdrop-blur-md">
-                                    <X size={24} />
+                        <div className="fixed inset-0 z-[9999] bg-[#070a12]/95 backdrop-blur-xl flex flex-col justify-between p-4 sm:p-6 overflow-y-auto no-scrollbar">
+                            {/* Modal Header */}
+                            <div className="w-full max-w-lg mx-auto flex items-center justify-between py-2 shrink-0">
+                                <div className="w-10" />
+                                <h3 className="text-base font-bold text-white text-center">
+                                    {cameraMode === 'IN' ? 'Check In' : 'Check Out'}
+                                </h3>
+                                <button 
+                                    onClick={closeCamera} 
+                                    className="w-10 h-10 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors shrink-0"
+                                >
+                                    <X size={20} />
                                 </button>
+                            </div>
 
-                                <div className="absolute bottom-12 left-0 right-0 px-10">
-                                    {!isSelfieRequired ? (
-                                        <div className="flex gap-4">
-                                            <button onClick={closeCamera} className="flex-1 py-5 bg-white/10 backdrop-blur-md text-white font-black uppercase tracking-widest rounded-2xl border border-white/20">Cancel</button>
-                                            <button onClick={confirmAttendance} disabled={isSubmitting} className="flex-1 py-5 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl">
-                                                {isSubmitting ? 'Processing...' : 'Confirm'}
-                                            </button>
-                                        </div>
-                                    ) : !imgSrc ? (
-                                        <button onClick={capture} className="w-20 h-20 bg-white rounded-full mx-auto border-8 border-white/30 flex items-center justify-center">
-                                            <div className="w-14 h-14 bg-indigo-600 rounded-full" />
-                                        </button>
+                            {/* Modal Main Content */}
+                            <div className="w-full max-w-lg mx-auto my-auto space-y-4 py-2">
+                                {/* Photo / Camera Container */}
+                                <div className="w-full rounded-2xl overflow-hidden bg-slate-900 border border-slate-800/80 shadow-2xl relative max-h-[340px] aspect-[4/3] flex items-center justify-center mx-auto">
+                                    {isSelfieRequired ? (
+                                        imgSrc ? (
+                                            <img src={imgSrc} alt="Captured Selfie" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <Webcam
+                                                audio={false}
+                                                ref={webcamRef}
+                                                screenshotFormat="image/jpeg"
+                                                className="w-full h-full object-cover"
+                                                videoConstraints={{ facingMode: "user" }}
+                                            />
+                                        )
                                     ) : (
-                                        <div className="flex gap-4">
-                                            <button onClick={retake} className="flex-1 py-5 bg-white/10 backdrop-blur-md text-white font-black uppercase tracking-widest rounded-2xl border border-white/20">Retake</button>
-                                            <button onClick={confirmAttendance} disabled={isSubmitting} className="flex-1 py-5 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl">
-                                                {isSubmitting ? 'Processing...' : 'Confirm'}
-                                            </button>
+                                        <div className="w-full h-full bg-slate-900/50 backdrop-blur-md flex flex-col items-center justify-center text-center p-6">
+                                            <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center mb-4 text-indigo-400 border border-indigo-500/20">
+                                                <Clock size={36} />
+                                            </div>
+                                            <h4 className="text-xl font-bold text-white mb-2">Ready to {cameraMode === 'IN' ? 'Time In' : 'Time Out'}</h4>
+                                            <p className="text-sm text-slate-400 max-w-xs">
+                                                Selfie verification is not required. Click confirm below to record your attendance.
+                                            </p>
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Late Reason Input Section */}
+                                {requireLateReason && (!isSelfieRequired || imgSrc) && (
+                                    <div className="w-full space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                        <div className="flex items-center gap-2.5 text-amber-300 bg-amber-950/40 border border-amber-500/30 p-3.5 rounded-xl text-xs font-medium">
+                                            <AlertCircle size={18} className="shrink-0 text-amber-400" />
+                                            <p className="leading-snug">{lateReasonMessage || "You are arriving late. Please provide a reason to check in."}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                                                Please provide a reason
+                                            </label>
+                                            <textarea
+                                                value={lateReasonText}
+                                                onChange={(e) => setLateReasonText(e.target.value)}
+                                                placeholder="I got held up in traffic..."
+                                                className="w-full px-4 py-3 bg-[#0d1322] border border-slate-700/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white text-xs placeholder-slate-500 h-24 resize-none shadow-inner"
+                                                autoFocus
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Bottom Action Controls */}
+                            <div className="w-full max-w-lg mx-auto py-2 shrink-0">
+                                {!isSelfieRequired ? (
+                                    <div className="flex gap-4">
+                                        <button 
+                                            onClick={closeCamera} 
+                                            className="flex-1 py-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-white border border-slate-700/80 font-bold text-sm transition-all"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button 
+                                            onClick={confirmAttendance} 
+                                            disabled={isSubmitting || (requireLateReason && !lateReasonText.trim())} 
+                                            className="flex-1 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isSubmitting ? '...' : 'Confirm'} <ArrowRight size={18} />
+                                        </button>
+                                    </div>
+                                ) : !imgSrc ? (
+                                    <div className="flex justify-center py-2">
+                                        <button 
+                                            onClick={capture} 
+                                            className="w-20 h-20 rounded-full bg-white text-indigo-600 hover:scale-105 active:scale-95 flex items-center justify-center shadow-xl shadow-indigo-900/20 transition-all ring-8 ring-white/20"
+                                        >
+                                            <Camera size={36} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-4">
+                                        <button 
+                                            onClick={retake} 
+                                            className="flex-1 py-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-white border border-slate-700/80 font-bold text-sm transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <RefreshCw size={18} /> Retake
+                                        </button>
+                                        <button 
+                                            onClick={confirmAttendance} 
+                                            disabled={isSubmitting || (requireLateReason && !lateReasonText.trim())} 
+                                            className="flex-1 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isSubmitting ? '...' : 'Confirm'} <ArrowRight size={18} />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     );

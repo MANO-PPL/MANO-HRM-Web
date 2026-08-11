@@ -1,5 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import * as ShiftService from './shiftManagementService.js';
+import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
 
 /**
  * Status Evaluation Service
@@ -121,8 +122,12 @@ export function evaluateStatus(rules, data) {
 
     // Buffer: time after shift end before overtime triggers (default 30 min = 0.5 hr)
     const buffer = Number(rules?.overtime?.buffer ?? 0.5);
+    const maxOvertimeVal = rules?.overtime?.max_overtime !== undefined
+        ? rules.overtime.max_overtime
+        : rules?.overtime?.maxOvertime;
+    const maxOvertime = normalizeMaxOvertimeHours(maxOvertimeVal);
 
-    if (rules?.overtime?.enabled !== false && totalHours >= (threshold + buffer)) {
+    if (rules?.overtime?.enabled !== false && maxOvertime > 0 && totalHours >= (threshold + buffer)) {
         return "OVERTIME";
     }
 
@@ -168,12 +173,12 @@ export function calculateOvertime(totalHours, rules) {
 
     if (isEnabled && totalHours >= (threshold + buffer)) {
         let overtime = parseFloat((totalHours - threshold).toFixed(2));
-        const maxOvertimeVal = rules?.overtime?.max_overtime ?? rules?.overtime?.maxOvertime;
-        if (maxOvertimeVal !== undefined && maxOvertimeVal !== null) {
-            const maxOvertime = Number(maxOvertimeVal);
-            if (overtime > maxOvertime) {
-                overtime = maxOvertime;
-            }
+        const maxOvertimeVal = rules?.overtime?.max_overtime !== undefined
+            ? rules.overtime.max_overtime
+            : rules?.overtime?.maxOvertime;
+        const maxOvertime = normalizeMaxOvertimeHours(maxOvertimeVal);
+        if (overtime > maxOvertime) {
+            overtime = maxOvertime;
         }
         return overtime;
     }

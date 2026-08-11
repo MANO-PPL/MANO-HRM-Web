@@ -272,6 +272,14 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
     const handleImageChange = (e) => {
         const file = e.target.files[0];
         if (file) {
+            if (!file.type.startsWith('image/')) {
+                toast.error('Please select an image file');
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                toast.error('Image size exceeds the 5MB limit');
+                return;
+            }
             const reader = new FileReader();
             reader.onloadend = () => {
                 setFormData(prev => ({

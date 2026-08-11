@@ -5,7 +5,22 @@ import * as adminController from '../../controllers/admin/adminController.js';
 import * as shiftController from '../../controllers/shifts/shiftController.js';
 
 const router = express.Router();
-const upload = multer(); // memory storage
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Allow image files for user avatar / profile image or excel/csv for bulk import
+        if (file.mimetype.startsWith('image/') || file.mimetype.includes('spreadsheet') || file.mimetype.includes('excel') || file.mimetype.includes('csv') || file.originalname.match(/\.(csv|xlsx|xls|png|jpg|jpeg|webp|gif)$/i)) {
+            cb(null, true);
+        } else {
+            const err = new Error('Invalid file format uploaded.');
+            err.statusCode = 400;
+            cb(err, false);
+        }
+    }
+});
 
 // Protected by JWT
 router.use(authenticateJWT, requireActiveOrg);
@@ -15,6 +30,7 @@ router.get('/users', adminController.getAllUsers);
 router.get('/user/:user_id', adminController.getUserById);
 router.post('/user', upload.single('profile_image'), adminController.createUser);
 router.put('/user/:user_id', upload.single('profile_image'), adminController.updateUser);
+router.post('/user/:user_id/avatar', upload.single('avatar'), adminController.updateUserAvatar);
 router.delete('/user/:user_id', adminController.softDeleteUser);
 router.delete('/user/:user_id/force', adminController.forceDeleteUser);
 router.post('/user/:user_id/restore', adminController.restoreUser);

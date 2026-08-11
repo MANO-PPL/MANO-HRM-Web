@@ -1542,7 +1542,7 @@ const AttendanceMonitoring = () => {
                         </button>
                     </div>
 
-                    <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`} style={{ zoom: 0.8 }}>
+                    <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`}>
 
                     {activeTab === 'live' ? (
                         <>
@@ -1581,7 +1581,7 @@ const AttendanceMonitoring = () => {
                             <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} transition-colors duration-300 flex flex-col space-y-4`}>
 
                                 {/* Premium Control Center */}
-                                <div data-tour-id="attendance-controls" className="p-6 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border space-y-6 shrink-0">
+                                <div data-tour-id="attendance-controls" className="p-4 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border space-y-4 shrink-0">
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-3">
@@ -1607,8 +1607,6 @@ const AttendanceMonitoring = () => {
                                                 {activeView === 'graph' && 'Deep dive into attendance metrics, trends, and department KPIs.'}
                                                 {activeView === 'table' && 'High-density Gantt visualization of daily employee movements.'}
                                             </p>
-                                        </div>
-
                                         </div>
                                     </div>
 
@@ -2201,7 +2199,7 @@ const AttendanceMonitoring = () => {
                                         </div>
                                     ) : activeView === 'map' ? (
                                         /* Map View Layout */
-                                        <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]" style={{ zoom: 1.25 }}>
+                                        <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]">
                                             <div className="flex-1 h-full relative">
                                                 <MapContainer
                                                     center={[20, 78]}
@@ -2549,6 +2547,7 @@ const AttendanceMonitoring = () => {
                                         </div>
                                     ) : null}
                                 </div>
+                            </div>
                         </>
                     ) : (
                     // Approvals Tab Content
@@ -2794,24 +2793,27 @@ const AttendanceMonitoring = () => {
                                             const originalSnap = Array.isArray(selectedRequestData.original_data) ? selectedRequestData.original_data : [];
                                             const proposedSnap = Array.isArray(selectedRequestData.proposed_data) ? selectedRequestData.proposed_data : [];
                                             const fmtTime = (t) => t ? String(t).substring(0, 5) : '';
-                                            const originalTasks = originalSnap.map((s, i) => ({ id: `orig-${i}`, startTime: fmtTime(s.time_in), endTime: fmtTime(s.time_out) })).filter(t => t.startTime && t.endTime);
+                                            // A missed punch legitimately has no time_out. Keep its original
+                                            // time-in visible instead of incorrectly reporting no records.
+                                            const originalTasks = originalSnap.map((s, i) => ({ id: `orig-${i}`, startTime: fmtTime(s.time_in), endTime: fmtTime(s.time_out) })).filter(t => t.startTime);
                                             const proposedTasks = proposedSnap.map((s, i) => ({ id: `prop-${i}`, startTime: fmtTime(s.time_in), endTime: fmtTime(s.time_out) })).filter(t => t.startTime && t.endTime);
                                             const allTasks = [...originalTasks, ...proposedTasks];
                                             if (allTasks.length === 0) return null;
                                             const getMinutes = (t) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+                                            const hasNonForwardRange = (task) => task.endTime && getMinutes(task.endTime) <= getMinutes(task.startTime);
                                             let minMin = Math.min(...allTasks.map(t => getMinutes(t.startTime)));
-                                            let maxMin = Math.max(...allTasks.map(t => getMinutes(t.endTime)));
+                                            let maxMin = Math.max(...allTasks.map(t => getMinutes(t.endTime || t.startTime)));
                                             let startHour = Math.max(0, Math.floor((minMin - 60) / 60));
                                             let endHour = Math.min(24, Math.ceil((maxMin + 60) / 60));
                                             const span = Math.max(1, endHour - startHour);
                                             const timeToPos = (time) => { if (!time) return 0; const [h, m] = time.split(':').map(Number); const mins = (h || 0) * 60 + (m || 0); return Math.max(0, Math.min(100, ((mins - startHour * 60) / (span * 60)) * 100)); };
-                                            const getDurationPct = (s, e) => Math.max(1.8, timeToPos(e) - timeToPos(s));
+                                            const getDurationPct = (s, e) => Math.max(1.8, timeToPos(e || s) - timeToPos(s));
                                             const changesList = [];
                                             const origCopy = originalTasks.map(t => ({ ...t }));
                                             proposedTasks.forEach(prop => {
                                                 const match = origCopy.find(o => o.startTime === prop.startTime && o.endTime === prop.endTime);
                                                 if (match) { match.matched = true; } else {
-                                                    const over = origCopy.find(o => !o.matched && (Math.abs(getMinutes(o.startTime) - getMinutes(prop.startTime)) < 120 || Math.abs(getMinutes(o.endTime) - getMinutes(prop.endTime)) < 120));
+                                                    const over = origCopy.find(o => !o.matched && (Math.abs(getMinutes(o.startTime) - getMinutes(prop.startTime)) < 120 || Math.abs(getMinutes(o.endTime || o.startTime) - getMinutes(prop.endTime)) < 120));
                                                     if (over) { over.matched = true; changesList.push({ type: 'MODIFY', task: prop, original: over }); }
                                                     else { changesList.push({ type: 'ADD', task: prop }); }
                                                 }
@@ -2864,9 +2866,11 @@ const AttendanceMonitoring = () => {
                                                                     const widthPos = Math.min(rawWidth, maxW);
                                                                     return (
                                                                         <div key={task.id}
-                                                                            className="absolute top-1 bottom-1 rounded-md bg-slate-400/25 border border-slate-400/40 flex items-center justify-center overflow-hidden max-h-[24px] pointer-events-auto"
-                                                                            style={{ left: `${leftPos}%`, width: `${widthPos}%`, maxWidth: `${maxW}%`, minWidth: leftPos > 90 ? '10px' : '24px', boxSizing: 'border-box' }}>
-                                                                            <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 px-1 truncate whitespace-nowrap leading-none">{fmtTime(task.startTime)}–{fmtTime(task.endTime)}</span>
+                                                                            className="absolute top-1 bottom-1 rounded-md bg-slate-300/35 dark:bg-slate-300/30 border border-slate-300/70 dark:border-slate-300/60 flex items-center justify-center overflow-hidden max-h-[24px] pointer-events-auto"
+                                                                            style={{ left: `${leftPos}%`, width: `${widthPos}%`, maxWidth: `${maxW}%`, minWidth: leftPos > 90 ? '10px' : (task.endTime ? '24px' : '64px'), boxSizing: 'border-box' }}>
+                                                                            <span className="text-[9px] font-mono font-bold text-slate-700 dark:text-slate-100 px-1 truncate whitespace-nowrap leading-none">
+                                                                                {task.endTime ? `${fmtTime(task.startTime)}–${fmtTime(task.endTime)}` : `${fmtTime(task.startTime)}`}
+                                                                            </span>
                                                                         </div>
                                                                     );
                                                                 })}
@@ -2883,7 +2887,10 @@ const AttendanceMonitoring = () => {
                                                                 {proposedTasks.map(task => {
                                                                     const isNew = changesList.some(c => c.type === 'ADD' && c.task.id === task.id);
                                                                     const isChanged = changesList.some(c => c.type === 'MODIFY' && c.task.id === task.id);
-                                                                    const cls = isNew
+                                                                    const hasInvalidRange = hasNonForwardRange(task);
+                                                                    const cls = hasInvalidRange
+                                                                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-600 dark:text-amber-400'
+                                                                        : isNew
                                                                         ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-600 dark:text-emerald-400'
                                                                         : isChanged
                                                                         ? 'bg-amber-500/20 border-amber-500/50 text-amber-600 dark:text-amber-400'
@@ -2895,9 +2902,10 @@ const AttendanceMonitoring = () => {
                                                                     return (
                                                                         <div key={task.id}
                                                                             className={`absolute top-1 bottom-1 rounded-md border flex items-center justify-center overflow-hidden max-h-[24px] pointer-events-auto ${cls}`}
-                                                                            style={{ left: `${leftPos}%`, width: `${widthPos}%`, maxWidth: `${maxW}%`, minWidth: leftPos > 90 ? '10px' : '24px', boxSizing: 'border-box' }}>
+                                                                            title={hasInvalidRange ? `Proposed time: ${fmtTime(task.startTime)} to ${fmtTime(task.endTime)}. The end time is earlier than the start time.` : `Proposed time: ${fmtTime(task.startTime)} to ${fmtTime(task.endTime)}`}
+                                                                            style={{ left: `${leftPos}%`, width: `${widthPos}%`, maxWidth: `${maxW}%`, minWidth: leftPos > 90 ? '10px' : (hasInvalidRange ? '80px' : '24px'), boxSizing: 'border-box' }}>
                                                                             {isNew && <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]" />}
-                                                                            <span className="text-[9px] font-mono font-bold px-1 truncate whitespace-nowrap leading-none">{fmtTime(task.startTime)}–{fmtTime(task.endTime)}</span>
+                                                                            <span className="text-[9px] font-mono font-bold px-1 truncate whitespace-nowrap leading-none">{fmtTime(task.startTime)}→{fmtTime(task.endTime)}</span>
                                                                         </div>
                                                                     );
                                                                 })}

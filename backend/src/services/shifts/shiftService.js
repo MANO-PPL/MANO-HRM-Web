@@ -1,6 +1,17 @@
 import { attendanceDB } from '../../config/database.js';
 import { cacheService } from '../cache/cacheService.js';
 
+export const DEFAULT_MAX_OVERTIME_HOURS = 3;
+
+export function normalizeMaxOvertimeHours(value) {
+    if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+        return DEFAULT_MAX_OVERTIME_HOURS;
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MAX_OVERTIME_HOURS;
+}
+
 /**
  * Get all shifts for an organization
  */
@@ -19,6 +30,16 @@ export async function getShiftsForOrg(org_id) {
     // Parse JSON rules for frontend compatibility
     const shiftsData = shifts.map(s => {
         const rules = typeof s.policy_rules === 'string' ? JSON.parse(s.policy_rules) : (s.policy_rules || {});
+        const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
+            ? rules.overtime.max_overtime
+            : rules.overtime?.maxOvertime;
+        const normalizedRules = {
+            ...rules,
+            overtime: {
+                ...(rules.overtime || {}),
+                max_overtime: normalizeMaxOvertimeHours(rawMaxOvertime)
+            }
+        };
         return {
             shift_id: s.shift_id,
             shift_name: s.shift_name,
@@ -31,7 +52,7 @@ export async function getShiftsForOrg(org_id) {
             overtime_threshold_hours: rules.overtime?.threshold || 8.0,
             overtime_buffer_hours: rules.overtime?.buffer ?? 0.5,
             is_active: s.is_active !== undefined && s.is_active !== null ? (s.is_active === 1 || s.is_active === true || s.is_active === '1' ? 1 : 0) : (rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : 1),
-            policy_rules: rules
+            policy_rules: normalizedRules
         };
     });
 
@@ -54,6 +75,10 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
     const resolvedOtEnabled = (is_overtime_enabled ?? rules.overtime?.enabled) ? true : false;
     const resolvedOtThreshold = Number(overtime_threshold_hours ?? rules.overtime?.threshold ?? 8);
     const resolvedOtBuffer = rules.overtime?.buffer ?? 0.5;
+    const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
+        ? rules.overtime.max_overtime
+        : rules.overtime?.maxOvertime;
+    const resolvedMaxOvertime = normalizeMaxOvertimeHours(rawMaxOvertime);
 
     const isActiveVal = is_active !== undefined ? (is_active ? 1 : 0) : (rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : 1);
 
@@ -74,6 +99,7 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
             enabled: resolvedOtEnabled,
             threshold: Number.isFinite(resolvedOtThreshold) ? resolvedOtThreshold : 8,
             buffer: resolvedOtBuffer,
+            max_overtime: resolvedMaxOvertime,
         },
         entry_requirements: rules.entry_requirements || { selfie: true, geofence: true },
     };
@@ -97,10 +123,17 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
 export async function updateShift({ shift_id, org_id, shift_name, is_active, policy_rules }) {
     const rules = policy_rules || {};
     const isActiveVal = is_active !== undefined ? (is_active ? 1 : 0) : (rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : 1);
+    const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
+        ? rules.overtime.max_overtime
+        : rules.overtime?.maxOvertime;
 
     const finalRules = {
         ...rules,
-        is_active: isActiveVal === 1
+        is_active: isActiveVal === 1,
+        overtime: {
+            ...(rules.overtime || {}),
+            max_overtime: normalizeMaxOvertimeHours(rawMaxOvertime)
+        }
     };
 
     const updates = {

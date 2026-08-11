@@ -1,6 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../s3/s3Service.js';
 import { getShiftRules, getDayType, getExpectedHours } from '../attendance/shiftManagementService.js';
+import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
 
 export { getShiftRules, getDayType, getExpectedHours };
 
@@ -129,12 +130,12 @@ export const calculateOvertime = (totalHours, rules) => {
 
     if (isEnabled && totalHours >= (threshold + buffer)) {
         let overtime = parseFloat((totalHours - threshold).toFixed(2));
-        const maxOvertimeVal = rules?.overtime?.max_overtime ?? rules?.overtime?.maxOvertime;
-        if (maxOvertimeVal !== undefined && maxOvertimeVal !== null) {
-            const maxOvertime = Number(maxOvertimeVal);
-            if (overtime > maxOvertime) {
-                overtime = maxOvertime;
-            }
+        const maxOvertimeVal = rules?.overtime?.max_overtime !== undefined
+            ? rules.overtime.max_overtime
+            : rules?.overtime?.maxOvertime;
+        const maxOvertime = normalizeMaxOvertimeHours(maxOvertimeVal);
+        if (overtime > maxOvertime) {
+            overtime = maxOvertime;
         }
         return overtime;
     }
