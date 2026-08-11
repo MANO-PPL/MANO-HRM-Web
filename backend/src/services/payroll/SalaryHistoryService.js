@@ -85,7 +85,6 @@ export class SalaryHistoryService {
 
             // Insert new salary record
             const [newId] = await trx('payroll_salary_history').insert({
-                org_id: orgId,
                 employee_id: employeeId,
                 gross_monthly_salary: grossMonthlySalary,
                 overtime_enabled: overtimeEnabled ? 1 : 0,

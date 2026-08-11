@@ -245,7 +245,10 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
             const oldMentionRegex = new RegExp('@' + escapeRegExp(oldName) + '(?![a-zA-Z0-9_])', 'gi');
 
             // Find all messages in the organization
-            const dbMessages = await attendanceDB('chat_messages').where({ org_id: authInfo.orgId });
+            const dbMessages = await attendanceDB('chat_messages as cm')
+                .join('chat_conversations as c', 'cm.conversation_id', 'c.id')
+                .where('c.org_id', authInfo.orgId)
+                .select('cm.*');
 
             for (const msg of dbMessages) {
                 let msgText = null;
@@ -308,7 +311,7 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
                         }
 
                         await attendanceDB('chat_messages')
-                            .where({ org_id: authInfo.orgId, id: msg.id })
+                            .where({ id: msg.id })
                             .update(updatePayload);
 
                         if (io) {

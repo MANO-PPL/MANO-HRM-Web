@@ -144,19 +144,23 @@ async function cleanupDeletedOrganizations() {
                     .whereIn('user_id', trx('core_users').select('user_id').where('org_id', org.org_id))
                     .del();
 
-                await trx('comm_notifications').where('org_id', org.org_id).del();
+                const orgUserIdsSubquery = trx('core_users').select('user_id').where('org_id', org.org_id);
+                const orgConvIdsSubquery = trx('chat_conversations').select('id').where('org_id', org.org_id);
+                const orgMsgIdsSubquery = trx('chat_messages').select('id').whereIn('conversation_id', orgConvIdsSubquery);
+
+                await trx('comm_notifications').whereIn('user_id', orgUserIdsSubquery).del();
                 await trx('sys_activity_logs').where('org_id', org.org_id).del();
                 await trx('sys_error_logs').where('org_id', org.org_id).del();
-                await trx('attn_correction_requests').where('org_id', org.org_id).del();
+                await trx('attn_correction_requests').whereIn('user_id', orgUserIdsSubquery).del();
 
                 await trx('org_user_work_locations')
-                    .whereIn('user_id', trx('core_users').select('user_id').where('org_id', org.org_id))
+                    .whereIn('user_id', orgUserIdsSubquery)
                     .del();
 
-                await trx('attn_daily_activities').where('org_id', org.org_id).del();
-                await trx('attn_daily_summary').where('org_id', org.org_id).del();
-                await trx('attn_dar_requests').where('org_id', org.org_id).del();
-                await trx('comm_events_meetings').where('org_id', org.org_id).del();
+                await trx('attn_daily_activities').whereIn('user_id', orgUserIdsSubquery).del();
+                await trx('attn_daily_summary').whereIn('user_id', orgUserIdsSubquery).del();
+                await trx('attn_dar_requests').whereIn('user_id', orgUserIdsSubquery).del();
+                await trx('comm_events_meetings').whereIn('user_id', orgUserIdsSubquery).del();
                 await trx('sys_security_alerts').where('org_id', org.org_id).del();
 
                 await trx('feedback_attachments')
@@ -164,16 +168,16 @@ async function cleanupDeletedOrganizations() {
                     .del();
                 await trx('feedback_tickets').where('org_id', org.org_id).del();
 
-                await trx('leave_request').where('org_id', org.org_id).del();
+                await trx('leave_request').whereIn('user_id', orgUserIdsSubquery).del();
+                await trx('attn_records').whereIn('user_id', orgUserIdsSubquery).del();
 
-                await trx('attn_records').where('org_id', org.org_id).del();
-                // Relational chat tables cleanup
+                // Relational chat tables cleanup (child to parent order)
+                await trx('chat_message_attachments').whereIn('message_id', orgMsgIdsSubquery).del();
+                await trx('chat_message_mentions').whereIn('message_id', orgMsgIdsSubquery).del();
+                await trx('chat_message_reactions').whereIn('message_id', orgMsgIdsSubquery).del();
+                await trx('chat_messages').whereIn('conversation_id', orgConvIdsSubquery).del();
+                await trx('chat_conversation_members').whereIn('conversation_id', orgConvIdsSubquery).del();
                 await trx('chat_conversations').where('org_id', org.org_id).del();
-                await trx('chat_conversation_members').where('org_id', org.org_id).del();
-                await trx('chat_messages').where('org_id', org.org_id).del();
-                await trx('chat_message_attachments').where('org_id', org.org_id).del();
-                await trx('chat_message_mentions').where('org_id', org.org_id).del();
-                await trx('chat_message_reactions').where('org_id', org.org_id).del();
 
                 // Now delete users and finally the organization
                 await trx('core_users').where('org_id', org.org_id).del();

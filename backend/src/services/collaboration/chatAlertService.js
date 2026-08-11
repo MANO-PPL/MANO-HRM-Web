@@ -96,8 +96,8 @@ async function getOrCreateDM(orgId, userA, userB) {
 
         // Add both users as members
         const memberRows = [
-            { org_id: finalOrgId, conversation_id: insertedId, user_id: Number(userA), role: 'owner', joined_at: trx.fn.now() },
-            { org_id: finalOrgId, conversation_id: insertedId, user_id: Number(userB), role: 'member', joined_at: trx.fn.now() }
+            { conversation_id: insertedId, user_id: Number(userA), role: 'owner', joined_at: trx.fn.now() },
+            { conversation_id: insertedId, user_id: Number(userB), role: 'member', joined_at: trx.fn.now() }
         ];
 
         await trx('chat_conversation_members').insert(memberRows);
@@ -122,7 +122,6 @@ export async function sendSystemAlert({ org_id, sender_id, recipient_id, card_ty
         // Insert message
         await attendanceDB('chat_messages').insert({
             id: messageId,
-            org_id: finalOrgId,
             conversation_id: roomId,
             sender_id: Number(sender_id),
             type: 'workflow_card',

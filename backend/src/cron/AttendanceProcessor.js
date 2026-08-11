@@ -282,7 +282,6 @@ async function processUserAttendanceForDate(user, dateStr) {
 
         await attendanceDB('attn_daily_summary').insert({
             user_id: user.user_id,
-            org_id: user.org_id,
             date: dateStr,
             status,
             created_at: attendanceDB.fn.now(),

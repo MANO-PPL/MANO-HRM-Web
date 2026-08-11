@@ -97,7 +97,6 @@ class AppEventBus extends EventEmitter {
                     dbType = 'INFO';
                 }
                 const notificationData = {
-                    org_id: payload.org_id || null,
                     user_id: payload.user_id,
                     title: payload.title || '',
                     message: payload.message || '',

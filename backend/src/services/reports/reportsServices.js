@@ -316,24 +316,22 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
 
 export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
     return attendanceDB("attn_records as ar")
+        .join("core_users as u", "ar.user_id", "u.user_id")
+        .select("ar.*")
         .modify(qb => {
-            if (isValidDeptId(dept_id) || isValidDesgId(desg_id) || isValidShiftId(shift_id)) {
-                qb.join("core_users as u", "ar.user_id", "u.user_id")
-                  .select("ar.*");
-                if (isValidDeptId(dept_id)) {
-                    qb.where("u.dept_id", dept_id);
-                }
-                if (isValidDesgId(desg_id)) {
-                    qb.where("u.desg_id", desg_id);
-                }
-                if (shift_id === 'open_shift') {
-                    qb.whereNull("u.shift_id");
-                } else if (isValidShiftId(shift_id)) {
-                    qb.where("u.shift_id", shift_id);
-                }
+            if (isValidDeptId(dept_id)) {
+                qb.where("u.dept_id", dept_id);
+            }
+            if (isValidDesgId(desg_id)) {
+                qb.where("u.desg_id", desg_id);
+            }
+            if (shift_id === 'open_shift') {
+                qb.whereNull("u.shift_id");
+            } else if (isValidShiftId(shift_id)) {
+                qb.where("u.shift_id", shift_id);
             }
         })
-        .where("ar.org_id", org_id)
+        .where("u.org_id", org_id)
         .whereRaw("DATE(ar.time_in) >= ?", [startDate])
         .whereRaw("DATE(ar.time_in) <= ?", [endDate])
         .modify(qb => { if (targetUserId) qb.where("ar.user_id", targetUserId); });
@@ -345,7 +343,7 @@ export async function getDetailedRecords({ org_id, startDate, endDate, targetUse
         .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
         .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
         .select("ar.time_in", "u.user_id", "u.user_name", "d.dept_name", "s.shift_name", "ar.time_out", "ar.status", "ar.time_in_address", "ar.time_out_address", "ar.late_minutes", "ar.overtime_hours")
-        .where("ar.org_id", org_id)
+        .where("u.org_id", org_id)
         .whereRaw("DATE(ar.time_in) >= ?", [startDate])
         .whereRaw("DATE(ar.time_in) <= ?", [endDate])
         .modify(qb => {

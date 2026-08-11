@@ -183,7 +183,7 @@ export class PackageService {
                 // Find employees assigned to this package group
                 const activeSalaryDate = `${year}-${String(monthNum).padStart(2, '0')}-01`;
                 const assignedEmployees = await trx('payroll_salary_history')
-                    .where({ package_group_id: packageGroupId, org_id: orgId })
+                    .where({ package_group_id: packageGroupId })
                     .where('effective_from', '<=', activeSalaryDate)
                     .andWhere(function() {
                         this.whereNull('effective_to')
@@ -404,7 +404,6 @@ export class PackageService {
             // Note: We copy the current rates as static values to act as default/backup,
             // but the dynamic salary resolution will fetch active package rates when package_group_id is set.
             const [newId] = await trx('payroll_salary_history').insert({
-                org_id: orgId,
                 employee_id: employeeId,
                 package_group_id: packageGroupId,
                 gross_monthly_salary: resolvedRate.gross_salary,
@@ -480,7 +479,6 @@ export class PackageService {
 
             // Insert new custom salary record (package_group_id is null)
             const [newId] = await trx('payroll_salary_history').insert({
-                org_id: orgId,
                 employee_id: employeeId,
                 package_group_id: null,
                 gross_monthly_salary: Number(grossMonthlySalary),

@@ -577,15 +577,16 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
     if (users.length === 0) return [];
 
     // 2. Fetch all supporting data in parallel
+    const userIds = users.map(u => u.user_id);
     const [records, dailyRecords, holidays, leaves] = await Promise.all([
         attendanceDB('attn_records')
-            .where('org_id', org_id)
+            .whereIn('user_id', userIds)
             .whereRaw('DATE(time_in) >= ?', [date_from])
             .whereRaw('DATE(time_in) <= ?', [date_to])
             .modify(qb => { if (user_id) qb.where('user_id', user_id); })
             .orderBy('time_in', 'asc'),
         attendanceDB('attn_daily_summary')
-            .where('org_id', org_id)
+            .whereIn('user_id', userIds)
             .where('date', '>=', date_from)
             .where('date', '<=', date_to)
             .modify(qb => { if (user_id) qb.where('user_id', user_id); }),

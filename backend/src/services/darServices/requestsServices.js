@@ -20,7 +20,6 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
         request_id = existingRequest.request_id;
     } else {
         const [id] = await attendanceDB("attn_dar_requests").insert({
-            org_id,
             user_id,
             request_date,
             original_data: JSON.stringify(original_data || []),
@@ -73,7 +72,7 @@ export async function getPendingRequests({ org_id }) {
             "dep.dept_name as user_dept",
             attendanceDB.raw("DATE_FORMAT(dar_requests.request_date, '%Y-%m-%d') as request_date_str")
         )
-        .where("attn_dar_requests.org_id", org_id)
+        .where("core_users.org_id", org_id)
         .where("attn_dar_requests.status", 'PENDING')
         .orderBy("attn_dar_requests.created_at", "desc");
 
@@ -88,7 +87,7 @@ export async function getPendingRequests({ org_id }) {
 export async function approveRequest({ id, org_id }) {
     const request = await attendanceDB("attn_dar_requests")
         .select("*", attendanceDB.raw("DATE_FORMAT(request_date, '%Y-%m-%d') as request_date_str"))
-        .where({ request_id: id, org_id })
+        .where({ request_id: id })
         .first();
 
     if (!request) throw { status: 404, message: "Request not found" };
@@ -99,13 +98,12 @@ export async function approveRequest({ id, org_id }) {
 
     await attendanceDB.transaction(async (trx) => {
         await trx("attn_daily_activities")
-            .where({ user_id: request.user_id, org_id })
+            .where({ user_id: request.user_id })
             .whereRaw("DATE(activity_date) = ?", [targetDate])
             .del();
 
         if (proposedTasks.length > 0) {
             const inserts = proposedTasks.map(t => ({
-                org_id,
                 user_id: request.user_id,
                 activity_date: targetDate,
                 start_time: t.start_time,
@@ -142,14 +140,14 @@ export async function approveRequest({ id, org_id }) {
 export async function rejectRequest({ id, org_id, comment }) {
     const request = await attendanceDB("attn_dar_requests")
         .select("*", attendanceDB.raw("DATE_FORMAT(request_date, '%Y-%m-%d') as request_date_str"))
-        .where({ request_id: id, org_id })
+        .where({ request_id: id })
         .first();
 
     if (!request) throw { status: 404, message: "Request not found" };
     if (request.status !== 'PENDING') throw { status: 400, message: "Request already processed" };
 
     await attendanceDB("attn_dar_requests")
-        .where({ request_id: id, org_id })
+        .where({ request_id: id })
         .update({
             status: 'REJECTED',
             admin_comment: comment,

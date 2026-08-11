@@ -17,7 +17,7 @@ export async function getMyHistory({ user_id, org_id }) {
             'lpr.code as leave_code',
             'lp.name as policy_name'
         )
-        .where({ 'lr.user_id': user_id, 'lr.org_id': org_id })
+        .where({ 'lr.user_id': user_id })
         .orderBy('lr.applied_at', 'desc');
 
     const leaveIds = leaves.map(l => l.lr_id);
@@ -102,7 +102,7 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
     const sqlEnd = formatSQLDate(end);
 
     const overlap = await attendanceDB('leave_request')
-        .where({ user_id, org_id })
+        .where({ user_id })
         .whereIn('status', ['pending', 'approved'])
         .where(builder => {
             builder.whereBetween('start_date', [sqlStart, sqlEnd])
@@ -123,7 +123,6 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
 
     const [insertId] = await attendanceDB('leave_request').insert({
         user_id,
-        org_id,
         rule_id: resolvedRuleId,
         start_date: sqlStart,
         end_date: sqlEnd,
@@ -174,7 +173,7 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
 }
 
 export async function withdrawLeaveRequest({ id, user_id, org_id }) {
-    const request = await attendanceDB('leave_request').where({ lr_id: id, user_id, org_id }).first();
+    const request = await attendanceDB('leave_request').where({ lr_id: id, user_id }).first();
 
     if (!request) {
         throw { status: 404, message: "Request not found" };
@@ -192,7 +191,7 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
         const leaveYear = new Date(request.start_date).getFullYear();
 
         const balance = await attendanceDB('leave_balances')
-            .where({ user_id: request.user_id, org_id, rule_id: request.rule_id, year: leaveYear })
+            .where({ user_id: request.user_id, rule_id: request.rule_id, year: leaveYear })
             .first();
 
         if (balance && leaveDays > 0) {
@@ -251,7 +250,7 @@ export async function getPendingRequests({ org_id }) {
             'lpr.code as leave_code',
             'lp.name as policy_name'
         )
-        .where('lr.org_id', org_id)
+        .where('u.org_id', org_id)
         .where('lr.status', 'pending')
         .orderBy('lr.applied_at', 'asc');
 
@@ -290,7 +289,7 @@ export async function getAdminHistory({ org_id, user_id, status, start_date, end
             'lpr.code as leave_code',
             'lp.name as policy_name'
         )
-        .where('lr.org_id', org_id);
+        .where('u.org_id', org_id);
 
     if (user_id) query = query.where('lr.user_id', user_id);
     if (status) query = query.where('lr.status', status);
@@ -332,7 +331,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
     }
 
     // Fetch the request first so we know its current state and leave details
-    const request = await attendanceDB('leave_request').where({ lr_id: id, org_id }).first();
+    const request = await attendanceDB('leave_request').where({ lr_id: id }).first();
     if (!request) {
         throw { status: 404, message: "Request not found" };
     }
@@ -352,7 +351,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
     }
 
     await attendanceDB('leave_request')
-        .where({ lr_id: id, org_id })
+        .where({ lr_id: id })
         .update(updateData);
 
     // ── Auto-update leave balance ──────────────────────────────────────
@@ -365,7 +364,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
         // If rule_id is 0/null, try to infer from the user's single balance row for that year
         if (!resolvedRuleId) {
             const userBalances = await attendanceDB('leave_balances')
-                .where({ user_id: request.user_id, org_id, year: leaveYear });
+                .where({ user_id: request.user_id, year: leaveYear });
             if (userBalances.length === 1) {
                 // Only one rule assigned — safe to assume this is the right one
                 resolvedRuleId = userBalances[0].rule_id;
@@ -378,7 +377,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
 
         if (resolvedRuleId) {
             const balance = await attendanceDB('leave_balances')
-                .where({ user_id: request.user_id, org_id, rule_id: resolvedRuleId, year: leaveYear })
+                .where({ user_id: request.user_id, rule_id: resolvedRuleId, year: leaveYear })
                 .first();
 
             if (lowerStatus === 'approved' && previousStatus !== 'approved') {
@@ -389,7 +388,6 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
                 } else {
                     await attendanceDB('leave_balances').insert({
                         user_id: request.user_id,
-                        org_id,
                         rule_id: resolvedRuleId,
                         year: leaveYear,
                         allocated: 0,
@@ -445,7 +443,7 @@ export async function getMyLeaveBalance({ user_id, org_id, year }) {
             'lpr.encashable',
             'lp.name as policy_name'
         )
-        .where({ 'lb.user_id': user_id, 'lb.org_id': org_id, 'lb.year': targetYear })
+        .where({ 'lb.user_id': user_id, 'lb.year': targetYear })
         .orderBy('lpr.name', 'asc');
 
     return balances.map(b => ({
@@ -477,7 +475,7 @@ export async function getEmployeeLeaveBalance({ org_id, user_id, year }) {
             'u.user_name',
             'u.profile_image_url'
         )
-        .where({ 'lb.org_id': org_id, 'lb.user_id': user_id, 'lb.year': targetYear })
+        .where({ 'u.org_id': org_id, 'lb.user_id': user_id, 'lb.year': targetYear })
         .orderBy('lpr.name', 'asc');
 
     return balances.map(b => ({
@@ -503,7 +501,7 @@ export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id }) {
             'u.profile_image_url',
             'u.user_type'
         )
-        .where({ 'lb.org_id': org_id, 'lb.year': targetYear });
+        .where({ 'u.org_id': org_id, 'lb.year': targetYear });
 
     if (rule_id) {
         query = query.where('lb.rule_id', rule_id);
@@ -537,7 +535,7 @@ export async function setLeaveBalance({ org_id, user_id, rule_id, year, allocate
     }
 
     const existing = await attendanceDB('leave_balances')
-        .where({ user_id, org_id, rule_id, year: targetYear })
+        .where({ user_id, rule_id, year: targetYear })
         .first();
 
     if (existing) {
@@ -554,7 +552,6 @@ export async function setLeaveBalance({ org_id, user_id, rule_id, year, allocate
         // Create new balance record
         const [lb_id] = await attendanceDB('leave_balances').insert({
             user_id,
-            org_id,
             rule_id,
             year: targetYear,
             allocated: allocated || 0,
@@ -568,7 +565,7 @@ export async function setLeaveBalance({ org_id, user_id, rule_id, year, allocate
 
 export async function updateLeaveBalance({ org_id, lb_id, allocated, carried_forward, used }) {
     const balance = await attendanceDB('leave_balances')
-        .where({ lb_id, org_id })
+        .where({ lb_id })
         .first();
 
     if (!balance) {
@@ -592,7 +589,7 @@ export async function updateLeaveBalance({ org_id, lb_id, allocated, carried_for
 
 export async function deleteLeaveBalance({ org_id, lb_id }) {
     const balance = await attendanceDB('leave_balances')
-        .where({ lb_id, org_id })
+        .where({ lb_id })
         .first();
 
     if (!balance) {
@@ -664,7 +661,7 @@ export async function getMyLeavePolicies({ user_id, org_id }) {
     const assignedPolicies = await attendanceDB('leave_balances as lb')
         .join('leave_policies_rules as lpr', 'lb.rule_id', 'lpr.rule_id')
         .join('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
-        .where({ 'lb.user_id': user_id, 'lb.org_id': org_id })
+        .where({ 'lb.user_id': user_id })
         .select('lp.lp_id')
         .distinct();
 

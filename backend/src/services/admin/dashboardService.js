@@ -70,6 +70,8 @@ function calculateTrend(current, previous) {
 export async function getDashboardStats(org_id, { range = 'weekly', year, month }) {
     const { today, currentStartStr, currentEndStr, prevStartStr, prevEndStr, daysInPeriod } = getDateRanges(range, year, month);
 
+    const orgUserIds = attendanceDB("core_users").select("user_id").where("org_id", org_id);
+
     // Execute all queries in parallel
     const [
         totalEmployeesRes,
@@ -82,12 +84,12 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         activities
     ] = await Promise.all([
         attendanceDB("core_users").where("org_id", org_id).where("user_type", "employee").count("user_id as count").first(),
-        attendanceDB("attn_records").where("org_id", org_id).whereRaw("DATE(time_in) = ?", [today]).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").where("org_id", org_id).whereRaw("DATE(time_in) = ?", [today]).where("late_minutes", ">", 0).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").where("org_id", org_id).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [currentStartStr, currentEndStr]).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").where("org_id", org_id).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [prevStartStr, prevEndStr]).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").where("org_id", org_id).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ? AND late_minutes > 0", [currentStartStr, currentEndStr]).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").where("org_id", org_id).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ? AND late_minutes > 0", [prevStartStr, prevEndStr]).countDistinct("user_id as count").first(),
+        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [today]).countDistinct("user_id as count").first(),
+        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [today]).where("late_minutes", ">", 0).countDistinct("user_id as count").first(),
+        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [currentStartStr, currentEndStr]).countDistinct("user_id as count").first(),
+        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [prevStartStr, prevEndStr]).countDistinct("user_id as count").first(),
+        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ? AND late_minutes > 0", [currentStartStr, currentEndStr]).countDistinct("user_id as count").first(),
+        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ? AND late_minutes > 0", [prevStartStr, prevEndStr]).countDistinct("user_id as count").first(),
         attendanceDB("sys_activity_logs as al")
             .leftJoin("core_users as u", "al.user_id", "u.user_id")
             .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
@@ -138,8 +140,8 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         chartDays.map(async (dayStr) => {
             const dayName = new Date(dayStr).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
             const [pRes, lRes] = await Promise.all([
-                attendanceDB("attn_records").where("org_id", org_id).whereRaw("DATE(time_in) = ?", [dayStr]).countDistinct("user_id as count").first(),
-                attendanceDB("attn_records").where("org_id", org_id).whereRaw("DATE(time_in) = ?", [dayStr]).where("late_minutes", ">", 0).countDistinct("user_id as count").first()
+                attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [dayStr]).countDistinct("user_id as count").first(),
+                attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [dayStr]).where("late_minutes", ">", 0).countDistinct("user_id as count").first()
             ]);
             const present = Number(pRes.count || 0);
             const late = Number(lRes.count || 0);

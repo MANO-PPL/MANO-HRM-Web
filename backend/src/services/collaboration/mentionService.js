@@ -50,8 +50,8 @@ async function getOrCreateDM(orgId, userA, userB) {
 
         // Add both users as members
         const memberRows = [
-            { org_id: finalOrgId, conversation_id: insertedId, user_id: Number(userA), role: 'owner', joined_at: trx.fn.now() },
-            { org_id: finalOrgId, conversation_id: insertedId, user_id: Number(userB), role: 'member', joined_at: trx.fn.now() }
+            { conversation_id: insertedId, user_id: Number(userA), role: 'owner', joined_at: trx.fn.now() },
+            { conversation_id: insertedId, user_id: Number(userB), role: 'member', joined_at: trx.fn.now() }
         ];
 
         await trx('chat_conversation_members').insert(memberRows);
@@ -79,7 +79,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
         let allowedMemberIds = null;
         if (context_type === 'chat_message' && room_id) {
             const members = await attendanceDB('chat_conversation_members')
-                .where({ org_id: org_id || 1, conversation_id: room_id })
+                .where({ conversation_id: room_id })
                 .select('user_id');
             allowedMemberIds = members.map(m => Number(m.user_id));
         }
@@ -183,7 +183,6 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
                     await attendanceDB.transaction(async (trx) => {
                         await trx('chat_messages').insert({
                             id: messageId,
-                            org_id: finalOrgId,
                             conversation_id: roomId,
                             sender_id: Number(sender_id),
                             type: 'text',

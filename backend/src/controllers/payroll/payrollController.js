@@ -436,7 +436,6 @@ export const payEmployeePayroll = catchAsync(async (req, res, next) => {
         const empUser = await attendanceDB('core_users').where('user_id', employeeId).first();
         const performer = await attendanceDB('core_users').where('user_id', paidBy).first();
         await attendanceDB('payroll_audit_logs').insert({
-            org_id: orgId,
             action: 'PAY',
             employee_id: employeeId,
             employee_name: empUser ? (empUser.user_name || empUser.email) : 'Employee',
@@ -530,7 +529,6 @@ export const updateEntryAdjustments = catchAsync(async (req, res, next) => {
         const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         const run = await attendanceDB('payroll_runs').where('run_id', entry.run_id).first();
         await attendanceDB('payroll_audit_logs').insert({
-            org_id: orgId,
             action: 'ADJUSTMENT_UPDATE',
             employee_id: entry.employee_id,
             employee_name: empUser ? (empUser.user_name || empUser.email) : 'Employee',
@@ -580,7 +578,6 @@ export const createPackageGroup = catchAsync(async (req, res, next) => {
     try {
         const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         await attendanceDB('payroll_audit_logs').insert({
-            org_id: orgId,
             action: 'PACKAGE_CREATE',
             employee_id: null,
             employee_name: null,
@@ -626,7 +623,6 @@ export const createPackageRevision = catchAsync(async (req, res, next) => {
         const pGroup = await attendanceDB('payroll_package_groups').where('package_group_id', packageGroupId).first();
         const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         await attendanceDB('payroll_audit_logs').insert({
-            org_id: orgId,
             action: 'PACKAGE_REVISION_CREATE',
             employee_id: null,
             employee_name: null,
@@ -665,7 +661,6 @@ export const updatePackageGroup = catchAsync(async (req, res, next) => {
         if (packageName !== undefined) updatedFields.push(`name to "${packageName}"`);
         if (isActive !== undefined) updatedFields.push(`status to ${isActive ? 'Active' : 'Inactive'}`);
         await attendanceDB('payroll_audit_logs').insert({
-            org_id: orgId,
             action: 'PACKAGE_UPDATE',
             employee_id: null,
             employee_name: null,
@@ -693,7 +688,6 @@ export const deletePackageGroup = catchAsync(async (req, res, next) => {
     try {
         const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         await attendanceDB('payroll_audit_logs').insert({
-            org_id: orgId,
             action: 'PACKAGE_DELETE',
             employee_id: null,
             employee_name: null,
@@ -741,7 +735,6 @@ export const assignPackageToEmployee = catchAsync(async (req, res, next) => {
         const performer = await attendanceDB('core_users').where('user_id', req.user.id).first();
         const pGroup = await attendanceDB('payroll_package_groups').where('package_group_id', packageGroupId).first();
         await attendanceDB('payroll_audit_logs').insert({
-            org_id: orgId,
             action: 'PACKAGE_ASSIGN',
             employee_id: Number(employeeId),
             employee_name: empUser ? (empUser.user_name || empUser.email) : 'Employee',
@@ -927,9 +920,11 @@ export const getPayrollAuditLogs = catchAsync(async (req, res, next) => {
     const orgId = req.user.org_id;
     const { month, employeeId } = req.query;
 
-    let query = attendanceDB('payroll_audit_logs')
-        .where('org_id', orgId)
-        .orderBy('created_at', 'desc');
+    let query = attendanceDB('payroll_audit_logs as pal')
+        .join('core_users as u', 'pal.performed_by', 'u.user_id')
+        .where('u.org_id', orgId)
+        .select('pal.*')
+        .orderBy('pal.created_at', 'desc');
 
     if (month) {
         query = query.where('month', month);

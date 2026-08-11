@@ -565,7 +565,6 @@ async function runGenerateSimulation(orgId, payload) {
             attendanceDB.raw("DATE_FORMAT(time_in, '%H:%i:%s') as time_in_time"),
             attendanceDB.raw("DATE_FORMAT(time_out, '%H:%i:%s') as time_out_time")
         )
-        .where('org_id', orgId)
         .whereIn('user_id', employeeIds)
         .whereRaw('DATE(time_in) >= ?', [dateStart])
         .whereRaw('DATE(time_in) <= ?', [dateEnd])
@@ -582,7 +581,6 @@ async function runGenerateSimulation(orgId, payload) {
             attendanceDB.raw("DATE_FORMAT(start_time, '%H:%i:%s') as start_time"),
             attendanceDB.raw("DATE_FORMAT(end_time, '%H:%i:%s') as end_time")
         )
-        .where('org_id', orgId)
         .whereIn('user_id', employeeIds)
         .whereRaw('DATE(activity_date) >= ?', [dateStart])
         .whereRaw('DATE(activity_date) <= ?', [dateEnd]);
@@ -595,7 +593,6 @@ async function runGenerateSimulation(orgId, payload) {
             attendanceDB.raw("TIME_FORMAT(start_time, '%H:%i:%s') as start_time"),
             attendanceDB.raw("TIME_FORMAT(end_time, '%H:%i:%s') as end_time")
         )
-        .where('org_id', orgId)
         .whereIn('user_id', employeeIds)
         .whereRaw('DATE(event_date) >= ?', [dateStart])
         .whereRaw('DATE(event_date) <= ?', [dateEnd]);
@@ -636,7 +633,7 @@ async function runGenerateSimulation(orgId, payload) {
 
             if (overwriteExisting) {
                 await trx('attn_daily_activities')
-                    .where({ org_id: orgId, user_id: employee.user_id })
+                    .where({ user_id: employee.user_id })
                     .whereRaw('DATE(activity_date) >= ?', [dateStart])
                     .whereRaw('DATE(activity_date) <= ?', [dateEnd])
                     .del();
@@ -701,7 +698,7 @@ async function runGenerateSimulation(orgId, payload) {
                 // Remove previously simulated events (keep only ones created before the simulator existed,
                 // i.e. ones with a description matching our template pattern)
                 await trx('comm_events_meetings')
-                    .where({ org_id: orgId, user_id: employee.user_id })
+                    .where({ user_id: employee.user_id })
                     .whereRaw('DATE(event_date) >= ?', [dateStart])
                     .whereRaw('DATE(event_date) <= ?', [dateEnd])
                     .where('description', 'like', '%[simulated]%')
@@ -713,7 +710,6 @@ async function runGenerateSimulation(orgId, payload) {
 
             if (newEvents.length > 0) {
                 const eventInserts = newEvents.map(ev => ({
-                    org_id: orgId,
                     user_id: employee.user_id,
                     title: ev.title,
                     description: `${ev.description} [simulated]`,
@@ -803,7 +799,6 @@ async function runGenerateSimulation(orgId, payload) {
 
                 duplicateKeys.add(key);
                 inserts.push({
-                    org_id: orgId,
                     user_id: employee.user_id,
                     activity_date: candidate.activity_date,
                     start_time: candidate.start_time,
@@ -894,7 +889,6 @@ async function runImportSimulation(orgId, payload) {
         }
 
         return {
-            org_id: orgId,
             user_id: userId,
             activity_date: activityDate,
             start_time: startTime,
@@ -1019,7 +1013,6 @@ export async function processActivityValidation(org_id, user_id, body) {
 
 export async function createActivity({ org_id, user_id, activity_date, start_time, end_time, title, description, activity_type, status }) {
     const [activity_id] = await attendanceDB("attn_daily_activities").insert({
-        org_id,
         user_id,
         activity_date,
         start_time,
@@ -1035,7 +1028,7 @@ export async function createActivity({ org_id, user_id, activity_date, start_tim
 
 export async function updateActivity({ activity_id, org_id, user_id, activity_date, start_time, end_time, title, description, activity_type, status }) {
     await attendanceDB("attn_daily_activities")
-        .where({ activity_id, org_id, user_id })
+        .where({ activity_id, user_id })
         .update({
             activity_date,
             start_time,
@@ -1050,7 +1043,7 @@ export async function updateActivity({ activity_id, org_id, user_id, activity_da
 
 export async function deleteActivity({ activity_id, org_id, user_id }) {
     return attendanceDB("attn_daily_activities")
-        .where({ activity_id, org_id, user_id })
+        .where({ activity_id, user_id })
         .del();
 }
 
@@ -1060,7 +1053,7 @@ export async function listActivities({ org_id, user_id, date, date_from, date_to
             "*",
             attendanceDB.raw("DATE_FORMAT(activity_date, '%Y-%m-%d') as activity_date")
         )
-        .where({ org_id, user_id });
+        .where({ user_id });
 
     if (date) {
         query.where("activity_date", date);
@@ -1096,7 +1089,7 @@ export async function getAllActivitiesAdmin({ org_id, date, startDate, endDate }
             'dep.dept_name as user_dept',
             's.shift_name as user_shift_name'
         )
-        .where('da.org_id', org_id)
+        .where('u.org_id', org_id)
         .where('da.status', 'COMPLETED');
 
     // Filter by date or range — use DATE() to avoid timezone-offset issues with DATE columns

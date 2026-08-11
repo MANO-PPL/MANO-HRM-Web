@@ -78,7 +78,6 @@ export const markAllNotificationsAsRead = async (user_id) => {
 
 export const createNotification = async ({ org_id, user_id, type, title, message, related_entity_type, related_entity_id }) => {
     const [notification_id] = await attendanceDB('comm_notifications').insert({
-        org_id,
         user_id,
         type: type || 'INFO',
         title,

@@ -162,7 +162,6 @@ export async function processTimeIn(context) {
   // DB Insert
   const [attendance_id] = await attendanceDB("attn_records").insert({
     user_id,
-    org_id,
     late_reason: sessionContext.is_first_session ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
     late_minutes: minutesLate,
     time_in: localTime,
@@ -441,7 +440,6 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
 
       await attendanceDB("attn_daily_summary").insert({
         user_id,
-        org_id: records[0].org_id,
         date: dateStr,
         shift_id: shift ? shift.shift_id : null,
         status: 'PRESENT',
@@ -516,7 +514,7 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
     .limit(Math.min(parseInt(limit), 100));
 
   if (user_id) query = query.where("attn_records.user_id", user_id);
-  query = query.where("attn_records.org_id", org_id);
+  query = query.where("core_users.org_id", org_id);
   if (date_from) query = query.whereRaw("DATE(time_in) >= DATE(?)", [date_from]);
   if (date_to) query = query.whereRaw("DATE(time_in) <= DATE(?)", [date_to]);
 
@@ -651,11 +649,10 @@ export async function createCorrectionRequest({
 
   // ENFORCE SINGLE REQUEST PER DAY: Delete any existing request for this date
   await attendanceDB("attn_correction_requests")
-    .where({ user_id, org_id, request_date })
+    .where({ user_id, request_date })
     .del();
 
   const [id] = await attendanceDB("attn_correction_requests").insert({
-    org_id,
     user_id,
     correction_type,
     request_date,
@@ -689,7 +686,7 @@ export async function fetchCorrectionRequests({
 
   const data = await attendanceDB("attn_correction_requests as acr")
     .join("core_users as u", "u.user_id", "acr.user_id")
-    .where("acr.org_id", org_id)
+    .where("u.org_id", org_id)
     .modify(qb => {
       const lowerType = String(user_type || "").toLowerCase();
       if (lowerType !== "admin" && lowerType !== "hr") qb.where("acr.user_id", user_id);
@@ -716,8 +713,9 @@ export async function fetchCorrectionRequests({
     .limit(limit)
     .offset(offset);
 
-  const countResult = await attendanceDB("attn_correction_requests")
-    .where("org_id", org_id)
+  const countResult = await attendanceDB("attn_correction_requests as acr")
+    .join("core_users as u", "u.user_id", "acr.user_id")
+    .where("u.org_id", org_id)
     .modify(qb => {
       const lowerType = String(user_type || "").toLowerCase();
       if (lowerType !== "admin" && lowerType !== "hr") qb.where("user_id", user_id);
@@ -761,7 +759,7 @@ export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role
       "d.desg_name as designation"
     )
     .where("acr.acr_id", acr_id)
-    .andWhere("acr.org_id", org_id);
+    .andWhere("u.org_id", org_id);
 
   // Access control
   if (role !== "admin" && role !== "hr") {
@@ -803,8 +801,10 @@ export async function reviewCorrectionRequest({
   review_comments,
   adminOverrideSessions
 }) {
-  const correction = await attendanceDB("attn_correction_requests")
-    .where({ acr_id, org_id })
+  const correction = await attendanceDB("attn_correction_requests as acr")
+    .join("core_users as u", "u.user_id", "acr.user_id")
+    .where({ "acr.acr_id": acr_id, "u.org_id": org_id })
+    .select("acr.*")
     .first();
 
   if (!correction) {
@@ -865,7 +865,7 @@ export async function reviewCorrectionRequest({
   if (updatedProposedData) dbUpdate.proposed_data = updatedProposedData;
 
   await attendanceDB("attn_correction_requests")
-    .where({ acr_id, org_id })
+    .where({ acr_id })
     .update(dbUpdate);
 
   // --- APPLY CORRECTION IF APPROVED ---
@@ -897,7 +897,6 @@ export async function reviewCorrectionRequest({
       const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
       return {
         user_id: correction.user_id,
-        org_id,
         time_in: `${finalDateStr} ${tIn}`,
         time_out: `${finalDateStr} ${tOut}`,
         status: 'CLOSED',
@@ -937,7 +936,7 @@ export async function exportRecordsToExcel({ user_id, org_id, month, year, month
   const endDate = `${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
 
   const records = await attendanceDB("attn_records")
-    .where({ user_id, org_id })
+    .where({ user_id })
     .whereRaw("DATE(time_in) >= ?", [startDate])
     .whereRaw("DATE(time_in) <= ?", [endDate])
     .orderBy("time_in", "asc");
@@ -1171,7 +1170,6 @@ export async function processTimeInSync(context) {
   // DB Insert
   const [attendance_id] = await attendanceDB("attn_records").insert({
     user_id,
-    org_id,
     late_reason: sessionContext.is_first_session ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
     late_minutes: minutesLate,
     time_in: localTime,
