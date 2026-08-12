@@ -684,17 +684,19 @@ export async function fetchCorrectionRequests({
 }) {
   const offset = (page - 1) * limit;
 
+  const applyFilters = qb => {
+    const lowerType = String(user_type || "").toLowerCase();
+    if (lowerType !== "admin" && lowerType !== "hr") qb.where("acr.user_id", user_id);
+    if (status) qb.where("acr.status", status);
+    if (date) qb.where("acr.request_date", date);
+    if (month) qb.whereRaw('MONTH(acr.request_date) = ?', [month]);
+    if (year) qb.whereRaw('YEAR(acr.request_date) = ?', [year]);
+  };
+
   const data = await attendanceDB("attn_correction_requests as acr")
     .join("core_users as u", "u.user_id", "acr.user_id")
     .where("u.org_id", org_id)
-    .modify(qb => {
-      const lowerType = String(user_type || "").toLowerCase();
-      if (lowerType !== "admin" && lowerType !== "hr") qb.where("acr.user_id", user_id);
-      if (status) qb.where("acr.status", status);
-      if (date) qb.where("acr.request_date", date);
-      if (month) qb.whereRaw('MONTH(acr.request_date) = ?', [month]);
-      if (year) qb.whereRaw('YEAR(acr.request_date) = ?', [year]);
-    })
+    .modify(applyFilters)
     .select(
       "acr.acr_id",
       "acr.correction_type",
@@ -716,20 +718,13 @@ export async function fetchCorrectionRequests({
   const countResult = await attendanceDB("attn_correction_requests as acr")
     .join("core_users as u", "u.user_id", "acr.user_id")
     .where("u.org_id", org_id)
-    .modify(qb => {
-      const lowerType = String(user_type || "").toLowerCase();
-      if (lowerType !== "admin" && lowerType !== "hr") qb.where("user_id", user_id);
-      if (status) qb.where("status", status);
-      if (date) qb.where("request_date", date);
-      if (month) qb.whereRaw('MONTH(request_date) = ?', [month]);
-      if (year) qb.whereRaw('YEAR(request_date) = ?', [year]);
-    })
+    .modify(applyFilters)
     .count("* as total")
     .first();
 
   return {
     data,
-    count: Number(countResult.total)
+    count: Number(countResult?.total || 0)
   };
 }
 

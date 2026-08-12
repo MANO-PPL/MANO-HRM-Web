@@ -461,7 +461,7 @@ const MobileAttendancePage = () => {
         }
 
         try {
-            const res = await attendanceService.getCorrectionRequests();
+            const res = await attendanceService.getCorrectionRequests({ my_requests: 'true' });
             setCorrectionHistory(res.data || []);
         } catch (error) {
             console.error(error);

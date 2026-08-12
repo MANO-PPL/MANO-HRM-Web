@@ -34,7 +34,8 @@ import {
     DownloadCloud,
     Table,
     ChevronDown,
-    Search
+    Search,
+    TrendingUp
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { useAuth } from '../../context/AuthContext';
@@ -951,7 +952,7 @@ const Attendance = () => {
                 // Fetch recent correction requests to check if any are pending/approved for missed dates
                 let activeCorrections = [];
                 try {
-                    const corrRes = await attendanceService.getCorrectionRequests({ limit: 50 });
+                    const corrRes = await attendanceService.getCorrectionRequests({ limit: 50, my_requests: 'true' });
                     if (corrRes && corrRes.data) {
                         activeCorrections = corrRes.data;
                     }
