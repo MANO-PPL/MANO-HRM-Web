@@ -58,7 +58,7 @@ jobs:
   deploy-to-ec2:
     name: Deploy via Self-Hosted Runner
     needs: build-assets
-    runs-on: self-hosted
+    runs-on: [self-hosted, hrm]
     if: github.ref == 'refs/heads/main'
 
     steps:
