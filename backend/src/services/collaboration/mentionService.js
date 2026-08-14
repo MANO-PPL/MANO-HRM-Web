@@ -11,7 +11,7 @@ async function getOrCreateDM(orgId, userA, userB) {
 
     // Find if a DM conversation exists
     const userAConversations = await attendanceDB('chat_conversation_members')
-        .where({ org_id: finalOrgId, user_id: userA })
+        .where({ user_id: userA })
         .select('conversation_id');
 
     const userAConvIds = userAConversations.map(c => c.conversation_id);

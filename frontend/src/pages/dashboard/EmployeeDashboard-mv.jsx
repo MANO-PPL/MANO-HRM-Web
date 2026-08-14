@@ -163,7 +163,7 @@ const EmployeeDashboard = () => {
 
     const fetchDashboardData = async () => {
         try {
-            const [statsRes, todayRes, holidaysRes, activityRes, shiftRes] = await Promise.all([
+            const [statsRes, todayRes, holidaysRes, activityRes, shiftRes] = await Promise.allSettled([
                 attendanceService.getMyStats(),
                 attendanceService.getTodayStatus(),
                 attendanceService.getUpcomingHolidays(),
@@ -171,12 +171,12 @@ const EmployeeDashboard = () => {
                 employeeService.getMyShift()
             ]);
 
-            if (statsRes.success) setStats(statsRes.data);
-            if (todayRes.success) setTodayStatus(todayRes.data);
-            if (holidaysRes.success) setUpcomingHolidays(holidaysRes.data);
-            if (activityRes.success) setRecentActivity(activityRes.data);
-            if (shiftRes && (shiftRes.ok || shiftRes.success)) {
-                setShift(shiftRes.shift);
+            if (statsRes.status === 'fulfilled' && statsRes.value?.success) setStats(statsRes.value.data);
+            if (todayRes.status === 'fulfilled' && todayRes.value?.success) setTodayStatus(todayRes.value.data);
+            if (holidaysRes.status === 'fulfilled' && holidaysRes.value?.success) setUpcomingHolidays(holidaysRes.value.data);
+            if (activityRes.status === 'fulfilled' && activityRes.value?.success) setRecentActivity(activityRes.value.data);
+            if (shiftRes.status === 'fulfilled' && shiftRes.value && (shiftRes.value.ok || shiftRes.value.success)) {
+                setShift(shiftRes.value.shift);
             }
 
             // Fetch recent records to detect missed punches

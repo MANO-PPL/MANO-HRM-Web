@@ -165,19 +165,19 @@ const DailyActivity = () => {
             const endDate = `${endY}-${endM}-${endD}`;
 
             // Parallel Fetches
-            const [eventsRes, activitiesRes, attendanceRes, holidayRes] = await Promise.all([
+            const [eventsRes, activitiesRes, attendanceRes, holidayRes] = await Promise.allSettled([
                 api.get('/dar/events/list', { params: { date_from: startDate, date_to: endDate } }),
                 api.get('/dar/activities/list', { params: { date_from: startDate, date_to: endDate } }),
                 api.get('/attendance/records', { params: { date_from: startDate, date_to: endDate } }),
                 api.get('/holiday')
             ]);
 
-            const events = eventsRes.data.data || [];
-            const activities = activitiesRes.data.data || [];
-            const attendanceRecs = attendanceRes.data.data || [];
+            const events = (eventsRes.status === 'fulfilled' && eventsRes.value?.data?.data) || [];
+            const activities = (activitiesRes.status === 'fulfilled' && activitiesRes.value?.data?.data) || [];
+            const attendanceRecs = (attendanceRes.status === 'fulfilled' && attendanceRes.value?.data?.data) || [];
 
             // Holidays: Filter for relevant range or store all? Store all for lookup.
-            const rawHols = holidayRes.data.holidays || [];
+            const rawHols = (holidayRes.status === 'fulfilled' && holidayRes.value?.data?.holidays) || [];
             const holMap = {};
             rawHols.forEach(h => {
                 holMap[h.holiday_date] = h.holiday_name;

@@ -432,14 +432,14 @@ const MobileAttendanceMonitoring = () => {
         const hasCache = !!attendanceCacheData.dailySummaryAdmin[selectedDate];
         if (!silent && !hasCache) setLoading(true);
         try {
-            const [summaryRes, requestsRes] = await Promise.all([
+            const [summaryRes, requestsRes] = await Promise.allSettled([
                 attendanceService.getDailySummaryAdmin(selectedDate, forceRefresh),
                 attendanceService.getCorrectionRequests({ limit: 50 })
             ]);
 
-            const staff = summaryRes.data || [];
-            const requests = requestsRes.data || [];
-            const resolvedTz = summaryRes.timezone || 'UTC';
+            const staff = (summaryRes.status === 'fulfilled' && summaryRes.value?.data) || [];
+            const requests = (requestsRes.status === 'fulfilled' && requestsRes.value?.data) || [];
+            const resolvedTz = (summaryRes.status === 'fulfilled' && summaryRes.value?.timezone) || 'UTC';
             setOrgTimezone(resolvedTz);
 
             // Merge Data Logic using helper

@@ -71,7 +71,7 @@ const DailyActivityMobile = () => {
     const fetchDayData = async () => {
         setLoading(true);
         try {
-            const [eventsRes, activitiesRes, attendanceRes, holidayRes] = await Promise.all([
+            const [eventsRes, activitiesRes, attendanceRes, holidayRes] = await Promise.allSettled([
                 api.get('/dar/events/list', { params: { date_from: selectedDate, date_to: selectedDate } }),
                 api.get('/dar/activities/list', { params: { date_from: selectedDate, date_to: selectedDate } }),
                 api.get('/attendance/records', { params: { date_from: selectedDate, date_to: selectedDate } }),
@@ -79,16 +79,19 @@ const DailyActivityMobile = () => {
             ]);
 
             // Process Holidays
-            const rawHols = holidayRes.data.holidays || [];
+            const rawHols = (holidayRes.status === 'fulfilled' && holidayRes.value?.data?.holidays) || [];
             const holMap = {};
             rawHols.forEach(h => { holMap[h.holiday_date] = h.holiday_name; });
             setHolidays(holMap);
 
             // Process Tasks & Events
             const transformedData = [];
+            const events = (eventsRes.status === 'fulfilled' && eventsRes.value?.data?.data) || [];
+            const activities = (activitiesRes.status === 'fulfilled' && activitiesRes.value?.data?.data) || [];
+            const attendanceRecs = (attendanceRes.status === 'fulfilled' && attendanceRes.value?.data?.data) || [];
             
             // Events
-            (eventsRes.data.data || []).forEach(e => {
+            events.forEach(e => {
                 transformedData.push({
                     id: `evt-${e.event_id}`,
                     title: e.title,
@@ -102,7 +105,7 @@ const DailyActivityMobile = () => {
             });
 
             // Activities
-            (activitiesRes.data.data || []).forEach(a => {
+            activities.forEach(a => {
                 transformedData.push({
                     id: `act-${a.activity_id}`,
                     title: a.title,
@@ -121,7 +124,6 @@ const DailyActivityMobile = () => {
 
             // Process Attendance
             const attMap = {};
-            const attendanceRecs = attendanceRes.data.data || [];
             attendanceRecs.forEach(a => {
                 const dateKey = getLocalDateString(a.time_in);
                 const timeIn = new Date(a.time_in).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
