@@ -39,7 +39,9 @@ const getMonthDetails = (dateStr) => {
 // ==========================================
 
 export const getAllSites = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const sites = await attendanceDB('labour_sites')
+        .where('org_id', org_id)
         .select('*')
         .orderBy('created_at', 'desc');
 
@@ -50,12 +52,14 @@ export const getAllSites = catchAsync(async (req, res) => {
 });
 
 export const createSite = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { site_name, location_details, status, end_date } = req.body;
     if (!site_name) {
         throw new AppError('Site name is required', 400);
     }
 
     const [site_id] = await attendanceDB('labour_sites').insert({
+        org_id,
         site_name,
         location_details,
         status: status || 'Active',
@@ -70,6 +74,7 @@ export const createSite = catchAsync(async (req, res) => {
 });
 
 export const updateSite = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { id } = req.params;
     const { site_name, location_details, status, end_date } = req.body;
 
@@ -77,7 +82,7 @@ export const updateSite = catchAsync(async (req, res) => {
     const dateStr = finalEndDate ? new Date(finalEndDate).toISOString().split('T')[0] : null;
 
     const affected = await attendanceDB('labour_sites')
-        .where('site_id', id)
+        .where({ site_id: id, org_id })
         .update({
             site_name,
             location_details,
@@ -91,9 +96,9 @@ export const updateSite = catchAsync(async (req, res) => {
     }
 
     if (status === 'Completed' && dateStr) {
-        // Delete all attendance records logged on or after the completion date
+        // Delete all attendance records logged on or after the completion date for this org and site
         await attendanceDB('labour_attendance')
-            .where('site_id', id)
+            .where({ site_id: id, org_id })
             .andWhere('date', '>=', dateStr)
             .del();
     }
@@ -105,16 +110,21 @@ export const updateSite = catchAsync(async (req, res) => {
 });
 
 export const deleteSite = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { id } = req.params;
 
-    // Hard delete or status archive
+    // Delete site strictly within organization
     const affected = await attendanceDB('labour_sites')
-        .where('site_id', id)
+        .where({ site_id: id, org_id })
         .del();
 
     if (affected === 0) {
         throw new AppError('Site not found', 404);
     }
+
+    // Clean up related relations, attendance, advances, schedules, payouts for this site in this org
+    await attendanceDB('labour_site_relations').where({ site_id: id, org_id }).del();
+    await attendanceDB('labour_daily_schedule').where({ site_id: id, org_id }).del();
 
     res.json({
         success: true,
@@ -127,9 +137,17 @@ export const deleteSite = catchAsync(async (req, res) => {
 // ==========================================
 
 export const getAllLabours = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const labours = await attendanceDB('labours as l')
-        .leftJoin('labour_site_relations as r', 'l.labour_id', 'r.labour_id')
-        .leftJoin('labour_sites as s', 'r.site_id', 's.site_id')
+        .leftJoin('labour_site_relations as r', function() {
+            this.on('l.labour_id', '=', 'r.labour_id')
+                .andOn('r.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .leftJoin('labour_sites as s', function() {
+            this.on('r.site_id', '=', 's.site_id')
+                .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .where('l.org_id', org_id)
         .select(
             'l.*',
             attendanceDB.raw('GROUP_CONCAT(s.site_name SEPARATOR ", ") as site_names'),
@@ -151,6 +169,7 @@ export const getAllLabours = catchAsync(async (req, res) => {
 });
 
 export const createLabour = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { name, phone, sex, role, wage_type, monthly_salary, allowed_leaves, site_id, overtime_pay_per_hour } = req.body;
 
     if (!name || !role || monthly_salary === undefined) {
@@ -159,14 +178,24 @@ export const createLabour = catchAsync(async (req, res) => {
 
     if (phone) {
         const existing = await attendanceDB('labours')
-            .where('phone', phone.trim())
+            .where({ org_id, phone: phone.trim() })
             .first();
         if (existing) {
-            throw new AppError('A worker with this phone number already exists', 400);
+            throw new AppError('A worker with this phone number already exists in your organization', 400);
+        }
+    }
+
+    if (site_id) {
+        const validSite = await attendanceDB('labour_sites')
+            .where({ site_id: Number(site_id), org_id })
+            .first();
+        if (!validSite) {
+            throw new AppError('Specified construction site does not exist in your organization', 400);
         }
     }
 
     const [labour_id] = await attendanceDB('labours').insert({
+        org_id,
         name,
         phone: phone || null,
         sex,
@@ -174,13 +203,14 @@ export const createLabour = catchAsync(async (req, res) => {
         wage_type: 'Daily Wage',
         monthly_salary: Number(monthly_salary),
         allowed_leaves: Number(allowed_leaves) || 0,
-        site_id: site_id || null,
+        site_id: site_id ? Number(site_id) : null,
         overtime_pay_per_hour: Number(overtime_pay_per_hour) || 0,
         status: 'Active'
     });
 
     if (site_id) {
         await attendanceDB('labour_site_relations').insert({
+            org_id,
             labour_id,
             site_id: Number(site_id)
         });
@@ -194,21 +224,31 @@ export const createLabour = catchAsync(async (req, res) => {
 });
 
 export const updateLabour = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { id } = req.params;
     const { name, phone, sex, role, wage_type, monthly_salary, allowed_leaves, site_id, status, overtime_pay_per_hour } = req.body;
 
     if (phone) {
         const existing = await attendanceDB('labours')
-            .where('phone', phone.trim())
+            .where({ org_id, phone: phone.trim() })
             .andWhereNot('labour_id', id)
             .first();
         if (existing) {
-            throw new AppError('A worker with this phone number already exists', 400);
+            throw new AppError('A worker with this phone number already exists in your organization', 400);
+        }
+    }
+
+    if (site_id) {
+        const validSite = await attendanceDB('labour_sites')
+            .where({ site_id: Number(site_id), org_id })
+            .first();
+        if (!validSite) {
+            throw new AppError('Specified construction site does not exist in your organization', 400);
         }
     }
 
     const affected = await attendanceDB('labours')
-        .where('labour_id', id)
+        .where({ labour_id: id, org_id })
         .update({
             name,
             phone: phone || null,
@@ -217,7 +257,7 @@ export const updateLabour = catchAsync(async (req, res) => {
             wage_type: 'Daily Wage',
             monthly_salary: monthly_salary !== undefined ? Number(monthly_salary) : undefined,
             allowed_leaves: allowed_leaves !== undefined ? Number(allowed_leaves) : undefined,
-            site_id: site_id || null,
+            site_id: site_id ? Number(site_id) : null,
             overtime_pay_per_hour: overtime_pay_per_hour !== undefined ? Number(overtime_pay_per_hour) : undefined,
             status,
             updated_at: attendanceDB.fn.now()
@@ -229,10 +269,11 @@ export const updateLabour = catchAsync(async (req, res) => {
 
     if (site_id) {
         const existingRelation = await attendanceDB('labour_site_relations')
-            .where({ labour_id: id, site_id: Number(site_id) })
+            .where({ labour_id: id, site_id: Number(site_id), org_id })
             .first();
         if (!existingRelation) {
             await attendanceDB('labour_site_relations').insert({
+                org_id,
                 labour_id: id,
                 site_id: Number(site_id)
             });
@@ -246,15 +287,23 @@ export const updateLabour = catchAsync(async (req, res) => {
 });
 
 export const deleteLabour = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { id } = req.params;
 
     const affected = await attendanceDB('labours')
-        .where('labour_id', id)
+        .where({ labour_id: id, org_id })
         .del();
 
     if (affected === 0) {
         throw new AppError('Labour not found', 404);
     }
+
+    // Clean up all related child tables strictly for this org
+    await attendanceDB('labour_site_relations').where({ labour_id: id, org_id }).del();
+    await attendanceDB('labour_attendance').where({ labour_id: id, org_id }).del();
+    await attendanceDB('labour_advances').where({ labour_id: id, org_id }).del();
+    await attendanceDB('labour_daily_schedule').where({ labour_id: id, org_id }).del();
+    await attendanceDB('labour_monthly_payouts').where({ labour_id: id, org_id }).del();
 
     res.json({
         success: true,
@@ -267,10 +316,20 @@ export const deleteLabour = catchAsync(async (req, res) => {
 // ==========================================
 
 export const getSiteAttendance = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { site_id, date } = req.query;
 
     if (!site_id || !date) {
         throw new AppError('site_id and date parameters are required', 400);
+    }
+
+    // Verify site belongs to the organization
+    const siteObj = await attendanceDB('labour_sites')
+        .where({ site_id: Number(site_id), org_id })
+        .first();
+
+    if (!siteObj) {
+        throw new AppError('Site not found in your organization', 404);
     }
 
     const thirtyDaysAgo = new Date();
@@ -281,25 +340,27 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
     const labours = await attendanceDB('labours as l')
         .leftJoin('labour_attendance as a', function() {
             this.on('l.labour_id', '=', 'a.labour_id')
+                .andOn('a.org_id', '=', attendanceDB.raw('?', [org_id]))
                 .andOn('a.site_id', '=', attendanceDB.raw('?', [Number(site_id)]))
                 .andOn('a.date', '>=', attendanceDB.raw('?', [thirtyDaysAgoStr]))
                 .andOnIn('a.status', ['Present', 'Half Day', 'Paid Leave']);
         })
-        .where('l.status', 'Active')
+        .where('l.org_id', org_id)
+        .andWhere('l.status', 'Active')
         .andWhere(function() {
             this.whereIn('l.labour_id', function() {
                 this.select('labour_id')
                     .from('labour_daily_schedule')
-                    .where({ date, site_id: Number(site_id) });
+                    .where({ org_id, date, site_id: Number(site_id) });
             }).orWhere(function() {
                 this.whereIn('l.labour_id', function() {
                     this.select('labour_id')
                         .from('labour_site_relations')
-                        .where({ site_id: Number(site_id) });
+                        .where({ org_id, site_id: Number(site_id) });
                 }).whereNotIn('l.labour_id', function() {
                     this.select('labour_id')
                         .from('labour_daily_schedule')
-                        .where({ date });
+                        .where({ org_id, date });
                 });
             });
         })
@@ -310,15 +371,17 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
         .orderBy('l.name', 'asc');
 
     const relations = await attendanceDB('labour_site_relations')
-        .where('site_id', Number(site_id))
+        .where({ site_id: Number(site_id), org_id })
         .select('labour_id');
     const associatedIds = new Set(relations.map(r => r.labour_id));
 
-    // Get attendance marked for any labours on this date across ALL sites
-    // This allows us to detect if a labour has been marked at another site
+    // Get attendance marked for any labours on this date across ALL sites within this org
     const attendanceRecords = await attendanceDB('labour_attendance as a')
-        .leftJoin('labour_sites as s', 'a.site_id', 's.site_id')
-        .where({ 'a.date': date })
+        .leftJoin('labour_sites as s', function() {
+            this.on('a.site_id', '=', 's.site_id')
+                .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .where({ 'a.org_id': org_id, 'a.date': date })
         .select('a.labour_id', 'a.status', 'a.attendance_id', 'a.site_id', 's.site_name', 'a.overtime_hours');
 
     // Filter attendance records to find extra (borrowed/marked) labours on this date at this specific site
@@ -330,7 +393,7 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
         attendanceOvertimeMap[rec.labour_id] = rec.overtime_hours;
     });
 
-    // Create maps of attendance at other sites
+    // Create maps of attendance at other sites for this organization
     const otherSitesAttendanceMap = {};
     attendanceRecords.forEach(rec => {
         if (Number(rec.site_id) !== Number(site_id) && rec.status && rec.status !== '') {
@@ -349,6 +412,7 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
     let extraLabours = [];
     if (extraLabourIds.length > 0) {
         extraLabours = await attendanceDB('labours')
+            .where('org_id', org_id)
             .whereIn('labour_id', extraLabourIds)
             .select('labour_id', 'name', 'role', 'wage_type', 'site_id as primary_site_id', 'overtime_pay_per_hour');
     }
@@ -358,7 +422,7 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
     const allLabourIds = allLabours.map(l => l.labour_id);
     const dailySchedules = allLabourIds.length > 0
         ? await attendanceDB('labour_daily_schedule')
-            .where({ date })
+            .where({ org_id, date })
             .whereIn('labour_id', allLabourIds)
             .select('labour_id')
         : [];
@@ -391,18 +455,23 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
 });
 
 export const saveSiteAttendance = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { site_id, date, roster } = req.body;
-    const marked_by = req.user?.user_id || null;
+    const marked_by = req.user?.id || req.user?.user_id || null;
 
     if (!site_id || !date || !Array.isArray(roster)) {
         throw new AppError('site_id, date, and roster array are required', 400);
     }
 
     const siteObj = await attendanceDB('labour_sites')
-        .where('site_id', site_id)
+        .where({ site_id: Number(site_id), org_id })
         .first();
 
-    if (siteObj && siteObj.status === 'Completed' && siteObj.end_date) {
+    if (!siteObj) {
+        throw new AppError('Site not found in your organization', 404);
+    }
+
+    if (siteObj.status === 'Completed' && siteObj.end_date) {
         const compDateStr = new Date(siteObj.end_date).toISOString().split('T')[0];
         const attDateStr = new Date(date).toISOString().split('T')[0];
         if (attDateStr >= compDateStr) {
@@ -411,19 +480,19 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
     }
 
     await attendanceDB.transaction(async (trx) => {
-        // Extract labour IDs to clean up old records for this date
+        // Extract labour IDs to clean up old records for this date and org
         const labourIds = roster.map(r => r.labour_id);
 
         if (labourIds.length > 0) {
             // Delete existing attendance records for these labours on this date at this specific site only
             await trx('labour_attendance')
-                .where({ date, site_id: Number(site_id) })
+                .where({ org_id, date, site_id: Number(site_id) })
                 .whereIn('labour_id', labourIds)
                 .del();
 
             // Fetch daily schedules for these workers on this date to count scheduled sites
             const dailySchedules = await trx('labour_daily_schedule')
-                .where({ date })
+                .where({ org_id, date })
                 .whereIn('labour_id', labourIds)
                 .select('labour_id');
 
@@ -432,16 +501,16 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                 scheduledCountMap[sch.labour_id] = (scheduledCountMap[sch.labour_id] || 0) + 1;
             });
 
-            // Check if any of these labours are already marked with active status at other sites
+            // Check if any of these labours are already marked with active status at other sites within this org
             const otherSiteRecords = await trx('labour_attendance')
-                .where({ date })
+                .where({ org_id, date })
                 .whereNot({ site_id: Number(site_id) })
                 .whereIn('labour_id', labourIds)
                 .whereIn('status', ['Present', 'Half Day', 'Paid Leave'])
                 .select('labour_id');
             const otherSiteLabourIds = new Set(otherSiteRecords.map(r => r.labour_id));
 
-            // Insert new records for this site
+            // Insert new records for this site with org_id
             const insertData = [];
             for (const r of roster) {
                 const isScheduledMultiSite = (scheduledCountMap[r.labour_id] || 0) >= 2;
@@ -453,6 +522,7 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                 }
 
                 insertData.push({
+                    org_id,
                     labour_id: r.labour_id,
                     site_id: Number(site_id),
                     date,
@@ -466,13 +536,14 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                 await trx('labour_attendance').insert(insertData);
             }
 
-            // Auto-associate roster workers with this site permanently
+            // Auto-associate roster workers with this site permanently within this org
             for (const labId of labourIds) {
                 const existing = await trx('labour_site_relations')
-                    .where({ labour_id: labId, site_id: Number(site_id) })
+                    .where({ org_id, labour_id: labId, site_id: Number(site_id) })
                     .first();
                 if (!existing) {
                     await trx('labour_site_relations').insert({
+                        org_id,
                         labour_id: labId,
                         site_id: Number(site_id)
                     });
@@ -492,23 +563,39 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
 // ==========================================
 
 export const getFinancesSummary = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { site_id } = req.query; // Filter by site_id
 
     if (!site_id) {
         throw new AppError('site_id is required', 400);
     }
 
-    // 1. Get all active labours associated with this site
-    // (either primary site_id is this site, or in labour_site_relations)
+    // Verify site belongs to this org
+    const site = await attendanceDB('labour_sites')
+        .where({ site_id: Number(site_id), org_id })
+        .first();
+
+    if (!site) {
+        throw new AppError('Site not found in your organization', 404);
+    }
+
+    // 1. Get all active labours associated with this site in this org
     const labours = await attendanceDB('labours as l')
-        .leftJoin('labour_site_relations as r', 'l.labour_id', 'r.labour_id')
-        .leftJoin('labour_sites as s', 'r.site_id', 's.site_id')
+        .leftJoin('labour_site_relations as r', function() {
+            this.on('l.labour_id', '=', 'r.labour_id')
+                .andOn('r.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .leftJoin('labour_sites as s', function() {
+            this.on('r.site_id', '=', 's.site_id')
+                .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
         .select(
             'l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.monthly_salary', 'l.allowed_leaves', 'l.site_id as primary_site_id', 'l.overtime_pay_per_hour',
             attendanceDB.raw('GROUP_CONCAT(s.site_id SEPARATOR ",") as site_ids'),
             attendanceDB.raw('GROUP_CONCAT(s.site_name SEPARATOR ", ") as site_names')
         )
-        .where('l.status', 'Active')
+        .where('l.org_id', org_id)
+        .andWhere('l.status', 'Active')
         .andWhere(function() {
             this.where('l.site_id', Number(site_id))
                 .orWhere('r.site_id', Number(site_id));
@@ -524,13 +611,15 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
 
     const labourIds = labours.map(l => l.labour_id);
 
-    // 2. Fetch all attendance records for these labours across ALL sites
+    // 2. Fetch all attendance records for these labours across ALL sites in this org
     const attendanceRecords = await attendanceDB('labour_attendance')
+        .where('org_id', org_id)
         .whereIn('labour_id', labourIds)
         .select('labour_id', 'status', 'date', 'site_id', 'overtime_hours');
 
     // Fetch daily schedules for these labours to calculate divisors
     const dailySchedules = await attendanceDB('labour_daily_schedule')
+        .where('org_id', org_id)
         .whereIn('labour_id', labourIds)
         .select('labour_id', 'site_id', 'date');
 
@@ -551,7 +640,7 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         overtimePayMap[l.labour_id] = Number(l.overtime_pay_per_hour || 0);
     });
 
-    // Group attendance by labour and month (to calculate correct monthly-based wage rates if Fixed Salary)
+    // Group attendance by labour and month
     const attendanceMap = {};
     labourIds.forEach(id => {
         attendanceMap[id] = {};
@@ -589,8 +678,9 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         }
     });
 
-    // 3. Fetch advances logged for this site
+    // 3. Fetch advances logged for this site in this org
     const advances = await attendanceDB('labour_advances')
+        .where('org_id', org_id)
         .whereIn('labour_id', labourIds)
         .andWhere('site_id', Number(site_id))
         .select('labour_id', 'amount');
@@ -603,8 +693,9 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         advancesMap[adv.labour_id] += Number(adv.amount);
     });
 
-    // 4. Fetch payouts logged for this site
+    // 4. Fetch payouts logged for this site in this org
     const payouts = await attendanceDB('labour_monthly_payouts')
+        .where('org_id', org_id)
         .whereIn('labour_id', labourIds)
         .andWhere('site_id', Number(site_id))
         .select('payout_id', 'labour_id', 'status', 'paid_amount', 'payment_date', 'notes');
@@ -689,16 +780,34 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
 });
 
 export const logLabourAdvance = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { labour_id, amount, date, notes, site_id } = req.body;
 
     if (!labour_id || !amount || !date) {
         throw new AppError('labour_id, amount, and date are required', 400);
     }
 
+    // Verify labour belongs to org
+    const worker = await attendanceDB('labours')
+        .where({ labour_id: Number(labour_id), org_id })
+        .first();
+    if (!worker) {
+        throw new AppError('Labour worker not found in your organization', 404);
+    }
+
     const cleanSiteId = (site_id && site_id !== 'All') ? Number(site_id) : null;
+    if (cleanSiteId) {
+        const site = await attendanceDB('labour_sites')
+            .where({ site_id: cleanSiteId, org_id })
+            .first();
+        if (!site) {
+            throw new AppError('Site not found in your organization', 404);
+        }
+    }
 
     const [advance_id] = await attendanceDB('labour_advances').insert({
-        labour_id,
+        org_id,
+        labour_id: Number(labour_id),
         site_id: cleanSiteId,
         amount: Number(amount),
         date,
@@ -712,19 +821,21 @@ export const logLabourAdvance = catchAsync(async (req, res) => {
     });
 });
 
-// Helper function to calculate worker outstanding balances per site
-async function getLabourBalancesPerSite(labour_id) {
-    const worker = await attendanceDB('labours').where('labour_id', labour_id).first();
+// Helper function to calculate worker outstanding balances per site within org
+async function getLabourBalancesPerSite(labour_id, org_id) {
+    const worker = await attendanceDB('labours')
+        .where({ labour_id, org_id })
+        .first();
     if (!worker) return [];
 
-    // Fetch all attendance for this worker
+    // Fetch all attendance for this worker in this org
     const attendance = await attendanceDB('labour_attendance')
-        .where('labour_id', labour_id)
+        .where({ labour_id, org_id })
         .select('status', 'date', 'site_id', 'overtime_hours');
 
-    // Fetch daily schedules for this worker
+    // Fetch daily schedules for this worker in this org
     const dailySchedules = await attendanceDB('labour_daily_schedule')
-        .where('labour_id', labour_id)
+        .where({ labour_id, org_id })
         .select('site_id', 'date');
 
     const scheduleCountMap = {};
@@ -767,9 +878,9 @@ async function getLabourBalancesPerSite(labour_id) {
         siteAttendance[sId][monthKey].overtimeCreditSum += Number(rec.overtime_hours || 0) * otRate;
     });
 
-    // Fetch all advances
+    // Fetch all advances in this org
     const advances = await attendanceDB('labour_advances')
-        .where('labour_id', labour_id)
+        .where({ labour_id, org_id })
         .select('site_id', 'amount');
 
     const siteAdvances = {};
@@ -779,9 +890,9 @@ async function getLabourBalancesPerSite(labour_id) {
         siteAdvances[sId] += Number(adv.amount);
     });
 
-    // Fetch all payouts
+    // Fetch all payouts in this org
     const payouts = await attendanceDB('labour_monthly_payouts')
-        .where('labour_id', labour_id)
+        .where({ labour_id, org_id })
         .andWhere('status', 'Paid')
         .select('site_id', 'paid_amount');
 
@@ -834,6 +945,7 @@ async function getLabourBalancesPerSite(labour_id) {
 }
 
 export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { site_id, month, show_all_sites } = req.query; // month is format YYYY-MM
     if (!site_id || !month) {
         throw new AppError('site_id and month are required', 400);
@@ -853,23 +965,24 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
 
     let labours = [];
     if (site_id === 'All') {
-        // Fetch all active labours
+        // Fetch all active labours in this org
         labours = await attendanceDB('labours')
-            .where('status', 'Active')
+            .where({ org_id, status: 'Active' })
             .select('labour_id', 'name', 'role');
     } else {
-        // Fetch active labours who are associated with the site in labour_site_relations
+        // Fetch active labours in this org who are associated with the site in labour_site_relations
         // OR have attendance records logged on this site this month
         labours = await attendanceDB('labours as l')
-            .where(function() {
+            .where('l.org_id', org_id)
+            .andWhere(function() {
                 this.whereIn('l.labour_id', function() {
                     this.select('labour_id')
                         .from('labour_site_relations')
-                        .where('site_id', Number(site_id));
+                        .where({ org_id, site_id: Number(site_id) });
                 }).orWhereIn('l.labour_id', function() {
                     this.select('labour_id')
                         .from('labour_attendance')
-                        .where('site_id', Number(site_id))
+                        .where({ org_id, site_id: Number(site_id) })
                         .where('date', '>=', start)
                         .where('date', '<=', end);
                 });
@@ -883,14 +996,18 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
     let attendanceRecords = [];
     if (labourIds.length > 0) {
         const query = attendanceDB('labour_attendance as la')
-            .leftJoin('labour_sites as ls', 'la.site_id', 'ls.site_id')
+            .leftJoin('labour_sites as ls', function() {
+                this.on('la.site_id', '=', 'ls.site_id')
+                    .andOn('ls.org_id', '=', attendanceDB.raw('?', [org_id]));
+            })
+            .where('la.org_id', org_id)
             .where('la.date', '>=', start)
             .where('la.date', '<=', end)
             .whereIn('la.labour_id', labourIds);
 
         // If not showing all sites (and not in 'All' view), filter strictly by the selected site
         if (site_id !== 'All' && show_all_sites !== 'true') {
-            query.where('la.site_id', site_id);
+            query.where('la.site_id', Number(site_id));
         }
 
         attendanceRecords = await query.select(
@@ -939,6 +1056,7 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
 });
 
 export const bulkTransferLabours = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { source_site_id, destination_site_id, labour_ids } = req.body;
 
     if (!Array.isArray(labour_ids) || labour_ids.length === 0) {
@@ -946,8 +1064,17 @@ export const bulkTransferLabours = catchAsync(async (req, res) => {
     }
 
     const targetSiteId = destination_site_id ? Number(destination_site_id) : null;
+    if (targetSiteId) {
+        const validSite = await attendanceDB('labour_sites')
+            .where({ site_id: targetSiteId, org_id })
+            .first();
+        if (!validSite) {
+            throw new AppError('Destination site not found in your organization', 404);
+        }
+    }
 
     await attendanceDB('labours')
+        .where('org_id', org_id)
         .whereIn('labour_id', labour_ids)
         .update({
             site_id: targetSiteId,
@@ -957,10 +1084,11 @@ export const bulkTransferLabours = catchAsync(async (req, res) => {
     if (targetSiteId) {
         for (const labId of labour_ids) {
             const existing = await attendanceDB('labour_site_relations')
-                .where({ labour_id: labId, site_id: targetSiteId })
+                .where({ org_id, labour_id: labId, site_id: targetSiteId })
                 .first();
             if (!existing) {
                 await attendanceDB('labour_site_relations').insert({
+                    org_id,
                     labour_id: labId,
                     site_id: targetSiteId
                 });
@@ -975,15 +1103,17 @@ export const bulkTransferLabours = catchAsync(async (req, res) => {
 });
 
 export const bulkCreateLabours = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { labours } = req.body;
 
     if (!Array.isArray(labours) || labours.length === 0) {
         throw new AppError('labours array is required', 400);
     }
 
-    // Retrieve active/completed sites to resolve site_name to site_id if needed
+    // Retrieve active sites for this org to resolve site_name to site_id
     const sites = await attendanceDB('labour_sites')
         .select('site_id', 'site_name')
+        .where('org_id', org_id)
         .whereNot('status', 'Inactive');
     
     const siteMap = {};
@@ -991,8 +1121,10 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
         siteMap[s.site_name.trim().toLowerCase()] = s.site_id;
     });
 
-    // Check unique phone numbers
-    const existingLabours = await attendanceDB('labours').select('phone');
+    // Check unique phone numbers within this organization
+    const existingLabours = await attendanceDB('labours')
+        .where('org_id', org_id)
+        .select('phone');
     const existingPhones = new Set(existingLabours.map(l => l.phone).filter(Boolean));
     const phonesInBatch = new Set();
 
@@ -1006,7 +1138,7 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
         const cleanPhone = phone ? String(phone).trim() : null;
         if (cleanPhone) {
             if (existingPhones.has(cleanPhone) || phonesInBatch.has(cleanPhone)) {
-                throw new AppError(`A worker with phone number ${cleanPhone} already exists`, 400);
+                throw new AppError(`A worker with phone number ${cleanPhone} already exists in your organization`, 400);
             }
             phonesInBatch.add(cleanPhone);
         }
@@ -1019,6 +1151,7 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
         }
 
         return {
+            org_id,
             name,
             phone: cleanPhone,
             sex: sex || 'Male',
@@ -1039,6 +1172,7 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
             const [labour_id] = await trx('labours').insert(data);
             if (data.site_id) {
                 await trx('labour_site_relations').insert({
+                    org_id,
                     labour_id,
                     site_id: data.site_id
                 });
@@ -1053,19 +1187,23 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
 });
 
 export const getLabourWorkHistory = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const { id } = req.params;
 
     const labour = await attendanceDB('labours')
-        .where('labour_id', id)
+        .where({ labour_id: id, org_id })
         .first();
 
     if (!labour) {
-        throw new AppError('Labour worker not found', 404);
+        throw new AppError('Labour worker not found in your organization', 404);
     }
 
     const history = await attendanceDB('labour_attendance as a')
-        .leftJoin('labour_sites as s', 'a.site_id', 's.site_id')
-        .where('a.labour_id', id)
+        .leftJoin('labour_sites as s', function() {
+            this.on('a.site_id', '=', 's.site_id')
+                .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .where({ 'a.labour_id': id, 'a.org_id': org_id })
         .select(
             'a.site_id',
             's.site_name',
@@ -1080,8 +1218,8 @@ export const getLabourWorkHistory = catchAsync(async (req, res) => {
         .groupBy('a.site_id', 's.site_name')
         .orderBy('last_date', 'desc');
 
-    // Compute global all-time balance metrics
-    const balances = await getLabourBalancesPerSite(id);
+    // Compute global all-time balance metrics within org
+    const balances = await getLabourBalancesPerSite(id, org_id);
     let global_earned = 0;
     let global_advances = 0;
     let global_paid = 0;
@@ -1095,8 +1233,11 @@ export const getLabourWorkHistory = catchAsync(async (req, res) => {
     const global_net_payable = global_earned - global_advances - global_paid;
 
     const payouts = await attendanceDB('labour_monthly_payouts as p')
-        .leftJoin('labour_sites as s', 'p.site_id', 's.site_id')
-        .where('p.labour_id', id)
+        .leftJoin('labour_sites as s', function() {
+            this.on('p.site_id', '=', 's.site_id')
+                .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .where({ 'p.labour_id': id, 'p.org_id': org_id })
         .select('p.*', 's.site_name')
         .orderBy('p.payment_date', 'desc')
         .orderBy('p.created_at', 'desc');
@@ -1121,6 +1262,7 @@ export const getLabourWorkHistory = catchAsync(async (req, res) => {
 });
 
 export const logLabourPayout = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const {
         payout_id, labour_id, site_id, month, wage_type, monthly_salary,
         present_days, half_days, absent_days, paid_leaves,
@@ -1132,9 +1274,18 @@ export const logLabourPayout = catchAsync(async (req, res) => {
         throw new AppError('labour_id, monthly_salary, accrued_credit, net_payable, and payment_date are required', 400);
     }
 
+    const worker = await attendanceDB('labours')
+        .where({ labour_id: Number(labour_id), org_id })
+        .first();
+
+    if (!worker) {
+        throw new AppError('Labour worker not found in your organization', 404);
+    }
+
     // Helper to perform individual site payout insert/update
     const saveSinglePayout = async (data) => {
         const recordData = {
+            org_id,
             labour_id: data.labour_id,
             site_id: data.site_id,
             month: data.month || new Date(payment_date).toISOString().slice(0, 7),
@@ -1156,7 +1307,7 @@ export const logLabourPayout = catchAsync(async (req, res) => {
 
         if (data.payout_id) {
             await attendanceDB('labour_monthly_payouts')
-                .where('payout_id', data.payout_id)
+                .where({ payout_id: data.payout_id, org_id })
                 .update(recordData);
             return data.payout_id;
         } else {
@@ -1209,7 +1360,7 @@ export const logLabourPayout = catchAsync(async (req, res) => {
         });
     } else {
         // Global Payout / Auto-Distribution case
-        const balances = await getLabourBalancesPerSite(labour_id);
+        const balances = await getLabourBalancesPerSite(labour_id, org_id);
         let remaining = inputPaidAmount;
         const createdIds = [];
 
@@ -1244,7 +1395,6 @@ export const logLabourPayout = catchAsync(async (req, res) => {
 
         // If there is still remainder (overpayment), allocate to worker's primary site
         if (remaining > 0) {
-            const worker = await attendanceDB('labours').where('labour_id', labour_id).first();
             const primarySiteId = worker ? worker.site_id : null;
             
             const new_id = await saveSinglePayout({
@@ -1277,6 +1427,7 @@ export const logLabourPayout = catchAsync(async (req, res) => {
 });
 
 export const downloadBulkTemplate = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Template');
 
@@ -1311,6 +1462,7 @@ export const downloadBulkTemplate = catchAsync(async (req, res) => {
     });
 
     const sites = await attendanceDB('labour_sites')
+        .where('org_id', org_id)
         .select('site_name')
         .whereNot('status', 'Inactive');
     
@@ -1341,6 +1493,7 @@ export const downloadBulkTemplate = catchAsync(async (req, res) => {
 });
 
 export const parseBulkLabours = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
     if (!req.file) {
         throw new AppError('Please upload a CSV or Excel file', 400);
     }
@@ -1396,6 +1549,7 @@ export const parseBulkLabours = catchAsync(async (req, res) => {
     });
 
     const sites = await attendanceDB('labour_sites')
+        .where('org_id', org_id)
         .select('site_id', 'site_name')
         .whereNot('status', 'Inactive');
     
@@ -1404,7 +1558,9 @@ export const parseBulkLabours = catchAsync(async (req, res) => {
         siteMap[s.site_name.trim().toLowerCase()] = s.site_id;
     });
 
-    const existingLabours = await attendanceDB('labours').select('phone');
+    const existingLabours = await attendanceDB('labours')
+        .where('org_id', org_id)
+        .select('phone');
     const existingPhones = new Set(existingLabours.map(l => l.phone).filter(Boolean));
     const phonesInBatch = new Set();
 
@@ -1448,7 +1604,7 @@ export const parseBulkLabours = catchAsync(async (req, res) => {
         if (cleanPhone) {
             if (existingPhones.has(cleanPhone) || phonesInBatch.has(cleanPhone)) {
                 isValid = false;
-                error += `Phone number ${cleanPhone} already exists. `;
+                error += `Phone number ${cleanPhone} already exists in your organization. `;
             }
             phonesInBatch.add(cleanPhone);
         }
@@ -1460,7 +1616,7 @@ export const parseBulkLabours = catchAsync(async (req, res) => {
                 site_id = siteMap[cleanSiteName];
             } else {
                 isValid = false;
-                error += `Construction site "${site_name}" does not exist or is inactive. `;
+                error += `Construction site "${site_name}" does not exist in your organization. `;
             }
         }
 
