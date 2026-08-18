@@ -1,5 +1,6 @@
 import express from 'express';
 import multer from 'multer';
+import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
 import {
     getAllSites, createSite, updateSite, deleteSite,
     getAllLabours, createLabour, updateLabour, deleteLabour,
@@ -12,6 +13,8 @@ import { getLabourSchedule, saveLabourSchedule } from '../../controllers/labour/
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+router.use(authenticateJWT, requireActiveOrg);
 
 // Site Routes
 router.route('/sites')
