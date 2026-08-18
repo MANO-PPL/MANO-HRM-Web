@@ -179,6 +179,15 @@ async function cleanupDeletedOrganizations() {
                 await trx('chat_conversation_members').whereIn('conversation_id', orgConvIdsSubquery).del();
                 await trx('chat_conversations').where('org_id', org.org_id).del();
 
+                // Labour Management tables cleanup
+                await trx('labour_attendance').where('org_id', org.org_id).del();
+                await trx('labour_advances').where('org_id', org.org_id).del();
+                await trx('labour_monthly_payouts').where('org_id', org.org_id).del();
+                await trx('labour_daily_schedule').where('org_id', org.org_id).del();
+                await trx('labour_site_relations').where('org_id', org.org_id).del();
+                await trx('labours').where('org_id', org.org_id).del();
+                await trx('labour_sites').where('org_id', org.org_id).del();
+
                 // Now delete users and finally the organization
                 await trx('core_users').where('org_id', org.org_id).del();
                 await trx('core_organizations').where('org_id', org.org_id).del();
