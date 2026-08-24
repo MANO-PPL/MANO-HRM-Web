@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, X, User, Mail, Phone, Briefcase, Clock, Camera, Plus, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { Save, X, User, Mail, Phone, Briefcase, Clock, Camera, Plus, ChevronDown, Eye, EyeOff, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { adminService, adminCacheData } from '../../services/adminService';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
@@ -78,6 +78,13 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
     });
 
     const [showPassword, setShowPassword] = useState(false);
+    const [initialCredentials, setInitialCredentials] = useState({ email: '', phone_no: '' });
+
+    const isSelf = isEditMode && (String(currentUser?.user_id || currentUser?.id) === String(userId));
+    const isSelfAdmin = isSelf && (currentUser?.user_type === 'admin' || formData.user_type === 'admin');
+    const isEmailChanged = isSelf && (formData.email || '').trim().toLowerCase() !== (initialCredentials.email || '').trim().toLowerCase();
+    const isPhoneChanged = isSelf && (formData.phone_no || '').replace(/[-()\s]/g, '') !== (initialCredentials.phone_no || '').replace(/[-()\s]/g, '');
+    const isCredentialsChanged = isEmailChanged || isPhoneChanged;
 
     const [departments, setDepartments] = useState(() => adminCacheData.departments?.departments || []);
     const [designations, setDesignations] = useState(() => adminCacheData.designations?.designations || []);
@@ -186,6 +193,10 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                             status: true,
                             profile_image: u.profile_image_url || null,
                             force_password_change: u.force_password_change === 1 || u.force_password_change === true || u.force_password_change === 'true'
+                        });
+                        setInitialCredentials({
+                            email: u.email || '',
+                            phone_no: u.phone_no || ''
                         });
                     }
                 }
@@ -374,13 +385,12 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
     if (isLoading) return <div className="p-8 text-center text-slate-500 text-sm italic">Loading...</div>;
 
     return (
-        <form 
-            onSubmit={handleSubmit} 
-            className={`flex flex-col ${
-                isSidebarMode 
-                    ? 'h-full bg-white dark:bg-dark-card' 
+        <form
+            onSubmit={handleSubmit}
+            className={`flex flex-col ${isSidebarMode
+                    ? 'h-full bg-white dark:bg-dark-card'
                     : 'space-y-6 w-full'
-            }`}
+                }`}
         >
             {/* Header Actions */}
             <div className={`flex items-center justify-between ${isSidebarMode ? 'p-5 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 sticky top-0 z-10' : 'mb-8 pb-4 border-b border-slate-200 dark:border-github-dark-border'}`}>
@@ -400,7 +410,7 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
 
             <div className={`${isSidebarMode ? 'flex-1 overflow-y-auto p-5 custom-scrollbar' : ''}`}>
                 <div className={`flex flex-col ${isSidebarMode ? 'gap-6' : 'md:flex-row-reverse items-center justify-center gap-8 xl:gap-16'}`}>
-                    
+
                     {/* Profile Picture */}
                     <div className={`${isSidebarMode ? 'flex flex-col items-center mb-4' : 'w-full md:w-1/4 flex flex-col items-center justify-center'}`}>
                         <div className="relative group">
@@ -437,11 +447,10 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                         value={formData.user_name}
                                         onChange={handleChange}
                                         onBlur={handleBlur}
-                                        className={`w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${
-                                            touched.user_name && errors.user_name 
-                                                ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' 
+                                        className={`w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${touched.user_name && errors.user_name
+                                                ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500'
                                                 : 'border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 focus:ring-indigo-500/20 focus:border-indigo-500'
-                                        } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
+                                            } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
                                         required
                                     />
                                     {touched.user_name && errors.user_name && (
@@ -460,11 +469,10 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                             onChange={handleChange}
                                             onBlur={handleBlur}
                                             placeholder={isEditMode ? "Leave blank to keep" : "Enter password"}
-                                            className={`w-full pl-4 pr-12 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${
-                                                touched.user_password && errors.user_password 
-                                                    ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' 
+                                            className={`w-full pl-4 pr-12 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${touched.user_password && errors.user_password
+                                                    ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500'
                                                     : 'border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 focus:ring-indigo-500/20 focus:border-indigo-500'
-                                            } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
+                                                } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
                                             required={!isEditMode}
                                         />
                                         <button
@@ -496,17 +504,24 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Email</label>
+                                    {isEmailChanged && (
+                                        <div className="p-2 bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 rounded-xl flex items-start gap-2 text-amber-800 dark:text-amber-300 animate-in fade-in duration-200">
+                                            <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                                            <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-tight">
+                                                <strong>Warning:</strong> Changing your email will update your login credentials.
+                                            </p>
+                                        </div>
+                                    )}
                                     <input
                                         type="email"
                                         name="email"
                                         value={formData.email}
                                         onChange={handleChange}
                                         onBlur={handleBlur}
-                                        className={`w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${
-                                            touched.email && errors.email 
-                                                ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' 
+                                        className={`w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${touched.email && errors.email
+                                                ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500'
                                                 : 'border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 focus:ring-indigo-500/20 focus:border-indigo-500'
-                                        } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
+                                            } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
                                     />
                                     {touched.email && errors.email && (
                                         <p className="text-[10px] text-rose-500 mt-1 ml-1 animate-in fade-in slide-in-from-top-1 duration-200">
@@ -516,17 +531,24 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Phone</label>
+                                    {isPhoneChanged && (
+                                        <div className="p-2 bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 rounded-xl flex items-start gap-2 text-amber-800 dark:text-amber-300 animate-in fade-in duration-200">
+                                            <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                                            <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-tight">
+                                                <strong>Warning:</strong> Changing your phone number will update your login credentials.
+                                            </p>
+                                        </div>
+                                    )}
                                     <input
                                         type="tel"
                                         name="phone_no"
                                         value={formData.phone_no}
                                         onChange={handleChange}
                                         onBlur={handleBlur}
-                                        className={`w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${
-                                            touched.phone_no && errors.phone_no 
-                                                ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500' 
+                                        className={`w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border ${touched.phone_no && errors.phone_no
+                                                ? 'border-rose-500 focus:ring-rose-500/20 focus:border-rose-500'
                                                 : 'border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 focus:ring-indigo-500/20 focus:border-indigo-500'
-                                        } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
+                                            } rounded-xl outline-none transition-all text-slate-800 dark:text-github-dark-text`}
                                     />
                                     {touched.phone_no && errors.phone_no && (
                                         <p className="text-[10px] text-rose-500 mt-1 ml-1 animate-in fade-in slide-in-from-top-1 duration-200">
@@ -593,9 +615,8 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                                         setIsDeptOpen(false);
                                                         setDeptSearchQuery('');
                                                     }}
-                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                        !formData.dept_id ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400'
-                                                    }`}
+                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${!formData.dept_id ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400'
+                                                        }`}
                                                 >
                                                     Select Dept
                                                 </button>
@@ -612,9 +633,8 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                                                     setIsDeptOpen(false);
                                                                     setDeptSearchQuery('');
                                                                 }}
-                                                                className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                                    isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                                }`}
+                                                                className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
+                                                                    }`}
                                                             >
                                                                 <span>{d.dept_name}</span>
                                                             </button>
@@ -673,9 +693,8 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                                         setIsDesgOpen(false);
                                                         setDesgSearchQuery('');
                                                     }}
-                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                        !formData.desg_id ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400'
-                                                    }`}
+                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${!formData.desg_id ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400'
+                                                        }`}
                                                 >
                                                     Select Role
                                                 </button>
@@ -692,9 +711,8 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                                                     setIsDesgOpen(false);
                                                                     setDesgSearchQuery('');
                                                                 }}
-                                                                className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                                    isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                                }`}
+                                                                className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
+                                                                    }`}
                                                             >
                                                                 <span>{d.desg_name}</span>
                                                             </button>
@@ -738,9 +756,8 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                                         setIsShiftOpen(false);
                                                         setShiftSearchQuery('');
                                                     }}
-                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                        !formData.shift_id ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400'
-                                                    }`}
+                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${!formData.shift_id ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-600 dark:text-slate-400'
+                                                        }`}
                                                 >
                                                     Open Shift
                                                 </button>
@@ -757,9 +774,8 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                                                     setIsShiftOpen(false);
                                                                     setShiftSearchQuery('');
                                                                 }}
-                                                                className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                                    isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                                }`}
+                                                                className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
+                                                                    }`}
                                                             >
                                                                 <span>{s.shift_name}</span>
                                                             </button>
@@ -770,66 +786,52 @@ const EmployeeFormContent = ({ userId, onSuccess, onCancel, isSidebarMode = fals
                                     )}
                                 </div>
 
-                                <div className="space-y-1.5 relative" ref={userTypeContainerRef}>
-                                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">User Type</label>
-                                    <button
-                                        type="button"
-                                        onClick={toggleUserTypeDropdown}
-                                        className="w-full pl-4 pr-10 py-2.5 text-left text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none flex items-center justify-between cursor-pointer text-slate-800 dark:text-github-dark-text"
-                                    >
-                                        <span className="truncate capitalize">
-                                            {formData.user_type}
-                                        </span>
-                                        <ChevronDown size={14} className="text-slate-400 shrink-0" />
-                                    </button>
+                                {!isSelfAdmin && formData.user_type !== 'admin' && (
+                                    <div className="space-y-1.5 relative" ref={userTypeContainerRef}>
+                                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">User Type</label>
+                                        <button
+                                            type="button"
+                                            onClick={toggleUserTypeDropdown}
+                                            className="w-full pl-4 pr-10 py-2.5 text-left text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-300 dark:border-slate-700/80 hover:border-slate-400 dark:hover:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none flex items-center justify-between cursor-pointer text-slate-800 dark:text-github-dark-text"
+                                        >
+                                            <span className="truncate capitalize">
+                                                {formData.user_type}
+                                            </span>
+                                            <ChevronDown size={14} className="text-slate-400 shrink-0" />
+                                        </button>
 
-                                    {isUserTypeOpen && (
-                                        <div className="absolute z-50 left-0 right-0 top-full mt-1 p-2 bg-white dark:bg-[#0d1117] rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-150">
-                                            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        handleChange({ target: { name: 'user_type', value: 'employee' } });
-                                                        setIsUserTypeOpen(false);
-                                                    }}
-                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                        formData.user_type === 'employee' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                    }`}
-                                                >
-                                                    Employee
-                                                </button>
-                                                {currentUser?.user_type === 'admin' && (
+                                        {isUserTypeOpen && (
+                                            <div className="absolute z-50 left-0 right-0 top-full mt-1 p-2 bg-white dark:bg-[#0d1117] rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-150">
+                                                <div className="divide-y divide-slate-100 dark:divide-slate-800">
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            handleChange({ target: { name: 'user_type', value: 'hr' } });
+                                                            handleChange({ target: { name: 'user_type', value: 'employee' } });
                                                             setIsUserTypeOpen(false);
                                                         }}
-                                                        className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                            formData.user_type === 'hr' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                        }`}
+                                                        className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${formData.user_type === 'employee' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
+                                                            }`}
                                                     >
-                                                        HR
+                                                        Employee
                                                     </button>
-                                                )}
-                                                {formData.user_type === 'admin' && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            handleChange({ target: { name: 'user_type', value: 'admin' } });
-                                                            setIsUserTypeOpen(false);
-                                                        }}
-                                                        className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                            formData.user_type === 'admin' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                        }`}
-                                                    >
-                                                        Admin
-                                                    </button>
-                                                )}
+                                                    {currentUser?.user_type === 'admin' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                handleChange({ target: { name: 'user_type', value: 'hr' } });
+                                                                setIsUserTypeOpen(false);
+                                                            }}
+                                                            className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${formData.user_type === 'hr' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
+                                                                }`}
+                                                        >
+                                                            HR
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

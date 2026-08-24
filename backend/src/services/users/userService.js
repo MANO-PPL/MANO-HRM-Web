@@ -186,6 +186,10 @@ export const updateUser = async (userId, updatesData, authInfo, profileImageBuff
 
     if (updatesData.user_type === 'admin' && targetUser.user_type !== 'admin') throw new AppError("Cannot promote user to Admin", 403);
 
+    if (targetUser.user_type === 'admin' && updatesData.user_type && updatesData.user_type !== 'admin') {
+        throw new AppError("Admins cannot change their own user type to employee or demote their role", 403);
+    }
+
     if (updatesData.email) {
         const existing = await attendanceDB("core_users").where({ email: updatesData.email }).andWhereNot({ user_id: userId }).first();
         if (existing) throw new AppError("Email is already taken", 400);

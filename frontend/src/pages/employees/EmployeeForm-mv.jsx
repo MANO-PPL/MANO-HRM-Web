@@ -14,7 +14,8 @@ import {
     Camera,
     Loader2,
     Eye,
-    EyeOff
+    EyeOff,
+    AlertTriangle
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { toast } from 'react-toastify';
@@ -108,6 +109,13 @@ const EmployeeForm = () => {
     const [errors, setErrors] = useState({});
     const [touched, setTouched] = useState({});
     const [showPassword, setShowPassword] = useState(false);
+    const [initialCredentials, setInitialCredentials] = useState({ email: '', phone_no: '' });
+
+    const isSelf = isEditMode && (String(currentUser?.user_id || currentUser?.id) === String(id));
+    const isSelfAdmin = isSelf && (currentUser?.user_type === 'admin' || formData.user_type === 'admin');
+    const isEmailChanged = isSelf && (formData.email || '').trim().toLowerCase() !== (initialCredentials.email || '').trim().toLowerCase();
+    const isPhoneChanged = isSelf && (formData.phone_no || '').replace(/[-()\s]/g, '') !== (initialCredentials.phone_no || '').replace(/[-()\s]/g, '');
+    const isCredentialsChanged = isEmailChanged || isPhoneChanged;
     
     // Custom Dropdown & Quick Add state variables
     const [isShiftOpen, setIsShiftOpen] = useState(false);
@@ -228,6 +236,10 @@ const EmployeeForm = () => {
                             user_type: u.user_type,
                             status: true,
                             profile_image_url: u.profile_image_url || ''
+                        });
+                        setInitialCredentials({
+                            email: u.email || '',
+                            phone_no: u.phone_no || ''
                         });
                     }
                 }
@@ -550,6 +562,14 @@ const EmployeeForm = () => {
                             {/* Email */}
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Email Address</label>
+                                {isEmailChanged && (
+                                    <div className="p-2.5 bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 rounded-xl flex items-start gap-2 text-amber-800 dark:text-amber-300 animate-in fade-in duration-200">
+                                        <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                                        <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-tight">
+                                            <strong>Warning:</strong> Changing your email will update your login credentials.
+                                        </p>
+                                    </div>
+                                )}
                                 <input
                                     type="email"
                                     name="email"
@@ -573,6 +593,14 @@ const EmployeeForm = () => {
                             {/* Phone */}
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Phone Number</label>
+                                {isPhoneChanged && (
+                                    <div className="p-2.5 bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 rounded-xl flex items-start gap-2 text-amber-800 dark:text-amber-300 animate-in fade-in duration-200">
+                                        <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                                        <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-tight">
+                                            <strong>Warning:</strong> Changing your phone number will update your login credentials.
+                                        </p>
+                                    </div>
+                                )}
                                 <input
                                     type="tel"
                                     name="phone_no"
@@ -831,64 +859,50 @@ const EmployeeForm = () => {
                             </div>
 
                             {/* User Type */}
-                            <div className="space-y-1.5 relative" ref={userTypeContainerRef}>
-                                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">User Type</label>
-                                <button
-                                    type="button"
-                                    onClick={toggleUserTypeDropdown}
-                                    className="w-full pl-3 pr-10 py-2.5 text-left text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-100 dark:border-github-dark-border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 flex items-center justify-between cursor-pointer text-slate-800 dark:text-github-dark-text capitalize"
-                                >
-                                    <span>{formData.user_type}</span>
-                                    <ChevronDown size={14} className="text-slate-400 shrink-0" />
-                                </button>
+                            {!isSelfAdmin && formData.user_type !== 'admin' && (
+                                <div className="space-y-1.5 relative" ref={userTypeContainerRef}>
+                                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300">User Type</label>
+                                    <button
+                                        type="button"
+                                        onClick={toggleUserTypeDropdown}
+                                        className="w-full pl-3 pr-10 py-2.5 text-left text-sm bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-100 dark:border-github-dark-border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 flex items-center justify-between cursor-pointer text-slate-800 dark:text-github-dark-text capitalize"
+                                    >
+                                        <span>{formData.user_type}</span>
+                                        <ChevronDown size={14} className="text-slate-400 shrink-0" />
+                                    </button>
 
-                                {isUserTypeOpen && (
-                                    <div className="absolute z-50 left-0 right-0 top-full mt-1 p-2 bg-white dark:bg-[#0d1117] rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-150">
-                                        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    handleChange({ target: { name: 'user_type', value: 'employee' } });
-                                                    setIsUserTypeOpen(false);
-                                                }}
-                                                className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                    formData.user_type === 'employee' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                }`}
-                                            >
-                                                Employee
-                                            </button>
-                                            {currentUser?.user_type === 'admin' && (
+                                    {isUserTypeOpen && (
+                                        <div className="absolute z-50 left-0 right-0 top-full mt-1 p-2 bg-white dark:bg-[#0d1117] rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-150">
+                                            <div className="divide-y divide-slate-100 dark:divide-slate-800">
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        handleChange({ target: { name: 'user_type', value: 'hr' } });
+                                                        handleChange({ target: { name: 'user_type', value: 'employee' } });
                                                         setIsUserTypeOpen(false);
                                                     }}
-                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                        formData.user_type === 'hr' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                    }`}
+                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${formData.user_type === 'employee' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
+                                                        }`}
                                                 >
-                                                    HR
+                                                    Employee
                                                 </button>
-                                            )}
-                                            {formData.user_type === 'admin' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        handleChange({ target: { name: 'user_type', value: 'admin' } });
-                                                        setIsUserTypeOpen(false);
-                                                    }}
-                                                    className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${
-                                                        formData.user_type === 'admin' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
-                                                    }`}
-                                                >
-                                                    Admin
-                                                </button>
-                                            )}
+                                                {currentUser?.user_type === 'admin' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            handleChange({ target: { name: 'user_type', value: 'hr' } });
+                                                            setIsUserTypeOpen(false);
+                                                        }}
+                                                        className={`w-full px-3 py-2 text-left text-xs rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center ${formData.user_type === 'hr' ? 'bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300'
+                                                            }`}
+                                                    >
+                                                        HR
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
-                            </div>
+                                    )}
+                                </div>
+                            )}
 
                         </div>
                     </div>
