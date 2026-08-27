@@ -5,7 +5,7 @@ import {
     getAllSites, createSite, updateSite, deleteSite,
     getAllLabours, createLabour, updateLabour, deleteLabour,
     getSiteAttendance, saveSiteAttendance,
-    getFinancesSummary, logLabourAdvance, getMonthlyGridAttendance,
+    getFinancesSummary, getDetailedMonthlyLedger, logLabourAdvance, getLabourAdvances, deleteLabourAdvance, getMonthlyGridAttendance,
     bulkTransferLabours, bulkCreateLabours, getLabourWorkHistory, logLabourPayout,
     downloadBulkTemplate, parseBulkLabours
 } from '../../controllers/labour/labourController.js';
@@ -54,7 +54,10 @@ router.route('/schedule')
 
 // Financial/Salary Credit Tracker Routes
 router.get('/finances/summary', getFinancesSummary);
+router.get('/finances/detailed-ledger', getDetailedMonthlyLedger);
 router.post('/finances/advance', logLabourAdvance);
+router.get('/finances/advances', getLabourAdvances);
+router.delete('/finances/advance/:id', deleteLabourAdvance);
 router.post('/finances/payout', logLabourPayout);
 
 export default router;

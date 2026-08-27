@@ -177,12 +177,26 @@ export const labourService = {
     // ==========================================
     // 4. FINANCIAL SERVICES
     // ==========================================
-    async getFinancesSummary(siteId) {
+    async getFinancesSummary(siteId, month = null) {
         try {
-            const res = await api.get(`/labour/finances/summary?site_id=${siteId}`);
+            let url = `/labour/finances/summary?site_id=${siteId}`;
+            if (month) url += `&month=${month}`;
+            const res = await api.get(url);
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || 'Failed to fetch finances summary');
+        }
+    },
+
+    async getDetailedMonthlyLedger(siteId, month = null, tillDate = null) {
+        try {
+            let url = `/labour/finances/detailed-ledger?site_id=${siteId}`;
+            if (month) url += `&month=${month}`;
+            if (tillDate) url += `&till_date=${tillDate}`;
+            const res = await api.get(url);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to fetch detailed monthly ledger');
         }
     },
 
@@ -192,6 +206,27 @@ export const labourService = {
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || 'Failed to log labour advance');
+        }
+    },
+
+    async getLabourAdvances(labourId, month = null, siteId = null) {
+        try {
+            let url = `/labour/finances/advances?labour_id=${labourId}`;
+            if (month) url += `&month=${month}`;
+            if (siteId && siteId !== 'All') url += `&site_id=${siteId}`;
+            const res = await api.get(url);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to fetch labour advances');
+        }
+    },
+
+    async deleteLabourAdvance(advanceId) {
+        try {
+            const res = await api.delete(`/labour/finances/advance/${advanceId}`);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to delete labour advance');
         }
     },
 

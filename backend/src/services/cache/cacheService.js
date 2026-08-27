@@ -109,5 +109,31 @@ export const cacheService = {
     } catch (err) {
       console.error(`[Cache] Delete error for key "${key}":`, err);
     }
+  },
+
+  /**
+   * Delete keys matching pattern
+   */
+  async delPattern(pattern) {
+    if (!cacheRedis || cacheRedis.status !== 'ready') return;
+    try {
+      if (typeof cacheRedis.nodes === 'function') {
+        const nodes = cacheRedis.nodes('master');
+        for (const node of nodes) {
+          const keys = await node.keys(pattern);
+          if (keys && keys.length > 0) {
+            await node.del(...keys);
+          }
+        }
+      } else {
+        const keys = await cacheRedis.keys(pattern);
+        if (keys && keys.length > 0) {
+          await cacheRedis.del(...keys);
+        }
+      }
+      console.log(`🧹 [Cache] Invalidated keys matching "${pattern}"`);
+    } catch (err) {
+      console.error(`[Cache] Delete pattern error for "${pattern}":`, err);
+    }
   }
 };
