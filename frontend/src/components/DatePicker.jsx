@@ -32,7 +32,26 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
     const daysInMonth = (month, year) => new Date(year, month + 1, 0).getDate();
     const firstDayOfMonth = (month, year) => new Date(year, month, 1).getDay();
 
+    const canPrevMonth = () => {
+        if (!minDate) return true;
+        const prevMonthEnd = new Date(currentYear, currentMonth, 0);
+        const y = prevMonthEnd.getFullYear();
+        const m = String(prevMonthEnd.getMonth() + 1).padStart(2, '0');
+        const d = String(prevMonthEnd.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}` >= minDate;
+    };
+
+    const canNextMonth = () => {
+        if (!maxDate) return true;
+        const nextMonthStart = new Date(currentYear, currentMonth + 1, 1);
+        const y = nextMonthStart.getFullYear();
+        const m = String(nextMonthStart.getMonth() + 1).padStart(2, '0');
+        const d = String(nextMonthStart.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}` <= maxDate;
+    };
+
     const handlePrevMonth = () => {
+        if (!canPrevMonth()) return;
         if (currentMonth === 0) {
             setCurrentMonth(11);
             setCurrentYear(currentYear - 1);
@@ -42,6 +61,7 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
     };
 
     const handleNextMonth = () => {
+        if (!canNextMonth()) return;
         if (currentMonth === 11) {
             setCurrentMonth(0);
             setCurrentYear(currentYear + 1);
@@ -132,6 +152,10 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
 
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+    const todayDate = new Date();
+    const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+    const isTodayDisabled = (minDate && todayStr < minDate) || (maxDate && todayStr > maxDate);
+
     return (
         <div className="relative" ref={containerRef}>
             {label && (
@@ -182,13 +206,23 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
                 <div className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} mt-2 w-[280px] bg-white dark:bg-github-dark-subtle rounded-xl shadow-xl border border-slate-200 dark:border-github-dark-border z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden`}>
                     {/* Header */}
                     <div className="p-3 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-subtle/50">
-                        <button onClick={handlePrevMonth} type="button" className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md text-slate-500 transition-colors">
+                        <button
+                            onClick={handlePrevMonth}
+                            disabled={!canPrevMonth()}
+                            type="button"
+                            className={`p-1 rounded-md text-slate-500 transition-colors ${!canPrevMonth() ? 'opacity-20 cursor-not-allowed' : 'hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                        >
                             <ChevronLeft size={16} />
                         </button>
                         <div className="text-sm font-bold text-slate-700 dark:text-github-dark-text">
                             {monthNames[currentMonth]} {currentYear}
                         </div>
-                        <button onClick={handleNextMonth} type="button" className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md text-slate-500 transition-colors">
+                        <button
+                            onClick={handleNextMonth}
+                            disabled={!canNextMonth()}
+                            type="button"
+                            className={`p-1 rounded-md text-slate-500 transition-colors ${!canNextMonth() ? 'opacity-20 cursor-not-allowed' : 'hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                        >
                             <ChevronRight size={16} />
                         </button>
                     </div>
@@ -223,15 +257,14 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                const today = new Date();
-                                const year = today.getFullYear();
-                                const month = String(today.getMonth() + 1).padStart(2, '0');
-                                const dayStr = String(today.getDate()).padStart(2, '0');
-                                onChange(`${year}-${month}-${dayStr}`);
-                                setIsOpen(false);
+                                if (!isTodayDisabled) {
+                                    onChange(todayStr);
+                                    setIsOpen(false);
+                                }
                             }}
+                            disabled={isTodayDisabled}
                             type="button"
-                            className="text-xs px-2 py-1 text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-bold"
+                            className={`text-xs px-2 py-1 font-bold ${isTodayDisabled ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300'}`}
                         >
                             Today
                         </button>
