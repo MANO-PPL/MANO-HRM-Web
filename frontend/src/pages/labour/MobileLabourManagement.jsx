@@ -6,12 +6,13 @@ import { toast } from 'react-toastify';
 import {
     Building, Calendar, DollarSign, Clock, Plus, Search,
     UserPlus, Edit2, Trash2, Save, AlertTriangle, User, Phone, X,
-    CheckCircle, XCircle, Upload, ChevronRight
+    CheckCircle, XCircle, Upload, ChevronRight, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MinimalSelect from '../../components/MinimalSelect';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import MonthPicker from '../../components/MonthPicker';
+import MonthlyDetailedMatrix from './components/MonthlyDetailedMatrix';
 
 const getStatusColor = (status) => {
     const s = status || '';
@@ -48,6 +49,7 @@ const MobileLabourManagement = () => {
     const [activeTab, setActiveTab] = useState('sites'); // 'sites', 'directory'
     const [selectedSite, setSelectedSite] = useState(null);
     const [subTab, setSubTab] = useState('attendance'); // 'attendance', 'grid', 'finances'
+    const [ledgerViewMode, setLedgerViewMode] = useState('matrix'); // 'matrix' or 'summary'
 
     // Data States
     const [sites, setSites] = useState([]);
@@ -65,6 +67,7 @@ const MobileLabourManagement = () => {
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
     const [attendanceRoster, setAttendanceRoster] = useState([]);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
+    const [savingRoster, setSavingRoster] = useState(false);
 
     // Monthly Grid States
     const [gridSiteId, setGridSiteId] = useState('');
@@ -88,6 +91,11 @@ const MobileLabourManagement = () => {
 
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
     const [advanceForm, setAdvanceForm] = useState({ labour_id: '', site_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
+    const [advanceHistory, setAdvanceHistory] = useState([]);
+    const [advancePayouts, setAdvancePayouts] = useState([]);
+    const [advanceHistoryLoading, setAdvanceHistoryLoading] = useState(false);
+    const [advanceHistoryView, setAdvanceHistoryView] = useState('month'); // 'month' | 'all'
+    const [advanceHistoryMonth, setAdvanceHistoryMonth] = useState(new Date().toISOString().slice(0, 7));
 
     // Phase 2 States
     const [showBulkTransferModal, setShowBulkTransferModal] = useState(false);
@@ -170,10 +178,10 @@ const MobileLabourManagement = () => {
         }
     };
 
-    const fetchFinances = async () => {
+    const fetchFinances = async (m = financeMonth) => {
         if (!selectedSite) return;
         try {
-            const res = await labourService.getFinancesSummary(selectedSite.site_id);
+            const res = await labourService.getFinancesSummary(selectedSite.site_id, m);
             setFinanceSummary(res.summary || []);
             setMonthDetails(res.monthDetails || null);
         } catch (err) {
@@ -253,10 +261,10 @@ const MobileLabourManagement = () => {
             } else if (subTab === 'grid') {
                 fetchGridData();
             } else if (subTab === 'finances') {
-                fetchFinances();
+                fetchFinances(financeMonth);
             }
         }
-    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, activeTab, selectedSite, subTab]);
+    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, financeMonth, activeTab, selectedSite, subTab]);
 
     // Bulk upload CSV/Excel handlers for Mobile
     const handleCSVUpload = async (e) => {
@@ -620,7 +628,15 @@ const MobileLabourManagement = () => {
 
     const handleStatusChange = (labourId, newStatus) => {
         setAttendanceRoster(prev =>
-            prev.map(item => item.labour_id === labourId ? { ...item, status: newStatus, overtime_hours: newStatus === 'Present' ? (item.overtime_hours || 0) : 0 } : item)
+            prev.map(item => {
+                if (item.labour_id !== labourId) return item;
+                const updatedStatus = item.status === newStatus ? '' : newStatus;
+                return {
+                    ...item,
+                    status: updatedStatus,
+                    overtime_hours: updatedStatus === 'Present' ? (item.overtime_hours || 0) : 0
+                };
+            })
         );
     };
 
@@ -631,12 +647,15 @@ const MobileLabourManagement = () => {
     };
 
     const handleSaveAttendance = async () => {
+        if (savingRoster) return;
+        setSavingRoster(true);
         try {
             await labourService.saveSiteAttendance(attendanceSiteId, attendanceDate, attendanceRoster);
             toast.success('Daily attendance checklist saved!');
-            loadAttendanceRoster();
         } catch (err) {
             toast.error(err.message || 'Failed to save attendance roster');
+        } finally {
+            setSavingRoster(false);
         }
     };
 
@@ -644,17 +663,51 @@ const MobileLabourManagement = () => {
     // FINANCES HANDLERS
     // ==========================================
 
+    const formatAdvanceDate = (dateVal) => {
+        if (!dateVal) return '';
+        const dStr = typeof dateVal === 'string' ? dateVal.split('T')[0] : new Date(dateVal).toISOString().split('T')[0];
+        const [y, m, d] = dStr.split('-');
+        const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
+        const day = dateObj.getDate();
+        const suffix = ["th", "st", "nd", "rd"][(day % 10 > 3 || Math.floor((day % 100) / 10) === 1) ? 0 : day % 10];
+        const monthName = dateObj.toLocaleString('en-US', { month: 'short' });
+        return `${day}${suffix} ${monthName} ${y}`;
+    };
+
+    const loadAdvanceHistory = async (labourId, month = advanceHistoryMonth) => {
+        if (!labourId) return;
+        setAdvanceHistoryLoading(true);
+        try {
+            const res = await labourService.getLabourAdvances(labourId, month, selectedSite ? selectedSite.site_id : null);
+            setAdvanceHistory(res.advances || []);
+            setAdvancePayouts(res.payouts || []);
+        } catch (err) {
+            console.error('Failed to load advance history', err);
+            setAdvanceHistory([]);
+            setAdvancePayouts([]);
+        } finally {
+            setAdvanceHistoryLoading(false);
+        }
+    };
+
     const handleOpenAdvance = (labour) => {
+        const initialMonth = financeMonth || new Date().toISOString().slice(0, 7);
+        setAdvanceHistoryMonth(initialMonth);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const initialDate = todayStr.startsWith(initialMonth) ? todayStr : `${initialMonth}-01`;
+
         setAdvanceForm({
             labour_id: labour.labour_id,
             site_id: selectedSite ? selectedSite.site_id.toString() : 'All',
             name: labour.name,
             amount: '',
-            date: new Date().toISOString().split('T')[0],
+            date: initialDate,
             notes: '',
             accrued_credit: labour.accrued_credit,
             net_payable: labour.net_payable
         });
+        setAdvanceHistoryView('month');
+        loadAdvanceHistory(labour.labour_id, initialMonth);
         setShowAdvanceModal(true);
     };
 
@@ -669,19 +722,36 @@ const MobileLabourManagement = () => {
                 notes: advanceForm.notes
             });
             toast.success(`Advance logged successfully for ${advanceForm.name}`);
-            setShowAdvanceModal(false);
+            setAdvanceForm(prev => ({ ...prev, amount: '', notes: '' }));
+            loadAdvanceHistory(advanceForm.labour_id, advanceHistoryView === 'month' ? financeMonth : null);
             if (selectedHistoryLabour) {
                 handleViewHistory(selectedHistoryLabour);
             } else {
-                fetchFinances();
+                fetchFinances(financeMonth);
             }
         } catch (err) {
             toast.error(err.message || 'Failed to log advance payment');
         }
     };
 
+    const handleDeleteAdvance = async (advanceId) => {
+        if (!window.confirm('Are you sure you want to delete this advance record?')) return;
+        try {
+            await labourService.deleteLabourAdvance(advanceId);
+            toast.success('Advance record deleted');
+            loadAdvanceHistory(advanceForm.labour_id, advanceHistoryView === 'month' ? financeMonth : null);
+            if (selectedHistoryLabour) {
+                handleViewHistory(selectedHistoryLabour);
+            } else {
+                fetchFinances(financeMonth);
+            }
+        } catch (err) {
+            toast.error(err.message || 'Failed to delete advance');
+        }
+    };
+
     const handleOpenPayout = (row) => {
-        const monthKey = monthDetails?.start ? monthDetails.start.slice(0, 7) : new Date().toISOString().slice(0, 7);
+        const monthKey = financeMonth || (monthDetails?.month ? monthDetails.month : new Date().toISOString().slice(0, 7));
         const isExisting = !!row.payout;
 
         setPayoutForm({
@@ -699,7 +769,7 @@ const MobileLabourManagement = () => {
             accrued_credit: row.accrued_credit,
             advances_taken: row.advances_taken,
             net_payable: row.net_payable,
-            paid_amount: isExisting ? row.payout.paid_amount : row.net_payable,
+            paid_amount: isExisting ? row.payout.paid_amount : Math.max(0, row.net_payable),
             status: isExisting ? row.payout.status : 'Paid',
             payment_date: isExisting ? row.payout.payment_date.split('T')[0] : new Date().toISOString().split('T')[0],
             notes: isExisting ? row.payout.notes || '' : ''
@@ -734,7 +804,7 @@ const MobileLabourManagement = () => {
             if (selectedHistoryLabour) {
                 handleViewHistory(selectedHistoryLabour);
             } else {
-                fetchFinances();
+                fetchFinances(financeMonth);
             }
         } catch (err) {
             toast.error(err.message || 'Failed to log monthly payout');
@@ -963,12 +1033,20 @@ const MobileLabourManagement = () => {
                                                              <Plus size={10} /> Add Worker
                                                          </button>
                                                          <button
-                                                             disabled={attendanceRoster.length === 0}
-                                                             onClick={handleSaveAttendance}
-                                                             className="px-2 py-1 bg-indigo-600 text-white rounded-lg font-bold flex items-center gap-1 shadow-sm disabled:opacity-50 text-[9px]"
-                                                         >
-                                                             <Save size={10} /> Save
-                                                         </button>
+                                                              disabled={attendanceRoster.length === 0 || savingRoster}
+                                                              onClick={handleSaveAttendance}
+                                                              className="px-2 py-1 bg-indigo-600 text-white rounded-lg font-bold flex items-center gap-1 shadow-sm disabled:opacity-50 text-[9px] min-w-[55px] justify-center"
+                                                          >
+                                                              {savingRoster ? (
+                                                                  <>
+                                                                      <Loader2 size={10} className="animate-spin" /> Saving...
+                                                                  </>
+                                                              ) : (
+                                                                  <>
+                                                                      <Save size={10} /> Save
+                                                                  </>
+                                                              )}
+                                                          </button>
                                                      </div>
                                                  </div>
 
@@ -1183,36 +1261,83 @@ const MobileLabourManagement = () => {
 
                                     {subTab === 'finances' && (
                                         <div className="space-y-3 animate-in fade-in duration-100">
-                                            <div className="bg-white dark:bg-github-dark-subtle p-3 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm flex flex-col gap-2">
-                                                 <MinimalSelect
-                                                     options={[
-                                                         { value: '', label: 'All Roles' },
-                                                         ...((() => {
-                                                             const seen = new Map();
-                                                             labours.forEach(l => {
-                                                                 const r = (l.role || '').trim();
-                                                                 if (r) {
-                                                                     const key = r.toLowerCase();
-                                                                     if (!seen.has(key)) seen.set(key, r);
-                                                                 }
-                                                             });
-                                                             return [...seen.values()].sort();
-                                                         })().map(r => ({ value: r, label: r })))
-                                                     ]}
-                                                     value={financeRoleFilter}
-                                                     onChange={(val) => setFinanceRoleFilter(val)}
-                                                     variant="input"
-                                                     size="sm"
-                                                     triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl font-medium"
-                                                 />
+                                            {/* View Mode Toggle */}
+                                            <div className="flex bg-slate-100 dark:bg-[#161b22] p-1 rounded-xl border border-slate-200 dark:border-[#30363d] gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLedgerViewMode('matrix')}
+                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center ${
+                                                        ledgerViewMode === 'matrix'
+                                                            ? 'bg-indigo-600 text-white shadow-xs'
+                                                            : 'text-slate-500 dark:text-slate-400'
+                                                    }`}
+                                                >
+                                                    📊 3-Row Daily Matrix
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLedgerViewMode('summary')}
+                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center ${
+                                                        ledgerViewMode === 'summary'
+                                                            ? 'bg-indigo-600 text-white shadow-xs'
+                                                            : 'text-slate-500 dark:text-slate-400'
+                                                    }`}
+                                                >
+                                                    📋 Summary Cards
+                                                </button>
                                             </div>
 
-                                            <div className="grid gap-3">
-                                                {financeSummary.filter(row => row.site_id === selectedSite.site_id && (!financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase())).length === 0 ? (
-                                                    <div className="p-10 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 bg-white dark:bg-github-dark-subtle">
-                                                        No finances ledger for workers matching filter.
+                                            {ledgerViewMode === 'matrix' ? (
+                                                <MonthlyDetailedMatrix
+                                                    siteId={selectedSite ? selectedSite.site_id : 'All'}
+                                                    month={financeMonth}
+                                                    siteName={selectedSite?.site_name}
+                                                    onOpenAdvance={handleOpenAdvance}
+                                                    onOpenPayout={handleOpenPayout}
+                                                />
+                                            ) : (
+                                                <>
+                                                    <div className="bg-white dark:bg-github-dark-subtle p-3 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm flex flex-col gap-2">
+                                                         <div className="flex gap-2">
+                                                             <div className="flex-1">
+                                                                 <MinimalSelect
+                                                                     options={[
+                                                                         { value: '', label: 'All Roles' },
+                                                                         ...((() => {
+                                                                             const seen = new Map();
+                                                                             labours.forEach(l => {
+                                                                                 const r = (l.role || '').trim();
+                                                                                 if (r) {
+                                                                                     const key = r.toLowerCase();
+                                                                                     if (!seen.has(key)) seen.set(key, r);
+                                                                                 }
+                                                                             });
+                                                                             return [...seen.values()].sort();
+                                                                         })().map(r => ({ value: r, label: r })))
+                                                                     ]}
+                                                                     value={financeRoleFilter}
+                                                                     onChange={(val) => setFinanceRoleFilter(val)}
+                                                                     variant="input"
+                                                                     size="sm"
+                                                                     triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl font-medium"
+                                                                 />
+                                                             </div>
+                                                             <div className="shrink-0">
+                                                                 <MonthPicker
+                                                                     value={financeMonth}
+                                                                     onChange={(val) => setFinanceMonth(val)}
+                                                                     compact={true}
+                                                                 />
+                                                             </div>
+                                                         </div>
                                                     </div>
-                                                ) : (
+
+                                                    <div className="grid gap-3">
+                                                        {financeSummary.filter(row => row.site_id === selectedSite.site_id && (!financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase())).length === 0 ? (
+                                                            <div className="p-10 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 bg-white dark:bg-github-dark-subtle">
+                                                                No finances ledger for workers matching filter.
+                                                            </div>
+                                                        ) : (
                                                     financeSummary
                                                         .filter(row => row.site_id === selectedSite.site_id && (!financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase()))
                                                         .map(row => {
@@ -1231,12 +1356,12 @@ const MobileLabourManagement = () => {
                                                                             <span className="font-bold text-slate-750 dark:text-github-dark-text">₹{row.accrued_credit}</span>
                                                                         </div>
                                                                         <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Paid</span>
-                                                                            <span className="font-bold text-slate-750 dark:text-github-dark-text">₹{row.total_paid}</span>
-                                                                        </div>
-                                                                        <div>
                                                                             <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Advances</span>
                                                                             <span className="font-bold text-amber-600 dark:text-amber-500">₹{row.advances_taken}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Paid</span>
+                                                                            <span className="font-bold text-slate-750 dark:text-github-dark-text">₹{row.total_paid}</span>
                                                                         </div>
                                                                         <div>
                                                                             <span className="block text-slate-400 dark:text-[#58a6ff] text-[8px] uppercase font-bold">Net Pay</span>
@@ -1275,8 +1400,10 @@ const MobileLabourManagement = () => {
                                                         })
                                                 )}
                                             </div>
-                                        </div>
+                                        </>
                                     )}
+                                </div>
+                            )}
                                 </div>
                             )
                         )}
@@ -1732,6 +1859,21 @@ const MobileLabourManagement = () => {
                                         size="sm"
                                         triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-bold"
                                     />
+                                    {(() => {
+                                        const targetM = financeMonth || new Date().toISOString().slice(0, 7);
+                                        const [y, m] = targetM.split('-').map(Number);
+                                        const lastDay = new Date(y, m, 0).getDate();
+                                        const minD = `${targetM}-01`;
+                                        const maxD = `${targetM}-${String(lastDay).padStart(2, '0')}`;
+                                        return (
+                                            <MobileDatePicker
+                                                value={advanceForm.date}
+                                                onChange={(val) => setAdvanceForm({ ...advanceForm, date: val })}
+                                                minDate={minD}
+                                                maxDate={maxD}
+                                            />
+                                        );
+                                    })()}
                                     <input
                                         type="number"
                                         value={advanceForm.amount}
@@ -1749,13 +1891,6 @@ const MobileLabourManagement = () => {
                                         </div>
                                     )}
                                     <input
-                                        type="date"
-                                        value={advanceForm.date}
-                                        onChange={(e) => setAdvanceForm({ ...advanceForm, date: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs focus:outline-none"
-                                        required
-                                    />
-                                    <input
                                         type="text"
                                         value={advanceForm.notes}
                                         onChange={(e) => setAdvanceForm({ ...advanceForm, notes: e.target.value })}
@@ -1763,9 +1898,231 @@ const MobileLabourManagement = () => {
                                         placeholder="Notes (e.g. medical / festival)"
                                     />
                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowAdvanceModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold">Record</button>
+                                        <button type="button" onClick={() => setShowAdvanceModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all cursor-pointer">Cancel</button>
+                                        <button type="submit" className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition-all cursor-pointer">Record</button>
                                     </div>
+
+                                    {/* ADVANCE HISTORY & SETTLEMENT CYCLE TIMELINE */}
+                                    {(() => {
+                                        const latestPayout = advancePayouts.length > 0 ? advancePayouts[0] : null;
+                                        const latestPayoutDate = latestPayout?.payment_date
+                                            ? (typeof latestPayout.payment_date === 'string' ? latestPayout.payment_date.split('T')[0] : new Date(latestPayout.payment_date).toISOString().split('T')[0])
+                                            : null;
+
+                                        const isUnsettled = (adv) => {
+                                            if (!latestPayoutDate) return true;
+                                            const advDate = typeof adv.date === 'string' ? adv.date.split('T')[0] : new Date(adv.date).toISOString().split('T')[0];
+                                            if (advDate > latestPayoutDate) return true;
+                                            if (advDate === latestPayoutDate) {
+                                                if (adv.created_at && latestPayout.created_at) {
+                                                    return new Date(adv.created_at) > new Date(latestPayout.created_at);
+                                                }
+                                                return false;
+                                            }
+                                            return false;
+                                        };
+
+                                        const activeAdvances = advanceHistory.filter(adv => isUnsettled(adv));
+                                        const activeTotalAmount = activeAdvances.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+                                        const allAdvancesTotalAmount = advanceHistory.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+
+                                        const allTimelineEvents = [
+                                            ...advanceHistory.map(adv => ({
+                                                type: 'advance',
+                                                id: `adv-${adv.advance_id}`,
+                                                advance_id: adv.advance_id,
+                                                date: typeof adv.date === 'string' ? adv.date.split('T')[0] : new Date(adv.date).toISOString().split('T')[0],
+                                                amount: Number(adv.amount),
+                                                notes: adv.notes,
+                                                site_name: adv.site_name,
+                                                created_at: adv.created_at,
+                                                is_unsettled: isUnsettled(adv)
+                                            })),
+                                            ...advancePayouts.map(p => ({
+                                                type: 'payout',
+                                                id: `payout-${p.payout_id}`,
+                                                payout_id: p.payout_id,
+                                                date: typeof p.payment_date === 'string' ? p.payment_date.split('T')[0] : new Date(p.payment_date).toISOString().split('T')[0],
+                                                amount: Number(p.paid_amount),
+                                                month: p.month,
+                                                notes: p.notes,
+                                                site_name: p.site_name,
+                                                created_at: p.created_at
+                                            }))
+                                        ].sort((a, b) => {
+                                            if (a.date !== b.date) return b.date.localeCompare(a.date);
+                                            return new Date(b.created_at || b.date) - new Date(a.created_at || a.date);
+                                        });
+
+                                        return (
+                                            <div className="pt-4 border-t border-slate-200 dark:border-[#30363d] space-y-3">
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Clock size={13} className="text-amber-500" />
+                                                        <span className="font-bold text-xs text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
+                                                            Advance Timeline
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#161b22] p-0.5 rounded-lg border border-slate-200 dark:border-[#30363d]">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setAdvanceHistoryView('month');
+                                                                loadAdvanceHistory(advanceForm.labour_id, financeMonth);
+                                                            }}
+                                                            className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                                                                advanceHistoryView === 'month'
+                                                                    ? 'bg-amber-500 text-white shadow-xs'
+                                                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                                                            }`}
+                                                        >
+                                                            This Month ({advanceHistory.length})
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setAdvanceHistoryView('all');
+                                                                loadAdvanceHistory(advanceForm.labour_id, null);
+                                                            }}
+                                                            className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                                                                advanceHistoryView === 'all'
+                                                                    ? 'bg-amber-500 text-white shadow-xs'
+                                                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                                                            }`}
+                                                        >
+                                                            All Time
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Summary Badge */}
+                                                <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40 p-2.5 rounded-xl text-[10px] flex justify-between items-center">
+                                                    <div>
+                                                        <span className="text-amber-900 dark:text-amber-300 font-bold block">
+                                                            {advanceHistoryView === 'month' ? `Advances in ${getMonthNameAndYear(financeMonth + '-01')}` : 'All-Time Advances Log'}
+                                                        </span>
+                                                        <span className="text-[9px] text-amber-700/80 dark:text-amber-400/70 block mt-0.5">
+                                                            {advanceHistoryView === 'month'
+                                                                ? `Logged advances and payouts for ${getMonthNameAndYear(financeMonth + '-01')}`
+                                                                : `${advancePayouts.length} past settlement${advancePayouts.length !== 1 ? 's' : ''} recorded across all months`}
+                                                        </span>
+                                                    </div>
+                                                    <span className="font-extrabold text-amber-600 dark:text-amber-400 text-xs shrink-0 ml-2">
+                                                        {`${advanceHistory.length} • ₹${allAdvancesTotalAmount.toLocaleString()}`}
+                                                    </span>
+                                                </div>
+
+                                                {advanceHistoryLoading ? (
+                                                    <div className="flex justify-center py-4">
+                                                        <Clock className="animate-spin text-amber-500" size={18} />
+                                                    </div>
+                                                ) : allTimelineEvents.length === 0 ? (
+                                                    <div className="text-center py-4 border border-dashed border-slate-200 dark:border-[#30363d] rounded-xl bg-slate-50/50 dark:bg-[#161b22]/30 p-3">
+                                                        <DollarSign size={20} className="mx-auto text-slate-400 dark:text-slate-600 mb-1 opacity-50" />
+                                                        <p className="text-slate-500 dark:text-github-dark-muted text-[10px] font-semibold">
+                                                            {advanceHistoryView === 'month'
+                                                                ? `No advances or settlements recorded in ${getMonthNameAndYear(financeMonth + '-01')}`
+                                                                : 'No advances or payments recorded'}
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="relative pl-5 space-y-2.5 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-amber-300 dark:before:bg-amber-900/60">
+                                                            {allTimelineEvents.map((evt, idx) => (
+                                                                <div key={evt.id || idx} className="relative group">
+                                                                    {evt.type === 'payout' ? (
+                                                                        <>
+                                                                            {/* Settlement Milestone */}
+                                                                            <div className="absolute -left-5 top-2.5 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-white dark:ring-[#0d1117]" />
+                                                                            <div className="bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-900/50 rounded-xl p-2.5 shadow-xs">
+                                                                                <div className="flex justify-between items-start">
+                                                                                    <div>
+                                                                                        <div className="flex items-center gap-1.5">
+                                                                                            <span className="font-extrabold text-xs text-emerald-700 dark:text-emerald-400">
+                                                                                                💰 Salary Settled: ₹{evt.amount.toLocaleString()} Paid
+                                                                                            </span>
+                                                                                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[7px] font-extrabold uppercase">
+                                                                                                Settled
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <div className="text-[9px] text-slate-500 dark:text-github-dark-muted font-medium mt-0.5">
+                                                                                            Paid on {formatAdvanceDate(evt.date)}
+                                                                                        </div>
+                                                                                        {evt.site_name && (
+                                                                                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white/80 dark:bg-[#161b22] text-slate-600 dark:text-slate-300 text-[8px] font-bold border border-emerald-200/50 dark:border-emerald-900/40">
+                                                                                                📍 {evt.site_name}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                                {evt.notes && (
+                                                                                    <p className="mt-1.5 text-[9px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+                                                                                        📝 {evt.notes}
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            {/* Advance Event */}
+                                                                            <div className={`absolute -left-5 top-2 w-2.5 h-2.5 rounded-full ring-4 ring-white dark:ring-[#0d1117] ${
+                                                                                evt.is_unsettled ? 'bg-amber-500' : 'bg-slate-400 dark:bg-slate-600'
+                                                                            }`} />
+                                                                            <div className={`border rounded-xl p-2.5 transition-all shadow-xs ${
+                                                                                evt.is_unsettled
+                                                                                    ? 'bg-slate-50 dark:bg-[#161b22] border-slate-200/80 dark:border-github-dark-border/80'
+                                                                                    : 'bg-slate-50/40 dark:bg-[#161b22]/40 border-slate-200/40 dark:border-github-dark-border/40 opacity-80'
+                                                                            }`}>
+                                                                                <div className="flex justify-between items-start">
+                                                                                    <div>
+                                                                                        <div className="flex items-center gap-1.5">
+                                                                                            <span className={`font-extrabold text-xs ${
+                                                                                                evt.is_unsettled ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-400'
+                                                                                            }`}>
+                                                                                                ₹{evt.amount.toLocaleString()}
+                                                                                            </span>
+                                                                                            <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-semibold">
+                                                                                                on {formatAdvanceDate(evt.date)}
+                                                                                            </span>
+                                                                                            <span className={`px-1.5 py-0.2 rounded text-[7px] font-extrabold uppercase ${
+                                                                                                evt.is_unsettled
+                                                                                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                                                                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                                                                                            }`}>
+                                                                                                {evt.is_unsettled ? 'Unsettled' : 'Settled in Payout'}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        {evt.site_name && (
+                                                                                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-[8px] font-bold">
+                                                                                                📍 {evt.site_name}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    {evt.is_unsettled && (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            title="Delete this advance"
+                                                                                            onClick={() => handleDeleteAdvance(evt.advance_id)}
+                                                                                            className="p-1 text-rose-400 hover:text-rose-500 active:bg-rose-50 dark:active:bg-rose-950/40 rounded transition-all cursor-pointer"
+                                                                                        >
+                                                                                            <Trash2 size={12} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                                {evt.notes && (
+                                                                                    <p className="mt-1.5 text-[10px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-slate-100 dark:border-[#30363d]/50 font-normal">
+                                                                                        💬 {evt.notes}
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                 </form>
                                 </motion.div>
                             </div>
