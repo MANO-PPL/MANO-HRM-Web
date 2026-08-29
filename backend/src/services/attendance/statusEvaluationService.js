@@ -14,6 +14,12 @@ import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
  */
 
 //  Helpers─────────────────────────────────────────────────────────────
+export function safeParseJSON(val) {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    try { return JSON.parse(val); } catch { return {}; }
+}
+
 /**
  * Calculate duration in hours between two timestamps.
  * @param {string|Date} start
@@ -22,12 +28,32 @@ import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
  */
 export function calculateDurationHours(start, end) {
     if (!start || !end) return 0;
-    const diff = new Date(end) - new Date(start);
+    const parse = (v) => {
+        if (!v) return 0;
+        if (v instanceof Date) return v.getTime();
+        const str = String(v).trim();
+        if (!str.includes('Z') && !str.includes('+')) {
+            const normalized = str.includes('T') ? `${str}Z` : `${str.replace(' ', 'T')}Z`;
+            const d = new Date(normalized);
+            if (!isNaN(d.getTime())) return d.getTime();
+        }
+        const d = new Date(str);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+    };
+    const s = parse(start);
+    const e = parse(end);
+    if (!s || !e) return 0;
+    const diff = e - s;
     return parseFloat((diff / (1000 * 60 * 60)).toFixed(2));
 }
 
-export function getLocalNow(timezone = 'UTC') {
-    const now = new Date();
+export function getLocalNow(timezone = 'Asia/Kolkata') {
+    const tz = timezone || 'Asia/Kolkata';
+    return getLocalTimeString(new Date(), tz);
+}
+
+export function getLocalTimeString(date = new Date(), timezone = 'UTC') {
+    const d = date instanceof Date ? date : new Date(date);
     try {
         const formatter = new Intl.DateTimeFormat('en-US', {
             timeZone: timezone,
@@ -39,7 +65,7 @@ export function getLocalNow(timezone = 'UTC') {
             second: '2-digit',
             hour12: false
         });
-        const parts = formatter.formatToParts(now);
+        const parts = formatter.formatToParts(d);
         const year = parts.find(p => p.type === 'year').value;
         const month = parts.find(p => p.type === 'month').value;
         const day = parts.find(p => p.type === 'day').value;
@@ -47,9 +73,9 @@ export function getLocalNow(timezone = 'UTC') {
         const minute = parts.find(p => p.type === 'minute').value;
         const second = parts.find(p => p.type === 'second').value;
         if (hour === '24') hour = '00';
-        return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`);
+        return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
     } catch (e) {
-        return now;
+        return d.toISOString().replace('Z', '');
     }
 }
 
@@ -437,10 +463,9 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
             // National holidays take precedence over week-off (e.g. holiday on a Sunday)
             status = 'HOLIDAY';
         } else if (dayType === 'week_off') {
-            const isSunday = new Date(dateStr).getDay() === 0;
-            status = isSunday ? 'HOLIDAY' : 'WEEK_OFF';
+            status = 'WEEK_OFF';
         } else if (leave) {
-            status = 'LEAVE';
+            status = 'ON_LEAVE';
         } else if (dateStr > todayStr) {
             // Future working day – no status yet
             status = null;
@@ -455,7 +480,10 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
     // frontend receives the stored local time without UTC re-interpretation.
     const toPlainStr = (v) => {
         if (!v) return null;
-        if (v instanceof Date) return v.toISOString().replace('T', ' ').split('.')[0];
+        if (v instanceof Date) {
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${v.getUTCFullYear()}-${pad(v.getUTCMonth() + 1)}-${pad(v.getUTCDate())} ${pad(v.getUTCHours())}:${pad(v.getUTCMinutes())}:${pad(v.getUTCSeconds())}`;
+        }
         return String(v).split('.')[0];
     };
 
@@ -578,18 +606,34 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
 
     // 2. Fetch all supporting data in parallel
     const userIds = users.map(u => u.user_id);
-    const [records, dailyRecords, holidays, leaves] = await Promise.all([
+    const [records, punchRows, dailyRecords, holidays, leaves] = await Promise.all([
         attendanceDB('attn_records')
             .whereIn('user_id', userIds)
             .whereRaw('DATE(time_in) >= ?', [date_from])
             .whereRaw('DATE(time_in) <= ?', [date_to])
             .modify(qb => { if (user_id) qb.where('user_id', user_id); })
             .orderBy('time_in', 'asc'),
-        attendanceDB('attn_daily_summary')
+        attendanceDB('attn_punches')
+            .whereIn('user_id', userIds)
+            .whereNull('deleted_at')
+            .whereIn('punch_type', ['in', 'out'])
+            .whereRaw('DATE(punch_time) >= ?', [date_from])
+            .whereRaw('DATE(punch_time) <= DATE_ADD(?, INTERVAL 1 DAY)', [date_to])
+            .modify(qb => { if (user_id) qb.where('user_id', user_id); })
+            .orderBy('punch_time', 'asc')
+            .orderBy('id', 'asc')
+            .catch(() => []),
+        attendanceDB('attn_daily_summary_v2')
             .whereIn('user_id', userIds)
             .where('date', '>=', date_from)
             .where('date', '<=', date_to)
-            .modify(qb => { if (user_id) qb.where('user_id', user_id); }),
+            .modify(qb => { if (user_id) qb.where('user_id', user_id); })
+            .catch(() => attendanceDB('attn_daily_summary')
+                .whereIn('user_id', userIds)
+                .where('date', '>=', date_from)
+                .where('date', '<=', date_to)
+                .modify(qb => { if (user_id) qb.where('user_id', user_id); })
+            ),
         attendanceDB('org_holidays')
             .where('org_id', org_id)
             .where('holiday_date', '>=', date_from)
@@ -613,6 +657,95 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
         const k = `${r.user_id}_${ds}`;
         if (!recordsByUserDate[k]) recordsByUserDate[k] = [];
         recordsByUserDate[k].push(r);
+    }
+
+    // Build sessions from attn_punches and override if punches exist
+    if (punchRows && punchRows.length > 0) {
+        const punchesByUser = {};
+        for (const p of punchRows) {
+            if (!punchesByUser[p.user_id]) punchesByUser[p.user_id] = [];
+            punchesByUser[p.user_id].push(p);
+        }
+
+        for (const uid of Object.keys(punchesByUser)) {
+            const uPunches = punchesByUser[uid];
+            let i = 0;
+            while (i < uPunches.length) {
+                const inP = uPunches[i];
+                if (inP.punch_type === 'in') {
+                    const ds = normalizeDate(inP.punch_time);
+                    let outP = null;
+                    if (i + 1 < uPunches.length && uPunches[i + 1].punch_type === 'out') {
+                        outP = uPunches[i + 1];
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+
+                    const inLoc = safeParseJSON(inP.location);
+                    const inMeta = safeParseJSON(inP.metadata);
+                    const outLoc = outP ? safeParseJSON(outP.location) : {};
+                    const outMeta = outP ? safeParseJSON(outP.metadata) : {};
+
+                    const punchDate = new Date(inP.punch_time);
+                    const today = new Date();
+                    const isPastDay = punchDate.toDateString() !== today.toDateString() && punchDate < today;
+
+                    let sessionStatus = "PRESENT";
+                    if (inP.status === "closed" || outP) {
+                        sessionStatus = "CLOSED";
+                    } else if (inP.status === "missed_punch" || isPastDay) {
+                        sessionStatus = "MISSED_PUNCH";
+                    }
+
+                    const toPlainIso = (v) => {
+                        if (!v) return null;
+                        if (typeof v === 'string') return v.includes('T') ? v.split('.')[0] : v.replace(' ', 'T').split('.')[0];
+                        if (v instanceof Date) {
+                            const pad = (n) => String(n).padStart(2, '0');
+                            return `${v.getUTCFullYear()}-${pad(v.getUTCMonth() + 1)}-${pad(v.getUTCDate())}T${pad(v.getUTCHours())}:${pad(v.getUTCMinutes())}:${pad(v.getUTCSeconds())}`;
+                        }
+                        return String(v);
+                    };
+
+                    const timeInLocal = toPlainIso(inP.punch_time);
+                    const timeOutLocal = outP?.punch_time ? toPlainIso(outP.punch_time) : null;
+
+                    const session = {
+                        attendance_id: inP.id,
+                        user_id: inP.user_id,
+                        time_in: timeInLocal,
+                        time_out: timeOutLocal,
+                        time_in_lat: inLoc.lat || null,
+                        time_in_lng: inLoc.lng || null,
+                        time_in_address: inLoc.address || null,
+                        time_out_lat: outLoc.lat || null,
+                        time_out_lng: outLoc.lng || null,
+                        time_out_address: outLoc.address || null,
+                        time_in_image_key: inMeta.image_key || null,
+                        time_out_image_key: outMeta.image_key || null,
+                        late_minutes: inMeta.late_minutes || 0,
+                        late_reason: inMeta.late_reason || null,
+                        status: sessionStatus,
+                        metadata: JSON.stringify({
+                            time_in: { timezone: inMeta.timezone || 'Asia/Kolkata' },
+                            time_out: { timezone: outMeta?.timezone || 'Asia/Kolkata' }
+                        }),
+                        created_at: inP.created_at,
+                        updated_at: outP ? outP.created_at : inP.created_at
+                    };
+
+                    const k = `${uid}_${ds}`;
+                    if (!recordsByUserDate[k] || (recordsByUserDate[k].length > 0 && !recordsByUserDate[k][0]._fromPunches)) {
+                        recordsByUserDate[k] = [];
+                    }
+                    session._fromPunches = true;
+                    recordsByUserDate[k].push(session);
+                } else {
+                    i += 1;
+                }
+            }
+        }
     }
 
     const dailyByUserDate = {};

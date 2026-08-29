@@ -28,12 +28,12 @@ router.post("/timeout",
   AttendanceController.timeOut
 );
 
-// ========== SIMULATION ENDPOINTS (DEVELOPMENT ONLY) ==========
 
-/**
- * POST /attendance/simulate/timein
- * Simulate check-in with custom timestamp
- */
+router.post("/ping",
+  authenticateJWT,
+  AttendanceController.pingLocation
+);
+
 router.post("/simulate/timein", 
   authenticateJWT, 
   upload.single("image"),

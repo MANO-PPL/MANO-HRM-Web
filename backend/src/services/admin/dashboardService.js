@@ -75,21 +75,42 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
     // Execute all queries in parallel
     const [
         totalEmployeesRes,
-        presentTodayRes,
-        lateCheckinsRes,
-        periodPresentRes,
-        prevPeriodPresentRes,
-        periodLateRes,
-        prevPeriodLateRes,
+        todaySummary,
+        periodSummary,
+        prevPeriodSummary,
         activities
     ] = await Promise.all([
         attendanceDB("core_users").where("org_id", org_id).where("user_type", "employee").count("user_id as count").first(),
-        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [today]).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [today]).where("late_minutes", ">", 0).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [currentStartStr, currentEndStr]).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [prevStartStr, prevEndStr]).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ? AND late_minutes > 0", [currentStartStr, currentEndStr]).countDistinct("user_id as count").first(),
-        attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ? AND late_minutes > 0", [prevStartStr, prevEndStr]).countDistinct("user_id as count").first(),
+        attendanceDB("attn_daily_summary")
+            .whereIn("user_id", orgUserIds)
+            .where("date", today)
+            .whereIn("status", ["PRESENT", "HALF_DAY"])
+            .select(
+                attendanceDB.raw("COUNT(DISTINCT user_id) as present_count"),
+                attendanceDB.raw("COUNT(DISTINCT CASE WHEN late_minutes > 0 THEN user_id END) as late_count")
+            )
+            .first()
+            .catch(() => ({ present_count: 0, late_count: 0 })),
+        attendanceDB("attn_daily_summary")
+            .whereIn("user_id", orgUserIds)
+            .whereRaw("date >= ? AND date <= ?", [currentStartStr, currentEndStr])
+            .whereIn("status", ["PRESENT", "HALF_DAY"])
+            .select(
+                attendanceDB.raw("COUNT(user_id) as present_count"),
+                attendanceDB.raw("COUNT(CASE WHEN late_minutes > 0 THEN user_id END) as late_count")
+            )
+            .first()
+            .catch(() => ({ present_count: 0, late_count: 0 })),
+        attendanceDB("attn_daily_summary")
+            .whereIn("user_id", orgUserIds)
+            .whereRaw("date >= ? AND date <= ?", [prevStartStr, prevEndStr])
+            .whereIn("status", ["PRESENT", "HALF_DAY"])
+            .select(
+                attendanceDB.raw("COUNT(user_id) as present_count"),
+                attendanceDB.raw("COUNT(CASE WHEN late_minutes > 0 THEN user_id END) as late_count")
+            )
+            .first()
+            .catch(() => ({ present_count: 0, late_count: 0 })),
         attendanceDB("sys_activity_logs as al")
             .leftJoin("core_users as u", "al.user_id", "u.user_id")
             .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
@@ -101,15 +122,15 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
             .limit(20)
     ]);
 
-    const totalEmployees = totalEmployeesRes.count || 0;
-    const presentToday = presentTodayRes.count || 0;
-    const lateCheckins = lateCheckinsRes.count || 0;
+    const totalEmployees = totalEmployeesRes?.count || 0;
+    const presentToday = Number(todaySummary?.present_count || 0);
+    const lateCheckins = Number(todaySummary?.late_count || 0);
     const absentToday = Math.max(0, totalEmployees - presentToday);
 
-    const periodPresentAvg = (periodPresentRes.count || 0) / daysInPeriod;
-    const prevPeriodPresentAvg = (prevPeriodPresentRes.count || 0) / daysInPeriod;
-    const periodLateAvg = (periodLateRes.count || 0) / daysInPeriod;
-    const prevPeriodLateAvg = (prevPeriodLateRes.count || 0) / daysInPeriod;
+    const periodPresentAvg = Number(periodSummary?.present_count || 0) / daysInPeriod;
+    const prevPeriodPresentAvg = Number(prevPeriodSummary?.present_count || 0) / daysInPeriod;
+    const periodLateAvg = Number(periodSummary?.late_count || 0) / daysInPeriod;
+    const prevPeriodLateAvg = Number(prevPeriodSummary?.late_count || 0) / daysInPeriod;
 
     const periodAbsentAvg = Math.max(0, totalEmployees - periodPresentAvg);
     const prevPeriodAbsentAvg = Math.max(0, totalEmployees - prevPeriodPresentAvg);
@@ -139,12 +160,30 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
     const chartData = await Promise.all(
         chartDays.map(async (dayStr) => {
             const dayName = new Date(dayStr).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
-            const [pRes, lRes] = await Promise.all([
-                attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [dayStr]).countDistinct("user_id as count").first(),
-                attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [dayStr]).where("late_minutes", ">", 0).countDistinct("user_id as count").first()
-            ]);
-            const present = Number(pRes.count || 0);
-            const late = Number(lRes.count || 0);
+            let dayRes = await attendanceDB("attn_daily_summary")
+                .whereIn("user_id", orgUserIds)
+                .where("date", dayStr)
+                .whereIn("status", ["PRESENT", "HALF_DAY"])
+                .select(
+                    attendanceDB.raw("COUNT(DISTINCT user_id) as present_count"),
+                    attendanceDB.raw("COUNT(DISTINCT CASE WHEN late_minutes > 0 THEN user_id END) as late_count")
+                )
+                .first()
+                .catch(() => null);
+
+            let present = Number(dayRes?.present_count || 0);
+            let late = Number(dayRes?.late_count || 0);
+
+            if (present === 0) {
+                // Check legacy table
+                const [pRes, lRes] = await Promise.all([
+                    attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [dayStr]).countDistinct("user_id as count").first().catch(() => ({})),
+                    attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [dayStr]).where("late_minutes", ">", 0).countDistinct("user_id as count").first().catch(() => ({}))
+                ]);
+                present = Number(pRes?.count || 0);
+                late = Number(lRes?.count || 0);
+            }
+
             const absent = Math.max(0, Number(totalEmployees) - present);
             return { name: dayName, present, late, absent };
         })

@@ -229,6 +229,19 @@ const MobileAttendancePage = () => {
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [previewImage, setPreviewImage] = useState(null);
+    const [expandedDays, setExpandedDays] = useState(new Set());
+
+    const toggleDayExpansion = (dayKey) => {
+        setExpandedDays(prev => {
+            const next = new Set(prev);
+            if (next.has(dayKey)) {
+                next.delete(dayKey);
+            } else {
+                next.add(dayKey);
+            }
+            return next;
+        });
+    };
 
     const [correctionForm, setCorrectionForm] = useState({
         date: new Date().toISOString().split('T')[0],
@@ -1132,40 +1145,25 @@ const MobileAttendancePage = () => {
         }
     };
 
-    const formatTime = (isoString, sessionRecord = null, isOut = false) => {
-        if (!isoString) return null;
-        
-        let tz = null;
-        if (sessionRecord?.metadata) {
-            try {
-                const meta = typeof sessionRecord.metadata === 'string' ? JSON.parse(sessionRecord.metadata) : sessionRecord.metadata;
-                tz = isOut ? meta?.time_out?.timezone : meta?.time_in?.timezone;
-            } catch (e) {}
-        }
-        
-        if (tz === 'N/A' || tz === 'Simulated Timezone' || !tz) {
-            tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        }
-
+    const formatTime = (timeVal, sessionRecord = null, isOut = false) => {
+        if (!timeVal) return null;
         try {
-            const timeStr = new Date(isoString).toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: true,
-                timeZone: tz
-            });
-            
-            const abbrFormatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: tz,
-                timeZoneName: 'short'
-            });
-            const parts = abbrFormatter.formatToParts(new Date(isoString));
-            const tzPart = parts.find(p => p.type === 'timeZoneName');
-            const abbr = tzPart ? tzPart.value : '';
-            
-            return abbr ? `${timeStr} (${abbr})` : timeStr;
+            const str = String(timeVal).trim();
+            const parts = str.split(/[- :T.]/);
+            if (parts.length >= 5) {
+                let hour = parseInt(parts[3], 10);
+                const minute = String(parts[4]).padStart(2, '0');
+                const ampm = hour >= 12 ? 'PM' : 'AM';
+                hour = hour % 12;
+                if (hour === 0) hour = 12;
+                const pad = (n) => String(n).padStart(2, '0');
+                return `${pad(hour)}:${minute} ${ampm}`;
+            }
+
+            const d = new Date(str);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
         } catch (e) {
-            return new Date(isoString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            return String(timeVal);
         }
     };
 
@@ -1283,6 +1281,89 @@ const MobileAttendancePage = () => {
         if (correctionFilter === 'pending') return status === 'PENDING';
         return status !== 'PENDING';
     });
+
+    // --- DAY-LEVEL HISTORY AGGREGATION ---
+    const groupedHistoryDays = useMemo(() => {
+        if (!monthlySessions || monthlySessions.length === 0) return [];
+
+        const daysMap = {};
+        monthlySessions.forEach(session => {
+            const timeIn = session.time_in || session.check_in;
+            if (!timeIn) return;
+            const d = new Date(timeIn);
+            if (isNaN(d.getTime())) return;
+
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const dateKey = `${yyyy}-${mm}-${dd}`;
+
+            if (!daysMap[dateKey]) {
+                daysMap[dateKey] = {
+                    dateKey,
+                    date: d,
+                    sessions: []
+                };
+            }
+            daysMap[dateKey].sessions.push(session);
+        });
+
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        const processed = Object.values(daysMap).map(day => {
+            day.sessions.sort((a, b) => new Date(a.time_in || a.check_in) - new Date(b.time_in || b.check_in));
+
+            const firstSession = day.sessions[0];
+            const lastSession = day.sessions[day.sessions.length - 1];
+
+            const firstIn = firstSession?.time_in || firstSession?.check_in;
+            const lastOut = lastSession?.time_out || lastSession?.check_out || null;
+            const hasOpenSession = !lastOut;
+            const isPastDay = day.dateKey < todayStr;
+
+            let totalDayHours = 0;
+            day.sessions.forEach(s => {
+                if (s.total_hours && !isNaN(Number(s.total_hours))) {
+                    totalDayHours += Number(s.total_hours);
+                } else if (s.time_in && s.time_out) {
+                    const diff = (new Date(s.time_out) - new Date(s.time_in)) / (1000 * 60 * 60);
+                    if (diff > 0) totalDayHours += diff;
+                }
+            });
+
+            let dayStatus = 'PRESENT';
+            const sessionStatuses = day.sessions.map(s => (s.status || '').toUpperCase());
+
+            if (sessionStatuses.includes('MISSED_PUNCH') || (isPastDay && hasOpenSession)) {
+                dayStatus = 'MISSED_PUNCH';
+            } else if (sessionStatuses.includes('OVERTIME')) {
+                dayStatus = 'OVERTIME';
+            } else if (sessionStatuses.includes('LATE')) {
+                dayStatus = 'LATE';
+            } else if (sessionStatuses.includes('HALF_DAY')) {
+                dayStatus = 'HALF_DAY';
+            } else if (sessionStatuses.includes('ABSENT')) {
+                dayStatus = 'ABSENT';
+            } else if (sessionStatuses.includes('CLOSED') || sessionStatuses.includes('PRESENT')) {
+                dayStatus = 'PRESENT';
+            }
+
+            return {
+                ...day,
+                firstIn,
+                lastOut,
+                hasOpenSession,
+                isPastDay,
+                totalDayHours: parseFloat(totalDayHours.toFixed(2)),
+                dayStatus,
+                firstSession,
+                lastSession
+            };
+        });
+
+        processed.sort((a, b) => b.date - a.date);
+        return processed;
+    }, [monthlySessions]);
 
     const hasActiveSession = dailySessions.some(s => !s.time_out);
 
@@ -1717,68 +1798,152 @@ const MobileAttendancePage = () => {
                                     >
                                         {subTab === 'history' && (
                                             <div className="space-y-4">
-                                        {monthlySessions.length > 0 ? monthlySessions.map((s, idx) => (
-                                            <div key={s.acr_id || s.id || s.time_in || s.date} className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-github-dark-border shadow-sm space-y-4">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="bg-indigo-50 dark:bg-indigo-900/20 w-12 h-14 rounded-2xl flex flex-col items-center justify-center text-indigo-700 dark:text-indigo-400 font-black shrink-0 border border-indigo-100/50">
-                                                        <span className="text-[10px] uppercase opacity-60 leading-none mb-0.5">{new Date(s.time_in || s.date).toLocaleDateString('en-US', { month: 'short' })}</span>
-                                                        <span className="text-xl leading-none">{new Date(s.time_in || s.date).getDate()}</span>
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h4 className="font-black text-sm text-slate-800 dark:text-github-dark-text">
-                                                            {new Date(s.time_in || s.date).toLocaleDateString('en-US', { weekday: 'long' })}
-                                                        </h4>
-                                                        <div className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase mt-0.5">
-                                                            <MapPin size={10} /> {s.location || "Office"}
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <span className="block text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1 rounded-full leading-none">
-                                                            {s.total_hours || calculateHours(s.time_in, s.time_out)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-50 dark:border-github-dark-border/10">
-                                                    <div className="flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-border/20 p-2 rounded-2xl">
-                                                        <div>
-                                                            <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">In</span>
-                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{formatTime(s.time_in, s, false)}</span>
-                                                        </div>
-                                                        {s.time_in_image && (
-                                                            <button onClick={() => setPreviewImage(s.time_in_image)} className="w-8 h-8 rounded-lg border border-white dark:border-github-dark-border overflow-hidden active:scale-90 transition-all shadow-sm">
-                                                                <img src={s.time_in_image} alt="In" className="w-full h-full object-contain" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-border/20 p-2 rounded-2xl">
-                                                        <div>
-                                                            <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Out</span>
-                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{s.time_out ? formatTime(s.time_out, s, true) : '---'}</span>
-                                                        </div>
-                                                        {s.time_out_image && (
-                                                            <button onClick={() => setPreviewImage(s.time_out_image)} className="w-8 h-8 rounded-lg border border-white dark:border-github-dark-border overflow-hidden active:scale-90 transition-all shadow-sm">
-                                                                <img src={s.time_out_image} alt="Out" className="w-full h-full object-contain" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                                {groupedHistoryDays.length > 0 ? groupedHistoryDays.map((day) => {
+                                                    const isExpanded = expandedDays.has(day.dateKey);
+                                                    const totalHoursDisplay = day.totalDayHours > 0 
+                                                        ? `${day.totalDayHours} hrs` 
+                                                        : (day.hasOpenSession ? '-' : '0 hrs');
 
-                                                {s.late_minutes > 0 && s.late_reason && (
-                                                    <div className="p-2.5 bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/10 rounded-xl flex items-start gap-2">
-                                                        <AlertCircle size={12} className="text-amber-600 shrink-0 mt-0.5" />
-                                                        <p className="text-[9px] font-bold text-amber-700 dark:text-amber-400 leading-tight">
-                                                            <span className="text-amber-600/60 uppercase text-[7px] block mb-0.5">Late Reason</span>
-                                                            {s.late_reason}
-                                                        </p>
-                                                    </div>
+                                                    return (
+                                                        <div 
+                                                            key={day.dateKey} 
+                                                            className={`bg-white dark:bg-github-dark-subtle rounded-[2rem] border transition-all duration-200 shadow-sm overflow-hidden ${
+                                                                isExpanded 
+                                                                    ? 'border-indigo-300 dark:border-indigo-700/60 ring-1 ring-indigo-500/20' 
+                                                                    : 'border-slate-100 dark:border-github-dark-border'
+                                                            }`}
+                                                        >
+                                                            {/* Day Header Summary */}
+                                                            <div 
+                                                                onClick={() => toggleDayExpansion(day.dateKey)}
+                                                                className="p-5 space-y-4 cursor-pointer select-none"
+                                                            >
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="bg-indigo-50 dark:bg-indigo-900/20 w-12 h-14 rounded-2xl flex flex-col items-center justify-center text-indigo-700 dark:text-indigo-400 font-black shrink-0 border border-indigo-100/50">
+                                                                        <span className="text-[10px] uppercase opacity-60 leading-none mb-0.5">{day.date.toLocaleDateString('en-US', { month: 'short' })}</span>
+                                                                        <span className="text-xl leading-none">{day.date.getDate()}</span>
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <h4 className="font-black text-sm text-slate-800 dark:text-github-dark-text">
+                                                                                {day.date.toLocaleDateString('en-US', { weekday: 'long' })}
+                                                                            </h4>
+                                                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                                                                                day.dayStatus === 'MISSED_PUNCH' ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-200/50' :
+                                                                                day.dayStatus === 'LATE' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200/50' :
+                                                                                day.dayStatus === 'OVERTIME' ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-200/50' :
+                                                                                'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50'
+                                                                            }`}>
+                                                                                {day.dayStatus === 'MISSED_PUNCH' ? 'Missed Punch' : day.dayStatus}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mt-1">
+                                                                            <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}</span>
+                                                                            <span>•</span>
+                                                                            <span className="truncate max-w-[140px]" title={day.sessions[0]?.time_in_address || 'Office'}>
+                                                                                {day.sessions[0]?.time_in_address || 'Office'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1 rounded-full leading-none">
+                                                                            {totalHoursDisplay}
+                                                                        </span>
+                                                                        <div className={`p-1 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-indigo-600' : ''}`}>
+                                                                            <ChevronDown size={14} />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {/* First / Last Punch Summary Bar */}
+                                                                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-50 dark:border-github-dark-border/10">
+                                                                    <div className="bg-slate-50/50 dark:bg-github-dark-border/20 p-2.5 rounded-2xl">
+                                                                        <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">First In</span>
+                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{formatTime(day.firstIn, day.firstSession, false)}</span>
+                                                                    </div>
+                                                                    <div className="bg-slate-50/50 dark:bg-github-dark-border/20 p-2.5 rounded-2xl">
+                                                                        <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Last Out</span>
+                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.isPastDay ? 'Missed Out' : '---')}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Expanded Session Details */}
+                                                            <AnimatePresence>
+                                                                {isExpanded && (
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, height: 0 }}
+                                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                                        exit={{ opacity: 0, height: 0 }}
+                                                                        className="border-t border-slate-100 dark:border-github-dark-border/40 bg-slate-50/40 dark:bg-white/[0.015] p-4 space-y-3"
+                                                                    >
+                                                                        <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                                                            Individual Punches ({day.sessions.length})
+                                                                        </div>
+
+                                                                        {day.sessions.map((s, sIdx) => {
+                                                                            const isSessionOpen = !s.time_out;
+                                                                            const isSessionMissed = s.status === 'MISSED_PUNCH' || (day.isPastDay && isSessionOpen);
+                                                                            const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'COMPLETED');
+                                                                            const sStyle = getStatusStyle(sessionStatus);
+                                                                            const sDuration = isSessionOpen 
+                                                                                ? (isSessionMissed ? '-' : 'In Progress') 
+                                                                                : (s.total_hours ? `${s.total_hours} hrs` : (calculateHours(s.time_in, s.time_out) || '-'));
+                                                                            return (
+                                                                                <div key={s.attendance_id || sIdx} className="bg-white dark:bg-github-dark-subtle p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border space-y-2.5 shadow-xs">
+                                                                                    <div className="flex items-center justify-between text-xs">
+                                                                                        <div className="flex items-center gap-1.5">
+                                                                                            <span className="font-bold text-slate-700 dark:text-slate-200">Session #{sIdx + 1}</span>
+                                                                                            {sessionStatus === 'MISSED_PUNCH' && (
+                                                                                                <span className={`px-1.5 py-0.2 rounded-full text-[8px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${sStyle.bg} ${sStyle.text}`}>
+                                                                                                    <span className={`w-1 h-1 rounded-full ${sStyle.dot}`}></span>
+                                                                                                    {sStyle.label}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <span className="font-bold text-indigo-600 dark:text-indigo-400 text-[11px]">{sDuration}</span>
+                                                                                    </div>
+
+                                                                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                                                                        <div className="bg-slate-50/70 dark:bg-white/5 p-2 rounded-xl">
+                                                                                            <span className="block text-[8px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">In</span>
+                                                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{formatTime(s.time_in, s, false)}</span>
+                                                                                            {s.time_in_image && (
+                                                                                                <button onClick={() => setPreviewImage(s.time_in_image)} className="mt-1 w-6 h-6 rounded border border-white overflow-hidden block">
+                                                                                                    <img src={s.time_in_image} alt="In" className="w-full h-full object-cover" />
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <div className="bg-slate-50/70 dark:bg-white/5 p-2 rounded-xl">
+                                                                                            <span className="block text-[8px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Out</span>
+                                                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{s.time_out ? formatTime(s.time_out, s, true) : (s.status === 'MISSED_PUNCH' ? 'Missed Out' : '---')}</span>
+                                                                                            {s.time_out_image && (
+                                                                                                <button onClick={() => setPreviewImage(s.time_out_image)} className="mt-1 w-6 h-6 rounded border border-white overflow-hidden block">
+                                                                                                    <img src={s.time_out_image} alt="Out" className="w-full h-full object-cover" />
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    {s.late_minutes > 0 && (
+                                                                                        <div className="p-2 bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/10 rounded-xl flex items-center gap-1.5 text-[9px] font-bold text-amber-700 dark:text-amber-400">
+                                                                                            <AlertCircle size={10} className="shrink-0" />
+                                                                                            <span>Late by {s.late_minutes}m {s.late_reason ? `(${s.late_reason})` : ''}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </motion.div>
+                                                                )}
+                                                            </AnimatePresence>
+                                                        </div>
+                                                    );
+                                                }) : (
+                                                    <p className="text-center text-slate-400 py-12 font-bold uppercase tracking-widest text-xs">No history this month</p>
                                                 )}
                                             </div>
-                                        )) : (
-                                            <p className="text-center text-slate-400 py-12 font-bold uppercase tracking-widest text-xs">No history this month</p>
                                         )}
-                                    </div>
-                                )}
 
                                 {subTab === 'analytics' && (
                                     <div className="space-y-6">

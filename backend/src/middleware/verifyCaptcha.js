@@ -192,12 +192,18 @@ function verifyWordCaptcha(captchaId, captchaText) {
  */
 export const verifyCaptcha = async (req, res, next) => {
     // Bypass verification if captcha is explicitly disabled via env
-    if (process.env.ENABLE_CAPTCHA === 'false') {
+    if (process.env.ENABLE_CAPTCHA === 'false' || process.env.ENABLE_CAPTCHA === '0') {
         console.log('🔓 CAPTCHA verification disabled via env. Bypassing...');
         return next();
     }
 
     const { captchaToken, captchaId, captchaText } = req.body;
+
+    // In development mode, bypass if no captcha is provided to avoid blocking local testing
+    if (process.env.NODE_ENV === 'development' && !captchaToken && !captchaId && !captchaText) {
+        console.log('🔓 Development mode: No CAPTCHA provided. Bypassing...');
+        return next();
+    }
 
     try {
         // Determine which captcha type is being used

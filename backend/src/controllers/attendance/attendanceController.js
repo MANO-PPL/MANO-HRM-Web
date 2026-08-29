@@ -12,9 +12,9 @@ import { attendanceDB } from "../../config/database.js";
 import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
 import { calculateWorkHours, deriveStatus } from "../../services/reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
-import { getLocalNow } from "../../services/attendance/statusEvaluationService.js";
+import { getLocalNow, getLocalTimeString } from "../../services/attendance/statusEvaluationService.js";
 import { attendanceQueue } from "../../config/queues.js";
-
+import { processAttendanceJob } from "../../workers/attendanceWorker.js";
 
 /**
  * POST /attendance/timein
@@ -30,21 +30,42 @@ export const timeIn = catchAsync(async (req, res) => {
   const late_reason = req.body.late_reason || null;
   const file = req.file;
 
-  // 2. QUICK TIMEZONE LOOKUP (Fast: ~2ms DB lookup + local date conversion)
-  let timezone = 'UTC';
-  try {
-    const org = await attendanceDB('core_organizations')
-        .where({ org_id })
-        .select('timezone')
-        .first();
-    if (org && org.timezone) {
-        timezone = org.timezone;
+  // 2. TIMEZONE & LOCAL TIME LOOKUP VIA GPS (maps.js for multi-country support)
+  let timezone = req.body.timezone || null;
+  let localTime = null;
+
+  if (!isNaN(latitude) && !isNaN(longitude) && latitude !== 0 && longitude !== 0) {
+    try {
+      const tzData = await MapsService.fetchTimeStamp(latitude, longitude, new Date());
+      if (tzData) {
+        if (tzData.timezone) timezone = tzData.timezone;
+        if (tzData.localTime) localTime = tzData.localTime;
+      }
+    } catch (e) {
+      // Fallback gracefully if GPS timezone API is unreachable
     }
-  } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  const localTime = getLocalNow(timezone).toISOString();
+  if (!timezone) {
+    try {
+      const org = await attendanceDB('core_organizations')
+          .where({ org_id })
+          .select('timezone')
+          .first();
+      if (org && org.timezone) {
+        timezone = org.timezone;
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch organization ${org_id} timezone`, err);
+    }
+  }
+  if (!timezone || timezone === 'N/A' || timezone === 'Simulated Timezone') {
+    timezone = 'Asia/Kolkata';
+  }
+
+  if (!localTime) {
+    localTime = getLocalTimeString(new Date(), timezone);
+  }
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB insertion)
   const result = await AttendanceService.processTimeInSync({
@@ -80,28 +101,33 @@ export const timeIn = catchAsync(async (req, res) => {
     }
   }
 
-  // 5. QUEUE HEAVY TASKS TO REDIS
+  // 5. QUEUE HEAVY TASKS TO REDIS OR PROCESS DIRECTLY
+  const jobData = {
+    attendance_id: result.attendance_id,
+    isTimeIn: true,
+    tempFilePath,
+    latitude,
+    longitude,
+    accuracy,
+    ip: req.clientIp || req.ip,
+    user_agent: req.get('User-Agent'),
+    event_source: getEventSource(req),
+    timezone,
+    org_id,
+    user_id: userId,
+    session_number: result.session_number
+  };
+
   try {
-    await attendanceQueue.add('attendance-checkin', {
-      attendance_id: result.attendance_id,
-      isTimeIn: true,
-      tempFilePath,
-      latitude,
-      longitude,
-      accuracy,
-      ip: req.clientIp || req.ip,
-      user_agent: req.get('User-Agent'),
-      event_source: getEventSource(req),
-      timezone,
-      org_id,
-      user_id: userId,
-      session_number: result.session_number
-    }, {
+    await attendanceQueue.add('attendance-checkin', jobData, {
       attempts: 3,
       backoff: 5000
     });
   } catch (err) {
-    console.error("Failed to queue check-in background task:", err);
+    // Direct background execution so image and address are NOT lost if Redis is offline
+    processAttendanceJob(jobData).catch(directErr => {
+      console.error("Direct attendance checkin processing error:", directErr);
+    });
   }
 
   return res.json(result);
@@ -116,21 +142,42 @@ export const timeOut = catchAsync(async (req, res) => {
   const accuracy = Number(req.body.accuracy);
   const file = req.file;
 
-  // 2. QUICK TIMEZONE LOOKUP
-  let timezone = 'UTC';
-  try {
-    const org = await attendanceDB('core_organizations')
-        .where({ org_id })
-        .select('timezone')
-        .first();
-    if (org && org.timezone) {
-        timezone = org.timezone;
+  // 2. TIMEZONE & LOCAL TIME LOOKUP VIA GPS (maps.js for multi-country support)
+  let timezone = req.body.timezone || null;
+  let localTime = null;
+
+  if (!isNaN(latitude) && !isNaN(longitude) && latitude !== 0 && longitude !== 0) {
+    try {
+      const tzData = await MapsService.fetchTimeStamp(latitude, longitude, new Date());
+      if (tzData) {
+        if (tzData.timezone) timezone = tzData.timezone;
+        if (tzData.localTime) localTime = tzData.localTime;
+      }
+    } catch (e) {
+      // Fallback gracefully if GPS timezone API is unreachable
     }
-  } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  const localTime = getLocalNow(timezone).toISOString();
+  if (!timezone) {
+    try {
+      const org = await attendanceDB('core_organizations')
+          .where({ org_id })
+          .select('timezone')
+          .first();
+      if (org && org.timezone) {
+        timezone = org.timezone;
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch organization ${org_id} timezone`, err);
+    }
+  }
+  if (!timezone || timezone === 'N/A' || timezone === 'Simulated Timezone') {
+    timezone = 'Asia/Kolkata';
+  }
+
+  if (!localTime) {
+    localTime = getLocalTimeString(new Date(), timezone);
+  }
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB checkout status/hours update)
   const result = await AttendanceService.processTimeOutSync({
@@ -165,28 +212,32 @@ export const timeOut = catchAsync(async (req, res) => {
     }
   }
 
-  // 5. QUEUE HEAVY TASKS TO REDIS
+  // 5. QUEUE HEAVY TASKS TO REDIS OR PROCESS DIRECTLY
+  const jobData = {
+    attendance_id: result.attendance_id,
+    isTimeIn: false,
+    tempFilePath,
+    latitude,
+    longitude,
+    accuracy,
+    ip: req.clientIp || req.ip,
+    user_agent: req.get('User-Agent'),
+    event_source: getEventSource(req),
+    timezone,
+    org_id,
+    user_id: userId,
+    status: result.status
+  };
+
   try {
-    await attendanceQueue.add('attendance-checkout', {
-      attendance_id: result.attendance_id,
-      isTimeIn: false,
-      tempFilePath,
-      latitude,
-      longitude,
-      accuracy,
-      ip: req.clientIp || req.ip,
-      user_agent: req.get('User-Agent'),
-      event_source: getEventSource(req),
-      timezone,
-      org_id,
-      user_id: userId,
-      status: result.status
-    }, {
+    await attendanceQueue.add('attendance-checkout', jobData, {
       attempts: 3,
       backoff: 5000
     });
   } catch (err) {
-    console.error("Failed to queue check-out background task:", err);
+    processAttendanceJob(jobData).catch(directErr => {
+      console.error("Direct attendance checkout processing error:", directErr);
+    });
   }
 
   return res.json(result);
@@ -223,6 +274,34 @@ export const simulateTimeIn = catchAsync(async (req, res) => {
     return res.status(400).json({ ok: false, message: "simulated_time (ISO format) is required" });
   }
 
+  // Resolve simulation timezone
+  let simTimezone = req.body.timezone || null;
+  if (!simTimezone && latitude && longitude && latitude !== 0 && longitude !== 0) {
+    try {
+      const tzData = await MapsService.fetchTimeStamp(latitude, longitude, new Date());
+      if (tzData?.timezone) simTimezone = tzData.timezone;
+    } catch (e) {}
+  }
+  if (!simTimezone) {
+    try {
+      const org = await attendanceDB('core_organizations')
+        .where({ org_id: req.user.org_id })
+        .select('timezone')
+        .first();
+      if (org?.timezone) simTimezone = org.timezone;
+    } catch (e) {}
+  }
+  if (!simTimezone) simTimezone = 'Asia/Kolkata';
+
+  let address = req.body.simulated_address || req.body.address || null;
+  if (!address && latitude && longitude && latitude !== 0 && longitude !== 0) {
+    try {
+      const addrRes = await MapsService.coordsToAddress(latitude, longitude);
+      if (addrRes?.address) address = addrRes.address;
+    } catch (e) {}
+  }
+  if (!address) address = "Simulated Location";
+
   const result = await AttendanceService.processTimeIn({
     user_id: target_user_id,
     org_id: req.user.org_id,
@@ -232,8 +311,8 @@ export const simulateTimeIn = catchAsync(async (req, res) => {
     late_reason,
     file: file,
     localTime: simulated_time,
-    address: simulated_address,
-    timezone: "Simulated Timezone",
+    address: address,
+    timezone: simTimezone,
     ip: req.clientIp || req.ip,
     user_agent: "Simulation/" + req.get('User-Agent'),
     event_source: "SIMULATION"
@@ -262,13 +341,12 @@ export const simulateTimeOut = catchAsync(async (req, res) => {
     target_user_id = req.body.user_id;
   }
 
-
   const {
     latitude = 0,
     longitude = 0,
     accuracy = 10,
     simulated_time,
-    simulated_address = "Simulated Location"
+    simulated_address
   } = req.body;
 
   const file = req.file;
@@ -276,6 +354,34 @@ export const simulateTimeOut = catchAsync(async (req, res) => {
   if (!simulated_time) {
     return res.status(400).json({ ok: false, message: "simulated_time (ISO format) is required" });
   }
+
+  // Resolve simulation timezone
+  let simTimezone = req.body.timezone || null;
+  if (!simTimezone && latitude && longitude && latitude !== 0 && longitude !== 0) {
+    try {
+      const tzData = await MapsService.fetchTimeStamp(latitude, longitude, new Date());
+      if (tzData?.timezone) simTimezone = tzData.timezone;
+    } catch (e) {}
+  }
+  if (!simTimezone) {
+    try {
+      const org = await attendanceDB('core_organizations')
+        .where({ org_id: req.user.org_id })
+        .select('timezone')
+        .first();
+      if (org?.timezone) simTimezone = org.timezone;
+    } catch (e) {}
+  }
+  if (!simTimezone) simTimezone = 'Asia/Kolkata';
+
+  let outAddress = req.body.simulated_address || req.body.address || null;
+  if (!outAddress && latitude && longitude && latitude !== 0 && longitude !== 0) {
+    try {
+      const addrRes = await MapsService.coordsToAddress(latitude, longitude);
+      if (addrRes?.address) outAddress = addrRes.address;
+    } catch (e) {}
+  }
+  if (!outAddress) outAddress = "Simulated Location";
 
   const result = await AttendanceService.processTimeOut({
     user_id: target_user_id,
@@ -285,8 +391,8 @@ export const simulateTimeOut = catchAsync(async (req, res) => {
     accuracy,
     file: file,
     localTime: simulated_time,
-    address: simulated_address,
-    timezone: "Simulated Timezone",
+    address: outAddress,
+    timezone: simTimezone,
     ip: req.clientIp || req.ip,
     user_agent: "Simulation/" + req.get('User-Agent'),
     event_source: "SIMULATION"
@@ -757,4 +863,21 @@ export const getAiSummary = catchAsync(async (req, res) => {
       return res.status(500).json({ detail: "An unexpected error occurred while contacting AI service." });
     }
   }
+});
+
+/**
+ * POST /attendance/ping
+ * Handle presence/location ping (normal_punch)
+ */
+export const pingLocation = catchAsync(async (req, res) => {
+  const result = await AttendanceService.recordLocationPing({
+    userId: req.user.id || req.user.user_id,
+    latitude: Number(req.body.latitude),
+    longitude: Number(req.body.longitude),
+    ip: req.clientIp || req.ip,
+    userAgent: req.get('User-Agent'),
+    isGeofenceViolation: Boolean(req.body.is_geofence_violation)
+  });
+
+  return res.json(result);
 });

@@ -186,14 +186,30 @@ async function processUserAttendanceForDate(user, dateStr) {
     const rules = ShiftService.getShiftRules(user);
 
     // 1. Check for any open sessions (forgot to checkout)
+    let hasPunchOpenSession = false;
+    try {
+        const punches = await attendanceDB("attn_punches")
+            .where({ user_id: user.user_id })
+            .whereNull("deleted_at")
+            .whereIn("punch_type", ["in", "out"])
+            .whereRaw("DATE(punch_time) = ?", [dateStr])
+            .orderBy("punch_time", "asc")
+            .orderBy("id", "asc");
+
+        if (punches.length > 0) {
+            hasPunchOpenSession = punches[punches.length - 1].punch_type === "in";
+        }
+    } catch (_) {}
+
     const openSessions = await attendanceDB('attn_records')
         .where({ user_id: user.user_id })
         .whereNull('time_out')
-        .whereRaw('DATE(time_in) = ?', [dateStr]);
+        .whereRaw('DATE(time_in) = ?', [dateStr])
+        .catch(() => []);
 
-    if (openSessions.length > 0) {
+    if (hasPunchOpenSession || openSessions.length > 0) {
         if (user.shift_id === null) {
-            console.log(`ℹ️ User ${user.user_id} has ${openSessions.length} open sessions on ${dateStr} (Open Shift). Auto-completing session.`);
+            console.log(`ℹ️ User ${user.user_id} has open session on ${dateStr} (Open Shift). Auto-completing session.`);
             for (const openSession of openSessions) {
                 const checkInDate = new Date(openSession.time_in);
                 const checkOutDate = new Date(checkInDate.getTime() + 9 * 60 * 60 * 1000);
@@ -215,7 +231,7 @@ async function processUserAttendanceForDate(user, dateStr) {
                 console.error(`Failed to sync daily attendance for open shift user ${user.user_id}:`, err);
             }
         } else {
-            console.log(`⚠️ User ${user.user_id} has ${openSessions.length} open sessions on ${dateStr}. Marking as MISSED_PUNCH.`);
+            console.log(`⚠️ User ${user.user_id} has open session on ${dateStr}. Marking as MISSED_PUNCH.`);
 
             for (const openSession of openSessions) {
                 if (openSession.status === 'MISSED_PUNCH') continue;
@@ -242,6 +258,16 @@ async function processUserAttendanceForDate(user, dateStr) {
                         updated_at: attendanceDB.fn.now()
                     });
             }
+
+            try {
+                await attendanceDB('attn_punches')
+                    .where({ user_id: user.user_id })
+                    .whereNull('deleted_at')
+                    .whereRaw('DATE(punch_time) = ?', [dateStr])
+                    .where({ punch_type: 'in' })
+                    .where(qb => qb.whereNull('status').orWhere('status', 'active'))
+                    .update({ status: 'missed_punch' });
+            } catch (_) {}
 
             try {
                 await syncDailyAttendance(user.user_id, dateStr, { status: 'MISSED_PUNCH' });
@@ -392,10 +418,19 @@ async function escalateExpiredMissedPunches() {
             }
 
             // Check if user has submitted an approved/pending correction for this date
-            const correction = await attendanceDB('attn_correction_requests')
-                .where({ user_id: record.user_id, request_date: record.date })
-                .whereIn('status', ['pending', 'approved'])
-                .first();
+            let correction = null;
+            try {
+                correction = await attendanceDB('attn_corrections')
+                    .where({ user_id: record.user_id, request_date: record.date })
+                    .whereIn('status', ['pending', 'approved'])
+                    .first();
+            } catch (_) {}
+            if (!correction) {
+                correction = await attendanceDB('attn_correction_requests')
+                    .where({ user_id: record.user_id, request_date: record.date })
+                    .whereIn('status', ['pending', 'approved'])
+                    .first().catch(() => null);
+            }
 
             if (correction) {
                 // Correction exists — skip escalation

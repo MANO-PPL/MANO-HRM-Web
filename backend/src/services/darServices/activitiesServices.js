@@ -962,12 +962,39 @@ export async function validateActivityTime(user_id, date, start_time, end_time, 
     const to = new Date(`${date}T00:00:00Z`);
     to.setUTCDate(to.getUTCDate() + 1);
     const fromStr = from.toISOString().split('T')[0];
-    const toStr = to.toISOString().split('T')[0];
+    let attendance = [];
+    try {
+        const punches = await attendanceDB('attn_punches')
+            .where('user_id', user_id)
+            .whereNull('deleted_at')
+            .whereIn('punch_type', ['in', 'out'])
+            .whereRaw('DATE(punch_time) BETWEEN ? AND DATE_ADD(?, INTERVAL 1 DAY)', [fromStr, toStr])
+            .orderBy('punch_time', 'asc')
+            .orderBy('id', 'asc');
 
-    const attendance = await attendanceDB('attn_records')
-        .where('user_id', user_id)
-        .whereRaw('DATE(time_in) BETWEEN ? AND ?', [fromStr, toStr])
-        .orderBy('time_in', 'asc');
+        let i = 0;
+        while (i < punches.length) {
+            const inP = punches[i];
+            if (inP.punch_type === 'in') {
+                let outP = (i + 1 < punches.length && punches[i + 1].punch_type === 'out') ? punches[i + 1] : null;
+                attendance.push({
+                    time_in: inP.punch_time,
+                    time_out: outP ? outP.punch_time : null
+                });
+                i += outP ? 2 : 1;
+            } else {
+                i += 1;
+            }
+        }
+    } catch (_) {}
+
+    if (!attendance || attendance.length === 0) {
+        attendance = await attendanceDB('attn_records')
+            .where('user_id', user_id)
+            .whereRaw('DATE(time_in) BETWEEN ? AND ?', [fromStr, toStr])
+            .orderBy('time_in', 'asc')
+            .catch(() => []);
+    }
 
     if (!attendance || attendance.length === 0) {
         return { valid: false, message: 'No attendance session found around this date.' };

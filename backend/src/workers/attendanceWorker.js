@@ -6,7 +6,13 @@ import * as S3Service from '../services/s3/s3Service.js';
 import * as MapsService from '../services/google_api_services/maps.js';
 import EventBus from '../utils/EventBus.js';
 
-const attendanceWorker = new Worker('{AttendanceQueue}', async (job) => {
+function safeParseJSON(val) {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    try { return JSON.parse(val); } catch { return {}; }
+}
+
+export async function processAttendanceJob(jobData) {
     const {
         attendance_id,
         isTimeIn,
@@ -21,7 +27,7 @@ const attendanceWorker = new Worker('{AttendanceQueue}', async (job) => {
         user_id,
         session_number,
         status
-    } = job.data;
+    } = jobData;
 
     console.log(`👷 [AttendanceWorker] Processing check-${isTimeIn ? 'in' : 'out'} job #${attendance_id} for User ${user_id}...`);
 
@@ -38,14 +44,30 @@ const attendanceWorker = new Worker('{AttendanceQueue}', async (job) => {
         console.error(`Maps Geocoding API error for job #${attendance_id}:`, e);
     }
 
-    // Update DB record with the resolved address
-    const addressField = isTimeIn ? 'time_in_address' : 'time_out_address';
-    await attendanceDB('attn_records')
-        .where({ attendance_id })
-        .update({
-            [addressField]: address,
-            updated_at: attendanceDB.fn.now()
-        });
+    // Update attn_punches (new schema)
+    try {
+        const punch = await attendanceDB('attn_punches').where({ id: attendance_id }).first();
+        if (punch) {
+            const loc = safeParseJSON(punch.location);
+            loc.address = address;
+            await attendanceDB('attn_punches').where({ id: attendance_id }).update({
+                location: JSON.stringify(loc)
+            });
+        }
+    } catch (err) {
+        console.error(`Failed to update attn_punches address for #${attendance_id}:`, err);
+    }
+
+    // Update legacy DB record with the resolved address
+    try {
+        const addressField = isTimeIn ? 'time_in_address' : 'time_out_address';
+        await attendanceDB('attn_records')
+            .where({ attendance_id })
+            .update({
+                [addressField]: address,
+                updated_at: attendanceDB.fn.now()
+            });
+    } catch (e) {}
 
     // 2. Compress Selfie Image and Upload to AWS S3 (Slow CPU & S3 Upload task)
     let imageKey = null;
@@ -62,14 +84,30 @@ const attendanceWorker = new Worker('{AttendanceQueue}', async (job) => {
             });
             imageKey = uploadResult.key;
 
-            // Update DB record with the uploaded S3 image key
-            const imageKeyField = isTimeIn ? 'time_in_image_key' : 'time_out_image_key';
-            await attendanceDB('attn_records')
-                .where({ attendance_id })
-                .update({
-                    [imageKeyField]: imageKey,
-                    updated_at: attendanceDB.fn.now()
-                });
+            // Update attn_punches metadata with the uploaded S3 image key
+            try {
+                const punch = await attendanceDB('attn_punches').where({ id: attendance_id }).first();
+                if (punch) {
+                    const meta = safeParseJSON(punch.metadata);
+                    meta.image_key = imageKey;
+                    await attendanceDB('attn_punches').where({ id: attendance_id }).update({
+                        metadata: JSON.stringify(meta)
+                    });
+                }
+            } catch (pErr) {
+                console.error(`Failed to update attn_punches image_key for #${attendance_id}:`, pErr);
+            }
+
+            // Update legacy DB record with the uploaded S3 image key
+            try {
+                const imageKeyField = isTimeIn ? 'time_in_image_key' : 'time_out_image_key';
+                await attendanceDB('attn_records')
+                    .where({ attendance_id })
+                    .update({
+                        [imageKeyField]: imageKey,
+                        updated_at: attendanceDB.fn.now()
+                    });
+            } catch (e) {}
 
             console.log(`✅ [AttendanceWorker] Successfully uploaded selfie to S3 with key: ${imageKey}`);
         } catch (err) {
@@ -119,7 +157,10 @@ const attendanceWorker = new Worker('{AttendanceQueue}', async (job) => {
     }
 
     console.log(`🏁 [AttendanceWorker] Completed background tasks for check-${isTimeIn ? 'in' : 'out'} job #${attendance_id}`);
+}
 
+const attendanceWorker = new Worker('{AttendanceQueue}', async (job) => {
+    return processAttendanceJob(job.data);
 }, {
     connection: redisConnection,
     concurrency: 4 // Max 4 concurrent check-ins/outs processed in parallel

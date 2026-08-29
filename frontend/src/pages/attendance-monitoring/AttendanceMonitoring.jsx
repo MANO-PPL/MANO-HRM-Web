@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -442,41 +442,36 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
     );
 };
 
-// Timezone-aware date/time parser and normalizer
-const parseTimeInTimezone = (r, isOut, orgTimezone) => {
-    let fallbackStr = isOut ? r.time_out : r.time_in;
-    if (!fallbackStr) return null;
+// Time parser and normalizer (consumes backend local time directly)
+const parseTimeInTimezone = (r, isOut) => {
+    const rawVal = isOut ? r.time_out : r.time_in;
+    if (!rawVal) return null;
     
-    if (fallbackStr instanceof Date) {
-        return fallbackStr;
+    if (rawVal instanceof Date) {
+        return rawVal;
     }
     
     try {
-        const parts = String(fallbackStr).split(/[- :T.]/);
-        if (parts.length >= 3) {
+        const str = String(rawVal).trim();
+        const parts = str.split(/[- :T.]/);
+        if (parts.length >= 5) {
             const year = parseInt(parts[0], 10);
             const month = parseInt(parts[1], 10) - 1;
             const day = parseInt(parts[2], 10);
-            const hour = parts[3] ? parseInt(parts[3], 10) : 0;
-            const minute = parts[4] ? parseInt(parts[4], 10) : 0;
+            const hour = parseInt(parts[3], 10);
+            const minute = parseInt(parts[4], 10);
             const second = parts[5] ? parseInt(parts[5], 10) : 0;
             const parsed = new Date(year, month, day, hour, minute, second);
             if (!isNaN(parsed.getTime())) return parsed;
         }
+        return new Date(str);
     } catch (err) {
-        console.error("Error parsing timestamp:", err);
+        return null;
     }
-    return null;
 };
 
-const getCurrentTimeInTimezone = (orgTimezone) => {
-    const d = new Date();
-    try {
-        const localStr = d.toLocaleString('en-US', { timeZone: orgTimezone || 'UTC' });
-        return new Date(localStr);
-    } catch (e) {
-        return d;
-    }
+const getCurrentTimeInTimezone = () => {
+    return new Date();
 };
 
 const formatTotalTime = (totalMin, fallbackHours) => {
@@ -501,28 +496,28 @@ const formatTotalTime = (totalMin, fallbackHours) => {
     }
 };
 
-const processAttendanceData = (staff, resolvedTz) => {
+const processAttendanceData = (staff) => {
     const mergedData = staff.map(u => {
         const daySessions = u.sessions || [];
         let totalMin = 0;
         const sessions = daySessions.map(r => {
-            const inTime = parseTimeInTimezone(r, false, resolvedTz);
+            const inTime = parseTimeInTimezone(r, false);
             const formatTime = (d) => {
                 if (!d) return '-';
-                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
             };
 
             const inStr = formatTime(inTime);
             let outStr = '-';
             let isActive = !r.time_out && r.status !== 'MISSED_PUNCH' && r.status !== 'ABSENT';
 
-            const outTime = parseTimeInTimezone(r, true, resolvedTz);
+            const outTime = parseTimeInTimezone(r, true);
             if (outTime) {
                 outStr = formatTime(outTime);
-                if (inTime) totalMin += Math.max(0, (outTime - inTime) / 60000);
+                if (inTime) totalMin += Math.max(0, (outTime.getTime() - inTime.getTime()) / 60000);
             } else if (isActive && inTime) {
-                const nowTZ = getCurrentTimeInTimezone(resolvedTz);
-                totalMin += Math.max(0, (nowTZ - inTime) / 60000);
+                const now = new Date();
+                totalMin += Math.max(0, (now.getTime() - inTime.getTime()) / 60000);
             }
 
             // Locations
@@ -1026,21 +1021,45 @@ const AttendanceMonitoring = () => {
         fetchShifts();
     }, []);
 
-    const DEPARTMENTS = [
-        { value: 'All', label: 'All Departments' },
-        ...departments.map(d => ({ value: d.dept_name, label: d.dept_name }))
-    ];
+    const DEPARTMENTS = useMemo(() => {
+        const unique = [{ value: 'All', label: 'All Departments' }];
+        const seen = new Set();
+        (departments || []).forEach(d => {
+            if (d?.dept_name && !seen.has(d.dept_name)) {
+                seen.add(d.dept_name);
+                unique.push({ value: d.dept_name, label: d.dept_name });
+            }
+        });
+        return unique;
+    }, [departments]);
 
-    const DESIGNATIONS = [
-        { value: 'All', label: 'All Designations' },
-        ...designations.map(d => ({ value: d.desg_name, label: d.desg_name }))
-    ];
+    const DESIGNATIONS = useMemo(() => {
+        const unique = [{ value: 'All', label: 'All Designations' }];
+        const seen = new Set();
+        (designations || []).forEach(d => {
+            if (d?.desg_name && !seen.has(d.desg_name)) {
+                seen.add(d.desg_name);
+                unique.push({ value: d.desg_name, label: d.desg_name });
+            }
+        });
+        return unique;
+    }, [designations]);
 
-    const SHIFTS = [
-        { value: 'All', label: 'All Shifts' },
-        { value: 'open_shift', label: 'Open Shift' },
-        ...shifts.map(s => ({ value: s.shift_id, label: s.shift_name }))
-    ];
+    const SHIFTS = useMemo(() => {
+        const unique = [
+            { value: 'All', label: 'All Shifts' },
+            { value: 'open_shift', label: 'Open Shift' }
+        ];
+        const seen = new Set(['All', 'open_shift']);
+        (shifts || []).forEach(s => {
+            const val = String(s?.shift_id || '');
+            if (val && !seen.has(val)) {
+                seen.add(val);
+                unique.push({ value: s.shift_id, label: s.shift_name });
+            }
+        });
+        return unique;
+    }, [shifts]);
 
     // Sync filter states to localStorage
     useEffect(() => {
@@ -1906,14 +1925,25 @@ const AttendanceMonitoring = () => {
                                                             <div className="p-10 text-center text-slate-400">No employees found.</div>
                                                         ) : (
                                                             filteredData.map((item, rowIdx) => {
-                                                                const startHour = 0;
-                                                                const totalHours = 24;
                                                                 const timeToPct = (date) => {
                                                                     if (!date) return null;
-                                                                    const h = date.getHours();
-                                                                    const m = date.getMinutes();
-                                                                    const totalMinutes = (h - startHour) * 60 + m;
-                                                                    return Math.max(0, Math.min(100, (totalMinutes / (totalHours * 60)) * 100));
+                                                                    const targetTz = orgTimezone || resolvedTz || 'Asia/Kolkata';
+                                                                    try {
+                                                                        const parts = new Intl.DateTimeFormat('en-US', {
+                                                                            timeZone: targetTz,
+                                                                            hour: 'numeric',
+                                                                            minute: 'numeric',
+                                                                            hour12: false
+                                                                        }).formatToParts(date);
+                                                                        let h = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+                                                                        if (h === 24) h = 0;
+                                                                        const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+                                                                        const totalMinutes = h * 60 + m;
+                                                                        return Math.max(0, Math.min(100, (totalMinutes / (24 * 60)) * 100));
+                                                                    } catch (e) {
+                                                                        const totalMinutes = date.getHours() * 60 + date.getMinutes();
+                                                                        return Math.max(0, Math.min(100, (totalMinutes / (24 * 60)) * 100));
+                                                                    }
                                                                 };
 
                                                                 return (

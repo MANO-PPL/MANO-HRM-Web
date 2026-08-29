@@ -155,28 +155,25 @@ const AdminDashboard = () => {
     const [isFeedExpanded, setIsFeedExpanded] = React.useState(false);
     const [todayStatus, setTodayStatus] = React.useState(null);
 
-    const formatDashboardTime = (isoString) => {
-        if (!isoString || isoString === '--:--') return '--:--';
+    const formatDashboardTime = (timeVal) => {
+        if (!timeVal || timeVal === '--:--' || timeVal === '-') return '--:--';
         try {
-            const d = new Date(isoString);
-            if (isNaN(d.getTime())) return isoString;
-            
-            const timeStr = d.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: true
-            });
-            
-            const abbrFormatter = new Intl.DateTimeFormat('en-US', {
-                timeZoneName: 'short'
-            });
-            const parts = abbrFormatter.formatToParts(d);
-            const tzPart = parts.find(p => p.type === 'timeZoneName');
-            const abbr = tzPart ? tzPart.value : '';
-            
-            return abbr ? `${timeStr} (${abbr})` : timeStr;
+            const str = String(timeVal).trim();
+            const parts = str.split(/[- :T.]/);
+            if (parts.length >= 5) {
+                let hour = parseInt(parts[3], 10);
+                const minute = String(parts[4]).padStart(2, '0');
+                const ampm = hour >= 12 ? 'PM' : 'AM';
+                hour = hour % 12;
+                if (hour === 0) hour = 12;
+                const pad = (n) => String(n).padStart(2, '0');
+                return `${pad(hour)}:${minute} ${ampm}`;
+            }
+
+            const d = new Date(str);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
         } catch (e) {
-            return isoString;
+            return String(timeVal);
         }
     };
 

@@ -10,6 +10,7 @@ export const ATTENDANCE_STATUS = {
   ABSENT: 'ABSENT',
   OVERTIME: 'OVERTIME',
   MISSED_PUNCH: 'MISSED_PUNCH',
+  ON_LEAVE: 'ON_LEAVE',
   WEEK_OFF: 'WEEK_OFF',
   HOLIDAY: 'HOLIDAY',
 };
@@ -21,6 +22,22 @@ export const ATTENDANCE_STATUS = {
  */
 export function getStatusStyle(status) {
   switch ((status || '').toUpperCase()) {
+    case 'ACTIVE':
+    case 'IN_PROGRESS':
+      return {
+        bg: 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/50',
+        text: 'text-emerald-700 dark:text-emerald-400 font-bold',
+        dot: 'bg-emerald-500 animate-pulse',
+        label: 'ACTIVE',
+      };
+    case 'CLOSED':
+    case 'COMPLETED':
+      return {
+        bg: 'bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40',
+        text: 'text-slate-600 dark:text-slate-300',
+        dot: 'bg-slate-400',
+        label: 'COMPLETED',
+      };
     case 'PRESENT':
       return {
         bg: 'bg-emerald-100 dark:bg-emerald-900/30',
@@ -58,10 +75,18 @@ export function getStatusStyle(status) {
       };
     case 'MISSED_PUNCH':
       return {
-        bg: 'bg-fuchsia-100 dark:bg-fuchsia-900/30',
-        text: 'text-fuchsia-700 dark:text-fuchsia-400',
-        dot: 'bg-fuchsia-500',
+        bg: 'bg-rose-100 dark:bg-rose-900/30',
+        text: 'text-rose-700 dark:text-rose-400',
+        dot: 'bg-rose-500',
         label: 'MISSED PUNCH',
+      };
+    case 'ON_LEAVE':
+    case 'LEAVE':
+      return {
+        bg: 'bg-teal-100 dark:bg-teal-900/30',
+        text: 'text-teal-700 dark:text-teal-400',
+        dot: 'bg-teal-500',
+        label: 'ON LEAVE',
       };
     case 'WEEK_OFF':
       return {

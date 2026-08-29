@@ -865,6 +865,19 @@ const Attendance = () => {
     const [imgSrc, setImgSrc] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [previewImage, setPreviewImage] = useState(null);
+    const [expandedDays, setExpandedDays] = useState(new Set());
+
+    const toggleDayExpansion = (dayKey) => {
+        setExpandedDays(prev => {
+            const next = new Set(prev);
+            if (next.has(dayKey)) {
+                next.delete(dayKey);
+            } else {
+                next.add(dayKey);
+            }
+            return next;
+        });
+    };
 
     // Late Reason Context
     const [requireLateReason, setRequireLateReason] = useState(false);
@@ -1644,40 +1657,25 @@ const Attendance = () => {
         return new Date(dateString).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
     };
 
-    const formatTime = (isoString, sessionRecord = null, isOut = false) => {
-        if (!isoString) return null;
-        
-        let tz = null;
-        if (sessionRecord?.metadata) {
-            try {
-                const meta = typeof sessionRecord.metadata === 'string' ? JSON.parse(sessionRecord.metadata) : sessionRecord.metadata;
-                tz = isOut ? meta?.time_out?.timezone : meta?.time_in?.timezone;
-            } catch (e) {}
-        }
-        
-        if (tz === 'N/A' || tz === 'Simulated Timezone' || !tz) {
-            tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        }
-
+    const formatTime = (timeVal, sessionRecord = null, isOut = false) => {
+        if (!timeVal) return null;
         try {
-            const timeStr = new Date(isoString).toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: true,
-                timeZone: tz
-            });
-            
-            const abbrFormatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: tz,
-                timeZoneName: 'short'
-            });
-            const parts = abbrFormatter.formatToParts(new Date(isoString));
-            const tzPart = parts.find(p => p.type === 'timeZoneName');
-            const abbr = tzPart ? tzPart.value : '';
-            
-            return abbr ? `${timeStr} (${abbr})` : timeStr;
+            const str = String(timeVal).trim();
+            const parts = str.split(/[- :T.]/);
+            if (parts.length >= 5) {
+                let hour = parseInt(parts[3], 10);
+                const minute = String(parts[4]).padStart(2, '0');
+                const ampm = hour >= 12 ? 'PM' : 'AM';
+                hour = hour % 12;
+                if (hour === 0) hour = 12;
+                const pad = (n) => String(n).padStart(2, '0');
+                return `${pad(hour)}:${minute} ${ampm}`;
+            }
+
+            const d = new Date(str);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
         } catch (e) {
-            return new Date(isoString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            return String(timeVal);
         }
     };
 
@@ -1772,7 +1770,7 @@ const Attendance = () => {
                     if (label === 'LATE') return '#f59e0b';    // amber-500
                     if (label === 'OVERTIME') return '#8b5cf6'; // violet-500
                     if (label === 'ABSENT') return '#ef4444';   // red-500
-                    if (label === 'MISSED PUNCH') return '#d946ef'; // fuchsia-500
+                    if (label === 'MISSED PUNCH') return '#f43f5e'; // rose-500
                     if (label === 'HALF DAY') return '#f97316'; // orange-500
                     return '#94a3b8'; // slate-400
                 }),
@@ -1836,6 +1834,104 @@ const Attendance = () => {
         
         return true;
     }, [myShift, holidays]);
+
+    // --- DAY-LEVEL HISTORY AGGREGATION ---
+    const groupedHistoryWeeks = useMemo(() => {
+        if (!monthlySessions || monthlySessions.length === 0) return [];
+
+        const daysMap = {};
+        monthlySessions.forEach(session => {
+            const timeIn = session.time_in || session.check_in;
+            if (!timeIn) return;
+            const d = new Date(timeIn);
+            if (isNaN(d.getTime())) return;
+
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const dateKey = `${yyyy}-${mm}-${dd}`;
+
+            if (!daysMap[dateKey]) {
+                daysMap[dateKey] = {
+                    dateKey,
+                    date: d,
+                    sessions: []
+                };
+            }
+            daysMap[dateKey].sessions.push(session);
+        });
+
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        const processedDays = Object.values(daysMap).map(day => {
+            // Sort sessions ascending by time_in
+            day.sessions.sort((a, b) => new Date(a.time_in || a.check_in) - new Date(b.time_in || b.check_in));
+
+            const firstSession = day.sessions[0];
+            const lastSession = day.sessions[day.sessions.length - 1];
+
+            const firstIn = firstSession?.time_in || firstSession?.check_in;
+            const lastOut = lastSession?.time_out || lastSession?.check_out || null;
+            const hasOpenSession = !lastOut;
+            const isPastDay = day.dateKey < todayStr;
+
+            let totalDayHours = 0;
+            day.sessions.forEach(s => {
+                if (s.total_hours && !isNaN(Number(s.total_hours))) {
+                    totalDayHours += Number(s.total_hours);
+                } else if (s.time_in && s.time_out) {
+                    const diff = (new Date(s.time_out) - new Date(s.time_in)) / (1000 * 60 * 60);
+                    if (diff > 0) totalDayHours += diff;
+                }
+            });
+
+            // Derive overall day status
+            let dayStatus = 'PRESENT';
+            const sessionStatuses = day.sessions.map(s => (s.status || '').toUpperCase());
+
+            if (sessionStatuses.includes('MISSED_PUNCH') || (isPastDay && hasOpenSession)) {
+                dayStatus = 'MISSED_PUNCH';
+            } else if (sessionStatuses.includes('OVERTIME')) {
+                dayStatus = 'OVERTIME';
+            } else if (sessionStatuses.includes('LATE')) {
+                dayStatus = 'LATE';
+            } else if (sessionStatuses.includes('HALF_DAY')) {
+                dayStatus = 'HALF_DAY';
+            } else if (sessionStatuses.includes('ABSENT')) {
+                dayStatus = 'ABSENT';
+            } else if (sessionStatuses.includes('CLOSED') || sessionStatuses.includes('PRESENT')) {
+                dayStatus = 'PRESENT';
+            }
+
+            return {
+                ...day,
+                firstIn,
+                lastOut,
+                hasOpenSession,
+                isPastDay,
+                totalDayHours: parseFloat(totalDayHours.toFixed(2)),
+                dayStatus,
+                firstSession,
+                lastSession
+            };
+        });
+
+        // Sort descending by date (most recent first)
+        processedDays.sort((a, b) => b.date - a.date);
+
+        // Group into week buckets
+        const weeksMap = {};
+        processedDays.forEach(day => {
+            const firstDay = new Date(day.date.getFullYear(), day.date.getMonth(), 1);
+            const weekNumber = Math.ceil((((day.date - firstDay) / 86400000) + firstDay.getDay() + 1) / 7);
+            const weekKey = `Week ${weekNumber}`;
+
+            if (!weeksMap[weekKey]) weeksMap[weekKey] = [];
+            weeksMap[weekKey].push(day);
+        });
+
+        return Object.entries(weeksMap);
+    }, [monthlySessions]);
 
     return (
         <DashboardLayout title="Attendance" tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
@@ -2367,78 +2463,246 @@ const Attendance = () => {
                             </button>
                         </div>
 
-                        {/* SUB-TAB: HISTORY (Weekly Grouped) */}
+                        {/* SUB-TAB: HISTORY (Day-Level Expandable Grouped Cards) */}
                         {subTab === 'history' && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                {monthlySessions.length === 0 ? (
+                                {groupedHistoryWeeks.length === 0 ? (
                                     <div className="text-center py-12 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-2xl border border-slate-200 dark:border-github-dark-border border-dashed">
                                         <Clock className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                                         <p className="text-slate-500 font-medium">No records found for this month</p>
                                     </div>
                                 ) : (
-                                    // Group by Week
-                                    Object.entries(monthlySessions.reduce((groups, session) => {
-                                        const date = new Date(session.time_in || session.check_in); // Handle both key names if backend varies
-                                        const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
-                                        const weekNumber = Math.ceil((((date - firstDay) / 86400000) + firstDay.getDay() + 1) / 7);
-                                        const weekKey = `Week ${weekNumber}`;
-
-                                        if (!groups[weekKey]) groups[weekKey] = [];
-                                        groups[weekKey].push(session);
-                                        return groups;
-                                    }, {})).sort().map(([week, weekSessions]) => (
+                                    groupedHistoryWeeks.map(([week, days]) => (
                                         <div key={week} className="space-y-4">
-                                            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 sticky top-0 bg-slate-50/95 dark:bg-black/20 backdrop-blur-sm py-2 z-10">
-                                                {week}
-                                            </h3>
+                                            <div className="flex items-center justify-between sticky top-0 bg-slate-50/95 dark:bg-black/20 backdrop-blur-sm py-2 z-10">
+                                                <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">
+                                                    {week}
+                                                </h3>
+                                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                                    {days.length} {days.length === 1 ? 'day recorded' : 'days recorded'}
+                                                </span>
+                                            </div>
+
                                             <div className="grid gap-4">
-                                                {weekSessions.map((session, index) => (
-                                                    <div key={session.attendance_id || index} className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border hover:border-indigo-200 dark:hover:border-indigo-800 transition-colors">
-                                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                                            <div className="flex items-center gap-4">
-                                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold ${getStatusStyle(session.status).bg} ${getStatusStyle(session.status).text}`}>
-                                                                    {new Date(session.time_in).getDate()}
+                                                {days.map((day) => {
+                                                    const isExpanded = expandedDays.has(day.dateKey);
+                                                    const style = getStatusStyle(day.dayStatus);
+                                                    const totalHoursDisplay = day.totalDayHours > 0 
+                                                        ? `${day.totalDayHours} hrs` 
+                                                        : (day.hasOpenSession ? '-' : '0 hrs');
+
+                                                    return (
+                                                        <div 
+                                                            key={day.dateKey} 
+                                                            className={`bg-white dark:bg-dark-card rounded-2xl shadow-sm border transition-all duration-200 overflow-hidden ${
+                                                                isExpanded 
+                                                                    ? 'border-indigo-300 dark:border-indigo-700/60 ring-1 ring-indigo-500/20' 
+                                                                    : 'border-slate-100 dark:border-github-dark-border hover:border-indigo-200 dark:hover:border-indigo-800'
+                                                            }`}
+                                                        >
+                                                            {/* DAY SUMMARY HEADER (Clickable) */}
+                                                            <div 
+                                                                onClick={() => toggleDayExpansion(day.dateKey)}
+                                                                className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors"
+                                                            >
+                                                                {/* Left Info: Date & Day Status */}
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-bold shrink-0 ${style.bg} ${style.text}`}>
+                                                                        <span className="text-[10px] uppercase font-black opacity-80 leading-none mb-0.5">
+                                                                            {day.date.toLocaleDateString('en-US', { month: 'short' })}
+                                                                        </span>
+                                                                        <span className="text-xl leading-none">
+                                                                            {day.date.getDate()}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <p className="font-bold text-slate-800 dark:text-github-dark-text text-base">
+                                                                                {day.date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                                                                            </p>
+                                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
+                                                                                {style.label}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1">
+                                                                            <span className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-full text-[11px]">
+                                                                                {day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}
+                                                                            </span>
+                                                                            <span>•</span>
+                                                                            <span className="truncate max-w-[220px] md:max-w-[320px]" title={day.sessions[0]?.time_in_address || 'Office / Remote'}>
+                                                                                {day.sessions[0]?.time_in_address || 'Office / Remote'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
-                                                                <div>
-                                                                    <p className="font-bold text-slate-800 dark:text-github-dark-text">
-                                                                        {new Date(session.time_in).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                                                                    </p>
-                                                                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                                                                        {(() => {
-                                                                            const style = getStatusStyle(session.status);
-                                                                            return (
-                                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
-                                                                                    {style.label}
-                                                                                </span>
-                                                                            );
-                                                                        })()}
-                                                                        <span>•</span>
-                                                                        <span>{session.time_in_address || 'Remote'}</span>
+
+                                                                {/* Right Summary: First In, Last Out, Total Hrs, Expand Toggle */}
+                                                                <div className="flex items-center justify-between md:justify-end gap-6 text-sm">
+                                                                    <div className="flex items-center gap-6">
+                                                                        <div>
+                                                                            <p className="text-xs text-slate-400 uppercase font-bold mb-1">First In</p>
+                                                                            <p className="font-mono font-medium text-slate-700 dark:text-slate-300">
+                                                                                {formatTime(day.firstIn, day.firstSession, false)}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className="text-xs text-slate-400 uppercase font-bold mb-1">Last Out</p>
+                                                                            <p className="font-mono font-medium text-slate-700 dark:text-slate-300">
+                                                                                {day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : '--:--'}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="text-right min-w-[70px]">
+                                                                            <p className="text-xs text-slate-400 uppercase font-bold mb-1">Total</p>
+                                                                            <p className="font-bold text-indigo-600 dark:text-indigo-400 text-sm">
+                                                                                {totalHoursDisplay}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Expand/Collapse Chevron */}
+                                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                                                                        isExpanded 
+                                                                            ? 'bg-indigo-600 text-white rotate-180 shadow-sm' 
+                                                                            : 'bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-slate-600 dark:hover:text-white'
+                                                                    }`}>
+                                                                        <ChevronDown size={16} strokeWidth={2.5} />
                                                                     </div>
                                                                 </div>
                                                             </div>
 
-                                                            <div className="flex items-center gap-6 text-sm">
-                                                                <div>
-                                                                    <p className="text-xs text-slate-400 uppercase font-bold mb-1">In</p>
-                                                                    <p className="font-mono font-medium text-slate-700 dark:text-slate-300">{formatTime(session.time_in, session, false)}</p>
-                                                                </div>
-                                                                <div>
-                                                                    <p className="text-xs text-slate-400 uppercase font-bold mb-1">Out</p>
-                                                                    <p className="font-mono font-medium text-slate-700 dark:text-slate-300">
-                                                                        {session.time_out ? formatTime(session.time_out, session, true) : '--:--'}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="text-right min-w-[60px]">
-                                                                    <p className="text-xs text-slate-400 uppercase font-bold mb-1">Hrs</p>
-                                                                    <p className="font-bold text-indigo-600 dark:text-indigo-400">
-                                                                        {session.total_hours || calculateDuration(session.time_in, session.time_out) || '-'}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
+                                                            {/* EXPANDED PUNCH BREAKDOWN */}
+                                                            <AnimatePresence>
+                                                                {isExpanded && (
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, height: 0 }}
+                                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                                        exit={{ opacity: 0, height: 0 }}
+                                                                        transition={{ duration: 0.2 }}
+                                                                        className="border-t border-slate-100 dark:border-github-dark-border/60 bg-slate-50/60 dark:bg-white/[0.015] p-5"
+                                                                    >
+                                                                        <div className="space-y-3">
+                                                                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-white/5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                                                                <span>Punches & Sessions Breakdown</span>
+                                                                                <span>{day.sessions.length} recorded {day.sessions.length === 1 ? 'punch pair' : 'punch pairs'}</span>
+                                                                            </div>
+
+                                                                            <div className="grid gap-3">
+                                                                                {day.sessions.map((session, sIdx) => {
+                                                                                    const isSessionOpen = !session.time_out;
+                                                                                    const isSessionMissed = session.status === 'MISSED_PUNCH' || (day.isPastDay && isSessionOpen);
+                                                                                    const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'COMPLETED');
+                                                                                    const sStyle = getStatusStyle(sessionStatus);
+                                                                                    const sDuration = isSessionOpen 
+                                                                                        ? (isSessionMissed ? '-' : 'In Progress') 
+                                                                                        : (session.total_hours ? `${session.total_hours} hrs` : (calculateDuration(session.time_in, session.time_out) || '-'));
+
+                                                                                    return (
+                                                                                        <div 
+                                                                                            key={session.attendance_id || sIdx}
+                                                                                            className="bg-white dark:bg-github-dark-subtle/80 p-4 rounded-xl border border-slate-100 dark:border-white/5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4"
+                                                                                        >
+                                                                                            {/* Session Title & Badge */}
+                                                                                            <div className="flex items-center gap-3">
+                                                                                                <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-black shrink-0">
+                                                                                                    #{sIdx + 1}
+                                                                                                </div>
+                                                                                                <div>
+                                                                                                    <div className="flex items-center gap-2">
+                                                                                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                                                                            Session {sIdx + 1}
+                                                                                                        </span>
+                                                                                                        {sessionStatus === 'MISSED_PUNCH' && (
+                                                                                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${sStyle.bg} ${sStyle.text}`}>
+                                                                                                                <span className={`w-1.5 h-1.5 rounded-full ${sStyle.dot}`}></span>
+                                                                                                                {sStyle.label}
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                    <p className="text-[11px] text-slate-400 font-medium">
+                                                                                                        Duration: <span className="font-bold text-indigo-600 dark:text-indigo-400">{sDuration}</span>
+                                                                                                    </p>
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            {/* In / Out Details */}
+                                                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 max-w-2xl text-xs">
+                                                                                                {/* In Block */}
+                                                                                                <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
+                                                                                                    <div className="min-w-0">
+                                                                                                        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-black uppercase text-[10px] tracking-wider mb-0.5">
+                                                                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                                                                            Punch In
+                                                                                                        </div>
+                                                                                                        <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                                                            {formatTime(session.time_in, session, false)}
+                                                                                                        </p>
+                                                                                                        <p className="text-[11px] text-slate-500 truncate mt-0.5" title={session.time_in_address || 'Office / Remote'}>
+                                                                                                            {session.time_in_address || 'Office / Remote'}
+                                                                                                        </p>
+                                                                                                    </div>
+                                                                                                    {session.time_in_image && (
+                                                                                                        <button 
+                                                                                                            type="button"
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                setPreviewImage(session.time_in_image);
+                                                                                                            }}
+                                                                                                            className="w-9 h-9 rounded-lg border border-slate-200 dark:border-white/10 overflow-hidden shrink-0 hover:scale-105 active:scale-95 transition-all shadow-xs"
+                                                                                                            title="View Selfie"
+                                                                                                        >
+                                                                                                            <img src={session.time_in_image} alt="In Selfie" className="w-full h-full object-cover" />
+                                                                                                        </button>
+                                                                                                    )}
+                                                                                                </div>
+
+                                                                                                {/* Out Block */}
+                                                                                                <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
+                                                                                                    <div className="min-w-0">
+                                                                                                        <div className="flex items-center gap-1.5 text-rose-500 dark:text-rose-400 font-black uppercase text-[10px] tracking-wider mb-0.5">
+                                                                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                                                                                            Punch Out
+                                                                                                        </div>
+                                                                                                        <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                                                            {session.time_out ? formatTime(session.time_out, session, true) : (session.status === 'MISSED_PUNCH' ? 'Missed Punch' : '--:--')}
+                                                                                                        </p>
+                                                                                                        <p className="text-[11px] text-slate-500 truncate mt-0.5" title={session.time_out_address || (session.time_out ? 'Office / Remote' : 'No punch out')}>
+                                                                                                            {session.time_out_address || (session.time_out ? 'Office / Remote' : 'No punch out recorded')}
+                                                                                                        </p>
+                                                                                                    </div>
+                                                                                                    {session.time_out_image && (
+                                                                                                        <button 
+                                                                                                            type="button"
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                setPreviewImage(session.time_out_image);
+                                                                                                            }}
+                                                                                                            className="w-9 h-9 rounded-lg border border-slate-200 dark:border-white/10 overflow-hidden shrink-0 hover:scale-105 active:scale-95 transition-all shadow-xs"
+                                                                                                            title="View Selfie"
+                                                                                                        >
+                                                                                                            <img src={session.time_out_image} alt="Out Selfie" className="w-full h-full object-cover" />
+                                                                                                        </button>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            {/* Late Reason Note */}
+                                                                                            {session.late_minutes > 0 && (
+                                                                                                <div className="w-full md:w-auto p-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200/50 dark:border-amber-500/20 rounded-lg flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+                                                                                                    <AlertCircle size={14} className="shrink-0" />
+                                                                                                    <span>Late: {session.late_minutes}m {session.late_reason ? `(${session.late_reason})` : ''}</span>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    </motion.div>
+                                                                )}
+                                                            </AnimatePresence>
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     ))
@@ -4044,6 +4308,41 @@ const Attendance = () => {
                                 </div>
                             </motion.div>
                         </>
+                    )}
+                </AnimatePresence>
+
+                {/* SELFIE PREVIEW LIGHTBOX MODAL */}
+                <AnimatePresence>
+                    {previewImage && (
+                        <div 
+                            className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+                            onClick={() => setPreviewImage(null)}
+                        >
+                            <motion.div 
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="relative max-w-md w-full bg-slate-900 border border-white/10 rounded-3xl p-4 shadow-2xl overflow-hidden"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
+                                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">Attendance Selfie</h4>
+                                    <button 
+                                        onClick={() => setPreviewImage(null)}
+                                        className="p-1.5 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                                <div className="rounded-2xl overflow-hidden bg-black/50 aspect-square flex items-center justify-center">
+                                    <img 
+                                        src={previewImage} 
+                                        alt="Attendance Selfie" 
+                                        className="w-full h-full object-cover"
+                                    />
+                                </div>
+                            </motion.div>
+                        </div>
                     )}
                 </AnimatePresence>
             </div>

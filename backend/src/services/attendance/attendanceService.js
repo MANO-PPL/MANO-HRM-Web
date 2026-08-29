@@ -18,470 +18,310 @@ export async function getUserShift(user_id) {
   return user;
 }
 
+/**
+ * Format timestamp to MySQL datetime string (YYYY-MM-DD HH:MM:SS)
+ */
+export function toSqlDatetime(val) {
+  if (!val) return new Date();
+  if (typeof val === 'string') {
+    return val.replace('T', ' ').replace('Z', '').split('.')[0];
+  }
+  if (val instanceof Date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${val.getUTCFullYear()}-${pad(val.getUTCMonth() + 1)}-${pad(val.getUTCDate())} ${pad(val.getUTCHours())}:${pad(val.getUTCMinutes())}:${pad(val.getUTCSeconds())}`;
+  }
+  return String(val);
+}
+
+/**
+ * Format timestamp to time string HH:MM:SS
+ */
+export function getTimeStr(d) {
+  if (!d) return null;
+  const dateObj = new Date(d);
+  if (isNaN(dateObj.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}:${pad(dateObj.getSeconds())}`;
+}
+
+/**
+ * Safely parse a JSON column value.
+ */
+export function safeParseJSON(val) {
+  if (!val) return {};
+  if (typeof val === 'object') return val;
+  try { return JSON.parse(val); } catch { return {}; }
+}
+
+/**
+ * Pair punches sequentially into sessions for a specific date.
+ */
+export function pairPunchesForDate(punches, dateStr) {
+  const sessions = [];
+  let i = 0;
+  while (i < punches.length) {
+    const p = punches[i];
+    const punchDate = new Date(p.punch_time).toISOString().split('T')[0];
+
+    if (p.punch_type === 'in' && punchDate === dateStr) {
+      const inPunch = p;
+      let outPunch = null;
+
+      if (i + 1 < punches.length && punches[i + 1].punch_type === 'out') {
+        outPunch = punches[i + 1];
+        i += 2;
+      } else {
+        i += 1;
+      }
+
+      const duration = outPunch
+        ? parseFloat(((new Date(outPunch.punch_time) - new Date(inPunch.punch_time)) / (1000 * 60 * 60)).toFixed(2))
+        : 0;
+
+      sessions.push({ in_punch: inPunch, out_punch: outPunch, duration_hours: duration });
+    } else {
+      i += 1;
+    }
+  }
+  return sessions;
+}
+
 // ========== TIME IN/OUT PROCESSING ==========
 
 /**
  * Process Time In
- * context: { user_id, org_id, latitude, longitude, accuracy, late_reason, file, localTime, address, ip, user_agent, timezone, event_source }
+ * Delegates to processTimeInSync and persists address if provided
  */
 export async function processTimeIn(context) {
-  const {
-    user_id,
-    org_id,
-    latitude,
-    longitude,
-    accuracy,
-    late_reason,
-    file,
-    localTime,
-    address,
-    ip,
-    user_agent
-  } = context;
+  const result = await processTimeInSync({
+    ...context,
+    punch_nature: context.event_source === "SIMULATION" ? "simulated" : "default"
+  });
 
-  // 1. Check Existing Session — only block if open session is from TODAY
-  const todayDate = localTime.split('T')[0];
-  const openSession = await attendanceDB("attn_records")
-    .where({ user_id })
-    .whereNull("time_out")
-    .whereRaw("DATE(time_in) = DATE(?)", [todayDate])
-    .orderBy("time_in", "desc")
-    .first();
-
-  if (openSession) {
-    return { ok: false, status: 400, message: "Already timed in. Please time out first." };
-  }
-
-  // Auto-resolve any open sessions from previous days
-  try {
-    const priorOpenSessions = await attendanceDB("attn_records")
-      .where({ user_id })
-      .whereNull("time_out")
-      .whereRaw("DATE(time_in) < DATE(?)", [todayDate]);
-
-    if (priorOpenSessions.length > 0) {
-      const userRec = await attendanceDB("core_users").where({ user_id }).select("shift_id").first();
-      const isOpenShift = !userRec || userRec.shift_id === null;
-
-      for (const session of priorOpenSessions) {
-        if (isOpenShift) {
-          // Auto-checkout for Open Shift: set time_out to time_in + 9 hours
-          const checkInDate = new Date(session.time_in);
-          const checkOutDate = new Date(checkInDate.getTime() + 9 * 60 * 60 * 1000);
-          
-          await attendanceDB("attn_records")
-            .where({ attendance_id: session.attendance_id })
-            .update({
-              time_out: checkOutDate,
-              status: "PRESENT",
-              updated_at: attendanceDB.fn.now()
-            });
-          
-          const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
-          await syncDailyAttendance(user_id, sessionDate, { status: "PRESENT" }).catch(console.error);
-          continue;
-        }
-
-        let metadata = {};
-        try {
-          metadata = typeof session.metadata === 'string'
-            ? JSON.parse(session.metadata)
-            : (session.metadata || {});
-        } catch (e) {
-          metadata = {};
-        }
-        metadata.missed_punch = {
-          flagged_at: new Date().toISOString(),
-          reason: "System auto-flagged: Checked in on a new day before checking out."
-        };
-        await attendanceDB("attn_records")
-          .where({ attendance_id: session.attendance_id })
-          .update({
-            status: "MISSED_PUNCH",
-            metadata: JSON.stringify(metadata),
-            updated_at: attendanceDB.fn.now()
-          });
-        
-        const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
-        await syncDailyAttendance(user_id, sessionDate, { status: "MISSED_PUNCH" }).catch(console.error);
+  if (result.ok && context.address && context.address !== "Locating...") {
+    try {
+      const punch = await attendanceDB("attn_punches").where({ id: result.punch_id }).first();
+      if (punch) {
+        const loc = safeParseJSON(punch.location);
+        loc.address = context.address;
+        await attendanceDB("attn_punches").where({ id: result.punch_id }).update({
+          location: JSON.stringify(loc)
+        });
       }
-    }
-  } catch (err) {
-    console.error("Error auto-resolving prior open sessions:", err);
+    } catch (_) {}
   }
 
-  // 2. Shift Context
-  const sessionContext = await StatusService.buildSessionContext(user_id, localTime, "time_in");
-  const shift = await getUserShift(user_id);
-  const rules = ShiftService.getShiftRules(shift);
-
-  // 3. Modular Shift Checks
-
-  // A. Geolocation Check
-  const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.entry_requirements);
-  if (!geoCheck.ok) {
-    return { ok: false, status: 400, message: "Shift Policy Violation: " + geoCheck.error };
-  }
-
-  // B. Biometric Check
-  const bioCheck = ShiftService.checkBiometricCompliance(file, rules.entry_requirements);
-  if (!bioCheck.ok) {
-    return { ok: false, status: 400, message: "Shift Policy Violation: " + bioCheck.error };
-  }
-
-  // 4. Late Calculation
-  let lateCheck = { minutesLate: 0, isLate: false, gracePeriod: 0 };
-
-  if (sessionContext.is_first_session) {
-    lateCheck = StatusService.calculateLateArrival(localTime, rules);
-  }
-
-  const minutesLate = lateCheck.minutesLate;
-
-  // VALIDATION: Late Reason Compulsory
-  if (lateCheck.isLate && !late_reason) {
-    return {
-      ok: false,
-      status: 400,
-      message: `You are ${minutesLate} minutes late. Please provide a reason to check in.`
-    };
-  }
-
-  // Metadata
-  const metadata = {
-    time_in: {
-      accuracy: Math.round(accuracy),
-      ip_address: ip,
-      user_agent: user_agent,
-      timestamp_utc: new Date().toISOString(),
-      timezone: context.timezone || "N/A"
-    },
-    session_context: sessionContext
-  };
-
-  // DB Insert
-  const [attendance_id] = await attendanceDB("attn_records").insert({
-    user_id,
-    late_reason: sessionContext.is_first_session ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
-    late_minutes: minutesLate,
-    time_in: localTime,
-    time_in_lat: latitude,
-    time_in_lng: longitude,
-    time_in_address: address,
-    status: "PRESENT",
-    metadata: JSON.stringify(metadata),
-    created_at: attendanceDB.fn.now(),
-    updated_at: attendanceDB.fn.now(),
-  });
-
-  // Daily Sync
-  try {
-    const dateStr = localTime.split('T')[0];
-    await syncDailyAttendance(user_id, dateStr);
-  } catch (dailyErr) {
-    console.error("Daily Sync Error:", dailyErr);
-  }
-
-  // S3 Upload
-  let imageKey = null;
-  if (file) {
-    const uploadResult = await S3Service.uploadCompressedImage({
-      fileBuffer: file.buffer,
-      key: `${attendance_id}_in`,
-      directory: "attendance_images"
-    });
-    imageKey = uploadResult.key;
-    await attendanceDB("attn_records")
-      .where({ attendance_id })
-      .update({
-        time_in_image_key: imageKey,
-        updated_at: attendanceDB.fn.now(),
-      });
-  }
-
-  // Events (Removed database notification since local toast 'Checked In Successfully!' is already displayed)
-
-  EventBus.emitActivityLog({
-    user_id,
-    org_id,
-    event_type: "CHECK_IN",
-    event_source: context.event_source || "WEB",
-    object_type: "ATTENDANCE",
-    object_id: attendance_id,
-    description: `User checked in at ${address} (Session #${sessionContext.session_number})`,
-    location: `${latitude},${longitude}`,
-    request_ip: ip,
-    user_agent: user_agent
-  });
-
-  // 5. Calculate Expected Hours
-  const expectedHours = ShiftService.getExpectedHours(localTime, rules.week_off_policy, rules);
-
-  return {
-    ok: true,
-    attendance_id,
-    local_time: localTime,
-    address,
-    tz_name: context.timezone,
-    image_key: imageKey,
-    session_number: sessionContext.session_number,
-    is_first_session: sessionContext.is_first_session,
-    working_hours: expectedHours,
-    message: "Timed in successfully",
-  };
+  return result;
 }
 
 /**
  * Process Time Out
- * context: { user_id, org_id, latitude, longitude, accuracy, file, localTime, address, ip, user_agent, timezone, event_source }
+ * Delegates to processTimeOutSync and persists address if provided
  */
 export async function processTimeOut(context) {
-  const {
-    user_id,
-    org_id,
-    latitude,
-    longitude,
-    accuracy,
-    file,
-    localTime,
-    address,
-    ip,
-    user_agent
-  } = context;
-
-  // 1. Check Existing Session (Find most recent open session - NO TIME LIMIT)
-  const openSession = await attendanceDB("attn_records")
-    .where({ user_id })
-    .whereNull("time_out")
-    .orderBy("time_in", "desc")
-    .first();
-
-  if (!openSession) {
-    console.warn(`[Attendance] No open session found for user ${user_id}.`);
-    return { ok: false, status: 400, message: "No active time-in found to time out." };
-  }
-
-  // Prevent checking out sessions that have already been flagged as MISSED_PUNCH by the cron job
-  if (openSession.status === 'MISSED_PUNCH') {
-    return {
-      ok: false,
-      status: 400,
-      message: "This session has been flagged as a missed punch. Please submit a correction request to adjust your hours."
-    };
-  }
-
-  // Prevent checking out sessions older than 24 hours
-  const durationHours = (new Date(localTime) - new Date(openSession.time_in)) / (1000 * 60 * 60);
-  if (durationHours > 24) {
-    return {
-      ok: false,
-      status: 400,
-      message: "Your active session is older than 24 hours. Please submit a correction request to adjust your hours."
-    };
-  }
-
-  // 2. Shift Context
-  const sessionContext = await StatusService.buildSessionContext(user_id, localTime, "time_out");
-  const shift = await getUserShift(user_id);
-  const rules = ShiftService.getShiftRules(shift);
-
-  // 3. Modular Shift Checks
-
-  // A. Geolocation Check
-  const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.exit_requirements);
-  if (!geoCheck.ok) {
-    return { ok: false, status: 400, message: "Shift Policy Violation: " + geoCheck.error };
-  }
-
-  // B. Biometric Check
-  const bioCheck = ShiftService.checkBiometricCompliance(file, rules.exit_requirements);
-  if (!bioCheck.ok) {
-    return { ok: false, status: 400, message: "Shift Policy Violation: " + bioCheck.error };
-  }
-
-  // 4. S3 Upload
-  let imageKey = null;
-  if (file) {
-    const uploadResult = await S3Service.uploadCompressedImage({
-      fileBuffer: file.buffer,
-      key: `${openSession.attendance_id}_out`,
-      directory: "attendance_images"
-    });
-    imageKey = uploadResult.key;
-    await attendanceDB("attn_records")
-      .where({ attendance_id: openSession.attendance_id })
-      .update({
-        time_out_image_key: imageKey,
-        updated_at: attendanceDB.fn.now(),
-      });
-  }
-
-  // Calculations
-  const totalHours = StatusService.calculateDurationHours(openSession.time_in, localTime);
-  const minutesLate = openSession.late_minutes || 0;
-
-  // Status Evaluation (Re-fetch context to include the session we just calculated)
-  // For overnight shifts the checkout date (e.g. 3:30 AM June 6) differs from the session's
-  // time_in date (June 5). buildSessionContext queries by date, so we must pass the session's
-  // time_in as the reference when the calendar date has rolled over.
-  const sessionDateStr  = new Date(openSession.time_in).toISOString().split('T')[0];
-  const checkoutDateStr = new Date(localTime).toISOString().split('T')[0];
-  const contextRefTime  = sessionDateStr !== checkoutDateStr ? new Date(openSession.time_in).toISOString() : new Date(localTime).toISOString();
-  const currentSessionContext = await StatusService.buildSessionContext(user_id, contextRefTime, "time_out");
-  currentSessionContext.total_hours = totalHours; // Pass session duration to engine
-  currentSessionContext.minutes_late = minutesLate; // Ensure lateness is available
-  currentSessionContext.total_hours_today = parseFloat((currentSessionContext.total_hours_today + totalHours).toFixed(2)); // Update aggregate
-  const status = StatusService.evaluateStatus(rules, currentSessionContext);
-
-  // Metadata Update
-  let metadata = {};
-  try {
-    if (typeof openSession.metadata === 'string') {
-      metadata = JSON.parse(openSession.metadata);
-    } else if (typeof openSession.metadata === 'object' && openSession.metadata !== null) {
-      metadata = openSession.metadata;
-    }
-  } catch (e) {
-    console.error("Metadata parse error", e);
-  }
-
-  metadata.time_out = {
-    accuracy: Math.round(accuracy),
-    ip_address: ip,
-    user_agent: user_agent,
-    timestamp_utc: new Date().toISOString(),
-    timezone: context.timezone || "N/A",
-    total_hours: parseFloat(totalHours.toFixed(2))
-  };
-  metadata.session_context_at_checkout = currentSessionContext;
-
-  // DB Update
-  await attendanceDB("attn_records")
-    .where({ attendance_id: openSession.attendance_id })
-    .update({
-      time_out: localTime,
-      time_out_lat: latitude,
-      time_out_lng: longitude,
-      time_out_address: address,
-      overtime_hours: StatusService.calculateOvertime(totalHours, rules),
-      status: status,
-      metadata: JSON.stringify(metadata),
-      updated_at: attendanceDB.fn.now(),
-    });
-
-  // Daily Sync (Use session date, not current clock date, to handle overnight shifts)
-  try {
-    const sessionDate = new Date(openSession.time_in).toISOString().split('T')[0];
-    await syncDailyAttendance(user_id, sessionDate, { status });
-  } catch (dailyErr) {
-    console.error("Daily Sync Error (Timeout):", dailyErr);
-  }
-
-  // Events (Removed database notification since local toast 'Checked Out Successfully!' is already displayed)
-
-  EventBus.emitActivityLog({
-    user_id,
-    org_id,
-    event_type: "CHECK_OUT",
-    event_source: context.event_source || "WEB",
-    object_type: "ATTENDANCE",
-    object_id: openSession.attendance_id,
-    description: `User checked out at ${address} (Status: ${status})`,
-    location: `${latitude},${longitude}`,
-    request_ip: ip,
-    user_agent: user_agent
+  const result = await processTimeOutSync({
+    ...context,
+    punch_nature: context.event_source === "SIMULATION" ? "simulated" : "default"
   });
 
-  // 5. Calculate Expected Hours
-  const expectedHours = ShiftService.getExpectedHours(localTime, rules.week_off_policy, rules);
+  if (result.ok && context.address && context.address !== "Locating...") {
+    try {
+      const punch = await attendanceDB("attn_punches").where({ id: result.punch_id }).first();
+      if (punch) {
+        const loc = safeParseJSON(punch.location);
+        loc.address = context.address;
+        await attendanceDB("attn_punches").where({ id: result.punch_id }).update({
+          location: JSON.stringify(loc)
+        });
+      }
+    } catch (_) {}
+  }
 
-  return {
-    ok: true,
-    attendance_id: openSession.attendance_id,
-    local_time_out: localTime,
-    address,
-    tz_name: context.timezone,
-    image_key: imageKey,
-    status,
-    session_hours: parseFloat(totalHours.toFixed(2)),
-    total_hours_today: currentSessionContext.total_hours_today,
-    expected_hours: expectedHours,
-    message: "Timed out successfully",
-  };
-
-
+  return result;
 }
 
 /**
- * Sync Daily Attendance
- * Re-calculates and updates daily_attendance based on current records
+ * Sync Daily Attendance (Punch-Based Aggregation Engine)
+ * Reads from attn_punches, pairs in/out, computes daily summary, upserts attn_daily_summary.
+ * Handles overnight shifts (out punch on next calendar day).
  */
 export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
   try {
-    // 1. Fetch all records for the day (Sanitize date to ensure match)
     const sanitizedDate = dateStr.split('T')[0];
-    const records = await attendanceDB("attn_records")
+
+    // Calculate next date for overnight out-punch matching
+    const nextDate = new Date(sanitizedDate + 'T12:00:00');
+    nextDate.setDate(nextDate.getDate() + 1);
+    const nextDateStr = nextDate.toISOString().split('T')[0];
+
+    // 1. Fetch punches: all in/out on target date + out punches on next day (overnight)
+    const punches = await attendanceDB("attn_punches")
       .where({ user_id })
-      .whereRaw("DATE(time_in) = ?", [sanitizedDate])
-      .orderBy("time_in", "asc");
+      .whereNull("deleted_at")
+      .whereIn("punch_type", ["in", "out"])
+      .where(function() {
+        this.whereRaw("DATE(punch_time) = ?", [sanitizedDate])
+          .orWhere(function() {
+            this.where("punch_type", "out")
+              .whereRaw("DATE(punch_time) = ?", [nextDateStr]);
+          });
+      })
+      .orderBy("punch_time", "asc")
+      .orderBy("id", "asc");
 
-    if (!records.length) return;
+    // 2. Pair punches into sessions (only in-punches from target date start sessions)
+    const sessions = pairPunchesForDate(punches, sanitizedDate);
 
-    const firstRec = records[0];
-    const lastRec = records[records.length - 1];
+    if (sessions.length === 0 && !overrides.status) {
+      const existing = await attendanceDB("attn_daily_summary")
+        .where({ user_id, date: sanitizedDate })
+        .first();
+      if (existing) {
+        await attendanceDB("attn_daily_summary")
+          .where({ user_id, date: sanitizedDate })
+          .update({
+            first_in: null, last_out: null, total_hours: 0, late_minutes: 0, overtime_hours: 0,
+            status: "ABSENT", updated_at: attendanceDB.fn.now(), ...overrides
+          });
+      }
+      return;
+    }
 
-    // 2. Ensure Daily Record Exists
-    const existingDaily = await attendanceDB("attn_daily_summary")
-      .where({ user_id, date: dateStr })
-      .first();
+    // 3. Compute aggregates
+    let totalHours = 0;
+    let sessionCount = 0;
+    for (const s of sessions) {
+      if (s.out_punch) {
+        totalHours += s.duration_hours;
+        sessionCount += 1;
+      }
+    }
+    totalHours = parseFloat(totalHours.toFixed(2));
 
-    if (!existingDaily) {
-      const shift = await getUserShift(user_id);
+    // 4. Shift rules
+    const shift = await getUserShift(user_id);
+    const rules = ShiftService.getShiftRules(shift);
 
-      await attendanceDB("attn_daily_summary").insert({
-        user_id,
-        date: dateStr,
-        shift_id: shift ? shift.shift_id : null,
-        status: 'PRESENT',
-        created_at: attendanceDB.fn.now(),
-        updated_at: attendanceDB.fn.now(),
-        total_hours: 0
+    // 5. Late calculation (first session only)
+    let lateMinutes = 0;
+    let lateReason = null;
+    if (sessions.length > 0) {
+      const firstIn = sessions[0].in_punch;
+      const lateCheck = StatusService.calculateLateArrival(
+        new Date(firstIn.punch_time).toISOString(), rules
+      );
+      lateMinutes = lateCheck.minutesLate;
+
+      const firstMeta = safeParseJSON(firstIn.metadata);
+      lateReason = firstMeta?.late_reason || null;
+    }
+
+    // 6. Overtime
+    const overtimeHours = StatusService.calculateOvertime(totalHours, rules);
+
+    // 7. Status determination
+    let finalStatus;
+    if (overrides.status) {
+      finalStatus = overrides.status;
+    } else if (sessions.some(s => !s.out_punch)) {
+      // User is currently clocked in (session active)
+      finalStatus = "PRESENT";
+    } else if (sessionCount === 0) {
+      finalStatus = "ABSENT";
+    } else {
+      finalStatus = StatusService.evaluateStatus(rules, {
+        total_hours: totalHours,
+        total_hours_today: totalHours,
+        minutes_late: lateMinutes,
+        event_type: "time_out"
       });
     }
 
-    // 3. Calculate Hours
-    const totalHours = records.reduce((acc, r) => acc + StatusService.calculateDurationHours(r.time_in, r.time_out), 0);
-
-    // 4. Get Rules for Overtime
-    let overtimeHours = 0;
-    try {
-      const shift = await getUserShift(user_id);
-      const rules = ShiftService.getShiftRules(shift);
-      overtimeHours = StatusService.calculateOvertime(totalHours, rules);
-    } catch (e) {
-      // Ignore missing shift/policy errors during sync
+    // 8. Remarks
+    const remarks = [];
+    if (sessions.some(s => !s.out_punch)) remarks.push("Open Session");
+    if (punches.some(p => p.punch_nature === "fabricated")) remarks.push("Manual Entry");
+    for (const s of sessions) {
+      const inLoc = safeParseJSON(s.in_punch.location);
+      if (inLoc.is_geofence_violation) { remarks.push("Geofence Violation"); break; }
+      if (s.out_punch) {
+        const outLoc = safeParseJSON(s.out_punch.location);
+        if (outLoc.is_geofence_violation) { remarks.push("Geofence Violation"); break; }
+      }
     }
 
-
-    // 5. Determine Daily Status (if not provided in overrides)
-    const finalStatus = overrides.status || StatusService.deriveDailyStatus(records);
-
-    const updateData = {
-      first_in: getTimeStr(firstRec.time_in),
-      last_out: getTimeStr(lastRec.time_out),
+    // 9. Upsert into attn_daily_summary_v2
+    const summaryDataV2 = {
+      session_count: sessionCount,
       total_hours: totalHours,
+      late_minutes: lateMinutes,
+      late_reason: lateReason,
       overtime_hours: overtimeHours,
       status: finalStatus,
+      shift_id: shift ? shift.shift_id : null,
+      remarks: [...new Set(remarks)].join("; ") || null,
       updated_at: attendanceDB.fn.now(),
       ...overrides
     };
 
-    await attendanceDB("attn_daily_summary")
-      .where({ user_id, date: dateStr })
-      .update(updateData);
+    try {
+      const existingV2 = await attendanceDB("attn_daily_summary_v2")
+        .where({ user_id, date: sanitizedDate })
+        .first();
 
-    // Trigger background payroll recalculation for the affected month
-    PayrollCalculationService.triggerRecalculation(user_id, dateStr).catch(err => {
+      if (existingV2) {
+        await attendanceDB("attn_daily_summary_v2")
+          .where({ user_id, date: sanitizedDate })
+          .update(summaryDataV2);
+      } else {
+        await attendanceDB("attn_daily_summary_v2").insert({
+          user_id,
+          date: sanitizedDate,
+          ...summaryDataV2,
+          created_at: attendanceDB.fn.now()
+        });
+      }
+    } catch (v2Err) {
+      console.error("attn_daily_summary_v2 sync error:", v2Err);
+    }
+
+    // Also sync legacy attn_daily_summary if it exists
+    const firstIn = sessions.length > 0 ? sessions[0].in_punch : null;
+    const lastOut = sessions.length > 0 && sessions[sessions.length - 1].out_punch ? sessions[sessions.length - 1].out_punch : null;
+    const summaryDataLegacy = {
+      first_in: firstIn ? getTimeStr(firstIn.punch_time) : null,
+      last_out: lastOut ? getTimeStr(lastOut.punch_time) : null,
+      total_hours: totalHours,
+      late_minutes: lateMinutes,
+      late_reason: lateReason,
+      overtime_hours: overtimeHours,
+      status: finalStatus,
+      shift_id: shift ? shift.shift_id : null,
+      updated_at: attendanceDB.fn.now(),
+      ...overrides
+    };
+
+    try {
+      const existingLegacy = await attendanceDB("attn_daily_summary")
+        .where({ user_id, date: sanitizedDate })
+        .first();
+
+      if (existingLegacy) {
+        await attendanceDB("attn_daily_summary")
+          .where({ user_id, date: sanitizedDate })
+          .update(summaryDataLegacy);
+      } else {
+        await attendanceDB("attn_daily_summary").insert({
+          user_id,
+          date: sanitizedDate,
+          ...summaryDataLegacy,
+          created_at: attendanceDB.fn.now()
+        });
+      }
+    } catch (_) {}
+
+    // 10. Trigger payroll recalculation
+    PayrollCalculationService.triggerRecalculation(user_id, sanitizedDate).catch(err => {
       console.error("Failed to trigger background payroll recalculation in syncDailyAttendance:", err);
     });
 
@@ -494,31 +334,144 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
 // ========== RECORDS MANAGEMENT ==========
 
 /**
+ * Helper to build sessions from attn_punches
+ */
+async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_from = null, date_to = null, limit = 100 }) {
+  let query = attendanceDB("attn_punches as ap")
+    .join("core_users as u", "ap.user_id", "u.user_id")
+    .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
+    .whereNull("ap.deleted_at")
+    .whereIn("ap.punch_type", ["in", "out"]);
+
+  if (user_id) query = query.where("ap.user_id", user_id);
+  if (org_id) query = query.where("u.org_id", org_id);
+  if (date_from) query = query.whereRaw("DATE(ap.punch_time) >= DATE(?)", [date_from]);
+  if (date_to) query = query.whereRaw("DATE(ap.punch_time) <= DATE_ADD(DATE(?), INTERVAL 1 DAY)", [date_to]);
+
+  query = query.select(
+    "ap.*",
+    "u.user_name",
+    "u.email",
+    "d.desg_name as designation"
+  ).orderBy("ap.punch_time", "asc").orderBy("ap.id", "asc");
+
+  const punches = await query;
+  if (!punches.length) return [];
+
+  const byUser = {};
+  for (const p of punches) {
+    if (!byUser[p.user_id]) byUser[p.user_id] = [];
+    byUser[p.user_id].push(p);
+  }
+
+  const allSessions = [];
+  for (const uid of Object.keys(byUser)) {
+    const userPunches = byUser[uid];
+    let i = 0;
+    while (i < userPunches.length) {
+      const inP = userPunches[i];
+      if (inP.punch_type === "in") {
+        let outP = null;
+        if (i + 1 < userPunches.length && userPunches[i + 1].punch_type === "out") {
+          outP = userPunches[i + 1];
+          i += 2;
+        } else {
+          i += 1;
+        }
+
+        const inLoc = safeParseJSON(inP.location);
+        const inMeta = safeParseJSON(inP.metadata);
+        const outLoc = outP ? safeParseJSON(outP.location) : {};
+        const outMeta = outP ? safeParseJSON(outP.metadata) : {};
+
+        let totalHours = null;
+        if (outP) {
+          const diffMs = new Date(outP.punch_time) - new Date(inP.punch_time);
+          if (diffMs > 0) totalHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+        }
+
+        const timeInStr = inP.punch_time instanceof Date ? inP.punch_time.toISOString() : new Date(inP.punch_time).toISOString();
+        const timeOutStr = outP ? (outP.punch_time instanceof Date ? outP.punch_time.toISOString() : new Date(outP.punch_time).toISOString()) : null;
+
+        const punchDate = new Date(inP.punch_time);
+        const today = new Date();
+        const isPastDay = punchDate.toDateString() !== today.toDateString() && punchDate < today;
+
+        let sessionStatus = "PRESENT";
+        if (inP.status === "closed" || outP) {
+          sessionStatus = "CLOSED";
+        } else if (inP.status === "missed_punch" || isPastDay) {
+          sessionStatus = "MISSED_PUNCH";
+        }
+
+        allSessions.push({
+          attendance_id: inP.id,
+          user_id: inP.user_id,
+          user_name: inP.user_name,
+          email: inP.email,
+          designation: inP.designation,
+          time_in: timeInStr,
+          time_out: timeOutStr,
+          time_in_lat: inLoc.lat || null,
+          time_in_lng: inLoc.lng || null,
+          time_in_address: inLoc.address || null,
+          time_out_lat: outLoc.lat || null,
+          time_out_lng: outLoc.lng || null,
+          time_out_address: outLoc.address || null,
+          time_in_image_key: inMeta.image_key || null,
+          time_out_image_key: outMeta.image_key || null,
+          late_minutes: inMeta.late_minutes || 0,
+          late_reason: inMeta.late_reason || null,
+          total_hours: totalHours,
+          status: sessionStatus,
+          metadata: JSON.stringify({
+            time_in: { timezone: inMeta.timezone || "Asia/Kolkata" },
+            time_out: { timezone: outMeta?.timezone || "Asia/Kolkata" }
+          }),
+          created_at: inP.created_at,
+          updated_at: outP ? outP.created_at : inP.created_at
+        });
+      } else {
+        i += 1;
+      }
+    }
+  }
+
+  allSessions.sort((a, b) => new Date(b.time_in) - new Date(a.time_in));
+  return allSessions.slice(0, Math.min(parseInt(limit) || 100, 100));
+}
+
+/**
  * Fetch attendance records for admin view with user details
  */
 export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, limit }) {
-  let query = attendanceDB("attn_records")
-    .join("core_users", "attn_records.user_id", "core_users.user_id")
-    .leftJoin("org_designations", "core_users.desg_id", "org_designations.desg_id")
-    .select(
-      "attn_records.*",
-      attendanceDB.raw("DATE_FORMAT(attn_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
-      attendanceDB.raw("DATE_FORMAT(attn_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
-      attendanceDB.raw("DATE_FORMAT(attn_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
-      attendanceDB.raw("DATE_FORMAT(attn_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts"),
-      "core_users.user_name",
-      "core_users.email",
-      "org_designations.desg_name as designation"
-    )
-    .orderBy("time_in", "desc")
-    .limit(Math.min(parseInt(limit), 100));
+  // First check if attn_punches has records
+  let records = await fetchSessionsFromPunches({ org_id, user_id, date_from, date_to, limit }).catch(() => []);
 
-  if (user_id) query = query.where("attn_records.user_id", user_id);
-  query = query.where("core_users.org_id", org_id);
-  if (date_from) query = query.whereRaw("DATE(time_in) >= DATE(?)", [date_from]);
-  if (date_to) query = query.whereRaw("DATE(time_in) <= DATE(?)", [date_to]);
+  if (!records || records.length === 0) {
+    let query = attendanceDB("attn_records")
+      .join("core_users", "attn_records.user_id", "core_users.user_id")
+      .leftJoin("org_designations", "core_users.desg_id", "org_designations.desg_id")
+      .select(
+        "attn_records.*",
+        attendanceDB.raw("DATE_FORMAT(attn_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
+        attendanceDB.raw("DATE_FORMAT(attn_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
+        attendanceDB.raw("DATE_FORMAT(attn_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
+        attendanceDB.raw("DATE_FORMAT(attn_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts"),
+        "core_users.user_name",
+        "core_users.email",
+        "org_designations.desg_name as designation"
+      )
+      .orderBy("time_in", "desc")
+      .limit(Math.min(parseInt(limit), 100));
 
-  const records = await query;
+    if (user_id) query = query.where("attn_records.user_id", user_id);
+    query = query.where("core_users.org_id", org_id);
+    if (date_from) query = query.whereRaw("DATE(time_in) >= DATE(?)", [date_from]);
+    if (date_to) query = query.whereRaw("DATE(time_in) <= DATE(?)", [date_to]);
+
+    records = await query;
+  }
 
   // Fetch pre-signed URLs for images
   const withUrls = await Promise.all(
@@ -527,11 +480,11 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
       let timeOutUrl = null;
 
       if (row.time_in_image_key) {
-        const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key });
+        const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key }).catch(() => ({ url: null }));
         timeInUrl = url;
       }
       if (row.time_out_image_key) {
-        const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key });
+        const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key }).catch(() => ({ url: null }));
         timeOutUrl = url;
       }
 
@@ -559,27 +512,31 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
  * Fetch attendance records for a specific user
  */
 export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
-  let query = attendanceDB("attn_records")
-    .where("user_id", user_id)
-    .select(
-      "attn_records.*",
-      attendanceDB.raw("DATE_FORMAT(attn_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
-      attendanceDB.raw("DATE_FORMAT(attn_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
-      attendanceDB.raw("DATE_FORMAT(attn_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
-      attendanceDB.raw("DATE_FORMAT(attn_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts")
-    )
-    .orderBy("time_in", "desc")
-    .limit(Math.min(parseInt(limit), 100));
+  // First check if attn_punches has records
+  let records = await fetchSessionsFromPunches({ user_id, date_from, date_to, limit }).catch(() => []);
 
-  if (date_from) {
-    query = query.whereRaw("DATE(time_in) >= DATE(?)", [date_from]);
+  if (!records || records.length === 0) {
+    let query = attendanceDB("attn_records")
+      .where("user_id", user_id)
+      .select(
+        "attn_records.*",
+        attendanceDB.raw("DATE_FORMAT(attn_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
+        attendanceDB.raw("DATE_FORMAT(attn_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
+        attendanceDB.raw("DATE_FORMAT(attn_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
+        attendanceDB.raw("DATE_FORMAT(attn_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts")
+      )
+      .orderBy("time_in", "desc")
+      .limit(Math.min(parseInt(limit), 100));
+
+    if (date_from) {
+      query = query.whereRaw("DATE(time_in) >= DATE(?)", [date_from]);
+    }
+    if (date_to) {
+      query = query.whereRaw("DATE(time_in) <= DATE(?)", [date_to]);
+    }
+
+    records = await query;
   }
-  if (date_to) {
-    query = query.whereRaw("DATE(time_in) <= DATE(?)", [date_to]);
-  }
-
-  let records = await query;
-
 
   const withUrls = await Promise.all(
     (records || []).map(async (row) => {
@@ -587,11 +544,11 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
       let timeOutUrl = null;
 
       if (row.time_in_image_key) {
-        const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key });
+        const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key }).catch(() => ({ url: null }));
         timeInUrl = url;
       }
       if (row.time_out_image_key) {
-        const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key });
+        const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key }).catch(() => ({ url: null }));
         timeOutUrl = url;
       }
 
@@ -648,22 +605,50 @@ export async function createCorrectionRequest({
   }
 
   // ENFORCE SINGLE REQUEST PER DAY: Delete any existing request for this date
-  await attendanceDB("attn_correction_requests")
-    .where({ user_id, request_date })
-    .del();
+  try {
+    await attendanceDB("attn_corrections")
+      .where({ user_id, request_date, status: "pending" })
+      .del();
+  } catch (_) {
+    await attendanceDB("attn_correction_requests")
+      .where({ user_id, request_date, status: "pending" })
+      .del().catch(() => {});
+  }
 
-  const [id] = await attendanceDB("attn_correction_requests").insert({
-    user_id,
-    correction_type,
-    request_date,
-    original_data: JSON.stringify(original_data || []),
-    proposed_data: JSON.stringify(proposed_data),
-    reason,
-    status: "pending",
-    audit_trail: JSON.stringify([
-      { action: "submitted", by: user_id, at: new Date() }
-    ])
-  });
+  let id;
+  try {
+    const [newId] = await attendanceDB("attn_corrections").insert({
+      user_id,
+      submitted_by: user_id,
+      correction_type: correction_type === 'summary' ? 'summary' : 'punch',
+      target_id: null,
+      request_date,
+      original_data: original_data ? JSON.stringify(original_data) : null,
+      proposed_data: proposed_data ? JSON.stringify(proposed_data) : null,
+      reason,
+      status: "pending",
+      audit_trail: JSON.stringify([
+        { action: "submitted", by: user_id, at: new Date() }
+      ]),
+      submitted_at: attendanceDB.fn.now(),
+      updated_at: attendanceDB.fn.now()
+    });
+    id = newId;
+  } catch (err) {
+    const [legacyId] = await attendanceDB("attn_correction_requests").insert({
+      user_id,
+      correction_type: correction_type || "punch",
+      request_date,
+      original_data: JSON.stringify(original_data || []),
+      proposed_data: JSON.stringify(proposed_data),
+      reason,
+      status: "pending",
+      audit_trail: JSON.stringify([
+        { action: "submitted", by: user_id, at: new Date() }
+      ])
+    });
+    id = legacyId;
+  }
 
   return id;
 }
@@ -686,82 +671,154 @@ export async function fetchCorrectionRequests({
 
   const applyFilters = qb => {
     const lowerType = String(user_type || "").toLowerCase();
-    if (lowerType !== "admin" && lowerType !== "hr") qb.where("acr.user_id", user_id);
-    if (status) qb.where("acr.status", status);
-    if (date) qb.where("acr.request_date", date);
-    if (month) qb.whereRaw('MONTH(acr.request_date) = ?', [month]);
-    if (year) qb.whereRaw('YEAR(acr.request_date) = ?', [year]);
+    if (lowerType !== "admin" && lowerType !== "hr") qb.where("c.user_id", user_id);
+    if (status) qb.where("c.status", status);
+    if (date) qb.where("c.request_date", date);
+    if (month) qb.whereRaw('MONTH(c.request_date) = ?', [month]);
+    if (year) qb.whereRaw('YEAR(c.request_date) = ?', [year]);
   };
 
-  const data = await attendanceDB("attn_correction_requests as acr")
-    .join("core_users as u", "u.user_id", "acr.user_id")
-    .where("u.org_id", org_id)
-    .modify(applyFilters)
-    .select(
-      "acr.acr_id",
-      "acr.correction_type",
-      "acr.request_date",
-      "acr.original_data",
-      "acr.proposed_data",
-      "acr.status",
-      "acr.reason",
-      "acr.submitted_at",
-      "u.user_id",
-      "u.user_name",
-      "u.desg_id",
-      "u.profile_image_url"
-    )
-    .orderBy("acr.submitted_at", "desc")
-    .limit(limit)
-    .offset(offset);
+  try {
+    const data = await attendanceDB("attn_corrections as c")
+      .join("core_users as u", "u.user_id", "c.user_id")
+      .where("u.org_id", org_id)
+      .modify(applyFilters)
+      .select(
+        "c.id as acr_id",
+        "c.id",
+        "c.correction_type",
+        "c.request_date",
+        "c.original_data",
+        "c.proposed_data",
+        "c.status",
+        "c.reason",
+        "c.submitted_at",
+        "u.user_id",
+        "u.user_name",
+        "u.desg_id",
+        "u.profile_image_url"
+      )
+      .orderBy("c.submitted_at", "desc")
+      .limit(limit)
+      .offset(offset);
 
-  const countResult = await attendanceDB("attn_correction_requests as acr")
-    .join("core_users as u", "u.user_id", "acr.user_id")
-    .where("u.org_id", org_id)
-    .modify(applyFilters)
-    .count("* as total")
-    .first();
+    const countResult = await attendanceDB("attn_corrections as c")
+      .join("core_users as u", "u.user_id", "c.user_id")
+      .where("u.org_id", org_id)
+      .modify(applyFilters)
+      .count("* as total")
+      .first();
 
-  return {
-    data,
-    count: Number(countResult?.total || 0)
-  };
+    return {
+      data,
+      count: Number(countResult?.total || 0)
+    };
+  } catch (err) {
+    const data = await attendanceDB("attn_correction_requests as c")
+      .join("core_users as u", "u.user_id", "c.user_id")
+      .where("u.org_id", org_id)
+      .modify(applyFilters)
+      .select(
+        "c.acr_id",
+        "c.acr_id as id",
+        "c.correction_type",
+        "c.request_date",
+        "c.original_data",
+        "c.proposed_data",
+        "c.status",
+        "c.reason",
+        "c.submitted_at",
+        "u.user_id",
+        "u.user_name",
+        "u.desg_id",
+        "u.profile_image_url"
+      )
+      .orderBy("c.submitted_at", "desc")
+      .limit(limit)
+      .offset(offset);
+
+    const countResult = await attendanceDB("attn_correction_requests as c")
+      .join("core_users as u", "u.user_id", "c.user_id")
+      .where("u.org_id", org_id)
+      .modify(applyFilters)
+      .count("* as total")
+      .first();
+
+    return {
+      data,
+      count: Number(countResult?.total || 0)
+    };
+  }
 }
 
 /**
  * Fetch a single correction request by ID
  */
 export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role }) {
-  let query = attendanceDB("attn_correction_requests as acr")
-    .join("core_users as u", "u.user_id", "acr.user_id")
-    .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
-    .select(
-      "acr.acr_id",
-      "acr.correction_type",
-      "acr.request_date",
-      "acr.original_data",
-      "acr.proposed_data",
-      "acr.reason",
-      "acr.status",
-      "acr.reviewed_by",
-      "acr.reviewed_at",
-      "acr.review_comments",
-      "acr.audit_trail",
-      "acr.submitted_at",
-      "u.user_id",
-      "u.user_name",
-      "u.profile_image_url",
-      "d.desg_name as designation"
-    )
-    .where("acr.acr_id", acr_id)
-    .andWhere("u.org_id", org_id);
+  let correction = null;
+  try {
+    let query = attendanceDB("attn_corrections as c")
+      .join("core_users as u", "u.user_id", "c.user_id")
+      .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
+      .select(
+        "c.id as acr_id",
+        "c.id",
+        "c.correction_type",
+        "c.request_date",
+        "c.original_data",
+        "c.proposed_data",
+        "c.reason",
+        "c.status",
+        "c.reviewed_by",
+        "c.reviewed_at",
+        "c.review_comments",
+        "c.audit_trail",
+        "c.submitted_at",
+        "u.user_id",
+        "u.user_name",
+        "u.profile_image_url",
+        "d.desg_name as designation"
+      )
+      .where("c.id", acr_id)
+      .andWhere("u.org_id", org_id);
 
-  // Access control
-  if (role !== "admin" && role !== "hr") {
-    query.andWhere("acr.user_id", user_id);
+    if (role !== "admin" && role !== "hr") {
+      query.andWhere("c.user_id", user_id);
+    }
+    correction = await query.first();
+  } catch (_) {}
+
+  if (!correction) {
+    let query = attendanceDB("attn_correction_requests as c")
+      .join("core_users as u", "u.user_id", "c.user_id")
+      .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
+      .select(
+        "c.acr_id",
+        "c.acr_id as id",
+        "c.correction_type",
+        "c.request_date",
+        "c.original_data",
+        "c.proposed_data",
+        "c.reason",
+        "c.status",
+        "c.reviewed_by",
+        "c.reviewed_at",
+        "c.review_comments",
+        "c.audit_trail",
+        "c.submitted_at",
+        "u.user_id",
+        "u.user_name",
+        "u.profile_image_url",
+        "d.desg_name as designation"
+      )
+      .where("c.acr_id", acr_id)
+      .andWhere("u.org_id", org_id);
+
+    if (role !== "admin" && role !== "hr") {
+      query.andWhere("c.user_id", user_id);
+    }
+    correction = await query.first();
   }
-
-  const correction = await query.first();
 
   if (!correction) {
     return null;
@@ -796,11 +853,24 @@ export async function reviewCorrectionRequest({
   review_comments,
   adminOverrideSessions
 }) {
-  const correction = await attendanceDB("attn_correction_requests as acr")
-    .join("core_users as u", "u.user_id", "acr.user_id")
-    .where({ "acr.acr_id": acr_id, "u.org_id": org_id })
-    .select("acr.*")
-    .first();
+  let correction = null;
+  let isNewTable = true;
+  try {
+    correction = await attendanceDB("attn_corrections as c")
+      .join("core_users as u", "u.user_id", "c.user_id")
+      .where({ "c.id": acr_id, "u.org_id": org_id })
+      .select("c.*")
+      .first();
+  } catch (_) {}
+
+  if (!correction) {
+    isNewTable = false;
+    correction = await attendanceDB("attn_correction_requests as c")
+      .join("core_users as u", "u.user_id", "c.user_id")
+      .where({ "c.acr_id": acr_id, "u.org_id": org_id })
+      .select("c.*")
+      .first();
+  }
 
   if (!correction) {
     throw { status: 404, message: "Request not found" };
@@ -836,7 +906,7 @@ export async function reviewCorrectionRequest({
     const raw = typeof correction.proposed_data === 'string'
       ? JSON.parse(correction.proposed_data)
       : correction.proposed_data;
-    proposedSessions = Array.isArray(raw) ? raw : [];
+    proposedSessions = Array.isArray(raw) ? raw : (raw ? [raw] : []);
   } catch {
     proposedSessions = [];
   }
@@ -855,13 +925,16 @@ export async function reviewCorrectionRequest({
     reviewed_by: reviewer_id,
     reviewed_at: new Date(),
     review_comments: review_comments || null,
-    audit_trail: JSON.stringify(auditTrail)
+    audit_trail: JSON.stringify(auditTrail),
+    updated_at: attendanceDB.fn.now()
   };
   if (updatedProposedData) dbUpdate.proposed_data = updatedProposedData;
 
-  await attendanceDB("attn_correction_requests")
-    .where({ acr_id })
-    .update(dbUpdate);
+  if (isNewTable) {
+    await attendanceDB("attn_corrections").where({ id: acr_id }).update(dbUpdate);
+  } else {
+    await attendanceDB("attn_correction_requests").where({ acr_id }).update(dbUpdate);
+  }
 
   // --- APPLY CORRECTION IF APPROVED ---
   if (status === 'approved' && sessionsToApply.length > 0) {
@@ -872,28 +945,66 @@ export async function reviewCorrectionRequest({
     const localDate = new Date(d.getTime() - (offset * 60 * 1000));
     const finalDateStr = localDate.toISOString().split('T')[0];
 
-    // Fetch shift rules to calculate proper status
-    const shift = await getUserShift(correction.user_id);
-    const rules = ShiftService.getShiftRules(shift);
+    // Soft-delete existing non-deleted punches for that day in attn_punches
+    await attendanceDB("attn_punches")
+      .where({ user_id: correction.user_id })
+      .whereNull("deleted_at")
+      .whereRaw("DATE(punch_time) = ?", [finalDateStr])
+      .update({ deleted_at: attendanceDB.fn.now() });
 
-    // Delete all existing records for the day
+    // Insert approved punches into attn_punches
+    const newPunches = [];
+    sessionsToApply.forEach(s => {
+      const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
+      const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
+
+      if (tIn) {
+        newPunches.push({
+          user_id: correction.user_id,
+          punch_time: `${finalDateStr} ${tIn}`,
+          punch_type: 'in',
+          punch_nature: 'fabricated',
+          status: tOut ? 'closed' : 'active',
+          correction_id: acr_id,
+          location: JSON.stringify({ address: 'Manual Correction', is_geofence_violation: false }),
+          metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id }),
+          created_at: attendanceDB.fn.now()
+        });
+      }
+
+      if (tOut) {
+        newPunches.push({
+          user_id: correction.user_id,
+          punch_time: `${finalDateStr} ${tOut}`,
+          punch_type: 'out',
+          punch_nature: 'fabricated',
+          status: 'closed',
+          correction_id: acr_id,
+          location: JSON.stringify({ address: 'Manual Correction', is_geofence_violation: false }),
+          metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id }),
+          created_at: attendanceDB.fn.now()
+        });
+      }
+    });
+
+    if (newPunches.length > 0) {
+      await attendanceDB("attn_punches").insert(newPunches);
+    }
+
+    // Delete all existing records for the day in legacy attn_records
     await attendanceDB("attn_records")
       .where({ user_id: correction.user_id })
       .whereRaw("DATE(time_in) = ?", [finalDateStr])
-      .del();
+      .del().catch(() => {});
 
-    // Calculate aggregate totals and statuses using Service logic
-    const sortedSessions = [...sessionsToApply].sort((a, b) => a.time_in.localeCompare(b.time_in));
-    const evaluatedSessions = StatusService.evaluateSessionList(rules, sortedSessions, finalDateStr);
-
-    // Insert the approved sessions
+    // Insert the approved sessions into legacy attn_records
     const newRecords = sessionsToApply.map(s => {
       const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
       const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
       return {
         user_id: correction.user_id,
         time_in: `${finalDateStr} ${tIn}`,
-        time_out: `${finalDateStr} ${tOut}`,
+        time_out: tOut ? `${finalDateStr} ${tOut}` : null,
         status: 'CLOSED',
         created_at: attendanceDB.fn.now(),
         updated_at: attendanceDB.fn.now(),
@@ -903,20 +1014,12 @@ export async function reviewCorrectionRequest({
       };
     });
 
-    await attendanceDB("attn_records").insert(newRecords);
+    if (newRecords.length > 0) {
+      await attendanceDB("attn_records").insert(newRecords).catch(() => {});
+    }
 
-    // Sync Daily Summary (Now uses the combined state of the sessions)
-    const manualBase = {
-      is_manual_adjustment: true,
-      adjusted_by: reviewer_id,
-      updated_at: attendanceDB.fn.now()
-    };
-
-    await syncDailyAttendance(correction.user_id, finalDateStr, {
-      ...manualBase,
-      is_altered: true,
-      adjustment_reason: `Correction Request #${acr_id}`
-    });
+    // Sync Daily Summary (Now uses the combined state of the punches)
+    await syncDailyAttendance(correction.user_id, finalDateStr);
   }
 }
 
@@ -930,11 +1033,14 @@ export async function exportRecordsToExcel({ user_id, org_id, month, year, month
   const lastDay = new Date(year, monthNum, 0).getDate();
   const endDate = `${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
 
-  const records = await attendanceDB("attn_records")
-    .where({ user_id })
-    .whereRaw("DATE(time_in) >= ?", [startDate])
-    .whereRaw("DATE(time_in) <= ?", [endDate])
-    .orderBy("time_in", "asc");
+  let records = await fetchSessionsFromPunches({ user_id, date_from: startDate, date_to: endDate, limit: 1000 }).catch(() => []);
+  if (!records || records.length === 0) {
+    records = await attendanceDB("attn_records")
+      .where({ user_id })
+      .whereRaw("DATE(time_in) >= ?", [startDate])
+      .whereRaw("DATE(time_in) <= ?", [endDate])
+      .orderBy("time_in", "asc");
+  }
 
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("My Attendance");
@@ -1021,18 +1127,9 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
   return summaries;
 }
 
-// ========== HELPER FUNCTIONS ==========
-const getTimeStr = (d) => {
-  if (!d) return null;
-  const dateObj = new Date(d);
-  if (isNaN(dateObj.getTime())) return null;
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(dateObj.getUTCHours())}:${pad(dateObj.getUTCMinutes())}:${pad(dateObj.getUTCSeconds())}`;
-};
-
 /**
  * Process Time In (Synchronous Part)
- * Checks compliance and creates DB record. Returns minimal metadata and attendance_id.
+ * Checks compliance and inserts 'in' punch into attn_punches. Returns punch_id.
  */
 export async function processTimeInSync(context) {
   const {
@@ -1048,100 +1145,83 @@ export async function processTimeInSync(context) {
     user_agent
   } = context;
 
-  // 1. Check Existing Session
-  const todayDate = localTime.split('T')[0];
-  const openSession = await attendanceDB("attn_records")
+  const todayDate = localTime ? localTime.split('T')[0] : new Date().toISOString().split('T')[0];
+  const isSimulation = context.event_source === "SIMULATION" || context.punch_nature === "simulated";
+  const punchNature = isSimulation ? "simulated" : (context.punch_nature || "default");
+  const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
+  const addressStr = context.address || (isSimulation ? "Simulated Location" : "Locating...");
+
+  // 1. Check for open session on the target date
+  const lastPunchOnDate = await attendanceDB("attn_punches")
     .where({ user_id })
-    .whereNull("time_out")
-    .whereRaw("DATE(time_in) = DATE(?)", [todayDate])
-    .orderBy("time_in", "desc")
+    .whereNull("deleted_at")
+    .whereIn("punch_type", ["in", "out"])
+    .whereRaw("DATE(punch_time) = ?", [todayDate])
+    .orderBy("punch_time", "desc")
+    .orderBy("id", "desc")
     .first();
 
-  if (openSession) {
-    return { ok: false, status: 400, message: "Already timed in. Please time out first." };
+  if (lastPunchOnDate && lastPunchOnDate.punch_type === "in") {
+    return { ok: false, status: 400, message: `Already timed in on ${todayDate}. Please time out first.` };
   }
 
-  // Auto-resolve open sessions from prior days
-  try {
-    const priorOpenSessions = await attendanceDB("attn_records")
+  // If real-time check-in, ensure the latest global punch is not an open in-punch from today
+  if (!isSimulation) {
+    const latestGlobal = await attendanceDB("attn_punches")
       .where({ user_id })
-      .whereNull("time_out")
-      .whereRaw("DATE(time_in) < DATE(?)", [todayDate]);
+      .whereNull("deleted_at")
+      .whereIn("punch_type", ["in", "out"])
+      .orderBy("punch_time", "desc")
+      .orderBy("id", "desc")
+      .first();
 
-    if (priorOpenSessions.length > 0) {
-      const userRec = await attendanceDB("core_users").where({ user_id }).select("shift_id").first();
-      const isOpenShift = !userRec || userRec.shift_id === null;
+    if (latestGlobal && latestGlobal.punch_type === "in") {
+      const lastPunchDate = new Date(latestGlobal.punch_time).toISOString().split('T')[0];
+      if (lastPunchDate === todayDate) {
+        return { ok: false, status: 400, message: "Already timed in. Please time out first." };
+      }
 
-      for (const session of priorOpenSessions) {
-        if (isOpenShift) {
-          const checkInDate = new Date(session.time_in);
-          const checkOutDate = new Date(checkInDate.getTime() + 9 * 60 * 60 * 1000);
-          
-          await attendanceDB("attn_records")
-            .where({ attendance_id: session.attendance_id })
-            .update({
-              time_out: checkOutDate,
-              status: "PRESENT",
-              updated_at: attendanceDB.fn.now()
-            });
-          
-          const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
-          await syncDailyAttendance(user_id, sessionDate, { status: "PRESENT" }).catch(console.error);
-          continue;
-        }
-
-        let metadata = {};
-        try {
-          metadata = typeof session.metadata === 'string'
-            ? JSON.parse(session.metadata)
-            : (session.metadata || {});
-        } catch (e) {
-          metadata = {};
-        }
-        metadata.missed_punch = {
-          flagged_at: new Date().toISOString(),
-          reason: "System auto-flagged: Checked in on a new day before checking out."
-        };
-        await attendanceDB("attn_records")
-          .where({ attendance_id: session.attendance_id })
-          .update({
-            status: "MISSED_PUNCH",
-            metadata: JSON.stringify(metadata),
-            updated_at: attendanceDB.fn.now()
-          });
-        
-        const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
-        await syncDailyAttendance(user_id, sessionDate, { status: "MISSED_PUNCH" }).catch(console.error);
+      // Prior-day open session — re-aggregate that day (aggregator flags as MISSED_PUNCH)
+      try {
+        await syncDailyAttendance(user_id, lastPunchDate);
+      } catch (err) {
+        console.error("Error re-aggregating prior open session:", err);
       }
     }
-  } catch (err) {
-    console.error("Error auto-resolving prior open sessions:", err);
   }
 
-  // 2. Shift Context
-  const sessionContext = await StatusService.buildSessionContext(user_id, localTime, "time_in");
+  // 2. Count today's sessions for session numbering
+  const todayInPunches = await attendanceDB("attn_punches")
+    .where({ user_id, punch_type: "in" })
+    .whereNull("deleted_at")
+    .whereRaw("DATE(punch_time) = ?", [todayDate]);
+
+  const sessionNumber = todayInPunches.length + 1;
+  const isFirstSession = todayInPunches.length === 0;
+
+  // 3. Shift Context & Compliance
   const shift = await getUserShift(user_id);
   const rules = ShiftService.getShiftRules(shift);
 
-  // 3. Compliance Checks
-  const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.entry_requirements);
-  if (!geoCheck.ok) {
-    return { ok: false, status: 400, message: "Shift Policy Violation: " + geoCheck.error };
+  if (!isSimulation) {
+    const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.entry_requirements);
+    if (!geoCheck.ok) {
+      return { ok: false, status: 400, message: "Shift Policy Violation: " + geoCheck.error };
+    }
+
+    const bioCheck = ShiftService.checkBiometricCompliance(file, rules.entry_requirements);
+    if (!bioCheck.ok) {
+      return { ok: false, status: 400, message: "Shift Policy Violation: " + bioCheck.error };
+    }
   }
 
-  const bioCheck = ShiftService.checkBiometricCompliance(file, rules.entry_requirements);
-  if (!bioCheck.ok) {
-    return { ok: false, status: 400, message: "Shift Policy Violation: " + bioCheck.error };
-  }
-
-  // 4. Late Calculation
+  // 4. Late Calculation (first session only)
   let lateCheck = { minutesLate: 0, isLate: false, gracePeriod: 0 };
-  if (sessionContext.is_first_session) {
+  if (isFirstSession) {
     lateCheck = StatusService.calculateLateArrival(localTime, rules);
   }
   const minutesLate = lateCheck.minutesLate;
 
-  // VALIDATION: Late Reason Compulsory
   if (lateCheck.isLate && !late_reason) {
     return {
       ok: false,
@@ -1150,37 +1230,39 @@ export async function processTimeInSync(context) {
     };
   }
 
-  // Metadata
-  const metadata = {
-    time_in: {
-      accuracy: Math.round(accuracy),
-      ip_address: ip,
-      user_agent: user_agent,
-      timestamp_utc: new Date().toISOString(),
-      timezone: context.timezone || "N/A"
-    },
-    session_context: sessionContext
+  // 5. Build location JSON (image_key starts null — worker fills it after S3 upload)
+  const locationData = {
+    lat: latitude,
+    lng: longitude,
+    address: addressStr,
+    is_geofence_violation: false
   };
 
-  // DB Insert
-  const [attendance_id] = await attendanceDB("attn_records").insert({
+  // 6. Build metadata JSON
+  const metadata = {
+    image_key: null,
+    late_reason: isFirstSession ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
+    accuracy: Math.round(accuracy),
+    ip_address: ip,
+    user_agent: user_agent,
+    timezone: context.timezone || "N/A"
+  };
+
+  // 7. Insert 'in' punch
+  const [punch_id] = await attendanceDB("attn_punches").insert({
     user_id,
-    late_reason: sessionContext.is_first_session ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
-    late_minutes: minutesLate,
-    time_in: localTime,
-    time_in_lat: latitude,
-    time_in_lng: longitude,
-    time_in_address: "Locating...",
-    status: "PRESENT",
+    punch_time: punchTime,
+    punch_type: "in",
+    status: "active",
+    location: JSON.stringify(locationData),
+    punch_nature: punchNature,
     metadata: JSON.stringify(metadata),
-    created_at: attendanceDB.fn.now(),
-    updated_at: attendanceDB.fn.now(),
+    created_at: attendanceDB.fn.now()
   });
 
-  // Daily Sync
+  // 8. Sync daily summary
   try {
-    const dateStr = localTime.split('T')[0];
-    await syncDailyAttendance(user_id, dateStr);
+    await syncDailyAttendance(user_id, todayDate);
   } catch (dailyErr) {
     console.error("Daily Sync Error:", dailyErr);
   }
@@ -1189,12 +1271,14 @@ export async function processTimeInSync(context) {
 
   return {
     ok: true,
-    attendance_id,
+    attendance_id: punch_id,
+    punch_id,
     local_time: localTime,
-    address: "Locating...",
+    address: addressStr,
     tz_name: context.timezone,
-    session_number: sessionContext.session_number,
-    is_first_session: sessionContext.is_first_session,
+    timezone: context.timezone,
+    session_number: sessionNumber,
+    is_first_session: isFirstSession,
     working_hours: expectedHours,
     message: "Timed in successfully",
   };
@@ -1202,7 +1286,7 @@ export async function processTimeInSync(context) {
 
 /**
  * Process Time Out (Synchronous Part)
- * Checks compliance, calculates hours, and updates DB record.
+ * Inserts 'out' punch into attn_punches and triggers aggregation.
  */
 export async function processTimeOutSync(context) {
   const {
@@ -1217,18 +1301,39 @@ export async function processTimeOutSync(context) {
     user_agent
   } = context;
 
-  // 1. Check Existing Session
-  const openSession = await attendanceDB("attn_records")
-    .where({ user_id })
-    .whereNull("time_out")
-    .orderBy("time_in", "desc")
-    .first();
+  const isSimulation = context.event_source === "SIMULATION" || context.punch_nature === "simulated";
+  const punchNature = isSimulation ? "simulated" : (context.punch_nature || "default");
+  const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
+  const addressStr = context.address || (isSimulation ? "Simulated Location" : "Locating...");
+  const targetDate = localTime ? localTime.split('T')[0] : null;
 
-  if (!openSession) {
-    return { ok: false, status: 400, message: "No active time-in found to time out." };
+  // 1. Find open session (latest non-deleted punch is 'in' on target date if simulating)
+  let lastPunchQuery = attendanceDB("attn_punches")
+    .where({ user_id })
+    .whereNull("deleted_at")
+    .whereIn("punch_type", ["in", "out"]);
+
+  if (isSimulation && targetDate) {
+    lastPunchQuery = lastPunchQuery.whereRaw("DATE(punch_time) = ?", [targetDate]);
   }
 
-  if (openSession.status === 'MISSED_PUNCH') {
+  const lastPunch = await lastPunchQuery
+    .orderBy("punch_time", "desc")
+    .orderBy("id", "desc")
+    .first();
+
+  if (!lastPunch || lastPunch.punch_type !== "in") {
+    return { ok: false, status: 400, message: isSimulation ? `No active time-in found on ${targetDate} to time out.` : "No active time-in found to time out." };
+  }
+
+  const openInPunch = lastPunch;
+
+  // 2. Check if the open session was flagged as MISSED_PUNCH by aggregator
+  const sessionDate = new Date(openInPunch.punch_time).toISOString().split('T')[0];
+  const daySummary = await attendanceDB("attn_daily_summary")
+    .where({ user_id, date: sessionDate })
+    .first();
+  if (daySummary && daySummary.status === 'MISSED_PUNCH') {
     return {
       ok: false,
       status: 400,
@@ -1236,7 +1341,8 @@ export async function processTimeOutSync(context) {
     };
   }
 
-  const durationHours = (new Date(localTime) - new Date(openSession.time_in)) / (1000 * 60 * 60);
+  // 3. Check session age (> 24h → require correction)
+  const durationHours = (new Date(localTime) - new Date(openInPunch.punch_time)) / (1000 * 60 * 60);
   if (durationHours > 24) {
     return {
       ok: false,
@@ -1245,88 +1351,123 @@ export async function processTimeOutSync(context) {
     };
   }
 
-  // 2. Shift Context
-  const sessionContext = await StatusService.buildSessionContext(user_id, localTime, "time_out");
+  // 4. Shift Context & Compliance
   const shift = await getUserShift(user_id);
   const rules = ShiftService.getShiftRules(shift);
 
-  // 3. Compliance Checks
-  const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.exit_requirements);
-  if (!geoCheck.ok) {
-    return { ok: false, status: 400, message: "Shift Policy Violation: " + geoCheck.error };
-  }
-
-  const bioCheck = ShiftService.checkBiometricCompliance(file, rules.exit_requirements);
-  if (!bioCheck.ok) {
-    return { ok: false, status: 400, message: "Shift Policy Violation: " + bioCheck.error };
-  }
-
-  // 4. Calculations
-  const totalHours = StatusService.calculateDurationHours(openSession.time_in, localTime);
-  const minutesLate = openSession.late_minutes || 0;
-
-  const sessionDateStr  = new Date(openSession.time_in).toISOString().split('T')[0];
-  const checkoutDateStr = new Date(localTime).toISOString().split('T')[0];
-  const contextRefTime  = sessionDateStr !== checkoutDateStr ? new Date(openSession.time_in).toISOString() : new Date(localTime).toISOString();
-  const currentSessionContext = await StatusService.buildSessionContext(user_id, contextRefTime, "time_out");
-  currentSessionContext.total_hours = totalHours;
-  currentSessionContext.minutes_late = minutesLate;
-  currentSessionContext.total_hours_today = parseFloat((currentSessionContext.total_hours_today + totalHours).toFixed(2));
-  const status = StatusService.evaluateStatus(rules, currentSessionContext);
-
-  // Metadata Update
-  let metadata = {};
-  try {
-    if (typeof openSession.metadata === 'string') {
-      metadata = JSON.parse(openSession.metadata);
-    } else if (typeof openSession.metadata === 'object' && openSession.metadata !== null) {
-      metadata = openSession.metadata;
+  if (!isSimulation) {
+    const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.exit_requirements);
+    if (!geoCheck.ok) {
+      return { ok: false, status: 400, message: "Shift Policy Violation: " + geoCheck.error };
     }
-  } catch (e) {
-    console.error("Metadata parse error", e);
+
+    const bioCheck = ShiftService.checkBiometricCompliance(file, rules.exit_requirements);
+    if (!bioCheck.ok) {
+      return { ok: false, status: 400, message: "Shift Policy Violation: " + bioCheck.error };
+    }
   }
 
-  metadata.time_out = {
+  // 5. Calculate session hours for immediate response
+  const totalHours = StatusService.calculateDurationHours(openInPunch.punch_time, localTime);
+
+  // 6. Build location + metadata JSON (image_key starts null — worker fills it)
+  const locationData = {
+    lat: latitude,
+    lng: longitude,
+    address: addressStr,
+    is_geofence_violation: false
+  };
+
+  const metadata = {
+    image_key: null,
     accuracy: Math.round(accuracy),
     ip_address: ip,
     user_agent: user_agent,
-    timestamp_utc: new Date().toISOString(),
     timezone: context.timezone || "N/A",
     total_hours: parseFloat(totalHours.toFixed(2))
   };
-  metadata.session_context_at_checkout = currentSessionContext;
 
-  // DB Update
-  await attendanceDB("attn_records")
-    .where({ attendance_id: openSession.attendance_id })
-    .update({
-      time_out: localTime,
-      time_out_lat: latitude,
-      time_out_lng: longitude,
-      time_out_address: "Locating...",
-      overtime_hours: StatusService.calculateOvertime(totalHours, rules),
-      status: status,
-      metadata: JSON.stringify(metadata),
-      updated_at: attendanceDB.fn.now(),
-    });
+  // 7. Insert 'out' punch
+  const [punch_id] = await attendanceDB("attn_punches").insert({
+    user_id,
+    punch_time: punchTime,
+    punch_type: "out",
+    status: "closed",
+    location: JSON.stringify(locationData),
+    punch_nature: punchNature,
+    metadata: JSON.stringify(metadata),
+    created_at: attendanceDB.fn.now()
+  });
 
-  // Daily Sync
+  // Mark corresponding 'in' punch as closed
+  await attendanceDB("attn_punches")
+    .where({ id: openInPunch.id })
+    .update({ status: "closed" })
+    .catch(() => {});
+
+  // 8. Sync daily summary (use punch-in date for overnight shifts)
   try {
-    const sessionDate = new Date(openSession.time_in).toISOString().split('T')[0];
-    await syncDailyAttendance(user_id, sessionDate, { status });
+    await syncDailyAttendance(user_id, sessionDate);
   } catch (dailyErr) {
     console.error("Daily Sync Error (Timeout):", dailyErr);
   }
 
+  // 9. Get aggregated status + totals for response
+  let status = "PRESENT";
+  let totalHoursToday = parseFloat(totalHours.toFixed(2));
+  try {
+    const updatedSummary = await attendanceDB("attn_daily_summary")
+      .where({ user_id, date: sessionDate })
+      .first();
+    if (updatedSummary) {
+      status = updatedSummary.status;
+      totalHoursToday = updatedSummary.total_hours;
+    }
+  } catch (e) { /* fallback to session hours */ }
+
   const expectedHours = ShiftService.getExpectedHours(localTime, rules.week_off_policy, rules);
+
+  // EventBus logging (moved from legacy processTimeOut)
+  EventBus.emitActivityLog({
+    user_id,
+    org_id,
+    event_type: "CHECK_OUT",
+    event_source: context.event_source || "WEB",
+    object_type: "ATTENDANCE",
+    object_id: punch_id,
+    description: `User checked out (Status: ${status})`,
+    location: `${latitude},${longitude}`,
+    request_ip: ip,
+    user_agent: user_agent
+  });
 
   return {
     ok: true,
-    attendance_id: openSession.attendance_id,
+    attendance_id: punch_id,
+    punch_id,
     local_time_out: localTime,
-    address: "Locating...",
+    address: addressStr,
     tz_name: context.timezone,
+    timezone: context.timezone,
+    status,
+    session_hours: parseFloat(totalHours.toFixed(2)),
+    total_hours_today: totalHoursToday,
     working_hours: expectedHours,
     message: "Timed out successfully",
   };
+}
+
+export async function recordLocationPing({ userId, latitude, longitude, ip, userAgent, isGeofenceViolation = false }) {
+  const [punch_id] = await attendanceDB("attn_punches").insert({
+    user_id: userId,
+    punch_time: attendanceDB.fn.now(),
+    punch_type: "normal_punch",
+    location: JSON.stringify({ lat: latitude, lng: longitude, is_geofence_violation: isGeofenceViolation }),
+    punch_nature: "default",
+    status: "active",
+    metadata: JSON.stringify({ ip, user_agent: userAgent }),
+    created_at: attendanceDB.fn.now()
+  });
+
+  return { ok: true, punch_id, message: "Location ping recorded" };
 }
