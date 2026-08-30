@@ -5,6 +5,7 @@ import EventBus from "../../utils/EventBus.js";
 import * as ShiftService from "./shiftManagementService.js";
 import * as StatusService from "./statusEvaluationService.js";
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
+import { toMySQLDateTime, toMySQLDate, toMySQLTime } from "../../utils/dateUtils.js";
 
 /**
  * Fetch User Shift
@@ -154,7 +155,8 @@ export async function processTimeIn(context) {
       ip_address: ip,
       user_agent: user_agent,
       timestamp_utc: new Date().toISOString(),
-      timezone: context.timezone || "N/A"
+      timezone: context.timezone || "N/A",
+      local_time: toMySQLDateTime(localTime)
     },
     session_context: sessionContext
   };
@@ -164,7 +166,7 @@ export async function processTimeIn(context) {
     user_id,
     late_reason: sessionContext.is_first_session ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
     late_minutes: minutesLate,
-    time_in: localTime,
+    time_in: toMySQLDateTime(localTime),
     time_in_lat: latitude,
     time_in_lng: longitude,
     time_in_address: address,
@@ -176,7 +178,7 @@ export async function processTimeIn(context) {
 
   // Daily Sync
   try {
-    const dateStr = localTime.split('T')[0];
+    const dateStr = toMySQLDate(localTime);
     await syncDailyAttendance(user_id, dateStr);
   } catch (dailyErr) {
     console.error("Daily Sync Error:", dailyErr);
@@ -351,6 +353,7 @@ export async function processTimeOut(context) {
     user_agent: user_agent,
     timestamp_utc: new Date().toISOString(),
     timezone: context.timezone || "N/A",
+    local_time: toMySQLDateTime(localTime),
     total_hours: parseFloat(totalHours.toFixed(2))
   };
   metadata.session_context_at_checkout = currentSessionContext;
@@ -359,7 +362,7 @@ export async function processTimeOut(context) {
   await attendanceDB("attn_records")
     .where({ attendance_id: openSession.attendance_id })
     .update({
-      time_out: localTime,
+      time_out: toMySQLDateTime(localTime),
       time_out_lat: latitude,
       time_out_lng: longitude,
       time_out_address: address,
@@ -371,7 +374,7 @@ export async function processTimeOut(context) {
 
   // Daily Sync (Use session date, not current clock date, to handle overnight shifts)
   try {
-    const sessionDate = new Date(openSession.time_in).toISOString().split('T')[0];
+    const sessionDate = toMySQLDate(openSession.time_in);
     await syncDailyAttendance(user_id, sessionDate, { status });
   } catch (dailyErr) {
     console.error("Daily Sync Error (Timeout):", dailyErr);
@@ -826,38 +829,38 @@ export async function reviewCorrectionRequest({
   });
 
   // Determine the sessions to apply: admin override takes priority, else use proposed_data
-  const adminOverride = adminOverrideSessions && Array.isArray(adminOverrideSessions) && adminOverrideSessions.length > 0
-    ? adminOverrideSessions
-    : null;
-
-  // Parse stored proposed_data
-  let proposedSessions = [];
-  try {
-    const raw = typeof correction.proposed_data === 'string'
-      ? JSON.parse(correction.proposed_data)
-      : correction.proposed_data;
-    proposedSessions = Array.isArray(raw) ? raw : [];
-  } catch {
-    proposedSessions = [];
-  }
-
-  // Use admin override if provided, otherwise fall back to the stored proposal
-  const sessionsToApply = adminOverride || proposedSessions;
-
-  // If admin provided an override, update proposed_data in DB to reflect what was ACTUALLY applied
-  let updatedProposedData = null;
-  if (adminOverride) {
-    updatedProposedData = JSON.stringify(adminOverride);
+  let sessionsToApply = [];
+  if (adminOverrideSessions && Array.isArray(adminOverrideSessions) && adminOverrideSessions.length > 0) {
+    sessionsToApply = adminOverrideSessions;
+  } else {
+    try {
+      const raw = typeof correction.proposed_data === 'string'
+        ? JSON.parse(correction.proposed_data)
+        : correction.proposed_data;
+      if (Array.isArray(raw)) {
+        sessionsToApply = raw;
+      } else if (raw && raw.sessions && Array.isArray(raw.sessions)) {
+        sessionsToApply = raw.sessions;
+      } else if (raw && (raw.time_in || raw.time_out)) {
+        sessionsToApply = [raw];
+      }
+    } catch {
+      sessionsToApply = [];
+    }
   }
 
   const dbUpdate = {
     status,
+    reviewer_notes: review_comments || null,
     reviewed_by: reviewer_id,
-    reviewed_at: new Date(),
-    review_comments: review_comments || null,
-    audit_trail: JSON.stringify(auditTrail)
+    reviewed_at: attendanceDB.fn.now(),
+    audit_trail: JSON.stringify(auditTrail),
+    updated_at: attendanceDB.fn.now()
   };
-  if (updatedProposedData) dbUpdate.proposed_data = updatedProposedData;
+
+  if (adminOverrideSessions) {
+    dbUpdate.proposed_data = JSON.stringify(adminOverrideSessions);
+  }
 
   await attendanceDB("attn_correction_requests")
     .where({ acr_id })
@@ -867,10 +870,7 @@ export async function reviewCorrectionRequest({
   if (status === 'approved' && sessionsToApply.length > 0) {
     // Resolve final date string (YYYY-MM-DD)
     const targetDate = correction.request_date;
-    const d = new Date(targetDate);
-    const offset = d.getTimezoneOffset();
-    const localDate = new Date(d.getTime() - (offset * 60 * 1000));
-    const finalDateStr = localDate.toISOString().split('T')[0];
+    const finalDateStr = toMySQLDate(targetDate);
 
     // Fetch shift rules to calculate proper status
     const shift = await getUserShift(correction.user_id);
@@ -892,8 +892,8 @@ export async function reviewCorrectionRequest({
       const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
       return {
         user_id: correction.user_id,
-        time_in: `${finalDateStr} ${tIn}`,
-        time_out: `${finalDateStr} ${tOut}`,
+        time_in: toMySQLDateTime(`${finalDateStr} ${tIn}`),
+        time_out: tOut ? toMySQLDateTime(`${finalDateStr} ${tOut}`) : null,
         status: 'CLOSED',
         created_at: attendanceDB.fn.now(),
         updated_at: attendanceDB.fn.now(),
@@ -1157,7 +1157,8 @@ export async function processTimeInSync(context) {
       ip_address: ip,
       user_agent: user_agent,
       timestamp_utc: new Date().toISOString(),
-      timezone: context.timezone || "N/A"
+      timezone: context.timezone || "N/A",
+      local_time: toMySQLDateTime(localTime)
     },
     session_context: sessionContext
   };
@@ -1167,7 +1168,7 @@ export async function processTimeInSync(context) {
     user_id,
     late_reason: sessionContext.is_first_session ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
     late_minutes: minutesLate,
-    time_in: localTime,
+    time_in: toMySQLDateTime(localTime),
     time_in_lat: latitude,
     time_in_lng: longitude,
     time_in_address: "Locating...",
@@ -1179,7 +1180,7 @@ export async function processTimeInSync(context) {
 
   // Daily Sync
   try {
-    const dateStr = localTime.split('T')[0];
+    const dateStr = toMySQLDate(localTime);
     await syncDailyAttendance(user_id, dateStr);
   } catch (dailyErr) {
     console.error("Daily Sync Error:", dailyErr);
@@ -1265,8 +1266,8 @@ export async function processTimeOutSync(context) {
   const totalHours = StatusService.calculateDurationHours(openSession.time_in, localTime);
   const minutesLate = openSession.late_minutes || 0;
 
-  const sessionDateStr  = new Date(openSession.time_in).toISOString().split('T')[0];
-  const checkoutDateStr = new Date(localTime).toISOString().split('T')[0];
+  const sessionDateStr  = toMySQLDate(openSession.time_in);
+  const checkoutDateStr = toMySQLDate(localTime);
   const contextRefTime  = sessionDateStr !== checkoutDateStr ? new Date(openSession.time_in).toISOString() : new Date(localTime).toISOString();
   const currentSessionContext = await StatusService.buildSessionContext(user_id, contextRefTime, "time_out");
   currentSessionContext.total_hours = totalHours;
@@ -1292,6 +1293,7 @@ export async function processTimeOutSync(context) {
     user_agent: user_agent,
     timestamp_utc: new Date().toISOString(),
     timezone: context.timezone || "N/A",
+    local_time: toMySQLDateTime(localTime),
     total_hours: parseFloat(totalHours.toFixed(2))
   };
   metadata.session_context_at_checkout = currentSessionContext;
@@ -1300,7 +1302,7 @@ export async function processTimeOutSync(context) {
   await attendanceDB("attn_records")
     .where({ attendance_id: openSession.attendance_id })
     .update({
-      time_out: localTime,
+      time_out: toMySQLDateTime(localTime),
       time_out_lat: latitude,
       time_out_lng: longitude,
       time_out_address: "Locating...",
@@ -1312,7 +1314,7 @@ export async function processTimeOutSync(context) {
 
   // Daily Sync
   try {
-    const sessionDate = new Date(openSession.time_in).toISOString().split('T')[0];
+    const sessionDate = toMySQLDate(openSession.time_in);
     await syncDailyAttendance(user_id, sessionDate, { status });
   } catch (dailyErr) {
     console.error("Daily Sync Error (Timeout):", dailyErr);

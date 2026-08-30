@@ -13,6 +13,7 @@ import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.j
 import { calculateWorkHours, deriveStatus } from "../../services/reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
 import { getLocalNow } from "../../services/attendance/statusEvaluationService.js";
+import { getZonedNow } from "../../utils/dateUtils.js";
 import { attendanceQueue } from "../../config/queues.js";
 
 
@@ -30,21 +31,24 @@ export const timeIn = catchAsync(async (req, res) => {
   const late_reason = req.body.late_reason || null;
   const file = req.file;
 
-  // 2. QUICK TIMEZONE LOOKUP (Fast: ~2ms DB lookup + local date conversion)
-  let timezone = 'UTC';
-  try {
-    const org = await attendanceDB('core_organizations')
-        .where({ org_id })
-        .select('timezone')
-        .first();
-    if (org && org.timezone) {
-        timezone = org.timezone;
+  // 2. TIMEZONE RESOLUTION (Client device timezone -> Organization timezone -> UTC)
+  const clientTimezone = req.body.timezone || req.headers['x-timezone'] || null;
+  let timezone = clientTimezone || 'UTC';
+  if (!clientTimezone) {
+    try {
+      const org = await attendanceDB('core_organizations')
+          .where({ org_id })
+          .select('timezone')
+          .first();
+      if (org && org.timezone) {
+          timezone = org.timezone;
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
     }
-  } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  const localTime = getLocalNow(timezone).toISOString();
+  const localTime = getZonedNow(timezone).isoStr;
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB insertion)
   const result = await AttendanceService.processTimeInSync({
@@ -116,21 +120,24 @@ export const timeOut = catchAsync(async (req, res) => {
   const accuracy = Number(req.body.accuracy);
   const file = req.file;
 
-  // 2. QUICK TIMEZONE LOOKUP
-  let timezone = 'UTC';
-  try {
-    const org = await attendanceDB('core_organizations')
-        .where({ org_id })
-        .select('timezone')
-        .first();
-    if (org && org.timezone) {
-        timezone = org.timezone;
+  // 2. TIMEZONE RESOLUTION (Client device timezone -> Organization timezone -> UTC)
+  const clientTimezone = req.body.timezone || req.headers['x-timezone'] || null;
+  let timezone = clientTimezone || 'UTC';
+  if (!clientTimezone) {
+    try {
+      const org = await attendanceDB('core_organizations')
+          .where({ org_id })
+          .select('timezone')
+          .first();
+      if (org && org.timezone) {
+          timezone = org.timezone;
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
     }
-  } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  const localTime = getLocalNow(timezone).toISOString();
+  const localTime = getZonedNow(timezone).isoStr;
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB checkout status/hours update)
   const result = await AttendanceService.processTimeOutSync({

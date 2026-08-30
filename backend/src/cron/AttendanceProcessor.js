@@ -6,6 +6,7 @@ import { resolveNoShowStatus } from '../services/attendance/statusEvaluationServ
 import EventBus from '../utils/EventBus.js';
 import { PayrollCalculationService } from '../services/payroll/PayrollCalculationService.js';
 import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../services/shifts/shiftService.js';
+import { toMySQLDateTime, toMySQLDate } from '../utils/dateUtils.js';
 
 // Grace period (in days) before an uncorrected MISSED_PUNCH becomes ABSENT
 const MISSED_PUNCH_GRACE_DAYS = 2;
@@ -204,7 +205,7 @@ async function processUserAttendanceForDate(user, dateStr) {
                 await attendanceDB('attn_records')
                     .where({ attendance_id: openSession.attendance_id })
                     .update({
-                        time_out: finalCheckOut,
+                        time_out: toMySQLDateTime(finalCheckOut),
                         status: 'PRESENT',
                         updated_at: attendanceDB.fn.now()
                     });
