@@ -140,6 +140,9 @@ api.interceptors.request.use(
         if (accessToken) {
             config.headers['Authorization'] = `Bearer ${accessToken}`;
         }
+        try {
+            config.headers['x-timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        } catch (e) {}
         return config;
     },
     (error) => Promise.reject(error)

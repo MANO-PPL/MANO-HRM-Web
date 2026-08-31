@@ -444,12 +444,23 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
 
 // Timezone-aware date/time parser and normalizer
 const parseTimeInTimezone = (r, isOut, orgTimezone) => {
-    let fallbackStr = isOut ? r.time_out : r.time_in;
+    let fallbackStr = isOut ? (r.time_out_ts || r.time_out) : (r.time_in_ts || r.time_in);
     if (!fallbackStr) return null;
     
     if (fallbackStr instanceof Date) {
         return fallbackStr;
     }
+
+    // If metadata has timestamp_utc, use it for exact universal point-in-time
+    try {
+        let meta = r.metadata;
+        if (typeof meta === 'string') meta = JSON.parse(meta);
+        const metaUtc = isOut ? meta?.time_out?.timestamp_utc : meta?.time_in?.timestamp_utc;
+        if (metaUtc) {
+            const parsedUtc = new Date(metaUtc);
+            if (!isNaN(parsedUtc.getTime())) return parsedUtc;
+        }
+    } catch (e) {}
     
     try {
         const parts = String(fallbackStr).split(/[- :T.]/);
