@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { attendanceDB } from '../config/database.js';
+import { safeTruncate } from './dateUtils.js';
 
 class AppEventBus extends EventEmitter {
     constructor() {
@@ -19,20 +20,20 @@ class AppEventBus extends EventEmitter {
                 const logData = {
                     user_id: payload.user_id || null,
                     org_id: payload.org_id || null,
-                    request_path: payload.request_path || '/',
-                    route_pattern: payload.route_pattern || null,
-                    method: payload.method || 'GET',
+                    request_path: safeTruncate(payload.request_path || '/', 255),
+                    route_pattern: safeTruncate(payload.route_pattern, 255),
+                    method: safeTruncate(payload.method || 'GET', 10),
                     status_code: Number(payload.status_code) || 200,
                     duration_ms: Number(payload.duration_ms) || 0,
                     is_success: payload.is_success ? 1 : 0,
-                    event_source: payload.event_source || 'API',
-                    module_name: payload.module_name || 'General',
-                    client_os: payload.client_os || null,
-                    client_type: payload.client_type || null,
-                    device_type: payload.device_type || null,
-                    request_ip: payload.request_ip || null,
-                    user_agent: payload.user_agent ? (payload.user_agent.length > 255 ? payload.user_agent.substring(0, 255) : payload.user_agent) : null,
-                    payload_details: payload.payload_details ? (typeof payload.payload_details === 'object' ? JSON.stringify(payload.payload_details) : payload.payload_details) : null,
+                    event_source: safeTruncate(payload.event_source || 'API', 50),
+                    module_name: safeTruncate(payload.module_name || 'General', 50),
+                    client_os: safeTruncate(payload.client_os, 50),
+                    client_type: safeTruncate(payload.client_type, 50),
+                    device_type: safeTruncate(payload.device_type, 50),
+                    request_ip: safeTruncate(payload.request_ip, 45),
+                    user_agent: safeTruncate(payload.user_agent, 255),
+                    payload_details: payload.payload_details ? (typeof payload.payload_details === 'object' ? JSON.stringify(payload.payload_details) : String(payload.payload_details)) : null,
                     occurred_at: attendanceDB.fn.now()
                 };
                 await attendanceDB('sys_api_logs').insert(logData);
@@ -47,15 +48,15 @@ class AppEventBus extends EventEmitter {
                 const logData = {
                     user_id: payload.user_id || null,
                     org_id: payload.org_id || null,
-                    event_type: payload.event_type || 'ACTIVITY',
-                    event_source: payload.event_source || 'API',
-                    object_type: payload.object_type || null,
+                    event_type: safeTruncate(payload.event_type || 'ACTIVITY', 50),
+                    event_source: safeTruncate(payload.event_source || 'API', 50),
+                    object_type: safeTruncate(payload.object_type, 50),
                     object_id: payload.object_id || null,
-                    request_ip: payload.request_ip || null,
-                    user_agent: payload.user_agent || null,
-                    location: payload.location || null,
-                    description: payload.description || '',
-                    metadata: payload.metadata ? (typeof payload.metadata === 'object' ? JSON.stringify(payload.metadata) : payload.metadata) : null,
+                    request_ip: safeTruncate(payload.request_ip, 45),
+                    user_agent: safeTruncate(payload.user_agent, 255),
+                    location: safeTruncate(payload.location, 255),
+                    description: safeTruncate(payload.description || '', 255),
+                    metadata: payload.metadata ? (typeof payload.metadata === 'object' ? JSON.stringify(payload.metadata) : String(payload.metadata)) : null,
                     occurred_at: attendanceDB.fn.now()
                 };
                 await attendanceDB('sys_activity_logs').insert(logData);
@@ -68,19 +69,19 @@ class AppEventBus extends EventEmitter {
         this.on(this.events.ERROR_LOG, async (payload) => {
             try {
                 const logData = {
-                    level: payload.level || 'ERROR',
-                    service_name: payload.service_name || 'backend-api',
-                    environment: payload.environment || process.env.NODE_ENV || 'production',
+                    level: safeTruncate(payload.level || 'ERROR', 20),
+                    service_name: safeTruncate(payload.service_name || 'backend-api', 50),
+                    environment: safeTruncate(payload.environment || process.env.NODE_ENV || 'production', 30),
                     user_id: payload.user_id || null,
                     org_id: payload.org_id || null,
-                    error_code: payload.error_code || null,
-                    error_message: payload.error_message || '',
+                    error_code: safeTruncate(payload.error_code, 50),
+                    error_message: safeTruncate(payload.error_message || '', 245),
                     stack_trace: payload.stack_trace || null,
-                    request_method: payload.request_method || null,
-                    request_path: payload.request_path || null,
-                    request_id: payload.request_id || null,
-                    client_ip: payload.client_ip || null,
-                    extra_context: payload.extra_context ? (typeof payload.extra_context === 'object' ? JSON.stringify(payload.extra_context) : payload.extra_context) : null,
+                    request_method: safeTruncate(payload.request_method, 10),
+                    request_path: safeTruncate(payload.request_path, 255),
+                    request_id: safeTruncate(payload.request_id, 100),
+                    client_ip: safeTruncate(payload.client_ip, 45),
+                    extra_context: payload.extra_context ? (typeof payload.extra_context === 'object' ? JSON.stringify(payload.extra_context) : String(payload.extra_context)) : null,
                     occurred_at: attendanceDB.fn.now()
                 };
                 await attendanceDB('sys_error_logs').insert(logData);

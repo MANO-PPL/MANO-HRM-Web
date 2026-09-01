@@ -454,6 +454,17 @@ const parseTimeInTimezone = (r, isOut) => {
     if (rawVal instanceof Date) {
         return rawVal;
     }
+
+    // If metadata has timestamp_utc, use it for exact universal point-in-time
+    try {
+        let meta = r.metadata;
+        if (typeof meta === 'string') meta = JSON.parse(meta);
+        const metaUtc = isOut ? meta?.time_out?.timestamp_utc : meta?.time_in?.timestamp_utc;
+        if (metaUtc) {
+            const parsedUtc = new Date(metaUtc);
+            if (!isNaN(parsedUtc.getTime())) return parsedUtc;
+        }
+    } catch (e) {}
     
     try {
         const str = String(rawVal).trim();

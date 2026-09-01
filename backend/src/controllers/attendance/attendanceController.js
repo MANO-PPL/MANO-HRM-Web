@@ -12,7 +12,7 @@ import { attendanceDB } from "../../config/database.js";
 import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
 import { calculateWorkHours, deriveStatus } from "../../services/reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
-import { getLocalNow, getLocalTimeString } from "../../services/attendance/statusEvaluationService.js";
+import { getLocalNow } from "../../services/attendance/statusEvaluationService.js";
 import { attendanceQueue } from "../../config/queues.js";
 import { uploadFile } from "../../services/s3/s3Service.js";
 
@@ -30,42 +30,21 @@ export const timeIn = catchAsync(async (req, res) => {
   const late_reason = req.body.late_reason || null;
   const file = req.file;
 
-  // 2. TIMEZONE & LOCAL TIME LOOKUP VIA GPS (maps.js for multi-country support)
-  let timezone = req.body.timezone || null;
-  let localTime = null;
-
-  if (!isNaN(latitude) && !isNaN(longitude) && latitude !== 0 && longitude !== 0) {
-    try {
-      const tzData = await MapsService.fetchTimeStamp(latitude, longitude, new Date());
-      if (tzData) {
-        if (tzData.timezone) timezone = tzData.timezone;
-        if (tzData.localTime) localTime = tzData.localTime;
-      }
-    } catch (e) {
-      // Fallback gracefully if GPS timezone API is unreachable
-    }
-  }
-
-  if (!timezone) {
-    try {
-      const org = await attendanceDB('core_organizations')
-          .where({ org_id })
-          .select('timezone')
-          .first();
-      if (org && org.timezone) {
+  // 2. QUICK TIMEZONE LOOKUP (Fast: ~2ms DB lookup + local date conversion)
+  let timezone = 'UTC';
+  try {
+    const org = await attendanceDB('core_organizations')
+        .where({ org_id })
+        .select('timezone')
+        .first();
+    if (org && org.timezone) {
         timezone = org.timezone;
-      }
-    } catch (err) {
-      console.warn(`Failed to fetch organization ${org_id} timezone`, err);
     }
-  }
-  if (!timezone || timezone === 'N/A' || timezone === 'Simulated Timezone') {
-    timezone = 'Asia/Kolkata';
+  } catch (err) {
+    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  if (!localTime) {
-    localTime = getLocalTimeString(new Date(), timezone);
-  }
+  const localTime = getLocalNow(timezone).toISOString();
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB insertion)
   const result = await AttendanceService.processTimeInSync({
@@ -142,42 +121,21 @@ export const timeOut = catchAsync(async (req, res) => {
   const accuracy = Number(req.body.accuracy);
   const file = req.file;
 
-  // 2. TIMEZONE & LOCAL TIME LOOKUP VIA GPS (maps.js for multi-country support)
-  let timezone = req.body.timezone || null;
-  let localTime = null;
-
-  if (!isNaN(latitude) && !isNaN(longitude) && latitude !== 0 && longitude !== 0) {
-    try {
-      const tzData = await MapsService.fetchTimeStamp(latitude, longitude, new Date());
-      if (tzData) {
-        if (tzData.timezone) timezone = tzData.timezone;
-        if (tzData.localTime) localTime = tzData.localTime;
-      }
-    } catch (e) {
-      // Fallback gracefully if GPS timezone API is unreachable
-    }
-  }
-
-  if (!timezone) {
-    try {
-      const org = await attendanceDB('core_organizations')
-          .where({ org_id })
-          .select('timezone')
-          .first();
-      if (org && org.timezone) {
+  // 2. QUICK TIMEZONE LOOKUP
+  let timezone = 'UTC';
+  try {
+    const org = await attendanceDB('core_organizations')
+        .where({ org_id })
+        .select('timezone')
+        .first();
+    if (org && org.timezone) {
         timezone = org.timezone;
-      }
-    } catch (err) {
-      console.warn(`Failed to fetch organization ${org_id} timezone`, err);
     }
-  }
-  if (!timezone || timezone === 'N/A' || timezone === 'Simulated Timezone') {
-    timezone = 'Asia/Kolkata';
+  } catch (err) {
+    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  if (!localTime) {
-    localTime = getLocalTimeString(new Date(), timezone);
-  }
+  const localTime = getLocalNow(timezone).toISOString();
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB checkout status/hours update)
   const result = await AttendanceService.processTimeOutSync({

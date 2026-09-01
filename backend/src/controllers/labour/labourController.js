@@ -3,34 +3,59 @@ import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
 import { PassThrough } from 'stream';
 import ExcelJS from 'exceljs';
+import { cacheService } from '../../services/cache/cacheService.js';
+
+// Timezone-safe date string formatter (YYYY-MM-DD)
+export const formatDateSafe = (d) => {
+    if (!d) return '';
+    if (typeof d === 'string') {
+        const match = d.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (match) return match[1];
+    }
+    const dateObj = d instanceof Date ? d : new Date(d);
+    if (isNaN(dateObj.getTime())) return '';
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// Timezone-safe month bounds calculator (start: YYYY-MM-01, end: YYYY-MM-lastDay)
+export const getMonthBounds = (monthStr) => {
+    const match = (monthStr || '').match(/^(\d{4})-(\d{2})/);
+    let year, monthNum;
+    if (match) {
+        year = Number(match[1]);
+        monthNum = Number(match[2]); // 1-12
+    } else {
+        const now = new Date();
+        year = now.getFullYear();
+        monthNum = now.getMonth() + 1;
+    }
+    const totalDays = new Date(year, monthNum, 0).getDate();
+    const yStr = String(year);
+    const mStr = String(monthNum).padStart(2, '0');
+    const start = `${yStr}-${mStr}-01`;
+    const end = `${yStr}-${mStr}-${String(totalDays).padStart(2, '0')}`;
+    return { year, monthNum, totalDays, start, end };
+};
 
 // Helper to get start and end dates of a month, and number of days
 const getMonthDetails = (dateStr) => {
-    const date = dateStr ? new Date(dateStr) : new Date();
-    const year = date.getFullYear();
-    const month = date.getMonth(); // 0-indexed
-
-    const startOfMonth = new Date(year, month, 1);
-    const endOfMonth = new Date(year, month + 1, 0);
-    const totalDays = endOfMonth.getDate();
-
-    // Calculate elapsed days in the current month (up to today)
+    const { year, monthNum, totalDays, start, end } = getMonthBounds(dateStr);
     const today = new Date();
     let elapsedDays = totalDays;
-    if (today.getFullYear() === year && today.getMonth() === month) {
+    if (today.getFullYear() === year && (today.getMonth() + 1) === monthNum) {
         elapsedDays = today.getDate();
     }
 
-    // Format helpers
-    const formatDate = (d) => d.toISOString().split('T')[0];
-
     return {
-        start: formatDate(startOfMonth),
-        end: formatDate(endOfMonth),
+        start,
+        end,
         totalDays,
         elapsedDays,
         year,
-        month: month + 1
+        month: monthNum
     };
 };
 
@@ -79,7 +104,7 @@ export const updateSite = catchAsync(async (req, res) => {
     const { site_name, location_details, status, end_date } = req.body;
 
     const finalEndDate = status === 'Completed' ? (end_date || new Date()) : null;
-    const dateStr = finalEndDate ? new Date(finalEndDate).toISOString().split('T')[0] : null;
+    const dateStr = finalEndDate ? formatDateSafe(finalEndDate) : null;
 
     const affected = await attendanceDB('labour_sites')
         .where({ site_id: id, org_id })
@@ -323,6 +348,19 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
         throw new AppError('site_id and date parameters are required', 400);
     }
 
+    // Check Redis cache for instant response
+    const cacheKey = `labour:roster:${org_id}:${site_id}:${date}`;
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+        return res.json({
+            success: true,
+            date,
+            site_id: Number(site_id),
+            roster: cached.roster,
+            from_cache: true
+        });
+    }
+
     // Verify site belongs to the organization
     const siteObj = await attendanceDB('labour_sites')
         .where({ site_id: Number(site_id), org_id })
@@ -446,6 +484,9 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
         overtime_hours: Number(attendanceOvertimeMap[lab.labour_id] || 0)
     }));
 
+    // Cache roster in Redis for 5 minutes (300s)
+    await cacheService.set(cacheKey, { roster }, 300);
+
     res.json({
         success: true,
         date,
@@ -472,8 +513,8 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
     }
 
     if (siteObj.status === 'Completed' && siteObj.end_date) {
-        const compDateStr = new Date(siteObj.end_date).toISOString().split('T')[0];
-        const attDateStr = new Date(date).toISOString().split('T')[0];
+        const compDateStr = formatDateSafe(siteObj.end_date);
+        const attDateStr = formatDateSafe(date);
         if (attDateStr >= compDateStr) {
             throw new AppError('Site is marked as Completed. Attendance is only allowed for dates before the completion date.', 400);
         }
@@ -484,13 +525,13 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
         const labourIds = roster.map(r => r.labour_id);
 
         if (labourIds.length > 0) {
-            // Delete existing attendance records for these labours on this date at this specific site only
+            // 1. Delete existing attendance records for these labours on this date at this specific site only
             await trx('labour_attendance')
                 .where({ org_id, date, site_id: Number(site_id) })
                 .whereIn('labour_id', labourIds)
                 .del();
 
-            // Fetch daily schedules for these workers on this date to count scheduled sites
+            // 2. Fetch daily schedules for these workers on this date to count scheduled sites
             const dailySchedules = await trx('labour_daily_schedule')
                 .where({ org_id, date })
                 .whereIn('labour_id', labourIds)
@@ -501,7 +542,7 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                 scheduledCountMap[sch.labour_id] = (scheduledCountMap[sch.labour_id] || 0) + 1;
             });
 
-            // Check if any of these labours are already marked with active status at other sites within this org
+            // 3. Check if any of these labours are already marked with active status at other sites within this org
             const otherSiteRecords = await trx('labour_attendance')
                 .where({ org_id, date })
                 .whereNot({ site_id: Number(site_id) })
@@ -510,14 +551,17 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                 .select('labour_id');
             const otherSiteLabourIds = new Set(otherSiteRecords.map(r => r.labour_id));
 
-            // Insert new records for this site with org_id
+            // 4. Batch insert new attendance records
             const insertData = [];
             for (const r of roster) {
+                if (!r.status || typeof r.status !== 'string' || r.status.trim() === '') {
+                    continue;
+                }
+
                 const isScheduledMultiSite = (scheduledCountMap[r.labour_id] || 0) >= 2;
                 const statusIsActive = ['Present', 'Half Day', 'Paid Leave'].includes(r.status);
 
                 if (!isScheduledMultiSite && statusIsActive && otherSiteLabourIds.has(r.labour_id)) {
-                    console.log(`⚠️ Skipping attendance save for labour_id ${r.labour_id} on ${date} at site ${site_id} (already active on another site)`);
                     continue;
                 }
 
@@ -526,7 +570,7 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                     labour_id: r.labour_id,
                     site_id: Number(site_id),
                     date,
-                    status: r.status || '',
+                    status: r.status.trim(),
                     overtime_hours: Number(r.overtime_hours || 0),
                     marked_by
                 });
@@ -536,21 +580,31 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                 await trx('labour_attendance').insert(insertData);
             }
 
-            // Auto-associate roster workers with this site permanently within this org
-            for (const labId of labourIds) {
-                const existing = await trx('labour_site_relations')
-                    .where({ org_id, labour_id: labId, site_id: Number(site_id) })
-                    .first();
-                if (!existing) {
-                    await trx('labour_site_relations').insert({
-                        org_id,
-                        labour_id: labId,
-                        site_id: Number(site_id)
-                    });
-                }
+            // 5. ⚡ HIGH PERFORMANCE BULK BATCH: associate roster workers with site in 1 query
+            const existingRelations = await trx('labour_site_relations')
+                .where({ org_id, site_id: Number(site_id) })
+                .whereIn('labour_id', labourIds)
+                .select('labour_id');
+
+            const existingSet = new Set(existingRelations.map(r => r.labour_id));
+            const newRelations = labourIds
+                .filter(id => !existingSet.has(id))
+                .map(id => ({
+                    org_id,
+                    labour_id: id,
+                    site_id: Number(site_id)
+                }));
+
+            if (newRelations.length > 0) {
+                await trx('labour_site_relations').insert(newRelations);
             }
         }
     });
+
+    // Invalidate Redis cache for this roster & monthly grid caches
+    const rosterCacheKey = `labour:roster:${org_id}:${site_id}:${date}`;
+    await cacheService.del(rosterCacheKey);
+    await cacheService.delPattern(`labour:grid:${org_id}:${site_id}:*`);
 
     res.json({
         success: true,
@@ -564,7 +618,7 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
 
 export const getFinancesSummary = catchAsync(async (req, res) => {
     const { org_id } = req.user;
-    const { site_id } = req.query; // Filter by site_id
+    const { site_id, month } = req.query; // Filter by site_id and month (YYYY-MM)
 
     if (!site_id) {
         throw new AppError('site_id is required', 400);
@@ -579,7 +633,10 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         throw new AppError('Site not found in your organization', 404);
     }
 
-    // 1. Get all active labours associated with this site in this org
+    const targetMonth = month || new Date().toISOString().slice(0, 7);
+    const { year, monthNum, totalDays, start, end } = getMonthBounds(targetMonth);
+
+    // 1. Get all active labours associated with this site in this org OR having attendance this month
     const labours = await attendanceDB('labours as l')
         .leftJoin('labour_site_relations as r', function() {
             this.on('l.labour_id', '=', 'r.labour_id')
@@ -591,41 +648,58 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         })
         .select(
             'l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.monthly_salary', 'l.allowed_leaves', 'l.site_id as primary_site_id', 'l.overtime_pay_per_hour',
-            attendanceDB.raw('GROUP_CONCAT(s.site_id SEPARATOR ",") as site_ids'),
-            attendanceDB.raw('GROUP_CONCAT(s.site_name SEPARATOR ", ") as site_names')
+            attendanceDB.raw('GROUP_CONCAT(DISTINCT s.site_id SEPARATOR ",") as site_ids'),
+            attendanceDB.raw('GROUP_CONCAT(DISTINCT s.site_name SEPARATOR ", ") as site_names')
         )
         .where('l.org_id', org_id)
         .andWhere('l.status', 'Active')
         .andWhere(function() {
             this.where('l.site_id', Number(site_id))
-                .orWhere('r.site_id', Number(site_id));
+                .orWhere('r.site_id', Number(site_id))
+                .orWhereIn('l.labour_id', function() {
+                    this.select('labour_id')
+                        .from('labour_attendance')
+                        .where({ org_id, site_id: Number(site_id) })
+                        .where('date', '>=', start)
+                        .where('date', '<=', end);
+                });
         })
         .groupBy('l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.monthly_salary', 'l.allowed_leaves', 'l.site_id', 'l.overtime_pay_per_hour');
 
     if (labours.length === 0) {
         return res.json({
             success: true,
+            monthDetails: {
+                month: targetMonth,
+                totalDays,
+                year,
+                monthNum
+            },
             summary: []
         });
     }
 
     const labourIds = labours.map(l => l.labour_id);
 
-    // 2. Fetch all attendance records for these labours across ALL sites in this org
+    // 2. Fetch attendance records for these labours in THIS MONTH
     const attendanceRecords = await attendanceDB('labour_attendance')
         .where('org_id', org_id)
+        .where('date', '>=', start)
+        .where('date', '<=', end)
         .whereIn('labour_id', labourIds)
         .select('labour_id', 'status', 'date', 'site_id', 'overtime_hours');
 
-    // Fetch daily schedules for these labours to calculate divisors
+    // Fetch daily schedules for these labours in THIS MONTH to calculate divisors
     const dailySchedules = await attendanceDB('labour_daily_schedule')
         .where('org_id', org_id)
+        .where('date', '>=', start)
+        .where('date', '<=', end)
         .whereIn('labour_id', labourIds)
         .select('labour_id', 'site_id', 'date');
 
     const scheduleCountMap = {};
     dailySchedules.forEach(sch => {
-        const dateStr = new Date(sch.date).toISOString().split('T')[0];
+        const dateStr = formatDateSafe(sch.date);
         if (!scheduleCountMap[sch.labour_id]) {
             scheduleCountMap[sch.labour_id] = {};
         }
@@ -640,26 +714,22 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         overtimePayMap[l.labour_id] = Number(l.overtime_pay_per_hour || 0);
     });
 
-    // Group attendance by labour and month
+    // Group attendance for THIS MONTH
     const attendanceMap = {};
     labourIds.forEach(id => {
-        attendanceMap[id] = {};
+        attendanceMap[id] = { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0, overtimeCreditSum: 0 };
     });
 
     attendanceRecords.forEach(rec => {
         const counts = attendanceMap[rec.labour_id];
         if (counts) {
-            const dateStr = new Date(rec.date).toISOString().split('T')[0];
-            const monthKey = dateStr.slice(0, 7); // YYYY-MM
-            if (!counts[monthKey]) {
-                counts[monthKey] = { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0, overtimeCreditSum: 0 };
-            }
+            const dateStr = formatDateSafe(rec.date);
             const isCurrentSite = Number(rec.site_id) === Number(site_id);
             if (isCurrentSite) {
-                if (rec.status === 'Present') counts[monthKey].Present += 1;
-                else if (rec.status === 'Absent') counts[monthKey].Absent += 1;
-                else if (rec.status === 'Half Day') counts[monthKey].HalfDay += 1;
-                else if (rec.status === 'Paid Leave') counts[monthKey].PaidLeave += 1;
+                if (rec.status === 'Present') counts.Present += 1;
+                else if (rec.status === 'Absent') counts.Absent += 1;
+                else if (rec.status === 'Half Day') counts.HalfDay += 1;
+                else if (rec.status === 'Paid Leave') counts.PaidLeave += 1;
 
                 // Compute split weight based on scheduled sites count (S)
                 const S = (scheduleCountMap[rec.labour_id] && scheduleCountMap[rec.labour_id][dateStr]) || 1;
@@ -669,20 +739,22 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
                 } else if (rec.status === 'Half Day') {
                     w = 0.5 / S;
                 }
-                counts[monthKey].weightSum += w;
+                counts.weightSum += w;
 
                 // Accumulate overtime pay
                 const otRate = overtimePayMap[rec.labour_id] || 0;
-                counts[monthKey].overtimeCreditSum += Number(rec.overtime_hours || 0) * otRate;
+                counts.overtimeCreditSum += Number(rec.overtime_hours || 0) * otRate;
             }
         }
     });
 
-    // 3. Fetch advances logged for this site in this org
+    // 3. Fetch advances logged for this site and labour in THIS MONTH
     const advances = await attendanceDB('labour_advances')
         .where('org_id', org_id)
         .whereIn('labour_id', labourIds)
         .andWhere('site_id', Number(site_id))
+        .where('date', '>=', start)
+        .where('date', '<=', end)
         .select('labour_id', 'amount');
 
     const advancesMap = {};
@@ -693,59 +765,34 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         advancesMap[adv.labour_id] += Number(adv.amount);
     });
 
-    // 4. Fetch payouts logged for this site in this org
+    // 4. Fetch payouts logged for this site in THIS MONTH
     const payouts = await attendanceDB('labour_monthly_payouts')
         .where('org_id', org_id)
         .whereIn('labour_id', labourIds)
         .andWhere('site_id', Number(site_id))
+        .andWhere('month', targetMonth)
         .select('payout_id', 'labour_id', 'status', 'paid_amount', 'payment_date', 'notes');
 
-    const totalPaidMap = {};
-    labourIds.forEach(id => {
-        totalPaidMap[id] = 0;
-    });
+    const payoutMap = {};
     payouts.forEach(p => {
-        if (p.status === 'Paid') {
-            totalPaidMap[p.labour_id] += Number(p.paid_amount);
-        }
+        payoutMap[p.labour_id] = p;
     });
 
-    // 5. Compute dynamic credits
+    // 5. Compute dynamic monthly credits
     const summary = labours.map(lab => {
-        const monthlyAttendance = attendanceMap[lab.labour_id] || {};
+        const counts = attendanceMap[lab.labour_id] || { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0, overtimeCreditSum: 0 };
         const totalAdvances = advancesMap[lab.labour_id] || 0;
-        const totalPaid = totalPaidMap[lab.labour_id] || 0;
+        const payout = payoutMap[lab.labour_id] || null;
+        const totalPaid = (payout && payout.status === 'Paid') ? Number(payout.paid_amount) : 0;
         const monthlySalary = Number(lab.monthly_salary);
 
-        let accruedCredit = 0;
-        let totalPresent = 0;
-        let totalAbsent = 0;
-        let totalHalfDay = 0;
-        let totalPaidLeave = 0;
+        const dailyRate = lab.wage_type === 'Daily Wage'
+            ? monthlySalary
+            : (monthlySalary / totalDays);
 
-        Object.entries(monthlyAttendance).forEach(([monthKey, counts]) => {
-            totalPresent += counts.Present;
-            totalAbsent += counts.Absent;
-            totalHalfDay += counts.HalfDay;
-            totalPaidLeave += counts.PaidLeave;
-
-            const [yearStr, monthStr] = monthKey.split('-');
-            const year = Number(yearStr);
-            const monthIdx = Number(monthStr) - 1;
-            const endOfMonth = new Date(year, monthIdx + 1, 0);
-            const totalDays = endOfMonth.getDate();
-
-            const dailyRate = lab.wage_type === 'Daily Wage'
-                ? monthlySalary
-                : (monthlySalary / totalDays);
-
-            // Dynamic credit calculation using weight sum + overtime pay
-            accruedCredit += counts.weightSum * dailyRate + (counts.overtimeCreditSum || 0);
-        });
-
-        accruedCredit = Math.round(accruedCredit);
-        const netEarned = accruedCredit - totalPaid;
-        const netPayable = netEarned - totalAdvances;
+        const accruedCredit = Math.round(counts.weightSum * dailyRate + (counts.overtimeCreditSum || 0));
+        const netEarned = Math.max(0, accruedCredit - totalPaid);
+        const netPayable = accruedCredit - totalPaid - totalAdvances;
 
         return {
             labour_id: lab.labour_id,
@@ -758,24 +805,348 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
             monthly_salary: monthlySalary,
             allowed_leaves: lab.allowed_leaves,
             attendance: {
-                present: totalPresent,
-                absent: totalAbsent,
-                half_day: totalHalfDay,
-                paid_leave: totalPaidLeave
+                present: counts.Present,
+                absent: counts.Absent,
+                half_day: counts.HalfDay,
+                paid_leave: counts.PaidLeave
             },
-            accrued_credit: accruedCredit, // Total Earned (Site-specific)
-            total_paid: totalPaid,         // Total Paid (Site-specific)
-            net_earned: netEarned,         // Accrued to Pay (Site-specific)
-            advances_taken: totalAdvances, // Advances Taken (Site-specific)
-            net_payable: netPayable,       // Final Net Payable (Site-specific)
+            accrued_credit: accruedCredit, // Total Earned in this Month (Site-specific)
+            total_paid: totalPaid,         // Total Paid in this Month (Site-specific)
+            net_earned: netEarned,         // Accrued to Pay in this Month (Site-specific)
+            advances_taken: totalAdvances, // Advances Taken in this Month (Site-specific)
+            net_payable: netPayable,       // Final Net Payable in this Month (Site-specific)
             overtime_pay_per_hour: Number(lab.overtime_pay_per_hour || 0),
-            payout: payouts.find(p => p.labour_id === lab.labour_id) || null // For backwards compat
+            payout: payout
         };
     });
 
     res.json({
         success: true,
+        monthDetails: {
+            month: targetMonth,
+            totalDays,
+            year,
+            monthNum
+        },
         summary
+    });
+});
+
+export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
+    const { site_id, month, till_date } = req.query;
+
+    if (!site_id) {
+        throw new AppError('site_id is required', 400);
+    }
+
+    const isAllSites = site_id === 'All';
+    let site = null;
+    if (!isAllSites) {
+        site = await attendanceDB('labour_sites')
+            .where({ site_id: Number(site_id), org_id })
+            .first();
+        if (!site) {
+            throw new AppError('Site not found in your organization', 404);
+        }
+    }
+
+    const targetMonth = month || new Date().toISOString().slice(0, 7);
+    const { year, monthNum, totalDays, start, end } = getMonthBounds(targetMonth);
+
+    // 1. Fetch active labours in this site/org
+    let laboursQuery = attendanceDB('labours as l')
+        .leftJoin('labour_site_relations as r', function() {
+            this.on('l.labour_id', '=', 'r.labour_id')
+                .andOn('r.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .leftJoin('labour_sites as s', function() {
+            this.on('r.site_id', '=', 's.site_id')
+                .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .select(
+            'l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.monthly_salary', 'l.site_id as primary_site_id', 'l.overtime_pay_per_hour',
+            attendanceDB.raw('GROUP_CONCAT(DISTINCT s.site_id SEPARATOR ",") as site_ids'),
+            attendanceDB.raw('GROUP_CONCAT(DISTINCT s.site_name SEPARATOR ", ") as site_names')
+        )
+        .where('l.org_id', org_id)
+        .andWhere('l.status', 'Active');
+
+    if (!isAllSites) {
+        laboursQuery.andWhere(function() {
+            this.where('l.site_id', Number(site_id))
+                .orWhere('r.site_id', Number(site_id))
+                .orWhereIn('l.labour_id', function() {
+                    this.select('labour_id')
+                        .from('labour_attendance')
+                        .where({ org_id, site_id: Number(site_id) })
+                        .where('date', '>=', start)
+                        .where('date', '<=', end);
+                });
+        });
+    }
+
+    const labours = await laboursQuery.groupBy('l.labour_id', 'l.name', 'l.role', 'l.wage_type', 'l.monthly_salary', 'l.site_id', 'l.overtime_pay_per_hour');
+
+    const daysArray = [];
+    for (let d = 1; d <= totalDays; d++) {
+        const dStr = String(d).padStart(2, '0');
+        const dateStr = `${targetMonth}-${dStr}`;
+        const dayDate = new Date(year, monthNum - 1, d);
+        const dayOfWeek = dayDate.getDay();
+        const dayName = dayDate.toLocaleString('en-US', { weekday: 'short' });
+        daysArray.push({
+            day: d,
+            dateStr,
+            dayOfWeek,
+            dayName,
+            isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+            isFuture: till_date ? dateStr > till_date : false
+        });
+    }
+
+    if (labours.length === 0) {
+        return res.json({
+            success: true,
+            monthDetails: {
+                month: targetMonth,
+                totalDays,
+                year,
+                monthNum,
+                tillDate: till_date || null
+            },
+            days: daysArray,
+            workers: [],
+            dailyTotals: {
+                presentCount: Array(totalDays).fill(0),
+                otHours: Array(totalDays).fill(0),
+                advances: Array(totalDays).fill(0)
+            },
+            grandTotals: {
+                totalWorkers: 0,
+                totalPresentDays: 0,
+                totalOtHours: 0,
+                totalAdvances: 0,
+                totalGrossEarned: 0,
+                totalPaid: 0,
+                totalNetPayable: 0
+            }
+        });
+    }
+
+    const labourIds = labours.map(l => l.labour_id);
+
+    // 2. Attendance records for these labours in THIS MONTH
+    const attendanceQuery = attendanceDB('labour_attendance')
+        .where('org_id', org_id)
+        .where('date', '>=', start)
+        .where('date', '<=', end)
+        .whereIn('labour_id', labourIds)
+        .select('labour_id', 'status', 'date', 'site_id', 'overtime_hours');
+
+    if (!isAllSites) {
+        attendanceQuery.where('site_id', Number(site_id));
+    }
+    const attendanceRecords = await attendanceQuery;
+
+    // 3. Daily Schedules for split divisor
+    const scheduleRecords = await attendanceDB('labour_daily_schedule')
+        .where('org_id', org_id)
+        .where('date', '>=', start)
+        .where('date', '<=', end)
+        .whereIn('labour_id', labourIds)
+        .select('labour_id', 'site_id', 'date');
+
+    const scheduleCountMap = {};
+    scheduleRecords.forEach(sch => {
+        const dStr = formatDateSafe(sch.date);
+        if (!scheduleCountMap[sch.labour_id]) scheduleCountMap[sch.labour_id] = {};
+        if (!scheduleCountMap[sch.labour_id][dStr]) scheduleCountMap[sch.labour_id][dStr] = 0;
+        scheduleCountMap[sch.labour_id][dStr] += 1;
+    });
+
+    // 4. Advances logged in THIS MONTH
+    const advancesQuery = attendanceDB('labour_advances')
+        .where('org_id', org_id)
+        .whereIn('labour_id', labourIds)
+        .where('date', '>=', start)
+        .where('date', '<=', end)
+        .select('advance_id', 'labour_id', 'amount', 'date', 'site_id', 'notes');
+
+    if (!isAllSites) {
+        advancesQuery.where('site_id', Number(site_id));
+    }
+    const advancesRecords = await advancesQuery;
+
+    // 5. Monthly Payouts in THIS MONTH
+    const payoutsQuery = attendanceDB('labour_monthly_payouts')
+        .where('org_id', org_id)
+        .whereIn('labour_id', labourIds)
+        .where('month', targetMonth)
+        .where('status', 'Paid')
+        .select('payout_id', 'labour_id', 'paid_amount', 'payment_date', 'notes');
+
+    if (!isAllSites) {
+        payoutsQuery.where('site_id', Number(site_id));
+    }
+    const payoutsRecords = await payoutsQuery;
+
+    const payoutMap = {};
+    payoutsRecords.forEach(p => {
+        if (!payoutMap[p.labour_id]) payoutMap[p.labour_id] = 0;
+        payoutMap[p.labour_id] += Number(p.paid_amount || 0);
+    });
+
+    // Organize attendance by labour and date
+    const labourAttMap = {};
+    attendanceRecords.forEach(rec => {
+        const dStr = formatDateSafe(rec.date);
+        if (!labourAttMap[rec.labour_id]) labourAttMap[rec.labour_id] = {};
+        labourAttMap[rec.labour_id][dStr] = rec;
+    });
+
+    // Organize advances by labour and date
+    const labourAdvMap = {};
+    advancesRecords.forEach(adv => {
+        const dStr = formatDateSafe(adv.date);
+        if (!labourAdvMap[adv.labour_id]) labourAdvMap[adv.labour_id] = {};
+        if (!labourAdvMap[adv.labour_id][dStr]) labourAdvMap[adv.labour_id][dStr] = 0;
+        labourAdvMap[adv.labour_id][dStr] += Number(adv.amount || 0);
+    });
+
+    // Daily totals arrays
+    const dailyPresentCount = Array(totalDays).fill(0);
+    const dailyOtHours = Array(totalDays).fill(0);
+    const dailyAdvances = Array(totalDays).fill(0);
+
+    let grandPresentDays = 0;
+    let grandOtHours = 0;
+    let grandAdvances = 0;
+    let grandGrossEarned = 0;
+    let grandTotalPaid = 0;
+    let grandNetPayable = 0;
+
+    const workers = labours.map((lab, index) => {
+        const monthlySalary = Number(lab.monthly_salary || 0);
+        const otRate = Number(lab.overtime_pay_per_hour || 0);
+        const dailyRate = lab.wage_type === 'Daily Wage' ? monthlySalary : (monthlySalary / totalDays);
+
+        const daysData = {};
+        let workerPresentWeight = 0;
+        let workerPresentDaysCount = 0;
+        let workerOtHours = 0;
+        let workerOtCredit = 0;
+        let workerAdvances = 0;
+
+        daysArray.forEach((dayInfo, idx) => {
+            const dStr = dayInfo.dateStr;
+            const attRec = (labourAttMap[lab.labour_id] && labourAttMap[lab.labour_id][dStr]) || null;
+            const advAmount = (labourAdvMap[lab.labour_id] && labourAdvMap[lab.labour_id][dStr]) || 0;
+
+            const status = attRec ? attRec.status : '-';
+            const ot = attRec ? Number(attRec.overtime_hours || 0) : 0;
+
+            // Split divisor
+            const S = (scheduleCountMap[lab.labour_id] && scheduleCountMap[lab.labour_id][dStr]) || 1;
+            let weight = 0;
+            if (status === 'Present') {
+                weight = 1 / S;
+            } else if (status === 'Half Day') {
+                weight = 0.5 / S;
+            }
+
+            daysData[dStr] = {
+                day: dayInfo.day,
+                date: dStr,
+                status,
+                ot_hours: ot,
+                advance_amount: advAmount,
+                is_weekend: dayInfo.isWeekend,
+                is_future: dayInfo.isFuture
+            };
+
+            // Global daily column stats
+            if (status === 'Present') {
+                dailyPresentCount[idx] += 1;
+            } else if (status === 'Half Day') {
+                dailyPresentCount[idx] += 0.5;
+            }
+            dailyOtHours[idx] += ot;
+            dailyAdvances[idx] += advAmount;
+
+            // Worker financial accumulations
+            if (!dayInfo.isFuture) {
+                workerPresentWeight += weight;
+                if (status === 'Present') workerPresentDaysCount += 1;
+                else if (status === 'Half Day') workerPresentDaysCount += 0.5;
+
+                workerOtHours += ot;
+                workerOtCredit += ot * otRate;
+                workerAdvances += advAmount;
+            }
+        });
+
+        const totalPaid = payoutMap[lab.labour_id] || 0;
+        const baseEarned = Math.round(workerPresentWeight * dailyRate);
+        const grossEarned = baseEarned + Math.round(workerOtCredit);
+        const netPayable = grossEarned - workerAdvances - totalPaid;
+
+        grandPresentDays += workerPresentDaysCount;
+        grandOtHours += workerOtHours;
+        grandAdvances += workerAdvances;
+        grandGrossEarned += grossEarned;
+        grandTotalPaid += totalPaid;
+        grandNetPayable += netPayable;
+
+        return {
+            sr_no: index + 1,
+            labour_id: lab.labour_id,
+            name: lab.name,
+            role: lab.role,
+            wage_type: lab.wage_type,
+            monthly_salary: monthlySalary,
+            daily_rate: Math.round(dailyRate),
+            overtime_pay_per_hour: otRate,
+            days: daysData,
+            totals: {
+                present_days: workerPresentDaysCount,
+                present_weight: workerPresentWeight,
+                ot_hours: workerOtHours,
+                advances: workerAdvances,
+                base_earned: baseEarned,
+                ot_earned: Math.round(workerOtCredit),
+                gross_earned: grossEarned,
+                total_paid: totalPaid,
+                net_payable: netPayable
+            }
+        };
+    });
+
+    res.json({
+        success: true,
+        monthDetails: {
+            month: targetMonth,
+            totalDays,
+            year,
+            monthNum,
+            tillDate: till_date || null
+        },
+        days: daysArray,
+        workers,
+        dailyTotals: {
+            presentCount: dailyPresentCount,
+            otHours: dailyOtHours,
+            advances: dailyAdvances
+        },
+        grandTotals: {
+            totalWorkers: labours.length,
+            totalPresentDays: grandPresentDays,
+            totalOtHours: grandOtHours,
+            totalAdvances: grandAdvances,
+            totalGrossEarned: grandGrossEarned,
+            totalPaid: grandTotalPaid,
+            totalNetPayable: grandNetPayable
+        }
     });
 });
 
@@ -821,6 +1192,105 @@ export const logLabourAdvance = catchAsync(async (req, res) => {
     });
 });
 
+export const getLabourAdvances = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
+    const { labour_id, month, site_id } = req.query;
+
+    if (!labour_id) {
+        throw new AppError('labour_id is required', 400);
+    }
+
+    const query = attendanceDB('labour_advances as a')
+        .leftJoin('labour_sites as s', function() {
+            this.on('a.site_id', '=', 's.site_id')
+                .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .where({ 'a.org_id': org_id, 'a.labour_id': Number(labour_id) });
+
+    if (site_id && site_id !== 'All') {
+        query.where('a.site_id', Number(site_id));
+    }
+
+    if (month) {
+        // month is format YYYY-MM
+        const { start, end } = getMonthBounds(month);
+        query.where('a.date', '>=', start).where('a.date', '<=', end);
+    }
+
+    const advances = await query
+        .select(
+            'a.advance_id',
+            'a.labour_id',
+            'a.site_id',
+            's.site_name',
+            'a.amount',
+            'a.date',
+            'a.notes',
+            'a.created_at'
+        )
+        .orderBy('a.date', 'desc')
+        .orderBy('a.created_at', 'desc')
+        .orderBy('a.advance_id', 'desc');
+
+    const payoutsQuery = attendanceDB('labour_monthly_payouts as p')
+        .leftJoin('labour_sites as s', function() {
+            this.on('p.site_id', '=', 's.site_id')
+                .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
+        })
+        .where({ 'p.org_id': org_id, 'p.labour_id': Number(labour_id), 'p.status': 'Paid' });
+
+    if (site_id && site_id !== 'All') {
+        payoutsQuery.where('p.site_id', Number(site_id));
+    }
+
+    if (month) {
+        payoutsQuery.where('p.month', month);
+    }
+
+    const payouts = await payoutsQuery
+        .select(
+            'p.payout_id',
+            'p.site_id',
+            's.site_name',
+            'p.paid_amount',
+            'p.payment_date',
+            'p.month',
+            'p.created_at',
+            'p.notes'
+        )
+        .orderBy('p.payment_date', 'desc')
+        .orderBy('p.created_at', 'desc')
+        .orderBy('p.payout_id', 'desc');
+
+    res.json({
+        success: true,
+        advances,
+        payouts
+    });
+});
+
+export const deleteLabourAdvance = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
+    const { id } = req.params;
+
+    const existing = await attendanceDB('labour_advances')
+        .where({ advance_id: Number(id), org_id })
+        .first();
+
+    if (!existing) {
+        throw new AppError('Advance record not found in your organization', 404);
+    }
+
+    await attendanceDB('labour_advances')
+        .where({ advance_id: Number(id), org_id })
+        .del();
+
+    res.json({
+        success: true,
+        message: 'Advance record deleted successfully'
+    });
+});
+
 // Helper function to calculate worker outstanding balances per site within org
 async function getLabourBalancesPerSite(labour_id, org_id) {
     const worker = await attendanceDB('labours')
@@ -840,7 +1310,7 @@ async function getLabourBalancesPerSite(labour_id, org_id) {
 
     const scheduleCountMap = {};
     dailySchedules.forEach(sch => {
-        const dateStr = new Date(sch.date).toISOString().split('T')[0];
+        const dateStr = formatDateSafe(sch.date);
         if (!scheduleCountMap[dateStr]) {
             scheduleCountMap[dateStr] = 0;
         }
@@ -853,7 +1323,7 @@ async function getLabourBalancesPerSite(labour_id, org_id) {
         const sId = rec.site_id || 0;
         if (!sId) return;
         if (!siteAttendance[sId]) siteAttendance[sId] = {};
-        const dateStr = new Date(rec.date).toISOString().split('T')[0];
+        const dateStr = formatDateSafe(rec.date);
         const monthKey = dateStr.slice(0, 7);
         if (!siteAttendance[sId][monthKey]) {
             siteAttendance[sId][monthKey] = { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0, overtimeCreditSum: 0 };
@@ -951,17 +1421,7 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
         throw new AppError('site_id and month are required', 400);
     }
 
-    const [yearStr, monthStr] = month.split('-');
-    const year = Number(yearStr);
-    const monthIdx = Number(monthStr) - 1;
-
-    const startOfMonth = new Date(year, monthIdx, 1);
-    const endOfMonth = new Date(year, monthIdx + 1, 0);
-    const totalDays = endOfMonth.getDate();
-
-    const formatDate = (d) => d.toISOString().split('T')[0];
-    const start = formatDate(startOfMonth);
-    const end = formatDate(endOfMonth);
+    const { year, monthNum, totalDays, start, end } = getMonthBounds(month);
 
     let labours = [];
     if (site_id === 'All') {
@@ -1026,7 +1486,7 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
     });
 
     attendanceRecords.forEach(rec => {
-        const dateStr = new Date(rec.date).toISOString().split('T')[0];
+        const dateStr = formatDateSafe(rec.date);
         if (attendanceMap[rec.labour_id]) {
             attendanceMap[rec.labour_id][dateStr] = {
                 status: rec.status,
@@ -1049,7 +1509,7 @@ export const getMonthlyGridAttendance = catchAsync(async (req, res) => {
             month,
             totalDays,
             year,
-            monthNum: monthIdx + 1
+            monthNum
         },
         grid
     });
@@ -1288,7 +1748,7 @@ export const logLabourPayout = catchAsync(async (req, res) => {
             org_id,
             labour_id: data.labour_id,
             site_id: data.site_id,
-            month: data.month || new Date(payment_date).toISOString().slice(0, 7),
+            month: data.month || (payment_date ? formatDateSafe(payment_date).slice(0, 7) : new Date().toISOString().slice(0, 7)),
             wage_type: data.wage_type || 'Daily Wage',
             monthly_salary: Number(data.monthly_salary),
             present_days: Number(data.present_days || 0),

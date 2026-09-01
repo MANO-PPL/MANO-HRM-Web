@@ -75,6 +75,8 @@ export const attendanceService = {
         formData.append("latitude", data.latitude);
         formData.append("longitude", data.longitude);
         formData.append("accuracy", data.accuracy);
+        const tz = data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        formData.append("timezone", tz);
         if (data.imageFile) {
             formData.append("image", data.imageFile);
         }
@@ -101,6 +103,8 @@ export const attendanceService = {
         formData.append("latitude", data.latitude);
         formData.append("longitude", data.longitude);
         formData.append("accuracy", data.accuracy);
+        const tz = data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        formData.append("timezone", tz);
         if (data.imageFile) {
             formData.append("image", data.imageFile);
         }

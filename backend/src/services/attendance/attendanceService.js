@@ -5,6 +5,7 @@ import EventBus from "../../utils/EventBus.js";
 import * as ShiftService from "./shiftManagementService.js";
 import * as StatusService from "./statusEvaluationService.js";
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
+import { toMySQLDateTime, toMySQLDate, toMySQLTime } from "../../utils/dateUtils.js";
 
 /**
  * Fetch User Shift
@@ -919,13 +920,17 @@ export async function reviewCorrectionRequest({
 
   const dbUpdate = {
     status,
+    reviewer_notes: review_comments || null,
     reviewed_by: reviewer_id,
-    reviewed_at: new Date(),
+    reviewed_at: attendanceDB.fn.now(),
     review_comments: review_comments || null,
     audit_trail: JSON.stringify(auditTrail),
     updated_at: attendanceDB.fn.now()
   };
-  if (updatedProposedData) dbUpdate.proposed_data = updatedProposedData;
+
+  if (adminOverrideSessions) {
+    dbUpdate.proposed_data = JSON.stringify(adminOverrideSessions);
+  }
 
   await attendanceDB("attn_corrections").where({ id: acr_id }).update(dbUpdate);
 
@@ -933,10 +938,7 @@ export async function reviewCorrectionRequest({
   if (status === 'approved') {
     // Resolve final date string (YYYY-MM-DD)
     const targetDate = correction.request_date;
-    const d = new Date(targetDate);
-    const offset = d.getTimezoneOffset();
-    const localDate = new Date(d.getTime() - (offset * 60 * 1000));
-    const finalDateStr = localDate.toISOString().split('T')[0];
+    const finalDateStr = toMySQLDate(targetDate);
 
     // Case 8: Summary Override
     if (correction.correction_type === 'summary') {
@@ -1402,6 +1404,7 @@ export async function processTimeOutSync(context) {
     ip_address: ip,
     user_agent: user_agent,
     timezone: context.timezone || "N/A",
+    local_time: toMySQLDateTime(localTime),
     total_hours: parseFloat(totalHours.toFixed(2))
   };
 

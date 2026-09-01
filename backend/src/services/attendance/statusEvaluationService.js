@@ -1,6 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 import * as ShiftService from './shiftManagementService.js';
 import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { toMySQLTime, toMySQLDate, toMySQLDateTime } from '../../utils/dateUtils.js';
 
 /**
  * Status Evaluation Service
@@ -91,17 +92,18 @@ export function calculateLateArrival(localTime, rules) {
     const timing = rules?.shift_timing || {};
     const startTimeStr = timing.start_time;
 
-    if (startTimeStr) {
-        const localTimePart = localTime.split('T')[1]?.split('.')[0] || localTime;
+    if (startTimeStr && localTime) {
+        const timePart = toMySQLTime(localTime);
+        if (timePart) {
+            const [curH, curM] = timePart.split(':').map(Number);
+            const currentMinutes = curH * 60 + curM;
 
-        const [curH, curM] = localTimePart.split(':').map(Number);
-        const currentMinutes = curH * 60 + curM;
+            const [shiftH, shiftM] = startTimeStr.split(':').map(Number);
+            const shiftMinutes = shiftH * 60 + shiftM;
 
-        const [shiftH, shiftM] = startTimeStr.split(':').map(Number);
-        const shiftMinutes = shiftH * 60 + shiftM;
-
-        if (currentMinutes > shiftMinutes) {
-            minutesLate = currentMinutes - shiftMinutes;
+            if (currentMinutes > shiftMinutes) {
+                minutesLate = currentMinutes - shiftMinutes;
+            }
         }
     }
 
@@ -315,14 +317,7 @@ export function deriveDailyStatus(records) {
  * @returns {Promise<Object>} Session context data
  */
 export async function buildSessionContext(user_id, localTime, eventType) {
-    // Ensure localTime is a string in ISO format without milliseconds
-    const timeStr = (localTime instanceof Date && typeof localTime.toISOString === 'function')
-        ? localTime.toISOString()
-        : String(localTime);
-    const sanitizedLocalTime = timeStr.replace('T', ' ').split('.')[0];
-
-    // Extract date portion from the local time string for DB filtering
-    const dateOnly = sanitizedLocalTime.split(' ')[0];
+    const dateOnly = toMySQLDate(localTime);
 
     const todaySessions = await attendanceDB("attn_records")
         .where({ user_id })
