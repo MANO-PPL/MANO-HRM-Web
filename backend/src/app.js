@@ -60,8 +60,8 @@ app.use(apiMonitor);
 // Main API Router
 app.use('/', routes);
 
-app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'success', message: 'Backend 2.0 is running 🚀' });
+app.get(['/health', '/api/health'], (req, res) => {
+    res.status(200).json({ status: 'success', message: 'Backend 2.0 is running' });
 });
 
 // Handle 404 for undefined routes

@@ -122,6 +122,25 @@ export const attendanceService = {
         }
     },
 
+    // Mark Checkpoint (Presence/Location Ping)
+    async markCheckpoint(data) {
+        try {
+            const payload = {
+                latitude: data.latitude,
+                longitude: data.longitude,
+                accuracy: data.accuracy,
+                address: data.address,
+                note: data.note,
+                is_geofence_violation: Boolean(data.is_geofence_violation)
+            };
+            const res = await api.post(`${API_BASE_URL}/ping`, payload);
+            clearCache();
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || "Failed to mark checkpoint");
+        }
+    },
+
     // Get Records for a user
     async getMyRecords(dateFrom, dateTo) {
         const cacheKey = `${dateFrom || ''}_${dateTo || ''}`;

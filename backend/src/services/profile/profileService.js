@@ -108,7 +108,7 @@ export async function updatePreferences(user_id, updates) {
     // Pass an empty object {} to fully reset all seen states.
     if (updates.pages_tour_seen !== undefined) {
         if (Object.keys(updates.pages_tour_seen).length === 0) {
-            // Explicit reset — wipe all seen states
+            // Explicit reset - wipe all seen states
             allowedUpdates.pages_tour_seen = JSON.stringify({});
         } else {
             // Fetch existing value and merge

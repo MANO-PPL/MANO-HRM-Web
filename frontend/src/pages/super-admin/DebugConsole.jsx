@@ -317,7 +317,7 @@ const DebugConsole = () => {
                           ) : log.org_id ? (
                             <span className="text-slate-400 font-semibold">Org ID: {log.org_id}</span>
                           ) : (
-                            <span className="text-slate-600">—</span>
+                            <span className="text-slate-600">-</span>
                           )}
                         </td>
                         <td className="py-3.5 px-6 text-sm">

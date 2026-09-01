@@ -147,7 +147,7 @@ export const testPushNotification = catchAsync(async (req, res, next) => {
     await sendPushNotification(
         user_id,
         'FCM Connection Test',
-        'Your push notification integration is fully functional! 🚀'
+        'Your push notification integration is fully functional!'
     );
 
     res.json({
