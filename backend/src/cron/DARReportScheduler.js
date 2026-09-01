@@ -60,11 +60,11 @@ async function runDARReport(type, dateRange) {
             try {
                 const reportData = await buildReport(org_id, [], start, end, type);
                 if (reportData.length === 0) {
-                    console.log(`  ⚠  Org ${org_id} — no employees, skipped`);
+                    console.log(`  ⚠  Org ${org_id} - no employees, skipped`);
                     continue;
                 }
 
-                console.log(`  ✅ Org ${org_id} — ${reportData.length} employees`);
+                console.log(`  ✅ Org ${org_id} - ${reportData.length} employees`);
 
                 // Send a short narrative summary email if recipient configured
                 if (email_to) {
@@ -83,7 +83,7 @@ async function runDARReport(type, dateRange) {
                     for (const to of recipients) {
                         const result = await sendEmail({
                             to,
-                            subject: `DAR ${periodLabel} Report — ${rangeLabel}`,
+                            subject: `DAR ${periodLabel} Report - ${rangeLabel}`,
                             text: `DAR ${periodLabel} summary for ${rangeLabel}. Employees covered: ${reportData.length}.`,
                             html: `<p>Please find the <strong>DAR ${periodLabel} summary</strong> for the period <strong>${rangeLabel}</strong>.</p>
                      <p style="margin:0 0 10px; color:#4b5563;">Employees covered: ${reportData.length}</p>
@@ -133,21 +133,21 @@ async function runDARReport(type, dateRange) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INIT — called from server.js inside server.listen()
+// INIT - called from server.js inside server.listen()
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function initDARReportScheduler() {
-    // Daily: 10:00 AM every day — covers that day's data
+    // Daily: 10:00 AM every day - covers that day's data
     cron.schedule('0 10 * * *', () => {
         runDARReport('daily', prevDayRange());
     });
 
-    // Weekly: Monday 7:00 AM — covers previous Mon → Sun
+    // Weekly: Monday 7:00 AM - covers previous Mon → Sun
     cron.schedule('0 7 * * 1', () => {
         runDARReport('weekly', prevWeekRange());
     });
 
-    // Monthly: 1st of month 6:00 AM — covers previous full month
+    // Monthly: 1st of month 6:00 AM - covers previous full month
     cron.schedule('0 6 1 * *', () => {
         runDARReport('monthly', prevMonthRange());
     });

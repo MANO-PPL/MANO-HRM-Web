@@ -201,8 +201,8 @@ export function analyzeEmployee(employee, activities, events, dateList, reportTy
     return {
         user_id: employee.user_id,
         user_name: employee.user_name,
-        dept: employee.dept_name || '—',
-        shift: employee.shift_name || '—',
+        dept: employee.dept_name || '-',
+        shift: employee.shift_name || '-',
         report_summary: narrative.report_summary,
         work_summary: narrative.work_summary,
         generation_mode: 'rule_based',
@@ -423,8 +423,8 @@ router.post('/preview/client', authenticateJWT, catchAsync(async (req, res) => {
     const employeeRow = {
         user_id: employee.user_id,
         user_name: employee.user_name,
-        dept_name: employee.dept_name || '—',
-        shift_name: employee.shift_name || '—',
+        dept_name: employee.dept_name || '-',
+        shift_name: employee.shift_name || '-',
     };
 
     const base = analyzeEmployee(employeeRow, normalizedActivities, normalizedEvents, dateList, type);
@@ -471,7 +471,7 @@ router.post('/preview/client', authenticateJWT, catchAsync(async (req, res) => {
     });
 }));
 
-// GET /dar/reports/history — last 50 generated reports for this org
+// GET /dar/reports/history - last 50 generated reports for this org
 router.get('/history', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
     if (user_type !== 'admin' && user_type !== 'hr') {
@@ -484,7 +484,7 @@ router.get('/history', authenticateJWT, catchAsync(async (req, res) => {
     return res.json({ ok: true, history });
 }));
 
-// GET /dar/reports/schedules — list all schedule configs for this org
+// GET /dar/reports/schedules - list all schedule configs for this org
 router.get('/schedules', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
     if (user_type !== 'admin' && user_type !== 'hr') {
@@ -496,7 +496,7 @@ router.get('/schedules', authenticateJWT, catchAsync(async (req, res) => {
     return res.json({ ok: true, schedules });
 }));
 
-// POST /dar/reports/schedules — upsert a schedule config
+// POST /dar/reports/schedules - upsert a schedule config
 router.post('/schedules', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
     if (user_type !== 'admin' && user_type !== 'hr') {
@@ -529,7 +529,7 @@ router.post('/schedules', authenticateJWT, catchAsync(async (req, res) => {
     return res.json({ ok: true, message: 'Schedule saved.' });
 }));
 
-// DELETE /dar/reports/schedules/:frequency — remove a schedule
+// DELETE /dar/reports/schedules/:frequency - remove a schedule
 router.delete('/schedules/:frequency', authenticateJWT, catchAsync(async (req, res) => {
     const { user_type, org_id } = req.user;
     if (user_type !== 'admin' && user_type !== 'hr') {

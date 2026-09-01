@@ -734,7 +734,7 @@ async function runGenerateSimulation(orgId, payload) {
                 )
                 : [];
 
-            // Only use coverage candidates — avoids double-generation with session candidates
+            // Only use coverage candidates - avoids double-generation with session candidates
             const candidates = coverageCandidates;
 
             const minimumCoverageCount = ensureDailyCoverage
@@ -1119,7 +1119,7 @@ export async function getAllActivitiesAdmin({ org_id, date, startDate, endDate }
         .where('u.org_id', org_id)
         .where('da.status', 'COMPLETED');
 
-    // Filter by date or range — use DATE() to avoid timezone-offset issues with DATE columns
+    // Filter by date or range - use DATE() to avoid timezone-offset issues with DATE columns
     if (date) {
         query = query.whereRaw('DATE(da.activity_date) = ?', [date]);
     } else if (startDate && endDate) {

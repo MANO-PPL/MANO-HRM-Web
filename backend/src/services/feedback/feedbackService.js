@@ -240,7 +240,7 @@ h2 { color:#1A1A1A; font-size:20px; margin-bottom:16px; }
         ${attachments.length > 0 ? `
         <div class="attachments" style="margin-top:22px;">
             <div class="label" style="margin-bottom:10px;">List of Documents Attached</div>
-            ${attachments.map(a => `<div class="attachment-item">${a.file_name} — ${(a.file_size / 1024).toFixed(2)} KB</div>`).join('')}
+            ${attachments.map(a => `<div class="attachment-item">${a.file_name} - ${(a.file_size / 1024).toFixed(2)} KB</div>`).join('')}
         </div>` : ''}
     </div>
     <div class="footer">

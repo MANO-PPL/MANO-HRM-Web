@@ -366,7 +366,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
             const userBalances = await attendanceDB('leave_balances')
                 .where({ user_id: request.user_id, year: leaveYear });
             if (userBalances.length === 1) {
-                // Only one rule assigned — safe to assume this is the right one
+                // Only one rule assigned - safe to assume this is the right one
                 resolvedRuleId = userBalances[0].rule_id;
                 // Backfill rule_id on the leave_request for future ops
                 await attendanceDB('leave_request')
