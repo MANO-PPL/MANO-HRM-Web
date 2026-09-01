@@ -22,7 +22,7 @@ export function toMySQLDateTime(dateOrStr) {
     try {
         let d;
         if (dateOrStr instanceof Date) {
-            d = dateOrStr;
+            return dateOrStr.toISOString().replace('T', ' ').split('.')[0];
         } else if (typeof dateOrStr === 'string') {
             // Handle ISO strings with 'T' and optional 'Z' or offset
             const cleaned = dateOrStr.trim();
@@ -39,15 +39,7 @@ export function toMySQLDateTime(dateOrStr) {
         }
 
         if (isNaN(d.getTime())) return null;
-
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const hh = String(d.getHours()).padStart(2, '0');
-        const min = String(d.getMinutes()).padStart(2, '0');
-        const ss = String(d.getSeconds()).padStart(2, '0');
-
-        return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+        return d.toISOString().replace('T', ' ').split('.')[0];
     } catch (e) {
         console.error('Error formatting MySQL datetime:', e);
         return null;
@@ -68,6 +60,10 @@ export function toMySQLDate(dateOrStr) {
     }
 
     try {
+        if (dateOrStr instanceof Date) {
+            return dateOrStr.toISOString().split('T')[0];
+        }
+
         if (typeof dateOrStr === 'string') {
             const trimmed = dateOrStr.trim();
             if (trimmed.includes('T')) {
@@ -81,10 +77,7 @@ export function toMySQLDate(dateOrStr) {
         const d = dateOrStr instanceof Date ? dateOrStr : new Date(dateOrStr);
         if (isNaN(d.getTime())) return null;
 
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
+        return d.toISOString().split('T')[0];
     } catch (e) {
         console.error('Error formatting MySQL date:', e);
         return null;
@@ -99,6 +92,10 @@ export function toMySQLDate(dateOrStr) {
  */
 export function toMySQLTime(dateOrStr) {
     if (!dateOrStr) return null;
+
+    if (dateOrStr instanceof Date) {
+        return dateOrStr.toISOString().split('T')[1]?.split('.')[0] || null;
+    }
 
     if (typeof dateOrStr === 'string') {
         const trimmed = dateOrStr.trim();
@@ -118,14 +115,12 @@ export function toMySQLTime(dateOrStr) {
         const d = dateOrStr instanceof Date ? dateOrStr : new Date(dateOrStr);
         if (isNaN(d.getTime())) return null;
 
-        const hh = String(d.getHours()).padStart(2, '0');
-        const min = String(d.getMinutes()).padStart(2, '0');
-        const ss = String(d.getSeconds()).padStart(2, '0');
-        return `${hh}:${min}:${ss}`;
+        return d.toISOString().split('T')[1]?.split('.')[0] || null;
     } catch (e) {
         return null;
     }
 }
+
 
 /**
  * Returns current date and time formatted in a given IANA timezone.
