@@ -144,7 +144,7 @@ export const TourProvider = ({ children }) => {
 
     // ── Public API ────────────────────────────────────────────────────────
     /**
-     * Start the tour for a page. Always works — ignores seen state.
+     * Start the tour for a page. Always works - ignores seen state.
      * @param {string} pageKey - e.g. 'dashboard', 'attendance'
      * @param {Array}  steps   - array of { targetId, title, description }
      */
@@ -153,7 +153,7 @@ export const TourProvider = ({ children }) => {
     }, []);
 
     /**
-     * Skip mid-tour. Only sets session-level dismissal — no DB write.
+     * Skip mid-tour. Only sets session-level dismissal - no DB write.
      * Does NOT mark pages_tour_seen. User will see auto-start again next login.
      */
     const skipTour = useCallback(() => {

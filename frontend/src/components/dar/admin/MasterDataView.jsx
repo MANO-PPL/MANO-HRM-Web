@@ -230,7 +230,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                             userId: a.user_id,
                             name: a.user_name,
                             role: a.user_role || 'Employee',
-                            designation: u?.designation || '-',
+                            designation: u?.designation || 'N/A',
                             date: localDate,
                             dept: a.user_dept,
                             shift: a.user_shift_name,
@@ -270,7 +270,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                     userId: u.userId,
                                     name: u.name,
                                     role: u.role || 'Employee',
-                                    designation: u.designation || '-',
+                                    designation: u.designation || 'N/A',
                                     date: eventDate,
                                     dept: u.dept,
                                     shift: u.shift,
@@ -325,7 +325,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                                 userId: u.userId,
                                 name: u.name,
                                 role: u.role || 'Employee',
-                                designation: u.designation || '-',
+                                designation: u.designation || 'N/A',
                                 date: dateStr,
                                 dept: u.dept,
                                 shift: u.shift,
@@ -902,7 +902,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
                                                 {/* 2. Status-based Overlays */}
                                                 {!user.isHoliday && (user.attendance?.status === ATTENDANCE_STATUS.MISSED_PUNCH) && (
-                                                    <div className={`absolute inset-x-0 inset-y-1 ${getStatusStyle(ATTENDANCE_STATUS.MISSED_PUNCH).bg} border border-rose-200 dark:border-rose-700/30 rounded-lg pointer-events-none z-0`} title="Missed Punch - Auto closed by system" />
+                                                    <div className={`absolute inset-x-0 inset-y-1 ${getStatusStyle(ATTENDANCE_STATUS.MISSED_PUNCH).bg} border border-rose-200 dark:border-rose-700/30 rounded-lg pointer-events-none z-0`} title="Missed Punch: Auto-closed by system" />
                                                 )}
                                                 {!user.isHoliday && (user.attendance?.status === ATTENDANCE_STATUS.OVERTIME) && (
                                                     <div className={`absolute inset-x-0 inset-y-1 ${getStatusStyle(ATTENDANCE_STATUS.OVERTIME).bg} border border-violet-200 dark:border-violet-700/30 rounded-lg pointer-events-none z-0`} title="Overtime shift" />

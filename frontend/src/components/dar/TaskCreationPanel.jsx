@@ -934,7 +934,7 @@ const TaskCreationPanel = ({ onClose, onUpdate, initialTimeIn = "09:30", attenda
                         className="w-full py-2.5 font-bold rounded-xl text-[10px] flex items-center justify-center gap-2 bg-red-100 dark:bg-red-900/30 text-red-400 dark:text-red-500 cursor-not-allowed"
                     >
                         <AlertCircle size={14} />
-                        Absent — Submission Blocked
+                        Absent - Submission Blocked
                     </button>
                 ) : (
                     <button

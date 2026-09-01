@@ -42,7 +42,7 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
         submissionRate: 0,
         submittedCount: 0,
         totalEmployees: 0,
-        topActivity: '-',
+        topActivity: 'None',
         topActivityPercent: 0,
         avgHours: 0,
         avgDiff: 0,
@@ -239,7 +239,7 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
         setDeptData(sortedDeptData);
 
         // Top Activity
-        let topAct = '-';
+        let topAct = 'None';
         let maxFreq = 0;
         Object.entries(activityFrequency).forEach(([act, freq]) => {
             if (freq > maxFreq) {
@@ -251,7 +251,7 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
         const topActPercent = totalH > 0 ? Math.round((topActHours / totalH) * 100) : 0;
 
         // Active Dept
-        let topDept = '-';
+        let topDept = 'None';
         let topDeptVal = 0;
         Object.entries(deptHours).forEach(([d, val]) => {
             if (val > topDeptVal) {
@@ -478,7 +478,7 @@ const DashboardInsights = ({ departments, allUsers, onOpenConfig }) => {
                                 onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
                                 className="bg-transparent text-xs font-bold text-slate-600 dark:text-slate-300 outline-none w-[90px]"
                             />
-                            <span className="text-slate-400 font-bold">-</span>
+                            <span className="text-slate-400 font-medium text-[11px] uppercase tracking-wider">to</span>
                             <input
                                 type="date"
                                 value={filters.endDate}

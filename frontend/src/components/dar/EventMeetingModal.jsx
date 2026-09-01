@@ -141,7 +141,7 @@ const EventMeetingModal = ({ onClose, onSave, type = 'Meeting', initialDate = ne
     };
 
     const formattedDateString = new Date(date).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
-    const fullTimeString = `${formattedDateString}  ${formatTimeDisplay(startTime)} – ${formatTimeDisplay(endTime)}`;
+    const fullTimeString = `${formattedDateString}  ${formatTimeDisplay(startTime)} - ${formatTimeDisplay(endTime)}`;
 
     const handleSubmit = async () => {
         // Collect data based on type
@@ -262,7 +262,7 @@ const EventMeetingModal = ({ onClose, onSave, type = 'Meeting', initialDate = ne
                                             className="px-2 py-2 w-28 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-github-dark-border rounded-md text-sm text-gray-800 dark:text-gray-100 focus:border-blue-500 outline-none hover:bg-white dark:hover:bg-slate-600 transition-colors text-center"
                                         />
 
-                                        <span className="text-gray-400 text-sm">–</span>
+                                        <span className="text-gray-400 text-sm">-</span>
 
                                         {/* End Time */}
                                         <input
