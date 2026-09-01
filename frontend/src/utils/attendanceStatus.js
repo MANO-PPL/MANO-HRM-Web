@@ -24,6 +24,7 @@ export function getStatusStyle(status) {
   switch ((status || '').toUpperCase()) {
     case 'ACTIVE':
     case 'IN_PROGRESS':
+    case 'OPEN':
       return {
         bg: 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/50',
         text: 'text-emerald-700 dark:text-emerald-400 font-bold',
@@ -31,10 +32,16 @@ export function getStatusStyle(status) {
         label: 'ACTIVE',
       };
     case 'CLOSED':
+      return {
+        bg: 'bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40',
+        text: 'text-slate-600 dark:text-slate-300 font-bold',
+        dot: 'bg-slate-400',
+        label: 'CLOSED',
+      };
     case 'COMPLETED':
       return {
         bg: 'bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40',
-        text: 'text-slate-600 dark:text-slate-300',
+        text: 'text-slate-600 dark:text-slate-300 font-bold',
         dot: 'bg-slate-400',
         label: 'COMPLETED',
       };

@@ -105,6 +105,7 @@ router.get("/records/export",
  */
 router.post("/correction-request", 
   authenticateJWT, 
+  upload.single("attachment"),
   AttendanceController.submitCorrectionRequest
 );
 
@@ -131,6 +132,14 @@ router.get("/correction-request/:acr_id",
  * Admin endpoint to approve/reject correction request
  */
 router.patch("/correct-request/:acr_id", 
+  authenticateJWT, 
+  AttendanceController.reviewCorrectionRequest
+);
+router.patch("/correction-request/:acr_id", 
+  authenticateJWT, 
+  AttendanceController.reviewCorrectionRequest
+);
+router.put("/correction-request/:acr_id/review", 
   authenticateJWT, 
   AttendanceController.reviewCorrectionRequest
 );

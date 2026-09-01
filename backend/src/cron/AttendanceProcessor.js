@@ -418,19 +418,10 @@ async function escalateExpiredMissedPunches() {
             }
 
             // Check if user has submitted an approved/pending correction for this date
-            let correction = null;
-            try {
-                correction = await attendanceDB('attn_corrections')
-                    .where({ user_id: record.user_id, request_date: record.date })
-                    .whereIn('status', ['pending', 'approved'])
-                    .first();
-            } catch (_) {}
-            if (!correction) {
-                correction = await attendanceDB('attn_correction_requests')
-                    .where({ user_id: record.user_id, request_date: record.date })
-                    .whereIn('status', ['pending', 'approved'])
-                    .first().catch(() => null);
-            }
+            const correction = await attendanceDB('attn_corrections')
+                .where({ user_id: record.user_id, request_date: record.date })
+                .whereIn('status', ['pending', 'approved'])
+                .first();
 
             if (correction) {
                 // Correction exists — skip escalation

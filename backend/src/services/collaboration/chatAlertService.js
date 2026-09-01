@@ -132,8 +132,8 @@ export async function sendSystemAlert({ org_id, sender_id, recipient_id, card_ty
                 status,
                 ...payload
             }),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            created_at: attendanceDB.fn.now(),
+            updated_at: attendanceDB.fn.now()
         });
 
         // Update conversation last_message_id
@@ -314,7 +314,7 @@ export async function notifyLeaveStatusUpdated({ org_id, reviewer_id, leave_id, 
  */
 export async function notifyCorrectionApplied({ org_id, sender_id, acr_id, io }) {
     try {
-        const correction = await attendanceDB('attn_correction_requests').where({ acr_id }).first();
+        const correction = await attendanceDB('attn_corrections').where({ id: acr_id }).first();
         if (!correction) return;
 
         const employee = await attendanceDB('core_users').where({ user_id: sender_id }).select('user_name').first();
@@ -366,7 +366,7 @@ export async function notifyCorrectionApplied({ org_id, sender_id, acr_id, io })
  */
 export async function notifyCorrectionStatusUpdated({ org_id, reviewer_id, acr_id, io }) {
     try {
-        const correction = await attendanceDB('attn_correction_requests').where({ acr_id }).first();
+        const correction = await attendanceDB('attn_corrections').where({ id: acr_id }).first();
         if (!correction) return;
 
         const reviewer = await attendanceDB('core_users').where({ user_id: reviewer_id }).select('user_name').first();

@@ -43,6 +43,7 @@ import { attendanceService, attendanceCacheData } from '../../services/attendanc
 import { toast } from 'react-toastify';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import MonthPicker from '../../components/MonthPicker';
+import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
 import {
     AreaChart,
     Area,
@@ -253,6 +254,7 @@ const MobileAttendancePage = () => {
     });
 
     const [originalSessions, setOriginalSessions] = useState([]);
+    const [showMobileAdvanced, setShowMobileAdvanced] = useState(false);
 
 
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -850,33 +852,38 @@ const MobileAttendancePage = () => {
         setSubmitLoading(true);
         try {
             const original_data = originalSessions;
-            let proposed_data = [];
+            const validSessions = correctionForm.sessions.filter(s => s.in && s.out);
 
-            if (correctionForm.method === 'manual') {
-                const validSessions = correctionForm.sessions.filter(s => s.in && s.out);
-                proposed_data = validSessions.map(s => ({ time_in: s.in, time_out: s.out }));
-            } else if (correctionForm.method === 'reset') {
-                const resetSession = correctionForm.sessions[0];
-                if (!resetSession || !resetSession.in || !resetSession.out) {
-                    toast.error("Please enter both Time In and Time Out for Day Reset.");
+            for (let i = 0; i < validSessions.length; i++) {
+                if (validSessions[i].in >= validSessions[i].out) {
+                    toast.error("Time In must be before Time Out.");
                     setSubmitLoading(false);
                     return;
                 }
-                proposed_data = [{ time_in: resetSession.in, time_out: resetSession.out }];
+            }
+
+            let proposed_data = [];
+            if (validSessions.length > 0) {
+                proposed_data = validSessions.map(s => ({ time_in: s.in, time_out: s.out }));
+            } else if (originalSessions.length > 0) {
+                proposed_data = originalSessions.map(s => ({ time_in: s.time_in || '09:00', time_out: s.time_out || '18:00' }));
+            } else {
+                proposed_data = [{ time_in: '09:00', time_out: '18:00' }];
             }
 
             const payload = {
                 request_date: correctionForm.date,
-                correction_type: correctionForm.type,
+                correction_type: correctionForm.type || 'Correction',
                 reason: correctionForm.reason,
                 original_data,
                 proposed_data
             };
 
             await attendanceService.submitCorrectionRequest(payload);
-            toast.success("Correction request submitted successfully!");
+            toast.success("Adjustment request submitted successfully!");
             setShowConfirmSubmit(false);
             setIsCorrectionOpen(false);
+            setShowMobileAdvanced(false);
             setCorrectionForm({ ...correctionForm, sessions: [{ in: '', out: '' }], reason: '' });
             fetchCorrectionHistory();
         } catch (error) {
@@ -2782,28 +2789,63 @@ const MobileAttendancePage = () => {
                                 </button>
                             </div>
 
-                            <div className="space-y-8">
+                            <div className="space-y-6">
                                 {/* Date Selection */}
-                                <div className="space-y-3 relative z-30">
+                                <div className="space-y-2.5 relative z-30">
                                     <MobileDatePicker
                                         label="Adjustment Date"
                                         value={correctionForm.date}
                                         onChange={(val) => setCorrectionForm({...correctionForm, date: val})}
                                     />
+
+                                    {/* Smart Context Banner */}
+                                    {(() => {
+                                        const hasSessions = originalSessions.length > 0;
+                                        const hasOpenSession = hasSessions && originalSessions.some(s => s.time_in && !s.time_out);
+                                        if (!hasSessions) {
+                                            return (
+                                                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between text-xs">
+                                                    <span className="text-amber-700 dark:text-amber-300 font-medium">No punches found (Absent)</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCorrectionForm({ ...correctionForm, sessions: [{ in: '09:00', out: '18:00' }] })}
+                                                        className="px-2.5 py-1 bg-amber-500 text-white font-bold text-[10px] rounded-lg uppercase tracking-wider"
+                                                    >
+                                                        ⚡ Fill 9-6
+                                                    </button>
+                                                </div>
+                                            );
+                                        }
+                                        if (hasOpenSession) {
+                                            return (
+                                                <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-between text-xs">
+                                                    <span className="text-indigo-700 dark:text-indigo-300 font-medium">In at {originalSessions[0]?.time_in} (No out)</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCorrectionForm({ ...correctionForm, sessions: [{ in: originalSessions[0]?.time_in || '09:00', out: '18:00' }] })}
+                                                        className="px-2.5 py-1 bg-indigo-600 text-white font-bold text-[10px] rounded-lg uppercase tracking-wider"
+                                                    >
+                                                        ⚡ Out: 18:00
+                                                    </button>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                 </div>
 
-                                {/* Type Selection */}
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1">Correction Type</label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {['Missed Punch', 'Overtime', 'Correction', 'Other'].map(type => (
+                                {/* Adjustment Reason Category */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1 uppercase">Adjustment Reason</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {['Missed Punch', 'Other'].map(type => (
                                             <button
                                                 key={type}
                                                 type="button"
                                                 onClick={() => setCorrectionForm({...correctionForm, type})}
-                                                className={`py-4 px-2 rounded-2xl text-[11px] font-black tracking-widest transition-all border ${
+                                                className={`py-3 px-2 rounded-xl text-[10px] font-black tracking-wider transition-all border ${
                                                     correctionForm.type === type 
-                                                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/20' 
+                                                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20' 
                                                         : 'bg-slate-50 dark:bg-github-dark-bg text-slate-500 dark:text-github-dark-muted border-slate-200 dark:border-github-dark-border'
                                                 }`}
                                             >
@@ -2813,142 +2855,124 @@ const MobileAttendancePage = () => {
                                     </div>
                                 </div>
 
-                                {/* Method Toggle */}
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1">Method</label>
-                                    <div className="flex p-1.5 bg-slate-100 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-2xl gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setCorrectionForm({...correctionForm, method: 'manual'})}
-                                            className={`flex-1 py-3 text-[10px] font-black tracking-widest rounded-xl transition-all ${correctionForm.method === 'manual' ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 shadow-sm border border-slate-200 dark:border-github-dark-border' : 'text-slate-500 dark:text-github-dark-muted'}`}
-                                        >
-                                            Manual Entry
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setCorrectionForm({...correctionForm, method: 'reset'})}
-                                            className={`flex-1 py-3 text-[10px] font-black tracking-widest rounded-xl transition-all ${correctionForm.method === 'reset' ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 shadow-sm border border-slate-200 dark:border-github-dark-border' : 'text-slate-500 dark:text-github-dark-muted'}`}
-                                        >
-                                            Reset Day
-                                        </button>
-                                    </div>
+                                {/* Reason for Adjustment */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1 uppercase">Reason & Details</label>
+                                    <textarea
+                                        value={correctionForm.reason}
+                                        onChange={(e) => setCorrectionForm({...correctionForm, reason: e.target.value})}
+                                        className="w-full bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-2xl p-4 text-sm font-bold min-h-[100px] focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all dark:text-github-dark-text resize-none"
+                                        placeholder="Explain why this adjustment is needed..."
+                                        required
+                                    />
                                 </div>
 
-                                {/* Sessions Logic */}
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between px-1">
-                                        <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em]">Sessions</label>
-                                        {correctionForm.method === 'manual' && (
-                                            <button 
-                                                onClick={addSession}
-                                                className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 tracking-widest bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1.5 rounded-lg"
-                                            >
-                                                + Add
-                                            </button>
-                                        )}
-                                    </div>
+                                {/* Advanced Options Accordion */}
+                                <div className="border border-slate-200 dark:border-github-dark-border rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-github-dark-bg/30">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMobileAdvanced(prev => !prev)}
+                                        className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-slate-100/60 dark:hover:bg-github-dark-bg/60 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-github-dark-text">Advanced: Custom Sessions</span>
+                                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/40">Optional</span>
+                                        </div>
+                                        <div className={`transition-transform duration-200 ${showMobileAdvanced ? 'rotate-180' : 'rotate-0'}`}>
+                                            <ChevronDown size={18} className="text-slate-400" />
+                                        </div>
+                                    </button>
 
-                                    {correctionForm.method === 'manual' ? (
-                                        <div className="space-y-3">
-                                            {correctionForm.sessions.map((s, idx) => (
-                                                <div 
-                                                    key={idx} 
-                                                    className={`flex items-center gap-3 p-4 rounded-[2rem] border transition-all ${
-                                                        s.isExisting 
-                                                            ? 'bg-slate-100/30 dark:bg-github-dark-border/20 border-slate-200 dark:border-github-dark-border/50' 
-                                                            : 'bg-white dark:bg-github-dark-bg/50 border-slate-100 dark:border-white/5 shadow-sm'
-                                                    }`}
-                                                >
-                                                    {s.isExisting ? (
-                                                        <div className="flex-1 flex gap-3 w-full">
-                                                            <div className="flex-1 bg-slate-100/50 dark:bg-github-dark-bg p-3.5 rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col justify-center shadow-inner">
-                                                                <span className="block text-[8px] font-black text-slate-500 dark:text-github-dark-muted tracking-widest mb-1">Existing In</span>
-                                                                <span className="text-sm font-black text-slate-800 dark:text-github-dark-text font-mono tracking-tight">{s.in || '--:--'}</span>
-                                                            </div>
-                                                            <div className="flex-1 bg-slate-100/50 dark:bg-github-dark-bg p-3.5 rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col justify-center shadow-inner">
-                                                                <span className="block text-[8px] font-black text-slate-500 dark:text-github-dark-muted tracking-widest mb-1">Existing Out</span>
-                                                                <span className="text-sm font-black text-slate-800 dark:text-github-dark-text font-mono tracking-tight">{s.out || '--:--'}</span>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            <div className="flex-1 space-y-2">
-                                                                <label className="text-[9px] font-black text-slate-400 tracking-widest px-1">In</label>
+                                    <AnimatePresence>
+                                        {showMobileAdvanced && (
+                                            <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-4 space-y-4 bg-white dark:bg-github-dark-subtle/50"
+                                            >
+                                                {/* ── Interactive Draggable Before / After Timeline ── */}
+                                                <VisualCorrectionTimeline
+                                                    requestData={{
+                                                        original_data: originalSessions,
+                                                        proposed_data: (correctionForm.sessions || []).filter(s => s.in && s.out).map(s => ({ time_in: s.in, time_out: s.out })),
+                                                        correction_type: correctionForm.type,
+                                                        status: 'draft'
+                                                    }}
+                                                    editable={true}
+                                                    onSessionsChange={(updated) => {
+                                                        setCorrectionForm(prev => ({
+                                                            ...prev,
+                                                            sessions: updated.map(s => ({ in: s.time_in, out: s.time_out, punch_type: s.punch_type || 'regular' }))
+                                                        }));
+                                                    }}
+                                                />
+
+                                                <div className="flex items-center justify-between px-1">
+                                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] uppercase">Session Times</label>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={addSession}
+                                                        className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 tracking-widest bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1.5 rounded-lg"
+                                                    >
+                                                        + Add Session
+                                                    </button>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    {correctionForm.sessions.map((s, idx) => (
+                                                        <div 
+                                                            key={idx} 
+                                                            className="flex items-end gap-3 p-4 rounded-[2rem] border transition-all bg-white dark:bg-github-dark-bg/50 border-slate-200 dark:border-github-dark-border shadow-sm"
+                                                        >
+                                                            <div className="flex-1 space-y-1.5">
+                                                                <label className="text-[9px] font-black text-slate-400 tracking-widest px-1">
+                                                                    {s.isExisting ? `Session ${idx + 1} In` : 'Time In'}
+                                                                </label>
                                                                 <input 
                                                                     type="time" 
-                                                                    value={s.in} 
+                                                                    value={s.in || ''} 
                                                                     onChange={(e) => updateSession(idx, 'in', e.target.value)}
                                                                     className="w-full bg-slate-50 dark:bg-github-dark-bg rounded-xl p-3 text-xs font-bold text-slate-700 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border" 
                                                                 />
                                                             </div>
-                                                            <div className="flex-1 space-y-2">
-                                                                <label className="text-[9px] font-black text-slate-400 tracking-widest px-1">Out</label>
+                                                            <div className="flex-1 space-y-1.5">
+                                                                <label className="text-[9px] font-black text-slate-400 tracking-widest px-1">
+                                                                    {s.isExisting ? `Session ${idx + 1} Out` : 'Time Out'}
+                                                                </label>
                                                                 <input 
                                                                     type="time" 
-                                                                    value={s.out} 
+                                                                    value={s.out || ''} 
                                                                     onChange={(e) => updateSession(idx, 'out', e.target.value)}
                                                                     className="w-full bg-slate-50 dark:bg-github-dark-bg rounded-xl p-3 text-xs font-bold text-slate-700 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border" 
                                                                 />
                                                             </div>
-                                                        </>
-                                                    )}
-                                                    {correctionForm.sessions.length > 1 && !s.isExisting && (
-                                                        <button onClick={() => removeSession(idx)} className="mt-4 p-2 text-rose-500">
-                                                            <XCircle size={18} />
-                                                        </button>
-                                                    )}
+                                                            {correctionForm.sessions.length > 1 && (
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => removeSession(idx)} 
+                                                                    className="p-3 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl"
+                                                                    title="Remove Session"
+                                                                >
+                                                                    <X size={16} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200/50 dark:border-amber-500/20 p-5 rounded-2xl">
-                                                <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400 leading-relaxed italic">
-                                                    * Resetting the day will remove all existing logs for this date and replace them with a single manual entry.
-                                                </p>
-                                            </div>
-                                            <div className="flex items-center gap-3 bg-white dark:bg-github-dark-bg/50 p-4 rounded-[2rem] border border-indigo-100 dark:border-indigo-500/20 shadow-sm">
-                                                <div className="flex-1 space-y-2">
-                                                    <label className="text-[9px] font-black text-slate-400 tracking-widest px-1">New In</label>
-                                                    <input 
-                                                        type="time" 
-                                                        value={correctionForm.sessions[0]?.in || ''} 
-                                                        onChange={(e) => updateSession(0, 'in', e.target.value)}
-                                                        className="w-full bg-slate-50 dark:bg-github-dark-bg rounded-xl p-3 text-xs font-bold text-slate-700 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border" 
-                                                    />
-                                                </div>
-                                                <div className="flex-1 space-y-2">
-                                                    <label className="text-[9px] font-black text-slate-400 tracking-widest px-1">New Out</label>
-                                                    <input 
-                                                        type="time" 
-                                                        value={correctionForm.sessions[0]?.out || ''} 
-                                                        onChange={(e) => updateSession(0, 'out', e.target.value)}
-                                                        className="w-full bg-slate-50 dark:bg-github-dark-bg rounded-xl p-3 text-xs font-bold text-slate-700 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border" 
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1">Reason for Correction</label>
-                                    <textarea
-                                        value={correctionForm.reason}
-                                        onChange={(e) => setCorrectionForm({...correctionForm, reason: e.target.value})}
-                                        className="w-full bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-[1.5rem] p-5 text-sm font-bold min-h-[120px] focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all dark:text-github-dark-text resize-none"
-                                        placeholder="Please explain the reason for this adjustment..."
-                                    />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
 
                                 <button 
                                     onClick={handleCorrectionSubmit} 
-                                    className="w-full py-5 bg-indigo-600 text-white text-xs font-black tracking-[0.2em] rounded-[1.5rem] shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
+                                    className="w-full py-4.5 bg-indigo-600 text-white text-xs font-black tracking-[0.15em] rounded-2xl shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
                                 >
-                                    <FileClock size={20} />
-                                    Submit Request
+                                    <FileClock size={18} />
+                                    Submit Adjustment Request
                                 </button>
-                                <p className="text-[9px] text-center text-slate-400 font-bold mt-4 tracking-widest opacity-60">Requires Admin Approval</p>
+                                <p className="text-[9px] text-center text-slate-400 font-bold mt-2 tracking-widest opacity-60 uppercase">Reviewed & verified by HR / Admin</p>
                             </div>
                         </motion.div>
                     </div>

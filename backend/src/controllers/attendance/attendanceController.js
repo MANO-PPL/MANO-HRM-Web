@@ -14,7 +14,7 @@ import { calculateWorkHours, deriveStatus } from "../../services/reports/reports
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
 import { getLocalNow, getLocalTimeString } from "../../services/attendance/statusEvaluationService.js";
 import { attendanceQueue } from "../../config/queues.js";
-import { processAttendanceJob } from "../../workers/attendanceWorker.js";
+import { uploadFile } from "../../services/s3/s3Service.js";
 
 /**
  * POST /attendance/timein
@@ -457,7 +457,8 @@ export const submitCorrectionRequest = catchAsync(async (req, res) => {
     request_date,
     reason,
     original_data,
-    proposed_data
+    proposed_data,
+    existing_request_id
   } = req.body;
 
   const user_id = req.user.id || req.user.user_id;
@@ -467,27 +468,80 @@ export const submitCorrectionRequest = catchAsync(async (req, res) => {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  if (!proposed_data || !Array.isArray(proposed_data) || proposed_data.length === 0) {
-    return res.status(400).json({ error: "proposed_data (sessions array) is required" });
+  // Parse JSON data if submitted via FormData multipart
+  let parsedProposedData = proposed_data;
+  if (typeof proposed_data === 'string') {
+    try {
+      parsedProposedData = JSON.parse(proposed_data);
+    } catch (_) {
+      parsedProposedData = null;
+    }
   }
 
-  const id = await AttendanceService.createCorrectionRequest({
+  let parsedOriginalData = original_data;
+  if (typeof original_data === 'string') {
+    try {
+      parsedOriginalData = JSON.parse(original_data);
+    } catch (_) {
+      parsedOriginalData = null;
+    }
+  }
+
+  if (correction_type === 'punch') {
+    if (!parsedProposedData || !Array.isArray(parsedProposedData) || parsedProposedData.length === 0) {
+      return res.status(400).json({ error: "proposed_data (sessions array) is required for punch corrections" });
+    }
+  } else if (correction_type === 'summary') {
+    if (!parsedProposedData || typeof parsedProposedData !== 'object') {
+      return res.status(400).json({ error: "proposed_data object is required for summary corrections" });
+    }
+  }
+
+  // Handle optional attachment upload to S3
+  let attachmentMeta = null;
+  if (req.file) {
+    try {
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      const fileKey = `corrections/${org_id}/${user_id}/${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
+      await uploadFile({
+        fileBuffer: req.file.buffer,
+        key: fileKey,
+        contentType: req.file.mimetype || 'application/octet-stream'
+      });
+      attachmentMeta = {
+        file_key: fileKey,
+        file_name: req.file.originalname,
+        file_type: req.file.mimetype,
+        file_size: req.file.size
+      };
+    } catch (uploadErr) {
+      console.error("Correction attachment upload failed:", uploadErr);
+    }
+  }
+
+  const result = await AttendanceService.createCorrectionRequest({
     org_id,
     user_id,
     correction_type,
     request_date,
-    original_data,
-    proposed_data,
-    reason
+    original_data: parsedOriginalData,
+    proposed_data: parsedProposedData,
+    reason,
+    attachmentMeta,
+    existing_request_id: existing_request_id ? Number(existing_request_id) : null
   });
 
-  // Trigger premium correction request DM alert cards to all Admins and HRs
-  const io = req.app.get('io');
-  notifyCorrectionApplied({ org_id, sender_id: user_id, acr_id: id, io }).catch(console.error);
+  const acr_id = typeof result === 'object' ? result.id : result;
+  const is_updated = typeof result === 'object' ? result.is_updated : false;
 
-  res.status(201).json({
-    message: "Correction request submitted",
-    acr_id: id
+  // Trigger correction request DM alert cards to all Admins and HRs
+  const io = req.app.get('io');
+  notifyCorrectionApplied({ org_id, sender_id: user_id, acr_id, io }).catch(console.error);
+
+  res.status(is_updated ? 200 : 201).json({
+    message: is_updated ? "Correction request updated successfully" : "Correction request submitted",
+    acr_id,
+    is_updated
   });
 });
 

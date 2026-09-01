@@ -216,14 +216,24 @@ export const attendanceService = {
 
     // --- Correction Requests ---
 
-    // Submit a new correction request
+    // Submit or update a correction request (supports FormData for file attachments)
     async submitCorrectionRequest(data) {
         try {
-            const res = await api.post(`${API_BASE_URL}/correction-request`, data);
+            let res;
+            if (data instanceof FormData) {
+                res = await api.post(`${API_BASE_URL}/correction-request`, data, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            } else {
+                res = await api.post(`${API_BASE_URL}/correction-request`, data);
+            }
             clearCache();
             return res.data;
         } catch (error) {
-            throw new Error(error.response?.data?.error || "Failed to submit correction request");
+            const err = new Error(error.response?.data?.error || error.response?.data?.message || "Failed to submit correction request");
+            err.status = error.response?.status;
+            err.code = error.response?.data?.code;
+            throw err;
         }
     },
 

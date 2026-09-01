@@ -445,33 +445,7 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
  * Fetch attendance records for admin view with user details
  */
 export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, limit }) {
-  // First check if attn_punches has records
-  let records = await fetchSessionsFromPunches({ org_id, user_id, date_from, date_to, limit }).catch(() => []);
-
-  if (!records || records.length === 0) {
-    let query = attendanceDB("attn_records")
-      .join("core_users", "attn_records.user_id", "core_users.user_id")
-      .leftJoin("org_designations", "core_users.desg_id", "org_designations.desg_id")
-      .select(
-        "attn_records.*",
-        attendanceDB.raw("DATE_FORMAT(attn_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
-        attendanceDB.raw("DATE_FORMAT(attn_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
-        attendanceDB.raw("DATE_FORMAT(attn_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
-        attendanceDB.raw("DATE_FORMAT(attn_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts"),
-        "core_users.user_name",
-        "core_users.email",
-        "org_designations.desg_name as designation"
-      )
-      .orderBy("time_in", "desc")
-      .limit(Math.min(parseInt(limit), 100));
-
-    if (user_id) query = query.where("attn_records.user_id", user_id);
-    query = query.where("core_users.org_id", org_id);
-    if (date_from) query = query.whereRaw("DATE(time_in) >= DATE(?)", [date_from]);
-    if (date_to) query = query.whereRaw("DATE(time_in) <= DATE(?)", [date_to]);
-
-    records = await query;
-  }
+  const records = await fetchSessionsFromPunches({ org_id, user_id, date_from, date_to, limit }).catch(() => []);
 
   // Fetch pre-signed URLs for images
   const withUrls = await Promise.all(
@@ -512,31 +486,7 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
  * Fetch attendance records for a specific user
  */
 export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
-  // First check if attn_punches has records
-  let records = await fetchSessionsFromPunches({ user_id, date_from, date_to, limit }).catch(() => []);
-
-  if (!records || records.length === 0) {
-    let query = attendanceDB("attn_records")
-      .where("user_id", user_id)
-      .select(
-        "attn_records.*",
-        attendanceDB.raw("DATE_FORMAT(attn_records.time_in, '%Y-%m-%dT%H:%i:%s') as time_in_ts"),
-        attendanceDB.raw("DATE_FORMAT(attn_records.time_out, '%Y-%m-%dT%H:%i:%s') as time_out_ts"),
-        attendanceDB.raw("DATE_FORMAT(attn_records.created_at, '%Y-%m-%dT%H:%i:%s') as created_at_ts"),
-        attendanceDB.raw("DATE_FORMAT(attn_records.updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at_ts")
-      )
-      .orderBy("time_in", "desc")
-      .limit(Math.min(parseInt(limit), 100));
-
-    if (date_from) {
-      query = query.whereRaw("DATE(time_in) >= DATE(?)", [date_from]);
-    }
-    if (date_to) {
-      query = query.whereRaw("DATE(time_in) <= DATE(?)", [date_to]);
-    }
-
-    records = await query;
-  }
+  const records = await fetchSessionsFromPunches({ user_id, date_from, date_to, limit }).catch(() => []);
 
   const withUrls = await Promise.all(
     (records || []).map(async (row) => {
@@ -575,8 +525,14 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
 // ========== CORRECTION REQUESTS ==========
 
 /**
- * Create a new correction request
- * Enforces single request per day by deleting existing ones
+ * Create or update a correction request.
+ * - Only 2 correction types: 'punch' and 'summary'.
+ * - For 'summary', target_id points to the attn_daily_summary daily_id.
+ * - For 'punch', target_id is null.
+ * - Attachments are stored directly in proposed_data JSON.
+ * - If an existing pending request exists for the user on this date (or matching existing_request_id),
+ *   it updates the row in-place and logs an 'updated' action in audit_trail.
+ * - If the request is already approved/rejected, it rejects edits with a 409 Conflict.
  */
 export async function createCorrectionRequest({
   org_id,
@@ -585,7 +541,9 @@ export async function createCorrectionRequest({
   request_date,
   original_data,
   proposed_data,
-  reason
+  reason,
+  attachmentMeta,
+  existing_request_id
 }) {
   // FETCH DYNAMIC DEADLINE FROM SHIFT RULES
   const userShift = await getUserShift(user_id);
@@ -604,57 +562,121 @@ export async function createCorrectionRequest({
     throw new Error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
   }
 
-  // ENFORCE SINGLE REQUEST PER DAY: Delete any existing request for this date
-  try {
-    await attendanceDB("attn_corrections")
-      .where({ user_id, request_date, status: "pending" })
-      .del();
-  } catch (_) {
-    await attendanceDB("attn_correction_requests")
-      .where({ user_id, request_date, status: "pending" })
-      .del().catch(() => {});
+  // Resolve target_id: for 'summary', find daily_id in attn_daily_summary
+  const normType = correction_type === "summary" ? "summary" : "punch";
+  let targetId = null;
+  if (normType === "summary") {
+    const summaryRow = await attendanceDB("attn_daily_summary")
+      .where({ user_id, date: request_date })
+      .select("daily_id")
+      .first();
+    targetId = summaryRow ? summaryRow.daily_id : null;
   }
 
-  let id;
-  try {
-    const [newId] = await attendanceDB("attn_corrections").insert({
-      user_id,
-      submitted_by: user_id,
-      correction_type: correction_type === 'summary' ? 'summary' : 'punch',
-      target_id: null,
-      request_date,
-      original_data: original_data ? JSON.stringify(original_data) : null,
-      proposed_data: proposed_data ? JSON.stringify(proposed_data) : null,
+  // Merge attachment into proposed_data JSON if provided
+  let finalProposed = proposed_data;
+  if (attachmentMeta && attachmentMeta.file_key) {
+    if (Array.isArray(finalProposed)) {
+      if (finalProposed.length > 0) {
+        finalProposed = finalProposed.map((s, idx) => idx === 0 ? { ...s, attachment: attachmentMeta } : s);
+      } else {
+        finalProposed = [{ attachment: attachmentMeta }];
+      }
+    } else if (typeof finalProposed === 'object' && finalProposed !== null) {
+      finalProposed = { ...finalProposed, attachment: attachmentMeta };
+    } else {
+      finalProposed = { attachment: attachmentMeta };
+    }
+  }
+
+  // 1. Check if user is targeting a specific existing request ID
+  let pendingRecord = null;
+  if (existing_request_id) {
+    const existing = await attendanceDB("attn_corrections")
+      .where({ id: existing_request_id, user_id })
+      .first();
+
+    if (!existing) {
+      const err = new Error("Correction request not found.");
+      err.status = 404;
+      throw err;
+    }
+
+    if (existing.status !== "pending") {
+      const err = new Error("This correction request has already been reviewed/confirmed by an administrator. Please submit a new request.");
+      err.status = 409;
+      err.code = "CORRECTION_ALREADY_CONFIRMED";
+      throw err;
+    }
+
+    pendingRecord = existing;
+  } else {
+    // 2. Check if a pending request already exists for this (user_id, request_date)
+    pendingRecord = await attendanceDB("attn_corrections")
+      .where({ user_id, request_date, status: "pending" })
+      .first();
+  }
+
+  // CASE A: UPDATE PENDING REQUEST IN-PLACE (No new row created)
+  if (pendingRecord) {
+    let auditTrail = [];
+    if (pendingRecord.audit_trail) {
+      try {
+        auditTrail = typeof pendingRecord.audit_trail === "string"
+          ? JSON.parse(pendingRecord.audit_trail)
+          : pendingRecord.audit_trail;
+      } catch (_) {
+        auditTrail = [];
+      }
+    }
+
+    auditTrail.push({
+      action: "updated",
+      by: user_id,
+      at: new Date().toISOString(),
+      reason: reason || "Correction details updated"
+    });
+
+    const updatePayload = {
+      correction_type: normType,
+      target_id: targetId,
+      proposed_data: finalProposed ? JSON.stringify(finalProposed) : null,
       reason,
-      status: "pending",
-      audit_trail: JSON.stringify([
-        { action: "submitted", by: user_id, at: new Date() }
-      ]),
-      submitted_at: attendanceDB.fn.now(),
+      audit_trail: JSON.stringify(auditTrail),
       updated_at: attendanceDB.fn.now()
-    });
-    id = newId;
-  } catch (err) {
-    const [legacyId] = await attendanceDB("attn_correction_requests").insert({
-      user_id,
-      correction_type: correction_type || "punch",
-      request_date,
-      original_data: JSON.stringify(original_data || []),
-      proposed_data: JSON.stringify(proposed_data),
-      reason,
-      status: "pending",
-      audit_trail: JSON.stringify([
-        { action: "submitted", by: user_id, at: new Date() }
-      ])
-    });
-    id = legacyId;
+    };
+
+    await attendanceDB("attn_corrections")
+      .where({ id: pendingRecord.id })
+      .update(updatePayload);
+
+    return { id: pendingRecord.id, is_updated: true };
   }
 
-  return id;
+  // CASE B: INSERT NEW CORRECTION REQUEST ROW
+  const [newId] = await attendanceDB("attn_corrections").insert({
+    user_id,
+    submitted_by: user_id,
+    correction_type: normType,
+    target_id: targetId,
+    request_date,
+    original_data: original_data ? JSON.stringify(original_data) : null,
+    proposed_data: finalProposed ? JSON.stringify(finalProposed) : null,
+    reason,
+    correction_data: null, // Reserved strictly for final applied data upon review
+    status: "pending",
+    audit_trail: JSON.stringify([
+      { action: "submitted", by: user_id, at: new Date().toISOString() }
+    ]),
+    submitted_at: attendanceDB.fn.now(),
+    updated_at: attendanceDB.fn.now()
+  });
+
+  return { id: newId, is_updated: false };
 }
 
 /**
- * Fetch correction requests with pagination and filters
+ * Fetch correction requests with pagination, filters, and presigned attachment URLs from proposed_data
  */
 export async function fetchCorrectionRequests({
   org_id,
@@ -678,164 +700,152 @@ export async function fetchCorrectionRequests({
     if (year) qb.whereRaw('YEAR(c.request_date) = ?', [year]);
   };
 
-  try {
-    const data = await attendanceDB("attn_corrections as c")
-      .join("core_users as u", "u.user_id", "c.user_id")
-      .where("u.org_id", org_id)
-      .modify(applyFilters)
-      .select(
-        "c.id as acr_id",
-        "c.id",
-        "c.correction_type",
-        "c.request_date",
-        "c.original_data",
-        "c.proposed_data",
-        "c.status",
-        "c.reason",
-        "c.submitted_at",
-        "u.user_id",
-        "u.user_name",
-        "u.desg_id",
-        "u.profile_image_url"
-      )
-      .orderBy("c.submitted_at", "desc")
-      .limit(limit)
-      .offset(offset);
+  const data = await attendanceDB("attn_corrections as c")
+    .join("core_users as u", "u.user_id", "c.user_id")
+    .where("u.org_id", org_id)
+    .modify(applyFilters)
+    .select(
+      "c.id as acr_id",
+      "c.id",
+      "c.correction_type",
+      "c.target_id",
+      "c.request_date",
+      "c.original_data",
+      "c.proposed_data",
+      "c.status",
+      "c.reason",
+      "c.correction_data",
+      "c.audit_trail",
+      "c.submitted_at",
+      "c.updated_at",
+      "u.user_id",
+      "u.user_name",
+      "u.desg_id",
+      "u.profile_image_url"
+    )
+    .orderBy("c.submitted_at", "desc")
+    .limit(limit)
+    .offset(offset);
 
-    const countResult = await attendanceDB("attn_corrections as c")
-      .join("core_users as u", "u.user_id", "c.user_id")
-      .where("u.org_id", org_id)
-      .modify(applyFilters)
-      .count("* as total")
-      .first();
+  const countResult = await attendanceDB("attn_corrections as c")
+    .join("core_users as u", "u.user_id", "c.user_id")
+    .where("u.org_id", org_id)
+    .modify(applyFilters)
+    .count("* as total")
+    .first();
 
-    return {
-      data,
-      count: Number(countResult?.total || 0)
-    };
-  } catch (err) {
-    const data = await attendanceDB("attn_correction_requests as c")
-      .join("core_users as u", "u.user_id", "c.user_id")
-      .where("u.org_id", org_id)
-      .modify(applyFilters)
-      .select(
-        "c.acr_id",
-        "c.acr_id as id",
-        "c.correction_type",
-        "c.request_date",
-        "c.original_data",
-        "c.proposed_data",
-        "c.status",
-        "c.reason",
-        "c.submitted_at",
-        "u.user_id",
-        "u.user_name",
-        "u.desg_id",
-        "u.profile_image_url"
-      )
-      .orderBy("c.submitted_at", "desc")
-      .limit(limit)
-      .offset(offset);
+  const parsedData = await Promise.all((data || []).map(async (item) => {
+    const copy = { ...item };
+    ['original_data', 'proposed_data', 'audit_trail', 'correction_data'].forEach(col => {
+      if (copy[col] && typeof copy[col] === 'string') {
+        try {
+          copy[col] = JSON.parse(copy[col]);
+        } catch (_) {
+          copy[col] = col === 'audit_trail' ? [] : (col === 'correction_data' ? {} : null);
+        }
+      }
+    });
 
-    const countResult = await attendanceDB("attn_correction_requests as c")
-      .join("core_users as u", "u.user_id", "c.user_id")
-      .where("u.org_id", org_id)
-      .modify(applyFilters)
-      .count("* as total")
-      .first();
+    // Extract attachment metadata stored inside proposed_data JSON
+    const att = Array.isArray(copy.proposed_data)
+      ? (copy.proposed_data.find(s => s && s.attachment)?.attachment || null)
+      : (copy.proposed_data?.attachment || null);
 
-    return {
-      data,
-      count: Number(countResult?.total || 0)
-    };
-  }
+    if (att && att.file_key) {
+      try {
+        const { url } = await S3Service.getFileUrl({ key: att.file_key });
+        copy.attachment_url = url;
+        copy.attachment = { ...att, url, file_url: url };
+      } catch (e) {
+        copy.attachment_url = null;
+        copy.attachment = null;
+      }
+    } else {
+      copy.attachment_url = null;
+      copy.attachment = null;
+    }
+
+    return copy;
+  }));
+
+  return {
+    data: parsedData,
+    count: Number(countResult?.total || 0)
+  };
 }
 
 /**
- * Fetch a single correction request by ID
+ * Fetch a single correction request by ID with presigned attachment URL from proposed_data
  */
 export async function fetchCorrectionRequestById({ acr_id, org_id, user_id, role }) {
-  let correction = null;
-  try {
-    let query = attendanceDB("attn_corrections as c")
-      .join("core_users as u", "u.user_id", "c.user_id")
-      .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
-      .select(
-        "c.id as acr_id",
-        "c.id",
-        "c.correction_type",
-        "c.request_date",
-        "c.original_data",
-        "c.proposed_data",
-        "c.reason",
-        "c.status",
-        "c.reviewed_by",
-        "c.reviewed_at",
-        "c.review_comments",
-        "c.audit_trail",
-        "c.submitted_at",
-        "u.user_id",
-        "u.user_name",
-        "u.profile_image_url",
-        "d.desg_name as designation"
-      )
-      .where("c.id", acr_id)
-      .andWhere("u.org_id", org_id);
+  let query = attendanceDB("attn_corrections as c")
+    .join("core_users as u", "u.user_id", "c.user_id")
+    .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
+    .select(
+      "c.id as acr_id",
+      "c.id",
+      "c.correction_type",
+      "c.target_id",
+      "c.request_date",
+      "c.original_data",
+      "c.proposed_data",
+      "c.reason",
+      "c.correction_data",
+      "c.status",
+      "c.reviewed_by",
+      "c.reviewed_at",
+      "c.review_comments",
+      "c.audit_trail",
+      "c.submitted_at",
+      "c.updated_at",
+      "u.user_id",
+      "u.user_name",
+      "u.profile_image_url",
+      "d.desg_name as designation"
+    )
+    .where("c.id", acr_id)
+    .andWhere("u.org_id", org_id);
 
-    if (role !== "admin" && role !== "hr") {
-      query.andWhere("c.user_id", user_id);
-    }
-    correction = await query.first();
-  } catch (_) {}
-
-  if (!correction) {
-    let query = attendanceDB("attn_correction_requests as c")
-      .join("core_users as u", "u.user_id", "c.user_id")
-      .leftJoin("org_designations as d", "d.desg_id", "u.desg_id")
-      .select(
-        "c.acr_id",
-        "c.acr_id as id",
-        "c.correction_type",
-        "c.request_date",
-        "c.original_data",
-        "c.proposed_data",
-        "c.reason",
-        "c.status",
-        "c.reviewed_by",
-        "c.reviewed_at",
-        "c.review_comments",
-        "c.audit_trail",
-        "c.submitted_at",
-        "u.user_id",
-        "u.user_name",
-        "u.profile_image_url",
-        "d.desg_name as designation"
-      )
-      .where("c.acr_id", acr_id)
-      .andWhere("u.org_id", org_id);
-
-    if (role !== "admin" && role !== "hr") {
-      query.andWhere("c.user_id", user_id);
-    }
-    correction = await query.first();
+  if (role !== "admin" && role !== "hr") {
+    query.andWhere("c.user_id", user_id);
   }
+  const correction = await query.first();
 
   if (!correction) {
     return null;
   }
 
   // Parse JSON columns
-  const jsonCols = ['audit_trail', 'original_data', 'proposed_data'];
+  const jsonCols = ['audit_trail', 'original_data', 'proposed_data', 'correction_data'];
   for (const col of jsonCols) {
     if (correction[col] && typeof correction[col] === 'string') {
       try {
         correction[col] = JSON.parse(correction[col]);
       } catch {
-        correction[col] = col === 'audit_trail' ? [] : null;
+        correction[col] = col === 'audit_trail' ? [] : (col === 'correction_data' ? {} : null);
       }
     } else if (!correction[col]) {
-      correction[col] = col === 'audit_trail' ? [] : null;
+      correction[col] = col === 'audit_trail' ? [] : (col === 'correction_data' ? {} : null);
     }
+  }
+
+  // Extract attachment from proposed_data JSON
+  const att = Array.isArray(correction.proposed_data)
+    ? (correction.proposed_data.find(s => s && s.attachment)?.attachment || null)
+    : (correction.proposed_data?.attachment || null);
+
+  if (att && att.file_key) {
+    try {
+      const { url } = await S3Service.getFileUrl({ key: att.file_key });
+      correction.attachment_url = url;
+      correction.attachment = { ...att, url, file_url: url };
+    } catch (e) {
+      correction.attachment_url = null;
+      correction.attachment = null;
+    }
+  } else {
+    correction.attachment_url = null;
+    correction.attachment = null;
   }
 
   return correction;
@@ -853,24 +863,11 @@ export async function reviewCorrectionRequest({
   review_comments,
   adminOverrideSessions
 }) {
-  let correction = null;
-  let isNewTable = true;
-  try {
-    correction = await attendanceDB("attn_corrections as c")
-      .join("core_users as u", "u.user_id", "c.user_id")
-      .where({ "c.id": acr_id, "u.org_id": org_id })
-      .select("c.*")
-      .first();
-  } catch (_) {}
-
-  if (!correction) {
-    isNewTable = false;
-    correction = await attendanceDB("attn_correction_requests as c")
-      .join("core_users as u", "u.user_id", "c.user_id")
-      .where({ "c.acr_id": acr_id, "u.org_id": org_id })
-      .select("c.*")
-      .first();
-  }
+  const correction = await attendanceDB("attn_corrections as c")
+    .join("core_users as u", "u.user_id", "c.user_id")
+    .where({ "c.id": acr_id, "u.org_id": org_id })
+    .select("c.*")
+    .first();
 
   if (!correction) {
     throw { status: 404, message: "Request not found" };
@@ -930,14 +927,10 @@ export async function reviewCorrectionRequest({
   };
   if (updatedProposedData) dbUpdate.proposed_data = updatedProposedData;
 
-  if (isNewTable) {
-    await attendanceDB("attn_corrections").where({ id: acr_id }).update(dbUpdate);
-  } else {
-    await attendanceDB("attn_correction_requests").where({ acr_id }).update(dbUpdate);
-  }
+  await attendanceDB("attn_corrections").where({ id: acr_id }).update(dbUpdate);
 
   // --- APPLY CORRECTION IF APPROVED ---
-  if (status === 'approved' && sessionsToApply.length > 0) {
+  if (status === 'approved') {
     // Resolve final date string (YYYY-MM-DD)
     const targetDate = correction.request_date;
     const d = new Date(targetDate);
@@ -945,81 +938,107 @@ export async function reviewCorrectionRequest({
     const localDate = new Date(d.getTime() - (offset * 60 * 1000));
     const finalDateStr = localDate.toISOString().split('T')[0];
 
-    // Soft-delete existing non-deleted punches for that day in attn_punches
-    await attendanceDB("attn_punches")
-      .where({ user_id: correction.user_id })
-      .whereNull("deleted_at")
-      .whereRaw("DATE(punch_time) = ?", [finalDateStr])
-      .update({ deleted_at: attendanceDB.fn.now() });
-
-    // Insert approved punches into attn_punches
-    const newPunches = [];
-    sessionsToApply.forEach(s => {
-      const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
-      const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
-
-      if (tIn) {
-        newPunches.push({
-          user_id: correction.user_id,
-          punch_time: `${finalDateStr} ${tIn}`,
-          punch_type: 'in',
-          punch_nature: 'fabricated',
-          status: tOut ? 'closed' : 'active',
-          correction_id: acr_id,
-          location: JSON.stringify({ address: 'Manual Correction', is_geofence_violation: false }),
-          metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id }),
-          created_at: attendanceDB.fn.now()
-        });
+    // Case 8: Summary Override
+    if (correction.correction_type === 'summary') {
+      let summaryData = {};
+      try {
+        summaryData = typeof correction.proposed_data === 'string'
+          ? JSON.parse(correction.proposed_data)
+          : (correction.proposed_data || {});
+      } catch (e) {
+        summaryData = {};
       }
 
-      if (tOut) {
-        newPunches.push({
-          user_id: correction.user_id,
-          punch_time: `${finalDateStr} ${tOut}`,
-          punch_type: 'out',
-          punch_nature: 'fabricated',
-          status: 'closed',
-          correction_id: acr_id,
-          location: JSON.stringify({ address: 'Manual Correction', is_geofence_violation: false }),
-          metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id }),
-          created_at: attendanceDB.fn.now()
-        });
-      }
-    });
-
-    if (newPunches.length > 0) {
-      await attendanceDB("attn_punches").insert(newPunches);
-    }
-
-    // Delete all existing records for the day in legacy attn_records
-    await attendanceDB("attn_records")
-      .where({ user_id: correction.user_id })
-      .whereRaw("DATE(time_in) = ?", [finalDateStr])
-      .del().catch(() => {});
-
-    // Insert the approved sessions into legacy attn_records
-    const newRecords = sessionsToApply.map(s => {
-      const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
-      const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
-      return {
-        user_id: correction.user_id,
-        time_in: `${finalDateStr} ${tIn}`,
-        time_out: tOut ? `${finalDateStr} ${tOut}` : null,
-        status: 'CLOSED',
-        created_at: attendanceDB.fn.now(),
-        updated_at: attendanceDB.fn.now(),
-        time_in_address: 'Manual Correction',
-        time_out_address: 'Manual Correction',
-        altered_by: reviewer_id
+      const updatePayload = {
+        updated_at: attendanceDB.fn.now()
       };
-    });
+      if (summaryData.status !== undefined) updatePayload.status = summaryData.status;
+      if (summaryData.late_minutes !== undefined) updatePayload.late_minutes = Number(summaryData.late_minutes);
+      if (summaryData.total_hours !== undefined) updatePayload.total_hours = Number(summaryData.total_hours);
+      if (summaryData.overtime_hours !== undefined) updatePayload.overtime_hours = Number(summaryData.overtime_hours);
 
-    if (newRecords.length > 0) {
-      await attendanceDB("attn_records").insert(newRecords).catch(() => {});
+      await attendanceDB('attn_daily_summary')
+        .where({ user_id: correction.user_id, date: finalDateStr })
+        .update(updatePayload);
+    } else if (sessionsToApply.length > 0) {
+      // Cases 1 - 7: Punch Corrections (Add, Edit, Remove, Merge)
+      // Soft-delete existing non-deleted punches for that day in attn_punches (stamped with correction_id)
+      await attendanceDB("attn_punches")
+        .where({ user_id: correction.user_id })
+        .whereNull("deleted_at")
+        .whereRaw("DATE(punch_time) = ?", [finalDateStr])
+        .update({ 
+          deleted_at: attendanceDB.fn.now(),
+          correction_id: acr_id
+        });
+
+      // Insert approved punches into attn_punches
+      const newPunches = [];
+      sessionsToApply.forEach(s => {
+        const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
+        const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
+
+        if (tIn) {
+          newPunches.push({
+            user_id: correction.user_id,
+            punch_time: `${finalDateStr} ${tIn}`,
+            punch_type: 'in',
+            punch_nature: 'fabricated',
+            correction_id: acr_id,
+            location: JSON.stringify({ address: 'Manual Correction', is_geofence_violation: false }),
+            metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id }),
+            created_at: attendanceDB.fn.now()
+          });
+        }
+
+        if (tOut) {
+          newPunches.push({
+            user_id: correction.user_id,
+            punch_time: `${finalDateStr} ${tOut}`,
+            punch_type: 'out',
+            punch_nature: 'fabricated',
+            correction_id: acr_id,
+            location: JSON.stringify({ address: 'Manual Correction', is_geofence_violation: false }),
+            metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id }),
+            created_at: attendanceDB.fn.now()
+          });
+        }
+      });
+
+      if (newPunches.length > 0) {
+        await attendanceDB("attn_punches").insert(newPunches);
+      }
+
+      // Delete all existing records for the day in legacy attn_records
+      await attendanceDB("attn_records")
+        .where({ user_id: correction.user_id })
+        .whereRaw("DATE(time_in) = ?", [finalDateStr])
+        .del().catch(() => {});
+
+      // Insert the approved sessions into legacy attn_records
+      const newRecords = sessionsToApply.map(s => {
+        const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
+        const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
+        return {
+          user_id: correction.user_id,
+          time_in: `${finalDateStr} ${tIn}`,
+          time_out: tOut ? `${finalDateStr} ${tOut}` : null,
+          status: 'CLOSED',
+          created_at: attendanceDB.fn.now(),
+          updated_at: attendanceDB.fn.now(),
+          time_in_address: 'Manual Correction',
+          time_out_address: 'Manual Correction',
+          altered_by: reviewer_id
+        };
+      });
+
+      if (newRecords.length > 0) {
+        await attendanceDB("attn_records").insert(newRecords).catch(() => {});
+      }
+
+      // Sync Daily Summary (Now uses the combined state of the punches)
+      await syncDailyAttendance(correction.user_id, finalDateStr);
     }
-
-    // Sync Daily Summary (Now uses the combined state of the punches)
-    await syncDailyAttendance(correction.user_id, finalDateStr);
   }
 }
 
@@ -1253,7 +1272,6 @@ export async function processTimeInSync(context) {
     user_id,
     punch_time: punchTime,
     punch_type: "in",
-    status: "active",
     location: JSON.stringify(locationData),
     punch_nature: punchNature,
     metadata: JSON.stringify(metadata),
@@ -1392,18 +1410,11 @@ export async function processTimeOutSync(context) {
     user_id,
     punch_time: punchTime,
     punch_type: "out",
-    status: "closed",
     location: JSON.stringify(locationData),
     punch_nature: punchNature,
     metadata: JSON.stringify(metadata),
     created_at: attendanceDB.fn.now()
   });
-
-  // Mark corresponding 'in' punch as closed
-  await attendanceDB("attn_punches")
-    .where({ id: openInPunch.id })
-    .update({ status: "closed" })
-    .catch(() => {});
 
   // 8. Sync daily summary (use punch-in date for overnight shifts)
   try {
@@ -1464,7 +1475,6 @@ export async function recordLocationPing({ userId, latitude, longitude, ip, user
     punch_type: "normal_punch",
     location: JSON.stringify({ lat: latitude, lng: longitude, is_geofence_violation: isGeofenceViolation }),
     punch_nature: "default",
-    status: "active",
     metadata: JSON.stringify({ ip, user_agent: userAgent }),
     created_at: attendanceDB.fn.now()
   });
