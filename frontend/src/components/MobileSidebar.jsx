@@ -1,36 +1,17 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-    LayoutDashboard,
-    Users,
-    Calendar,
-    Clock,
-    FileText,
-    Settings,
-    MapPin,
-    User,
-    Bug,
-    LogOut,
-    TrendingUp,
-    ClipboardList,
-    Building,
-    ShieldAlert,
-    Shield,
-    MessageSquare,
-    Code,
-    X,
-    Hammer,
-    Layers,
     HelpCircle,
-    Terminal
+    X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTour } from '../context/TourContext';
+import { getNavItems } from './Sidebar';
 
 const MobileSidebar = ({ isOpen, onClose }) => {
     const location = useLocation();
     const { startGlobalTour, tourEnabled } = useTour();
-    const { user, logout } = useAuth();
+    const { user } = useAuth();
     const userType = user?.user_type || 'employee';
 
     // Handle physical back button to close sidebar
@@ -51,39 +32,19 @@ const MobileSidebar = ({ isOpen, onClose }) => {
         };
     }, [isOpen, onClose]);
 
-    const isAdminOrHr = ['admin', 'hr'].includes(userType);
-    const allMenuItems = [
-        { icon: <LayoutDashboard size={18} />, text: "Dashboard", to: "/dashboard", roles: ['admin', 'hr', 'employee', 'super_admin'] },
-        { icon: <Building size={18} />, text: "Organizations", to: "/organizations", roles: ['super_admin'] },
-        { icon: <ShieldAlert size={18} />, text: "Security Alerts", to: "/super-admin/alerts", roles: ['super_admin'] },
-        { icon: <TrendingUp size={18} />, text: "API Analytics", to: "/super-admin/api-analytics", roles: ['super_admin'] },
-        { icon: <MessageSquare size={18} />, text: "User Feedback", to: "/super-admin/feedback", roles: ['super_admin'] },
-        { icon: <Code size={18} />, text: "System Logs", to: "/super-admin/logs", roles: ['super_admin'] },
-        { icon: <Terminal size={18} />, text: "Debug Console", to: "/super-admin/debug", roles: ['super_admin'] },
-        { icon: <Users size={18} />, text: "Employees", to: "/employees", roles: ['admin', 'hr'] },
-        { icon: <Hammer size={18} />, text: "Labour Management", to: "/labour-management", roles: ['admin', 'hr'] },
-        { icon: <Calendar size={18} />, text: "Attendance", to: "/attendance", roles: ['admin', 'hr', 'employee'] },
-        { icon: <Clock size={18} />, text: "Live Attendance", to: "/attendance-monitoring", roles: ['admin', 'hr'] },
-        { icon: <TrendingUp size={18} />, text: "Reports", to: "/reports", roles: ['admin', 'hr'] },
-        { icon: <ClipboardList size={18} />, text: "Daily Activity", to: "/daily-activity", roles: ['admin', 'hr', 'employee'] },
-        { icon: <Shield size={18} />, text: "Policies", to: "/policies", roles: ['admin', 'hr'] },
-        { icon: <Calendar size={18} />, text: "Holidays & Leaves", to: "/holidays", roles: ['admin', 'hr', 'employee'] },
-        { icon: <Bug size={18} />, text: "Bugs & Feedback", to: "/feedback", roles: ['admin', 'hr', 'employee', 'super_admin'] },
-    ];
-
-    const menuItems = allMenuItems.filter(item => item.roles.includes(userType));
+    const navItems = getNavItems(userType);
 
     const isActive = (to) =>
-        location.pathname === to || (to !== '/' && location.pathname.startsWith(to + '/'));
+        location.pathname === to || (to !== '/' && to !== '/dashboard' && location.pathname.startsWith(to + '/')) || (to === '/' && location.pathname === '/');
 
     const linkClass = (to) =>
-        `flex items-center px-3.5 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 group ${isActive(to)
-            ? 'bg-[#f6f8fa] dark:bg-github-dark-border text-[#0969da] dark:text-github-dark-accent shadow-sm border border-transparent dark:border-github-dark-border/50'
+        `flex items-center px-3.5 py-2 text-xs font-medium rounded-lg transition-all duration-200 group ${isActive(to)
+            ? 'bg-[#f6f8fa] dark:bg-github-dark-border text-[#0969da] dark:text-github-dark-accent shadow-sm border border-slate-200/60 dark:border-github-dark-border/50 font-semibold'
             : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-github-dark-border/50 hover:text-slate-900 dark:hover:text-github-dark-text'
         }`;
 
     const iconClass = (to) =>
-        `mr-2.5 transition-colors ${isActive(to)
+        `mr-2.5 transition-colors shrink-0 ${isActive(to)
             ? 'text-[#0969da] dark:text-github-dark-accent'
             : 'text-slate-400 dark:text-github-dark-muted group-hover:text-slate-600 dark:group-hover:text-slate-300'
         }`;
@@ -100,10 +61,10 @@ const MobileSidebar = ({ isOpen, onClose }) => {
 
             {/* Sidebar */}
             <aside
-                className={`fixed inset-y-0 left-0 z-50 w-3/5 bg-white dark:bg-github-dark-subtle border-r border-slate-200 dark:border-github-dark-border transform transition-transform duration-300 ease-in-out flex flex-col shadow-xl ${isOpen ? 'translate-x-0' : '-translate-x-full'
+                className={`fixed inset-y-0 left-0 z-50 w-3/5 sm:w-64 bg-white dark:bg-github-dark-subtle border-r border-slate-200 dark:border-github-dark-border transform transition-transform duration-300 ease-in-out flex flex-col shadow-xl ${isOpen ? 'translate-x-0' : '-translate-x-full'
                     }`}
             >
-                {/* Header — matches desktop exactly */}
+                {/* Header - matches desktop exactly */}
                 <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100 dark:border-github-dark-border shrink-0">
                     <div className="flex items-center gap-3 font-black text-xl text-[#0969da] dark:text-github-dark-accent tracking-tighter">
                         <img src="/mano-logo.svg" alt="MANO" className="w-8 h-8 object-contain" />
@@ -122,12 +83,18 @@ const MobileSidebar = ({ isOpen, onClose }) => {
                             </button>
                         )}
                     </div>
+                    <button
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
+                        onClick={onClose}
+                    >
+                        <X size={20} />
+                    </button>
                 </div>
 
-                {/* Nav — matches desktop exactly */}
-                <nav className="flex-1 pt-1.5 pb-4 px-3 space-y-1.5 overflow-y-auto no-scrollbar" style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
-                    <div data-tour-id="sidebar-links" className="space-y-1.5">
-                        {menuItems.map((item) => (
+                {/* Nav - matches desktop directly without headings */}
+                <nav className="flex-1 pt-2 pb-4 px-3 overflow-y-auto no-scrollbar" style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+                    <div data-tour-id="sidebar-links" className="space-y-1">
+                        {navItems.map((item) => (
                             <Link
                                 key={item.to}
                                 to={item.to}
@@ -135,13 +102,13 @@ const MobileSidebar = ({ isOpen, onClose }) => {
                                 className={linkClass(item.to)}
                             >
                                 <span className={iconClass(item.to)}>{item.icon}</span>
-                                {item.text}
+                                <span className="truncate">{item.text}</span>
                             </Link>
                         ))}
                     </div>
                 </nav>
 
-                {/* Footer — matches desktop exactly */}
+                {/* Footer - matches desktop exactly */}
                 <div className="p-4 border-t border-slate-100 dark:border-github-dark-border space-y-2 shrink-0" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}>
                     <div className="text-[10px] text-center text-slate-400 dark:text-slate-600 font-mono pt-2">
                         v1.0.0

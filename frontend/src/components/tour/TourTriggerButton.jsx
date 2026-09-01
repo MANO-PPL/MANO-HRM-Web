@@ -1,7 +1,7 @@
 /**
  * TourTriggerButton
  * A small "?" help icon that starts the per-page tour on click.
- * Drop it near any page title — it is self-contained.
+ * Drop it near any page title - it is self-contained.
  *
  * Usage:
  *   import TourTriggerButton from '../components/tour/TourTriggerButton';

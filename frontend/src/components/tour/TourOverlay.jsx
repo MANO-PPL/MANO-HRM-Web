@@ -131,7 +131,7 @@ const TourOverlay = () => {
                     transition={{ duration: 0.3 }}
                     className="absolute inset-0 w-full h-full pointer-events-none"
                 >
-                    {/* Spotlight Cutout — boxShadow creates the dim overlay outside this div */}
+                    {/* Spotlight Cutout - boxShadow creates the dim overlay outside this div */}
                     <motion.div
                         className="absolute rounded-lg border-2 border-indigo-500/60 pointer-events-none z-10"
                         animate={{
