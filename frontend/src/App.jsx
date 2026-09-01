@@ -352,7 +352,7 @@ function App() {
               <Route path="/holidays/bulk" element={<ResponsiveRoute DesktopComponent={BulkHolidayImport} MobileComponent={MobileBulkHolidayImport} />} />
               <Route path="/dar-admin" element={<DARAdmin />} />
               <Route path="/labour-management" element={<ResponsiveRoute DesktopComponent={LabourManagement} MobileComponent={MobileLabourManagement} />} />
-              <Route path="/payroll" element={<ResponsiveRoute DesktopComponent={PayrollDashboard} MobileComponent={PayrollDashboard} />} />
+              <Route path="/payroll-dashboard" element={<ResponsiveRoute DesktopComponent={PayrollDashboard} MobileComponent={PayrollDashboard} />} />
               <Route path="/payroll-packages" element={<Navigate to="/policies?tab=salary_packages" replace />} />
             </Route>
 

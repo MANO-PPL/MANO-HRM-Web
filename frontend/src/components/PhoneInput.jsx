@@ -14,13 +14,13 @@ const PhoneInput = ({
     disableDropdown = false, // lock the country/flag dial code dropdown
     error = false
 }) => {
-    // Build the active country list — use external if provided, else fall back to hardcoded
+    // Build the active country list - use external if provided, else fall back to hardcoded
     const activeCountries = React.useMemo(() => {
         if (externalCountries && externalCountries.length > 0) {
             return externalCountries
                 .filter(c => c.phone_code && c.phone_code.trim())
                 .map(c => {
-                    // Normalize phone_code — ensure it starts with +
+                    // Normalize phone_code - ensure it starts with +
                     let dialCode = c.phone_code.trim();
                     if (!dialCode.startsWith('+')) dialCode = `+${dialCode}`;
                     return {
