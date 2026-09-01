@@ -243,7 +243,7 @@ export const updateOrgAdmin = catchAsync(async (req, res, next) => {
 /**
  * DELETE /organizations/:id
  * Marks an organization for deletion. The org and all its data will be permanently
- * purged by the cleanup scheduler after DELETION_GRACE_DAYS (~2–3 months).
+ * purged by the cleanup scheduler after DELETION_GRACE_DAYS (~2 - 3 months).
  */
 const DELETION_GRACE_DAYS = 75; // ~2.5 months
  

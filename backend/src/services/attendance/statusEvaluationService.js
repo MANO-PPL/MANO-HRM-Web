@@ -415,7 +415,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
             lateReason = dayRecords[0].late_reason || '';
         }
     } else if (dayRecords.length > 0) {
-        // ── Has punch records – derive status dynamically ──
+        // ── Has punch records - derive status dynamically ──
         const hasOpenSession = dayRecords.some(r => !r.time_out && r.status !== 'MISSED_PUNCH' && r.status !== 'ABSENT');
         const hasMissedPunch = dayRecords.some(r => r.status === 'MISSED_PUNCH');
 
@@ -425,7 +425,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
             if (r.time_in && r.time_out) {
                 totalHours += calculateDurationHours(r.time_in, r.time_out);
             } else if (r.time_in && !r.time_out && r.status !== 'MISSED_PUNCH' && r.status !== 'ABSENT') {
-                // Active session – count running hours using local time
+                // Active session - count running hours using local time
                 totalHours += calculateDurationHours(r.time_in, localNow);
             }
         }
@@ -455,7 +455,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
             }
         }
     } else {
-        // ── No punch records – determine from shift policies ──
+        // ── No punch records - determine from shift policies ──
         const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
 
         if (holiday) {
@@ -466,7 +466,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         } else if (leave) {
             status = 'ON_LEAVE';
         } else if (dateStr > todayStr) {
-            // Future working day – no status yet
+            // Future working day - no status yet
             status = null;
         } else {
             status = 'ABSENT';
@@ -544,7 +544,7 @@ export function resolveNoShowStatus({ dateStr, rules, holiday, leave }) {
         return { status: 'WEEK_OFF', remarks: `${dayName} - Weekly Off` };
     }
 
-    // 3. Half-day week-off — employee was still expected; treat as absent
+    // 3. Half-day week-off - employee was still expected; treat as absent
     if (dayType === 'half_day') {
         status = 'ABSENT';
         remarks = `${dayName} - Half Day (No show)`;

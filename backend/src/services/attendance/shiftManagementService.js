@@ -8,7 +8,7 @@ import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../shifts
  * and the Week-Off Policy Engine.
  *
  * Week-Off Policy:
- * Stored as `week_off_policy` inside policy_rules JSON — a flat array of entries:
+ * Stored as `week_off_policy` inside policy_rules JSON - a flat array of entries:
  * [
  *   { day: 0, type: "full", frequency: "every"  },  // Sunday always off
  *   { day: 6, type: "full", frequency: [2, 4]   },  // 2nd & 4th Saturday off
@@ -295,7 +295,7 @@ export function getShiftRules(shift) {
 
     const overtimeThreshold = Number(shift.overtime_threshold_hours || rules.overtime?.threshold || 8);
     // Buffer time (in hours) after shift ends before overtime starts counting
-    // e.g. 0.5 = 30 minutes buffer — employee can stay 30min past shift without triggering OT
+    // e.g. 0.5 = 30 minutes buffer - employee can stay 30min past shift without triggering OT
     const overtimeBuffer = Number(shift.overtime_buffer_hours ?? rules.overtime?.buffer ?? 0.5);
     const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
         ? rules.overtime.max_overtime

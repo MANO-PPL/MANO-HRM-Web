@@ -44,7 +44,8 @@ export const timeIn = catchAsync(async (req, res) => {
     console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  const localTime = getLocalNow(timezone).toISOString();
+  const nowVal = getLocalNow(timezone);
+  const localTime = typeof nowVal?.toISOString === 'function' ? nowVal.toISOString() : String(nowVal);
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB insertion)
   const result = await AttendanceService.processTimeInSync({
@@ -135,7 +136,8 @@ export const timeOut = catchAsync(async (req, res) => {
     console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
   }
 
-  const localTime = getLocalNow(timezone).toISOString();
+  const nowVal = getLocalNow(timezone);
+  const localTime = typeof nowVal?.toISOString === 'function' ? nowVal.toISOString() : String(nowVal);
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB checkout status/hours update)
   const result = await AttendanceService.processTimeOutSync({

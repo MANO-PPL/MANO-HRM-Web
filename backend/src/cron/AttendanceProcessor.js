@@ -294,7 +294,7 @@ async function processUserAttendanceForDate(user, dateStr) {
     }
 
     if (record) {
-        // Daily record exists — if it wasn't a missed punch, it's already updated via syncDailyAttendance above 
+        // Daily record exists - if it wasn't a missed punch, it's already updated via syncDailyAttendance above 
         // or during the day. No further action needed here for existing records.
     } else if (openSessions.length === 0) {
         // Missing record: determine status using the centralized no-show resolver
@@ -430,11 +430,11 @@ async function escalateExpiredMissedPunches() {
                 .first();
 
             if (correction) {
-                // Correction exists — skip escalation
+                // Correction exists - skip escalation
                 continue;
             }
 
-            // No correction submitted — escalate to ABSENT
+            // No correction submitted - escalate to ABSENT
             await attendanceDB('attn_daily_summary')
                 .where({ user_id: record.user_id, date: record.date })
                 .update({
