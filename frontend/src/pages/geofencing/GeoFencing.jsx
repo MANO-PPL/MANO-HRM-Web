@@ -21,13 +21,10 @@ import {
   updateLocationAssignments,
   updateLocation
 } from "../../services/userService";
-import { useMapEvents, useMap } from "react-leaflet";
 import DashboardLayout from '../../components/DashboardLayout';
-import {
-  Map, MapPin, Plus, Search, Navigation, Users, Settings,
-  ToggleLeft, ToggleRight, Crosshair, MoreVertical, Check,
-  Sun, Moon, Layers, ChevronDown, Edit2, Save, X
-} from 'lucide-react';
+import GeofenceLocationList from './components/GeofenceLocationList';
+import GeofenceMapArea from './components/GeofenceMapArea';
+import GeofenceStaffAssignment from './components/GeofenceStaffAssignment';
 import { useAuth } from '../../context/AuthContext';
 import { useTour } from '../../context/TourContext';
 import { toast } from 'react-toastify';
@@ -43,7 +40,7 @@ const TOUR_STEPS = [
     {
         targetId: 'geo-sidebar-locations',
         title: 'Locations List',
-        description: 'Create and edit geofenced locations, adjust coordinates, and set the allowed punch-in radius. Note: A radius that is too small (e.g., < 50m) can block clock-ins due to indoor GPS drift/fluctuation, causing false attendance failures. Conversely, a radius that is too large (e.g., > 200m) compromises geofence security by allowing employees to clock in from nearby roads or cafes. A balanced range of 80m–150m is recommended.',
+        description: 'Create and edit geofenced locations, adjust coordinates, and set the allowed punch-in radius. Note: A radius that is too small (e.g., < 50m) can block clock-ins due to indoor GPS drift/fluctuation, causing false attendance failures. Conversely, a radius that is too large (e.g., > 200m) compromises geofence security by allowing employees to clock in from nearby roads or cafes. A balanced range of 80m - 150m is recommended.',
     },
     {
         targetId: 'geo-sidebar-users',
@@ -229,47 +226,9 @@ const GeoFencing = ({ embedded = false }) => {
     });
   };
 
-  // Map click handler (no lag, updates marker immediately)
-  const MapClickHandler = () => {
-    useMapEvents({
-      click(e) {
-        const { lat, lng } = e.latlng;
 
-        // 1️⃣ IMMEDIATE marker render
-        setNewGeo((prev) => ({
-          ...prev,
-          latitude: lat,
-          longitude: lng,
-        }));
 
-        // 2️⃣ Async address fetch (does NOT block UI)
-        reverseGeocode(lat, lng).then((address) => {
-          setNewGeo((prev) => ({
-            ...prev,
-            address,
-          }));
-        });
-      },
-    });
-    return null;
-  };
-
-  // Map click handler for EDIT mode on main map
-  const EditMapClickHandler = () => {
-    useMapEvents({
-      click(e) {
-        if (!isEditingLocation || !editDraftCoords) return;
-        const { lat, lng } = e.latlng;
-        setEditDraftCoords(prev => ({ ...prev, latitude: lat, longitude: lng, address: '...' }));
-        reverseGeocode(lat, lng).then((address) => {
-          setEditDraftCoords(prev => prev ? { ...prev, address } : null);
-        });
-      },
-    });
-    return null;
-  };
-
-  // Start editing — initialize draft from selected location
+  // Start editing - initialize draft from selected location
   const startEditing = () => {
     if (!selectedLocation) return;
     setEditDraftCoords({
@@ -332,32 +291,7 @@ const GeoFencing = ({ embedded = false }) => {
     setEditDraftCoords(null);
   };
 
-  // Map recenter helper to fly to selected geofence
-  const MapRecenter = ({ location }) => {
-    const map = useMap();
 
-    useEffect(() => {
-      if (!location) return;
-
-      const lat = Number(location.latitude);
-      const lng = Number(location.longitude);
-
-      if (isNaN(lat) || isNaN(lng)) return;
-
-      const currentCenter = map.getCenter();
-      const targetLatLng = L.latLng(lat, lng);
-
-      // prevent micro re-fly causing jitter
-      if (currentCenter.distanceTo(targetLatLng) < 1) return;
-
-      map.flyTo(targetLatLng, 15, {
-        animate: true,
-        duration: 0.6,
-      });
-    }, [location?.location_id]); // only react to actual location change
-
-    return null;
-  };
 
   useEffect(() => {
     const loadLocations = async () => {
@@ -589,615 +523,69 @@ const GeoFencing = ({ embedded = false }) => {
 
   const content = (
     <div className={`flex ${embedded ? 'h-full p-0' : 'h-[calc(100vh-64px)] p-3'} w-full overflow-hidden gap-3 bg-slate-50 dark:bg-dark-bg`}>
+      {/* Left Panel: Locations List */}
+      <GeofenceLocationList
+        locations={locations}
+        selectedLocation={selectedLocation}
+        setSelectedLocation={setSelectedLocation}
+        users={users}
+        selectedUserId={selectedUserId}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        onOpenCreate={() => {
+          setIsEditingLocation(false);
+          setEditDraftCoords(null);
+          setShowCreateModal(true);
+        }}
+      />
 
-        {/* Left Panel: Locations List as a Card */}
-        <div data-tour-id="geo-sidebar-locations" className="w-[380px] flex-shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm flex flex-col overflow-hidden">
+      {/* Center Panel: Map Area */}
+      <GeofenceMapArea
+        locations={locations}
+        selectedLocation={selectedLocation}
+        setSelectedLocation={setSelectedLocation}
+        users={users}
+        selectedUserId={selectedUserId}
+        showCreateModal={showCreateModal}
+        newGeo={newGeo}
+        setNewGeo={setNewGeo}
+        onCloseCreate={() => {
+          resetNewGeo();
+          setShowCreateModal(false);
+        }}
+        handleCreateGeofence={handleCreateGeofence}
+        useMyLocation={useMyLocation}
+        resetNewGeo={resetNewGeo}
+        isEditingLocation={isEditingLocation}
+        editDraftCoords={editDraftCoords}
+        setEditDraftCoords={setEditDraftCoords}
+        startEditing={startEditing}
+        useMyLocationForEdit={useMyLocationForEdit}
+        handleCancelEdit={handleCancelEdit}
+        handleSaveEditedLocation={handleSaveEditedLocation}
+        toggleLocationStatus={toggleLocationStatus}
+        radiusDraft={radiusDraft}
+        activeTheme={activeTheme}
+        setActiveTheme={setActiveTheme}
+        isThemeMenuOpen={isThemeMenuOpen}
+        setIsThemeMenuOpen={setIsThemeMenuOpen}
+        MAP_THEMES={MAP_THEMES}
+        createMarkerIcon={createMarkerIcon}
+        reverseGeocode={reverseGeocode}
+      />
 
-          {/* Header / Search */}
-          <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/50 space-y-3">
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold text-slate-800 dark:text-github-dark-text">Locations</h3>
-              <button
-                onClick={() => {
-                  setIsEditingLocation(false);
-                  setEditDraftCoords(null);
-                  setShowCreateModal(true);
-                }}
-                className="p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-              >
-                <Plus size={18} />
-              </button>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-              <input
-                type="text"
-                placeholder="Search offices..."
-                className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Locations List */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-2 no-scrollbar">
-            {locations.map(loc => {
-              const selectedUser = selectedUserId ? users.find(u => u.user_id === selectedUserId) : null;
-              const isUserAssignedLocation = selectedUser && selectedUser.work_locations?.some(wl => Number(wl.location_id) === Number(loc.location_id));
-              return (
-                <div
-                  key={loc.location_id}
-                  onClick={() => setSelectedLocation(loc)}
-                  className={`p-3 rounded-lg border transition-all cursor-pointer group ${loc.is_active === 0
-                    ? 'opacity-60'
-                    : ''
-                    } ${selectedLocation && selectedLocation.location_id === loc.location_id
-                      ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-900/50 shadow-sm'
-                      : 'bg-white dark:bg-dark-card border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                    } ${isUserAssignedLocation
-                      ? 'ring-2 ring-emerald-500/50 border-emerald-500 bg-emerald-50/10 dark:bg-emerald-950/5'
-                      : ''
-                    }`}
-                >
-                  <div className="flex justify-between items-start mb-1">
-                    <div className="flex flex-col gap-0.5">
-                      <h4 className={`font-semibold text-sm ${selectedLocation && selectedLocation.location_id === loc.location_id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-github-dark-text'}`}>{loc.location_name}</h4>
-                      {isUserAssignedLocation && (
-                        <span className="text-[9px] font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full w-max flex items-center gap-0.5 mt-0.5">
-                          Assigned
-                        </span>
-                      )}
-                    </div>
-                    {loc.is_active === 1 ? (
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></div>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full bg-slate-400"></div>
-                        <span className="text-[10px] text-slate-400">Inactive</span>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-github-dark-muted line-clamp-1 mb-2">{loc.address}</p>
-                  <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-github-dark-muted">
-                    <span className="flex items-center gap-1"><Crosshair size={10} /> {loc.radius}m</span>
-                    <span className="flex items-center gap-1">
-                      <Users size={10} />
-                      {users.filter(u =>
-                        u.work_locations?.some(
-                          w => w.location_id === Number(loc.location_id)
-                        )
-                      ).length} Active
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Center Panel: Map Area */}
-        <div data-tour-id="geo-map" className="flex-1 relative bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
-          {(selectedLocation || showCreateModal || locations.length > 0) && (
-            <MapContainer
-              center={
-                showCreateModal && newGeo.latitude && newGeo.longitude
-                  ? [newGeo.latitude, newGeo.longitude]
-                  : selectedLocation
-                    ? [Number(selectedLocation.latitude), Number(selectedLocation.longitude)]
-                    : locations.length > 0
-                      ? [Number(locations[0].latitude), Number(locations[0].longitude)]
-                      : [20, 78]
-              }
-              zoom={15}
-              className="h-full w-full"
-              attributionControl={false}
-            >
-              <TileLayer url={MAP_THEMES[activeTheme].url} />
-              <div className="absolute top-4 right-4 z-[1001]">
-                <div className="relative">
-                  <button
-                    onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-                    className="flex items-center gap-2 bg-white dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text px-4 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-github-dark-border hover:border-indigo-500/50 transition-all group"
-                  >
-                    <Layers size={18} className="text-indigo-500 group-hover:scale-110 transition-transform" />
-                    <span className="text-sm font-semibold">{MAP_THEMES[activeTheme].name}</span>
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {isThemeMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setIsThemeMenuOpen(false)} />
-                      <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-20">
-                        <div className="py-1">
-                          {Object.entries(MAP_THEMES).map(([id, theme]) => (
-                            <button
-                              key={id}
-                              onClick={() => {
-                                setActiveTheme(id);
-                                setIsThemeMenuOpen(false);
-                              }}
-                              className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-colors ${activeTheme === id
-                                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-bold'
-                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                }`}
-                            >
-                              <span>{theme.name}</span>
-                              {activeTheme === id && <Check size={14} className="text-indigo-500" />}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {isEditingLocation && <EditMapClickHandler />}
-              {showCreateModal && <MapClickHandler />}
-              {!isEditingLocation && !showCreateModal && selectedLocation && <MapRecenter location={selectedLocation} />}
-
-              {/* Create Mode Marker */}
-              {showCreateModal && newGeo.latitude && newGeo.longitude && (
-                <>
-                  <Marker 
-                    position={[newGeo.latitude, newGeo.longitude]} 
-                    icon={createMarkerIcon("#6366f1")}
-                  />
-                  <Circle
-                    center={[newGeo.latitude, newGeo.longitude]}
-                    radius={newGeo.radius}
-                    pathOptions={{ color: "#6366f1", fillColor: "#6366f1", fillOpacity: 0.25 }}
-                  />
-                </>
-              )}
-
-              {/* Edit Mode Marker */}
-              {!showCreateModal && isEditingLocation && editDraftCoords && (
-                <>
-                  <Marker
-                    position={[
-                      editDraftCoords.latitude,
-                      editDraftCoords.longitude,
-                    ]}
-                    icon={createMarkerIcon("#6366f1")}
-                  />
-                  <Circle
-                    center={[
-                      editDraftCoords.latitude,
-                      editDraftCoords.longitude,
-                    ]}
-                    radius={editDraftCoords.radius}
-                    pathOptions={{
-                      color: "#6366f1",
-                      fillColor: "#6366f1",
-                      fillOpacity: 0.25,
-                    }}
-                  />
-                </>
-              )}
-
-              {/* View Mode Markers (All Locations) */}
-              {!showCreateModal && !isEditingLocation && locations.map(loc => {
-                const isCurrentSelected = selectedLocation && selectedLocation.location_id === loc.location_id;
-                const selectedUser = selectedUserId ? users.find(u => u.user_id === selectedUserId) : null;
-                const isUserAssigned = selectedUser && selectedUser.work_locations?.some(wl => Number(wl.location_id) === Number(loc.location_id));
-                
-                let markerColor = "#94a3b8"; // Slate / neutral
-                if (isCurrentSelected) {
-                  markerColor = "#6366f1"; // Indigo
-                } else if (isUserAssigned) {
-                  markerColor = "#10b981"; // Emerald
-                }
-
-                return (
-                  <React.Fragment key={loc.location_id}>
-                    <Marker
-                      position={[Number(loc.latitude), Number(loc.longitude)]}
-                      icon={createMarkerIcon(markerColor)}
-                      eventHandlers={{
-                        click: () => {
-                          setSelectedLocation(loc);
-                        }
-                      }}
-                    />
-                    {isCurrentSelected && (
-                      <Circle
-                        center={[Number(loc.latitude), Number(loc.longitude)]}
-                        radius={loc.radius}
-                        pathOptions={{
-                          color: "#6366f1",
-                          fillColor: "#6366f1",
-                          fillOpacity: 0.2,
-                        }}
-                      />
-                    )}
-                    {isUserAssigned && !isCurrentSelected && (
-                      <Circle
-                        center={[Number(loc.latitude), Number(loc.longitude)]}
-                        radius={loc.radius}
-                        pathOptions={{
-                          color: "#10b981",
-                          fillColor: "#10b981",
-                          fillOpacity: 0.15,
-                        }}
-                      />
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </MapContainer>
-          )}
-
-          {selectedLocation && !isEditingLocation && !showCreateModal && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[92%] max-w-5xl bg-white/95 dark:bg-github-dark-subtle/90 backdrop-blur-xl border border-white/20 dark:border-github-dark-border/50 rounded-3xl p-8 flex flex-col md:flex-row gap-10 items-center justify-between text-slate-800 dark:text-github-dark-text z-[1000] shadow-[0_25px_70px_rgba(0,0,0,0.3)] dark:shadow-[0_30px_90px_rgba(0,0,0,0.6)] transition-all duration-300">
-
-              {/* Location Info + Toggle */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1">
-                  <h2 className="text-lg font-bold truncate">{selectedLocation.location_name}</h2>
-                  <button
-                    onClick={toggleLocationStatus}
-                    className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${selectedLocation.is_active === 1 ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-600"}`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${selectedLocation.is_active === 1 ? "translate-x-6" : "translate-x-1"}`}
-                    />
-                  </button>
-                </div>
-                <p className="text-sm text-slate-500 dark:text-slate-300 flex items-center gap-1.5 truncate">
-                  <MapPin size={14} className="flex-shrink-0" />
-                  {selectedLocation.address}
-                </p>
-              </div>
-
-              {/* Right side: static info + edit icon */}
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 text-sm">
-                  <Crosshair size={14} className="text-indigo-500 dark:text-indigo-400" />
-                  <span className="text-slate-600 dark:text-slate-300">Radius</span>
-                  <span className="font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-600/20 dark:text-github-dark-text px-2 py-0.5 rounded text-xs">
-                    {radiusDraft} m
-                  </span>
-                </div>
-                <button
-                  onClick={startEditing}
-                  className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"
-                  title="Edit location"
-                >
-                  <Edit2 size={16} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Edit Mode: Expanded Form */}
-          {selectedLocation && isEditingLocation && editDraftCoords && !showCreateModal && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[95%] max-w-6xl bg-white/95 dark:bg-github-dark-subtle/95 backdrop-blur-2xl border border-slate-200 dark:border-github-dark-border rounded-3xl p-8 text-slate-800 dark:text-github-dark-text z-[1000] shadow-[0_30px_100px_rgba(0,0,0,0.4)]">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <Edit2 size={14} className="text-indigo-500 dark:text-indigo-400" />
-                  Edit Geofence
-                </h3>
-                <span className="text-xs text-slate-500 dark:text-github-dark-muted animate-pulse">Click map to relocate pin</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Name */}
-                <div>
-                  <label className="text-xs text-slate-500 dark:text-github-dark-muted mb-1 block">Location Name</label>
-                  <input
-                    type="text"
-                    value={editDraftCoords.location_name}
-                    onChange={(e) => setEditDraftCoords(prev => ({ ...prev, location_name: e.target.value }))}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm text-slate-800 dark:text-github-dark-text placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    placeholder="Geofence Name"
-                  />
-                </div>
-
-                {/* Latitude */}
-                <div>
-                  <label className="text-xs text-slate-500 dark:text-github-dark-muted mb-1 block">Latitude</label>
-                  <input
-                    type="text"
-                    value={editDraftCoords.latitude ?? ''}
-                    onChange={(e) => setEditDraftCoords(prev => ({ ...prev, latitude: Number(e.target.value) }))}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm text-slate-800 dark:text-github-dark-text placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    placeholder="Latitude"
-                  />
-                </div>
-
-                {/* Longitude */}
-                <div>
-                  <label className="text-xs text-slate-500 dark:text-github-dark-muted mb-1 block">Longitude</label>
-                  <input
-                    type="text"
-                    value={editDraftCoords.longitude ?? ''}
-                    onChange={(e) => setEditDraftCoords(prev => ({ ...prev, longitude: Number(e.target.value) }))}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm text-slate-800 dark:text-github-dark-text placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    placeholder="Longitude"
-                  />
-                </div>
-
-                {/* Radius */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs text-slate-500 dark:text-github-dark-muted">Radius</label>
-                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{editDraftCoords.radius} m</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1000}
-                    step={10}
-                    value={editDraftCoords.radius}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setEditDraftCoords(prev => ({ ...prev, radius: val }));
-                    }}
-                    className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.3)] [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-indigo-600 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.3)]"
-                  />
-                </div>
-              </div>
-
-              {/* Address preview */}
-              {editDraftCoords.address && (
-                <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-3 flex items-center gap-1.5 truncate">
-                  <MapPin size={12} className="flex-shrink-0" /> {editDraftCoords.address}
-                </p>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-200 dark:border-github-dark-border">
-                <button
-                  onClick={useMyLocationForEdit}
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs bg-slate-100 dark:bg-github-dark-subtle text-slate-700 dark:text-github-dark-text hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-github-dark-border rounded-lg transition-colors"
-                >
-                  <Navigation size={12} /> Use my location
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleCancelEdit}
-                    className="px-4 py-1.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-github-dark-text hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveEditedLocation}
-                    className="px-4 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Create Mode: Expanded Form */}
-          {showCreateModal && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[95%] max-w-6xl bg-white/95 dark:bg-github-dark-subtle/95 backdrop-blur-2xl border border-slate-200 dark:border-github-dark-border rounded-3xl p-8 text-slate-800 dark:text-github-dark-text z-[1000] shadow-[0_30px_100px_rgba(0,0,0,0.4)]">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <Plus size={14} className="text-indigo-500 dark:text-indigo-400" />
-                  Create New Geofence
-                </h3>
-                <span className="text-xs text-slate-500 dark:text-github-dark-muted animate-pulse">Click map to drop pin</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Name */}
-                <div>
-                  <label className="text-xs text-slate-500 dark:text-github-dark-muted mb-1 block">Location Name</label>
-                  <input
-                    type="text"
-                    value={newGeo.location_name}
-                    onChange={(e) => setNewGeo({ ...newGeo, location_name: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm text-slate-800 dark:text-github-dark-text placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    placeholder="Geofence Name"
-                  />
-                </div>
-
-                {/* Latitude */}
-                <div>
-                  <label className="text-xs text-slate-500 dark:text-github-dark-muted mb-1 block">Latitude</label>
-                  <input
-                    type="text"
-                    value={newGeo.latitude ?? ''}
-                    onChange={(e) => setNewGeo({ ...newGeo, latitude: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm text-slate-800 dark:text-github-dark-text placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    placeholder="Latitude"
-                  />
-                </div>
-
-                {/* Longitude */}
-                <div>
-                  <label className="text-xs text-slate-500 dark:text-github-dark-muted mb-1 block">Longitude</label>
-                  <input
-                    type="text"
-                    value={newGeo.longitude ?? ''}
-                    onChange={(e) => setNewGeo({ ...newGeo, longitude: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm text-slate-800 dark:text-github-dark-text placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    placeholder="Longitude"
-                  />
-                </div>
-
-                {/* Radius */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs text-slate-500 dark:text-github-dark-muted">Radius</label>
-                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{newGeo.radius} m</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1000}
-                    step={10}
-                    value={newGeo.radius}
-                    onChange={(e) => setNewGeo({ ...newGeo, radius: Number(e.target.value) })}
-                    className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.3)] [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-indigo-600 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.3)]"
-                  />
-                </div>
-              </div>
-
-              {/* Address preview */}
-              {newGeo.address && (
-                <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-3 flex items-center gap-1.5 truncate">
-                  <MapPin size={12} className="flex-shrink-0" /> {newGeo.address}
-                </p>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-200 dark:border-github-dark-border">
-                <div className="flex gap-2">
-                  <button
-                    onClick={useMyLocation}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs bg-slate-100 dark:bg-github-dark-subtle text-slate-700 dark:text-github-dark-text hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-github-dark-border rounded-lg transition-colors"
-                  >
-                    <Navigation size={12} /> Use my location
-                  </button>
-                  <button
-                    onClick={resetNewGeo}
-                    className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-github-dark-subtle text-slate-700 dark:text-github-dark-text hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-github-dark-border rounded-lg transition-colors"
-                  >
-                    Reset
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      resetNewGeo();
-                      setShowCreateModal(false);
-                    }}
-                    className="px-4 py-1.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-github-dark-text hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCreateGeofence}
-                    className="px-4 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium"
-                  >
-                    Create Geofence
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Panel: Employee Assignment as a Card */}
-        <div data-tour-id="geo-sidebar-users" className="w-[380px] flex-shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/50">
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
-                <Users size={18} /> Assigned Staff
-              </h3>
-            </div>
-          </div>
-          <div className="p-2 flex-1 overflow-y-auto space-y-4 no-scrollbar">
-            {loadingUsers && (
-              <p className="text-sm text-slate-400 px-3">Loading users...</p>
-            )}
-
-            {!loadingUsers && (() => {
-              const selectedLocId = selectedLocation ? Number(selectedLocation.location_id) : null;
-              
-              const assignedUsers = users.filter(user => 
-                selectedLocId != null &&
-                Array.isArray(user.work_locations) &&
-                user.work_locations.some(wl => wl.location_id === selectedLocId)
-              );
-              
-              const unassignedUsers = users.filter(user => 
-                selectedLocId == null ||
-                !Array.isArray(user.work_locations) ||
-                !user.work_locations.some(wl => wl.location_id === selectedLocId)
-              );
-
-              const renderUserCard = (user) => {
-                const isAssigned = selectedLocId != null &&
-                  Array.isArray(user.work_locations) &&
-                  user.work_locations.some(wl => wl.location_id === selectedLocId);
-                  
-                const assignedLocs = locations.filter(loc =>
-                  user.work_locations?.some(wl => Number(wl.location_id) === Number(loc.location_id))
-                );
-                const isSelected = selectedUserId === user.user_id;
-
-                return (
-                  <div
-                    key={user.user_id}
-                    onClick={() => setSelectedUserId(prev => prev === user.user_id ? null : user.user_id)}
-                    className={`flex items-center justify-between p-3 rounded-lg transition-all cursor-pointer group ${
-                      isSelected
-                        ? 'bg-indigo-50/80 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 ring-2 ring-indigo-500/10'
-                        : 'border border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-bold text-indigo-700 dark:text-indigo-400 overflow-hidden flex-shrink-0">
-                        {user.profile_image_url ? (
-                          <img src={`${user.profile_image_url}?t=${avatarTimestamp}`} alt={user.user_name} className="w-full h-full object-cover" />
-                        ) : (
-                          user.user_name.charAt(0)
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate">{user.user_name}</p>
-                        <p className="text-[11px] text-slate-400 truncate">{user.desg_name}</p>
-                        <div className="flex flex-wrap gap-1 mt-1 max-w-[200px]">
-                          {assignedLocs.map(loc => (
-                            <span key={loc.location_id} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/20 truncate max-w-[120px]" title={loc.location_name}>
-                              {loc.location_name}
-                            </span>
-                          ))}
-                          {assignedLocs.length === 0 && (
-                            <span className="text-[9px] text-slate-400 italic">No locations</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleUserAssignment(user.user_id, isAssigned);
-                      }}
-                      className={`p-1.5 rounded-md transition-all flex-shrink-0 ${isAssigned
-                        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
-                        : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-200'
-                        }`}
-                    >
-                      {isAssigned ? <Check size={16} /> : <Plus size={16} />}
-                    </button>
-                  </div>
-                );
-              };
-
-              return (
-                <div className="space-y-4">
-                  {assignedUsers.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider px-2">Assigned Staff ({assignedUsers.length})</p>
-                      {assignedUsers.map(renderUserCard)}
-                    </div>
-                  )}
-                  {unassignedUsers.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">
-                        {assignedUsers.length > 0 ? "Available Staff" : "All Staff"} ({unassignedUsers.length})
-                      </p>
-                      {unassignedUsers.map(renderUserCard)}
-                    </div>
-                  )}
-                  {assignedUsers.length === 0 && unassignedUsers.length === 0 && (
-                    <p className="text-sm text-slate-400 px-3 text-center py-4">No staff found</p>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-
-      </div>
+      {/* Right Panel: Employee Assignment */}
+      <GeofenceStaffAssignment
+        users={users}
+        locations={locations}
+        selectedLocation={selectedLocation}
+        loadingUsers={loadingUsers}
+        selectedUserId={selectedUserId}
+        setSelectedUserId={setSelectedUserId}
+        avatarTimestamp={avatarTimestamp}
+        toggleUserAssignment={toggleUserAssignment}
+      />
+    </div>
   );
 
   if (embedded) return content;
