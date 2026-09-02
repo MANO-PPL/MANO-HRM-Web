@@ -37,7 +37,8 @@ import {
     FileType,
     DownloadCloud,
     Table,
-    ChevronDown
+    ChevronDown,
+    ExternalLink
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { toast } from 'react-toastify';
@@ -272,6 +273,19 @@ const MobileAttendancePage = () => {
     const [requireLateReason, setRequireLateReason] = useState(false);
     const [lateReasonMessage, setLateReasonMessage] = useState('');
     const [lateReasonText, setLateReasonText] = useState('');
+
+    // Checkpoint State
+    const [showCheckpointModal, setShowCheckpointModal] = useState(false);
+    const [isMarkingCheckpoint, setIsMarkingCheckpoint] = useState(false);
+    const [checkpointNote, setCheckpointNote] = useState('');
+    const [checkpointLocation, setCheckpointLocation] = useState({
+        lat: null,
+        lng: null,
+        accuracy: null,
+        address: '',
+        error: null,
+        loading: false
+    });
 
     // Data
     const [dailySessions, setDailySessions] = useState([]);
@@ -625,6 +639,90 @@ const MobileAttendancePage = () => {
             openCamera(mode);
         } else {
             await executeDirectPunch(mode);
+        }
+    };
+
+    const handleOpenCheckpointModal = () => {
+        if (!hasActiveSession) {
+            toast.warning("You must Clock IN before marking a checkpoint.");
+            return;
+        }
+        setShowCheckpointModal(true);
+        setCheckpointNote('');
+        setCheckpointLocation({ lat: null, lng: null, accuracy: null, address: '', error: null, loading: true });
+
+        if (!navigator.geolocation) {
+            setCheckpointLocation(prev => ({ ...prev, loading: false, error: "Geolocation not supported." }));
+            return;
+        }
+
+        const acquireLocation = (highAccuracy = true) => {
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { latitude, longitude, accuracy } = position.coords;
+                    let resolvedAddr = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.display_name) resolvedAddr = data.display_name;
+                        }
+                    } catch (_) {}
+
+                    setCheckpointLocation({
+                        lat: latitude,
+                        lng: longitude,
+                        accuracy,
+                        address: resolvedAddr,
+                        error: null,
+                        loading: false
+                    });
+                },
+                (err) => {
+                    if (highAccuracy && (err.code === 3 || err.code === 1)) {
+                        acquireLocation(false);
+                        return;
+                    }
+                    setCheckpointLocation(prev => ({
+                        ...prev,
+                        loading: false,
+                        error: err.message || "Failed to retrieve GPS location."
+                    }));
+                },
+                { enableHighAccuracy: highAccuracy, timeout: 10000, maximumAge: 0 }
+            );
+        };
+
+        acquireLocation(true);
+    };
+
+    const handleConfirmCheckpoint = async () => {
+        if (!checkpointLocation.lat || !checkpointLocation.lng) {
+            toast.error("Valid GPS coordinates are required.");
+            return;
+        }
+
+        setIsMarkingCheckpoint(true);
+        try {
+            const payload = {
+                latitude: checkpointLocation.lat,
+                longitude: checkpointLocation.lng,
+                accuracy: checkpointLocation.accuracy,
+                address: checkpointLocation.address,
+                note: checkpointNote.trim() || undefined,
+                is_geofence_violation: false
+            };
+
+            const res = await attendanceService.markCheckpoint(payload);
+            toast.success(res.message || "Checkpoint marked successfully!");
+            setShowCheckpointModal(false);
+            setCheckpointNote('');
+            fetchData();
+        } catch (err) {
+            console.error("Checkpoint error:", err);
+            toast.error(err.message || "Failed to record checkpoint");
+        } finally {
+            setIsMarkingCheckpoint(false);
         }
     };
 
@@ -1514,6 +1612,41 @@ const MobileAttendancePage = () => {
                                         </div>
                                     </button>
 
+                                    {/* Mark Checkpoint Button */}
+                                    <button
+                                        onClick={() => hasActiveSession && !isSubmitting && !isMarkingCheckpoint && handleOpenCheckpointModal()}
+                                        disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
+                                        className={`group relative p-4 rounded-[2rem] flex items-center justify-between transition-all duration-300 overflow-hidden border ${
+                                            !hasActiveSession
+                                                ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
+                                                : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-lg dark:shadow-2xl active:scale-[0.98]'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center relative ${
+                                                !hasActiveSession 
+                                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600' 
+                                                    : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20'
+                                            }`}>
+                                                <MapPin size={22} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
+                                                {hasActiveSession && (
+                                                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-left">
+                                                <h3 className={`text-base font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                                                    {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
+                                                </h3>
+                                                <p className="text-slate-400 dark:text-slate-500 text-[11px] font-medium mt-0.5">
+                                                    {!hasActiveSession ? 'Requires active session' : 'Record mid-shift location'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </button>
+
                                     <button
                                         onClick={() => hasActiveSession && !isSubmitting && handlePunchClick('OUT')}
                                         disabled={!hasActiveSession || isSubmitting}
@@ -1687,7 +1820,7 @@ const MobileAttendancePage = () => {
                                                             </div>
                                                             <div className="min-w-0">
                                                                 <span className="block text-[9px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest leading-none mb-1">Time Out</span>
-                                                                <span className="text-sm font-black text-slate-800 dark:text-github-dark-text truncate block">{s.time_out ? formatTime(s.time_out, s, true) : '---'}</span>
+                                                                <span className="text-sm font-black text-slate-800 dark:text-github-dark-text truncate block">{s.time_out ? formatTime(s.time_out, s, true) : 'In Progress'}</span>
                                                             </div>
                                                         </div>
                                                         {s.time_out_image ? (
@@ -1726,6 +1859,39 @@ const MobileAttendancePage = () => {
                                                         <div>
                                                             <span className="block text-[8px] font-black text-amber-600 uppercase tracking-widest leading-none mb-1">Late Reason</span>
                                                             <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 leading-tight">{s.late_reason}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Mobile Session Checkpoints List */}
+                                                {Array.isArray(s.checkpoints) && s.checkpoints.length > 0 && (
+                                                    <div className="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-github-dark-border/20 space-y-2">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                                            <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                                Checkpoints ({s.checkpoints.length})
+                                                            </span>
+                                                        </div>
+                                                        <div className="space-y-1.5 pl-2 border-l border-amber-500/30">
+                                                            {s.checkpoints.map((chk, cIdx) => (
+                                                                <div key={chk.id || cIdx} className="p-2 bg-amber-500/5 rounded-xl border border-amber-500/10 text-[10px] space-y-0.5">
+                                                                    <div className="flex items-center justify-between font-bold text-slate-700 dark:text-slate-300">
+                                                                        <span>#{cIdx + 1} • {formatTime(chk.punch_time, s, false)}</span>
+                                                                        {chk.lat && chk.lng && (
+                                                                            <a
+                                                                                href={`https://www.google.com/maps?q=${chk.lat},${chk.lng}`}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="text-amber-600 font-bold"
+                                                                            >
+                                                                                Map
+                                                                            </a>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className="text-slate-500 text-[9px] truncate">{chk.address || `${chk.lat}, ${chk.lng}`}</p>
+                                                                    {chk.note && <p className="text-slate-400 text-[8px] italic">"{chk.note}"</p>}
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     </div>
                                                 )}
@@ -1806,7 +1972,7 @@ const MobileAttendancePage = () => {
                                                     const isExpanded = expandedDays.has(day.dateKey);
                                                     const totalHoursDisplay = day.totalDayHours > 0 
                                                         ? `${day.totalDayHours} hrs` 
-                                                        : (day.hasOpenSession ? '-' : '0 hrs');
+                                                        : (day.hasOpenSession ? 'In Progress' : '0 hrs');
 
                                                     return (
                                                         <div 
@@ -1867,7 +2033,7 @@ const MobileAttendancePage = () => {
                                                                     </div>
                                                                     <div className="bg-slate-50/50 dark:bg-github-dark-border/20 p-2.5 rounded-2xl">
                                                                         <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Last Out</span>
-                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.isPastDay ? 'Missed Out' : '---')}</span>
+                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.isPastDay ? 'Missed Out' : 'In Progress')}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1891,8 +2057,8 @@ const MobileAttendancePage = () => {
                                                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'COMPLETED');
                                                                             const sStyle = getStatusStyle(sessionStatus);
                                                                             const sDuration = isSessionOpen 
-                                                                                ? (isSessionMissed ? '-' : 'In Progress') 
-                                                                                : (s.total_hours ? `${s.total_hours} hrs` : (calculateHours(s.time_in, s.time_out) || '-'));
+                                                                                ? (isSessionMissed ? 'Missed Out' : 'In Progress') 
+                                                                                : (s.total_hours ? `${s.total_hours} hrs` : (calculateHours(s.time_in, s.time_out) || 'N/A'));
                                                                             return (
                                                                                 <div key={s.attendance_id || sIdx} className="bg-white dark:bg-github-dark-subtle p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border space-y-2.5 shadow-xs">
                                                                                     <div className="flex items-center justify-between text-xs">
@@ -1920,7 +2086,7 @@ const MobileAttendancePage = () => {
                                                                                         </div>
                                                                                         <div className="bg-slate-50/70 dark:bg-white/5 p-2 rounded-xl">
                                                                                             <span className="block text-[8px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Out</span>
-                                                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{s.time_out ? formatTime(s.time_out, s, true) : (s.status === 'MISSED_PUNCH' ? 'Missed Out' : '---')}</span>
+                                                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{s.time_out ? formatTime(s.time_out, s, true) : (s.status === 'MISSED_PUNCH' ? 'Missed Out' : 'In Progress')}</span>
                                                                                             {s.time_out_image && (
                                                                                                 <button onClick={() => setPreviewImage(s.time_out_image)} className="mt-1 w-6 h-6 rounded border border-white overflow-hidden block">
                                                                                                     <img src={s.time_out_image} alt="Out" className="w-full h-full object-cover" />
@@ -2629,6 +2795,92 @@ const MobileAttendancePage = () => {
 
             {/* --- MODALS & PORTALS --- */}
 
+            {/* Mobile Checkpoint Modal */}
+            {showCheckpointModal && createPortal(
+                <div className="fixed inset-0 z-[9999] bg-[#070a12]/95 backdrop-blur-xl flex flex-col justify-between p-4 sm:p-6 overflow-y-auto no-scrollbar">
+                    <div className="w-full max-w-lg mx-auto flex items-center justify-between py-2 shrink-0">
+                        <div className="w-10" />
+                        <h3 className="text-base font-bold text-white text-center">Mark Checkpoint</h3>
+                        <button
+                            onClick={() => !isMarkingCheckpoint && setShowCheckpointModal(false)}
+                            className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    <div className="w-full max-w-lg mx-auto my-auto py-4 space-y-4">
+                        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                    <Navigation size={12} className="text-indigo-400" /> GPS Coordinates
+                                </span>
+                                {checkpointLocation.loading ? (
+                                    <span className="text-[10px] font-bold text-indigo-400 flex items-center gap-1">
+                                        <RefreshCw size={10} className="animate-spin" /> Locating...
+                                    </span>
+                                ) : checkpointLocation.error ? (
+                                    <span className="text-[10px] font-bold text-rose-400">Error</span>
+                                ) : (
+                                    <span className="text-[10px] font-bold text-emerald-400">Locked</span>
+                                )}
+                            </div>
+
+                            {checkpointLocation.loading ? (
+                                <div className="py-6 text-center text-slate-400 text-xs">
+                                    Acquiring GPS location...
+                                </div>
+                            ) : checkpointLocation.error ? (
+                                <div className="p-3 bg-rose-500/10 rounded-xl border border-rose-500/20 text-xs text-rose-400">
+                                    {checkpointLocation.error}
+                                </div>
+                            ) : (
+                                <div className="space-y-1">
+                                    <p className="text-xs font-bold text-white">{checkpointLocation.address}</p>
+                                    <p className="text-[10px] text-slate-400">
+                                        {checkpointLocation.lat?.toFixed(5)}, {checkpointLocation.lng?.toFixed(5)}
+                                        {checkpointLocation.accuracy && ` (±${Math.round(checkpointLocation.accuracy)}m)`}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-300">Note (Optional)</label>
+                            <input
+                                type="text"
+                                value={checkpointNote}
+                                onChange={(e) => setCheckpointNote(e.target.value)}
+                                placeholder="e.g. Site B inspection, floor round..."
+                                maxLength={100}
+                                disabled={isMarkingCheckpoint}
+                                className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="w-full max-w-lg mx-auto py-2 shrink-0 flex gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setShowCheckpointModal(false)}
+                            disabled={isMarkingCheckpoint}
+                            className="flex-1 py-3 text-xs font-bold text-slate-400 bg-white/5 rounded-2xl"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleConfirmCheckpoint}
+                            disabled={isMarkingCheckpoint || checkpointLocation.loading || Boolean(checkpointLocation.error)}
+                            className="flex-1 py-3 text-xs font-black text-white bg-gradient-to-r from-amber-500 to-amber-600 rounded-2xl disabled:opacity-50"
+                        >
+                            {isMarkingCheckpoint ? 'Recording...' : 'Confirm Checkpoint'}
+                        </button>
+                    </div>
+                </div>,
+                document.body
+            )}
+
             {/* Camera Overlay */}
             {showCamera && createPortal(
                 (() => {
@@ -2808,7 +3060,7 @@ const MobileAttendancePage = () => {
                                                         onClick={() => setCorrectionForm({ ...correctionForm, sessions: [{ in: '09:00', out: '18:00' }] })}
                                                         className="px-2.5 py-1 bg-amber-500 text-white font-bold text-[10px] rounded-lg uppercase tracking-wider"
                                                     >
-                                                        ⚡ Fill 9-6
+                                                        Fill 9-6
                                                     </button>
                                                 </div>
                                             );
@@ -2822,7 +3074,7 @@ const MobileAttendancePage = () => {
                                                         onClick={() => setCorrectionForm({ ...correctionForm, sessions: [{ in: originalSessions[0]?.time_in || '09:00', out: '18:00' }] })}
                                                         className="px-2.5 py-1 bg-indigo-600 text-white font-bold text-[10px] rounded-lg uppercase tracking-wider"
                                                     >
-                                                        ⚡ Out: 18:00
+                                                        Out: 18:00
                                                     </button>
                                                 </div>
                                             );
@@ -3032,7 +3284,7 @@ const MobileAttendancePage = () => {
                                             {selectedRequest.status || 'PENDING'}
                                         </span>
                                         <p className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted mt-1 uppercase tracking-widest">
-                                            Submitted on {selectedRequest.submitted_at ? new Date(selectedRequest.submitted_at).toLocaleDateString() : '-'}
+                                            Submitted on {selectedRequest.submitted_at ? new Date(selectedRequest.submitted_at).toLocaleDateString() : 'N/A'}
                                         </p>
                                     </div>
                                 </div>
@@ -3114,7 +3366,7 @@ const MobileAttendancePage = () => {
                                             {selectedRequest.review_comments || "No reviewer comments provided."}
                                         </p>
                                         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-github-dark-border/50 text-[8px] text-slate-400 font-bold uppercase tracking-widest">
-                                            Reviewed on {selectedRequest.reviewed_at ? formatCorrectionDate(selectedRequest.reviewed_at) : '-'}
+                                            Reviewed on {selectedRequest.reviewed_at ? formatCorrectionDate(selectedRequest.reviewed_at) : 'N/A'}
                                         </div>
                                     </div>
                                 )}

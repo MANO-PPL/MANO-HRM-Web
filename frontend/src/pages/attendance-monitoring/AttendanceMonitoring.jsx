@@ -52,7 +52,8 @@ import {
     Sparkles,
     Paperclip,
     Eye,
-    Edit3
+    Edit3,
+    ArrowRight
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
@@ -577,12 +578,12 @@ const processAttendanceData = (staff) => {
         const status = statusMap[u.status] || u.status || 'Absent';
 
         const totalHrs = (status === 'Missed Punch' || status === 'Absent')
-            ? '-'
+            ? '0.0 hrs'
             : formatTotalTime(totalMin, u.total_hours > 0 ? Number(u.total_hours) : 0);
-        const expectedHrs = u.expected_hours !== undefined && u.expected_hours !== null && u.expected_hours > 0 ? `${Number(u.expected_hours).toFixed(1)} hrs` : '-';
+        const expectedHrs = u.expected_hours !== undefined && u.expected_hours !== null && u.expected_hours > 0 ? `${Number(u.expected_hours).toFixed(1)} hrs` : 'N/A';
         const lastLocation = u.sessions && u.sessions.length > 0
-            ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : '-')
-            : '-';
+            ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : 'N/A')
+            : 'N/A';
 
         // Recreate allStatuses to retain compatibility with stats counts
         let allStatuses = [];
@@ -1226,7 +1227,7 @@ const AttendanceMonitoring = () => {
             setSelectedRequestData(data);
             setReviewComment(data.review_comments || '');
 
-            // Reset Override State — default sessions from proposed_data snapshot
+            // Reset Override State - default sessions from proposed_data snapshot
             setOverrideMode(false);
             setOverrideMethod('add_session');
 
@@ -1615,27 +1616,293 @@ const AttendanceMonitoring = () => {
             </style>
             <DashboardLayout title="Live Attendance" noPadding={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
                 <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'h-[calc(100vh-64px)] overflow-hidden' : ''} p-3 flex flex-col space-y-3`}>
-                    {/* Tabs */}
-                    <div data-tour-id="attendance-tabs" className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
-                        <button
-                            onClick={() => setActiveTab('live')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'live' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-202'}`}
-                        >
-                            <LayoutGrid size={14} className={`${activeTab === 'live' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
-                            <span className="leading-none">Live Dashboard</span>
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('requests')}
-                            className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-202'}`}
-                        >
-                            <FileText size={14} className={`${activeTab === 'requests' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
-                            <span className="leading-none">Correction Requests</span>
-                            {requestCount > 0 && activeTab !== 'requests' && (
-                                <span className="absolute -top-1.5 -right-2 w-5 h-5 bg-red-500 text-white text-[9px] font-black flex items-center justify-center rounded-full animate-pulse border border-white dark:border-github-dark-subtle shadow-sm leading-none">
-                                    {requestCount}
-                                </span>
-                            )}
-                        </button>
+                    {/* Top Header Row: Tab bar on the left, filters and buttons in line */}
+                    <div className="flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+                        {/* Tabs */}
+                        <div data-tour-id="attendance-tabs" className="flex w-fit items-center gap-1.5 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
+                            <button
+                                onClick={() => setActiveTab('live')}
+                                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${activeTab === 'live' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'}`}
+                            >
+                                <LayoutGrid size={14} className={`${activeTab === 'live' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                                <span className="leading-none">Live Dashboard</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('requests')}
+                                className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'}`}
+                            >
+                                <FileText size={14} className={`${activeTab === 'requests' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                                <span className="leading-none">Correction Requests</span>
+                                {requestCount > 0 && activeTab !== 'requests' && (
+                                    <span className="absolute -top-1.5 -right-2 w-4 h-4 bg-red-500 text-white text-[9px] font-bold flex items-center justify-center rounded-full animate-pulse border border-white dark:border-github-dark-subtle shadow-sm leading-none">
+                                        {requestCount}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+
+                        {/* Buttons & Filters in line with the tab bar */}
+                        {activeTab === 'live' && (
+                            <div data-tour-id="attendance-controls" className="flex flex-wrap items-center gap-2">
+                                {/* Search */}
+                                <div className="relative w-48 sm:w-56 group">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search name, role, dept..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-9 pr-7 py-1.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-xl text-xs font-normal text-slate-700 dark:text-github-dark-text placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm transition-all"
+                                    />
+                                    {searchTerm && (
+                                        <button
+                                            onClick={() => setSearchTerm('')}
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* AI Summary Button */}
+                                <button
+                                    onClick={generateAiSummary}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-medium text-xs rounded-xl shadow-sm hover:shadow transition-all cursor-pointer"
+                                >
+                                    <Sparkles size={13} className="animate-pulse" />
+                                    <span>AI Summary</span>
+                                </button>
+
+                                {/* Department Dropdown */}
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
+                                        className="pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm transition-all min-w-[130px] font-medium text-left flex items-center justify-between gap-2 cursor-pointer"
+                                    >
+                                        <span className="truncate">
+                                            {DEPARTMENTS.find(d => d.value === departmentFilter)?.label || 'All Departments'}
+                                        </span>
+                                        <ChevronDown size={13} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isDeptDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    <Filter size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+                                    <AnimatePresence>
+                                        {isDeptDropdownOpen && (
+                                            <>
+                                                <div
+                                                    className="fixed inset-0 z-[80]"
+                                                    onClick={() => setIsDeptDropdownOpen(false)}
+                                                />
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                    transition={{ duration: 0.15 }}
+                                                    className="absolute top-full left-0 mt-1.5 w-full min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
+                                                >
+                                                    <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
+                                                        {DEPARTMENTS.map((dept) => {
+                                                            const isSelected = departmentFilter === dept.value;
+                                                            return (
+                                                                <button
+                                                                    key={dept.value}
+                                                                    onClick={() => {
+                                                                        setDepartmentFilter(dept.value);
+                                                                        setIsDeptDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full flex items-center justify-between px-4 py-2 text-xs font-medium transition-colors text-left cursor-pointer ${isSelected
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                        }`}
+                                                                >
+                                                                    <span>{dept.label}</span>
+                                                                    {isSelected && <Check size={12} className="text-indigo-500" />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </motion.div>
+                                            </>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+
+                                {/* Designation Dropdown */}
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setIsDesgDropdownOpen(!isDesgDropdownOpen)}
+                                        className="pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm transition-all min-w-[130px] font-medium text-left flex items-center justify-between gap-2 cursor-pointer"
+                                    >
+                                        <span className="truncate">
+                                            {DESIGNATIONS.find(d => d.value === desgFilter)?.label || 'All Designations'}
+                                        </span>
+                                        <ChevronDown size={13} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isDesgDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    <Filter size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+                                    <AnimatePresence>
+                                        {isDesgDropdownOpen && (
+                                            <>
+                                                <div
+                                                    className="fixed inset-0 z-[80]"
+                                                    onClick={() => setIsDesgDropdownOpen(false)}
+                                                />
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                    transition={{ duration: 0.15 }}
+                                                    className="absolute top-full left-0 mt-1.5 w-full min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
+                                                >
+                                                    <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
+                                                        {DESIGNATIONS.map((desg) => {
+                                                            const isSelected = desgFilter === desg.value;
+                                                            return (
+                                                                <button
+                                                                    key={desg.value}
+                                                                    onClick={() => {
+                                                                        setDesgFilter(desg.value);
+                                                                        setIsDesgDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full flex items-center justify-between px-4 py-2 text-xs font-medium transition-colors text-left cursor-pointer ${isSelected
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                        }`}
+                                                                >
+                                                                    <span>{desg.label}</span>
+                                                                    {isSelected && <Check size={12} className="text-indigo-500" />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </motion.div>
+                                            </>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+
+                                {/* Shift Dropdown */}
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setIsShiftDropdownOpen(!isShiftDropdownOpen)}
+                                        className="pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm transition-all min-w-[120px] font-medium text-left flex items-center justify-between gap-2 cursor-pointer"
+                                    >
+                                        <span className="truncate">
+                                            {SHIFTS.find(s => s.value === shiftFilter)?.label || 'All Shifts'}
+                                        </span>
+                                        <ChevronDown size={13} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isShiftDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    <Filter size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+                                    <AnimatePresence>
+                                        {isShiftDropdownOpen && (
+                                            <>
+                                                <div
+                                                    className="fixed inset-0 z-[80]"
+                                                    onClick={() => setIsShiftDropdownOpen(false)}
+                                                />
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                    transition={{ duration: 0.15 }}
+                                                    className="absolute top-full left-0 mt-1.5 w-full min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
+                                                >
+                                                    <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
+                                                        {SHIFTS.map((s) => {
+                                                            const isSelected = shiftFilter === s.value;
+                                                            return (
+                                                                <button
+                                                                    key={s.value}
+                                                                    onClick={() => {
+                                                                        setShiftFilter(s.value);
+                                                                        setIsShiftDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full flex items-center justify-between px-4 py-2 text-xs font-medium transition-colors text-left cursor-pointer ${isSelected
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                        }`}
+                                                                >
+                                                                    <span>{s.label}</span>
+                                                                    {isSelected && <Check size={12} className="text-indigo-500" />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </motion.div>
+                                            </>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+
+                                {/* Active Status Filter Pill */}
+                                {statusFilter !== 'All' && (
+                                    <button
+                                        onClick={() => setStatusFilter('All')}
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/20 rounded-xl text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/30 transition-colors cursor-pointer"
+                                        title="Clear status filter"
+                                    >
+                                        <span>Filter: {statusFilter === 'total' ? 'Total Employees' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late Arrivals' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Currently Active' : statusFilter}</span>
+                                        <span className="text-xs font-normal">×</span>
+                                    </button>
+                                )}
+
+                                {/* Date Navigation */}
+                                <div className="flex items-center gap-0.5">
+                                    <button
+                                        onClick={handlePrevDay}
+                                        type="button"
+                                        className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg transition-colors cursor-pointer"
+                                        title="Previous Day"
+                                    >
+                                        <ChevronLeft size={15} />
+                                    </button>
+
+                                    <div className="w-[200px]">
+                                        <DatePicker
+                                            value={selectedDate}
+                                            onChange={(date) => setSelectedDate(date)}
+                                            compact={true}
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={handleNextDay}
+                                        type="button"
+                                        className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg transition-colors cursor-pointer"
+                                        title="Next Day"
+                                    >
+                                        <ChevronRight size={15} />
+                                    </button>
+                                </div>
+
+                                {/* View Switcher Buttons */}
+                                <div className="flex items-center gap-1 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
+                                    {[
+                                        { id: 'cards', label: 'Overview', icon: LayoutGrid },
+                                        { id: 'graph', label: 'Analytics', icon: BarChartIcon },
+                                        { id: 'table', label: 'Timeline', icon: Table },
+                                        { id: 'map', label: 'Map View', icon: MapPin }
+                                    ].map((view) => {
+                                        const isSelected = activeView === view.id;
+                                        return (
+                                            <button
+                                                key={view.id}
+                                                onClick={() => setActiveView(view.id)}
+                                                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
+                                                    isSelected
+                                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
+                                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                                                }`}
+                                            >
+                                                <view.icon size={13} className={`${isSelected ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
+                                                <span className="leading-none">{view.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`}>
@@ -1676,271 +1943,7 @@ const AttendanceMonitoring = () => {
                             {/* Main Content */}
                             <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} transition-colors duration-300 flex flex-col space-y-4`}>
 
-                                {/* Premium Control Center */}
-                                <div data-tour-id="attendance-controls" className="p-4 bg-white dark:bg-dark-card rounded-lg shadow-sm border border-slate-200 dark:border-github-dark-border space-y-4 shrink-0">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                        <div className="flex flex-col">
-                                            <div className="flex items-center gap-3">
-                                                <h2 className="text-2xl font-black text-slate-900 dark:text-github-dark-text tracking-tighter uppercase">
-                                                    {activeView === 'cards' ? 'Employee Overview' : activeView === 'graph' ? 'Live Analytics' : 'Activity Timeline'}
-                                                </h2>
-                                                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-md">
-                                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
-                                                    <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Real-time</span>
-                                                </div>
-                                                {statusFilter !== 'All' && (
-                                                    <button
-                                                        onClick={() => setStatusFilter('All')}
-                                                        className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/20 rounded-md text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-500/30 transition-colors"
-                                                    >
-                                                        <span>Filter: {statusFilter === 'total' ? 'Total Employees' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late Arrivals' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Currently Active' : statusFilter}</span>
-                                                        <span className="text-xs font-normal">×</span>
-                                                    </button>
-                                                )}
-                                            </div>
-                                            <p className="text-xs text-slate-400 dark:text-github-dark-muted font-medium mt-1">
-                                                {activeView === 'cards' && 'Monitoring all on-duty staff status and session availability.'}
-                                                {activeView === 'graph' && 'Deep dive into attendance metrics, trends, and department KPIs.'}
-                                                {activeView === 'table' && 'High-density Gantt visualization of daily employee movements.'}
-                                            </p>
-                                        </div>
-                                    </div>
 
-                                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pt-4 border-t border-slate-50 dark:border-github-dark-border/30">
-                                        <div className="flex items-center gap-3 flex-1 flex-wrap">
-                                            <div className="relative flex-1 max-w-md group">
-                                                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search by name, role or department..."
-                                                    value={searchTerm}
-                                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                                    className="pl-11 pr-4 py-2.5 text-xs w-full rounded-lg border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 text-slate-900 dark:text-github-dark-text focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-dark-card outline-none transition-all shadow-inner"
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={generateAiSummary}
-                                                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-xs rounded-lg shadow-md hover:shadow-lg transition-all"
-                                            >
-                                                <Sparkles size={14} className="animate-pulse" />
-                                                AI Summary
-                                            </button>
-                                            <div className="relative">
-                                                <button
-                                                    onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
-                                                    className="pl-10 pr-8 py-2.5 text-xs rounded-lg border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner min-w-[155px] font-bold text-left flex items-center justify-between gap-2"
-                                                >
-                                                    <span className="truncate">
-                                                        {DEPARTMENTS.find(d => d.value === departmentFilter)?.label || 'All Departments'}
-                                                    </span>
-                                                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isDeptDropdownOpen ? 'rotate-180' : ''}`} />
-                                                </button>
-                                                <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-
-                                                <AnimatePresence>
-                                                    {isDeptDropdownOpen && (
-                                                        <>
-                                                            <div
-                                                                className="fixed inset-0 z-[80]"
-                                                                onClick={() => setIsDeptDropdownOpen(false)}
-                                                            />
-                                                            <motion.div
-                                                                initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                transition={{ duration: 0.15 }}
-                                                                className="absolute top-full left-0 mt-1.5 w-full min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
-                                                            >
-                                                                <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                                                                    {DEPARTMENTS.map((dept) => {
-                                                                        const isSelected = departmentFilter === dept.value;
-                                                                        return (
-                                                                            <button
-                                                                                key={dept.value}
-                                                                                onClick={() => {
-                                                                                    setDepartmentFilter(dept.value);
-                                                                                    setIsDeptDropdownOpen(false);
-                                                                                }}
-                                                                                className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
-                                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                    }`}
-                                                                            >
-                                                                                <span>{dept.label}</span>
-                                                                                {isSelected && <Check size={12} className="text-indigo-500" />}
-                                                                            </button>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            </motion.div>
-                                                        </>
-                                                    )}
-                                                </AnimatePresence>
-                                            </div>
-
-                                            <div className="relative">
-                                                <button
-                                                    onClick={() => setIsDesgDropdownOpen(!isDesgDropdownOpen)}
-                                                    className="pl-10 pr-8 py-2.5 text-xs rounded-lg border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner min-w-[155px] font-bold text-left flex items-center justify-between gap-2"
-                                                >
-                                                    <span className="truncate">
-                                                        {DESIGNATIONS.find(d => d.value === desgFilter)?.label || 'All Designations'}
-                                                    </span>
-                                                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isDesgDropdownOpen ? 'rotate-180' : ''}`} />
-                                                </button>
-                                                <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-
-                                                <AnimatePresence>
-                                                    {isDesgDropdownOpen && (
-                                                        <>
-                                                            <div
-                                                                className="fixed inset-0 z-[80]"
-                                                                onClick={() => setIsDesgDropdownOpen(false)}
-                                                            />
-                                                            <motion.div
-                                                                initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                transition={{ duration: 0.15 }}
-                                                                className="absolute top-full left-0 mt-1.5 w-full min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
-                                                            >
-                                                                <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                                                                    {DESIGNATIONS.map((desg) => {
-                                                                        const isSelected = desgFilter === desg.value;
-                                                                        return (
-                                                                            <button
-                                                                                key={desg.value}
-                                                                                onClick={() => {
-                                                                                    setDesgFilter(desg.value);
-                                                                                    setIsDesgDropdownOpen(false);
-                                                                                }}
-                                                                                className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
-                                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                    }`}
-                                                                            >
-                                                                                <span>{desg.label}</span>
-                                                                                {isSelected && <Check size={12} className="text-indigo-500" />}
-                                                                            </button>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            </motion.div>
-                                                        </>
-                                                    )}
-                                                </AnimatePresence>
-                                            </div>
-
-                                            <div className="relative">
-                                                <button
-                                                    onClick={() => setIsShiftDropdownOpen(!isShiftDropdownOpen)}
-                                                    className="pl-10 pr-8 py-2.5 text-xs rounded-lg border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/20 text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner min-w-[155px] font-bold text-left flex items-center justify-between gap-2"
-                                                >
-                                                    <span className="truncate">
-                                                        {SHIFTS.find(s => s.value === shiftFilter)?.label || 'All Shifts'}
-                                                    </span>
-                                                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 shrink-0 ${isShiftDropdownOpen ? 'rotate-180' : ''}`} />
-                                                </button>
-                                                <Filter size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-
-                                                <AnimatePresence>
-                                                    {isShiftDropdownOpen && (
-                                                        <>
-                                                            <div
-                                                                className="fixed inset-0 z-[80]"
-                                                                onClick={() => setIsShiftDropdownOpen(false)}
-                                                            />
-                                                            <motion.div
-                                                                initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                                transition={{ duration: 0.15 }}
-                                                                className="absolute top-full left-0 mt-1.5 w-full min-w-[180px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden z-[90]"
-                                                            >
-                                                                <div className="py-1 max-h-60 overflow-y-auto custom-scrollbar">
-                                                                    {SHIFTS.map((s) => {
-                                                                        const isSelected = shiftFilter === s.value;
-                                                                        return (
-                                                                            <button
-                                                                                key={s.value}
-                                                                                onClick={() => {
-                                                                                    setShiftFilter(s.value);
-                                                                                    setIsShiftDropdownOpen(false);
-                                                                                }}
-                                                                                className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors text-left ${isSelected
-                                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                    }`}
-                                                                            >
-                                                                                <span>{s.label}</span>
-                                                                                {isSelected && <Check size={12} className="text-indigo-500" />}
-                                                                            </button>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            </motion.div>
-                                                        </>
-                                                    )}
-                                                </AnimatePresence>
-                                            </div>
-
-                                            {/* Date Navigation Filter Control */}
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    onClick={handlePrevDay}
-                                                    type="button"
-                                                    className="p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg transition-colors cursor-pointer"
-                                                    title="Previous Day"
-                                                >
-                                                    <ChevronLeft size={16} />
-                                                </button>
-
-                                                <div className="w-[230px]">
-                                                    <DatePicker
-                                                        value={selectedDate}
-                                                        onChange={(date) => setSelectedDate(date)}
-                                                        compact={true}
-                                                    />
-                                                </div>
-
-                                                <button
-                                                    onClick={handleNextDay}
-                                                    type="button"
-                                                    className="p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg transition-colors cursor-pointer"
-                                                    title="Next Day"
-                                                >
-                                                    <ChevronRight size={16} />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Uniform View Switcher */}
-                                        <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-xl w-fit border border-slate-200 dark:border-github-dark-border/50">
-                                            {[
-                                                { id: 'cards', label: 'Overview', icon: LayoutGrid },
-                                                { id: 'graph', label: 'Analytics', icon: BarChartIcon },
-                                                { id: 'table', label: 'Timeline', icon: Table },
-                                                { id: 'map', label: 'Map View', icon: MapPin }
-                                            ].map((view) => {
-                                                const isSelected = activeView === view.id;
-                                                return (
-                                                    <button
-                                                        key={view.id}
-                                                        onClick={() => setActiveView(view.id)}
-                                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
-                                                            isSelected
-                                                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                                                : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-202'
-                                                        }`}
-                                                    >
-                                                        <view.icon size={15} className={`${isSelected ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
-                                                        <span className="leading-none">{view.label}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
 
 
                                 <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0 overflow-y-auto' : ''} custom-scrollbar ${activeView === 'map' ? 'flex flex-col' : ''}`}>
@@ -2055,7 +2058,7 @@ const AttendanceMonitoring = () => {
                                                                                                 {/* Timing Info */}
                                                                                                 <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
                                                                                                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Session Timing</span>
-                                                                                                    <span className="font-mono font-bold text-indigo-400">{session.in} — {session.out}</span>
+                                                                                                    <span className="font-mono font-bold text-indigo-400">{session.in} - {session.out}</span>
                                                                                                 </div>
                                                                                                 
                                                                                                 <div className="grid grid-cols-2 gap-4">
@@ -2740,7 +2743,7 @@ const AttendanceMonitoring = () => {
                                                 )}
 
                                                 <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1.5 font-mono border-t border-slate-100 dark:border-github-dark-border/40 pt-1.5">
-                                                    <span>Sub. {request.submitted_at ? new Date(request.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</span>
+                                                    <span>Sub. {request.submitted_at ? new Date(request.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : 'N/A'}</span>
                                                     <span className="font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                                                         {(request.correction_type || '').replace('_', ' ')}
                                                     </span>
@@ -2911,7 +2914,7 @@ const AttendanceMonitoring = () => {
                                                                         <span className="text-[9px] font-bold text-slate-400 uppercase">In</span>
                                                                         <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">{String(s.time_in || '--:--').substring(0, 5)}</span>
                                                                     </div>
-                                                                    <span className="text-slate-300 dark:text-slate-600 font-bold text-xs">➔</span>
+                                                                    <ArrowRight size={12} className="text-slate-400 dark:text-slate-600 shrink-0" />
                                                                     <div className="flex items-center gap-1.5">
                                                                         <span className="text-[9px] font-bold text-slate-400 uppercase">Out</span>
                                                                         <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">{String(s.time_out || '--:--').substring(0, 5)}</span>
@@ -2949,7 +2952,7 @@ const AttendanceMonitoring = () => {
                                                                         <span className="text-[9px] font-bold text-slate-400 uppercase">In</span>
                                                                         <span className="text-xs font-semibold text-slate-800 dark:text-github-dark-text font-mono">{String(s.time_in || '').substring(0, 5)}</span>
                                                                     </div>
-                                                                    <span className="text-indigo-300 dark:text-indigo-600 font-bold text-xs">➔</span>
+                                                                    <ArrowRight size={12} className="text-indigo-400 dark:text-indigo-500 shrink-0" />
                                                                     <div className="flex items-center gap-1.5">
                                                                         <span className="text-[9px] font-bold text-slate-400 uppercase">Out</span>
                                                                         <span className="text-xs font-semibold text-slate-800 dark:text-github-dark-text font-mono">{String(s.time_out || '').substring(0, 5)}</span>
@@ -2983,7 +2986,7 @@ const AttendanceMonitoring = () => {
                                                     {selectedRequestData.review_comments || 'No specific reviewer comments noted.'}
                                                 </p>
                                                 <p className="mt-2 text-[10px] text-slate-400 font-medium pl-1">
-                                                    Reviewed on {selectedRequestData.reviewed_at ? formatCorrectionDate(selectedRequestData.reviewed_at) : '—'}
+                                                    Reviewed on {selectedRequestData.reviewed_at ? formatCorrectionDate(selectedRequestData.reviewed_at) : 'N/A'}
                                                 </p>
                                             </div>
                                         ) : (

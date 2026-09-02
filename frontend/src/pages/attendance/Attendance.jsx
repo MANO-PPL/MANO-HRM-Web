@@ -38,7 +38,17 @@ import {
     TrendingUp,
     Paperclip,
     UploadCloud,
-    Edit3
+    Edit3,
+    Trash2,
+    Save,
+    RotateCcw,
+    Sparkles,
+    Info,
+    ExternalLink,
+    Navigation,
+    Locate,
+    Target,
+    ShieldCheck
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { useAuth } from '../../context/AuthContext';
@@ -63,7 +73,18 @@ import CustomCalendar from '../../components/CustomCalendar';
 import DatePicker from '../../components/DatePicker';
 import MonthPicker from '../../components/MonthPicker';
 import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
+import TimePicker from '../../components/TimePicker';
 import { getStatusStyle, ATTENDANCE_STATUS } from '../../utils/attendanceStatus';
+
+// Modular Components & Tabs
+import AttendanceTimeLocationHeader from './components/AttendanceTimeLocationHeader';
+import CheckpointModal from './components/CheckpointModal';
+import AttendanceCameraModal from './components/AttendanceCameraModal';
+import MarkAttendanceTab from './tabs/MarkAttendanceTab';
+import AttendanceHistoryTab from './tabs/AttendanceHistoryTab';
+import AttendanceAnalyticsTab from './tabs/AttendanceAnalyticsTab';
+import AttendanceCorrectionTab from './tabs/AttendanceCorrectionTab';
+import AttendanceReportsTab from './tabs/AttendanceReportsTab';
 
 // ─── Per-Page Tour Steps ───────────────────────────────────────────────────
 const PAGE_KEY = 'emp_attendance';
@@ -188,7 +209,7 @@ ChartJS.register(
     Filler
 );
 
-const ThemedSelect = ({ label, value, options, onChange }) => {
+const ThemedSelect = ({ label, value, options, onChange, className = '' }) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef(null);
 
@@ -205,29 +226,32 @@ const ThemedSelect = ({ label, value, options, onChange }) => {
     const selectedOption = options.find(opt => opt.value === value) || options[0];
 
     return (
-        <div className="space-y-3" ref={containerRef}>
-            {label && <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1">{label}</label>}
+        <div className={`space-y-1.5 ${className}`} ref={containerRef}>
+            {label && (
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                    {label}
+                </label>
+            )}
             <div className="relative">
                 <button
                     type="button"
                     onClick={() => setIsOpen(!isOpen)}
-                    className="w-full px-5 py-4 bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-2xl flex items-center justify-between text-slate-700 dark:text-white font-bold transition-all hover:bg-white dark:hover:bg-white/10 active:scale-[0.99] shadow-sm"
+                    className="w-full h-11 px-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl flex items-center justify-between text-slate-700 dark:text-slate-200 text-sm font-normal transition-all hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.99] shadow-sm select-none cursor-pointer group"
                 >
-                    <span>{selectedOption.label}</span>
-                    <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
-                        <ChevronRight size={18} className="text-slate-400 rotate-90" />
-                    </div>
+                    <span className="truncate">{selectedOption ? selectedOption.label : 'Select...'}</span>
+                    <ChevronDown size={14} className={`text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`} />
                 </button>
 
                 <AnimatePresence>
                     {isOpen && (
                         <motion.div
-                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            initial={{ opacity: 0, y: 6, scale: 0.98 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className="absolute top-full left-0 right-0 mt-2 z-[150] bg-white/90 dark:bg-github-dark-subtle/90 border border-slate-100 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
+                            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute top-full left-0 right-0 mt-1.5 z-[150] bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl overflow-hidden"
                         >
-                            <div className="p-2 max-h-60 overflow-y-auto no-scrollbar">
+                            <div className="p-1.5 max-h-72 overflow-y-auto no-scrollbar">
                                 {options.map((opt) => (
                                     <button
                                         key={opt.value}
@@ -236,7 +260,10 @@ const ThemedSelect = ({ label, value, options, onChange }) => {
                                             onChange(opt.value);
                                             setIsOpen(false);
                                         }}
-                                        className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all mb-1 last:mb-0 ${value === opt.value ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'}`}
+                                        className={`w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-normal transition-all mb-0.5 last:mb-0 cursor-pointer ${value === opt.value
+                                                ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                            }`}
                                     >
                                         {opt.label}
                                     </button>
@@ -257,91 +284,107 @@ const Attendance = () => {
     const [location, setLocation] = useState({ lat: null, lng: null, address: 'Fetching location...', error: null });
     const [isLoadingLoc, setIsLoadingLoc] = useState(false);
 
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const fetchUserLocation = useCallback(async (isManualRefresh = false) => {
+        if (!navigator.geolocation) {
+            setLocation(prev => ({ ...prev, error: "Geolocation not supported", address: "Location Access Denied" }));
+            return;
+        }
 
-        const fetchLocation = async () => {
-            if (!navigator.geolocation) {
-                setLocation(prev => ({ ...prev, error: "Geolocation not supported", address: "Location Access Denied" }));
-                return;
+        setIsLoadingLoc(true);
+
+        const onSuccess = async (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                const data = await res.json();
+                const addr = data.address || {};
+
+                const street = addr.road || addr.building || addr.amenity || addr.commercial;
+                const locality = addr.suburb || addr.neighbourhood || addr.city_district || addr.residential;
+                const city = addr.city || addr.town || addr.village || addr.county;
+                const state = addr.state;
+                const postcode = addr.postcode;
+
+                const primaryAddress = street
+                    ? (locality ? `${street}, ${locality}` : street)
+                    : (locality || city || data.display_name?.split(',')[0] || 'Unknown Location');
+
+                const secondaryParts = [city, state, postcode].filter(Boolean);
+                const secondaryAddress = secondaryParts.join(', ');
+
+                setLocation({
+                    lat: latitude,
+                    lng: longitude,
+                    accuracy: accuracy ? Math.round(accuracy) : null,
+                    address: primaryAddress,
+                    secondaryAddress,
+                    fullAddress: data.display_name || primaryAddress,
+                    error: null
+                });
+
+                if (isManualRefresh) {
+                    toast.success("Location synchronized via high-accuracy GPS");
+                }
+            } catch (err) {
+                setLocation({
+                    lat: latitude,
+                    lng: longitude,
+                    accuracy: accuracy ? Math.round(accuracy) : null,
+                    address: `${latitude.toFixed(4)}°, ${longitude.toFixed(4)}°`,
+                    secondaryAddress: '',
+                    fullAddress: '',
+                    error: null
+                });
+            } finally {
+                setIsLoadingLoc(false);
             }
+        };
 
-            setIsLoadingLoc(true);
-
-            const onSuccess = async (pos) => {
-                const { latitude, longitude } = pos.coords;
-                try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-                    const data = await res.json();
-                    const addr = data.address;
-                    const simplifiedAddress = addr.suburb || addr.neighbourhood || addr.city_district || addr.city || addr.town || addr.village || data.display_name?.split(',')[0];
-
-                    setLocation({
-                        lat: latitude,
-                        lng: longitude,
-                        address: simplifiedAddress || 'Unknown Location',
-                        error: null
-                    });
-                } catch (err) {
-                    setLocation({ lat: latitude, lng: longitude, address: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, error: null });
-                } finally {
-                    setIsLoadingLoc(false);
-                }
-            };
-
-            const onError = (err) => {
-                console.warn("fetchLocation (highAccuracy=true) failed, trying fallback with low accuracy...", err);
-                if (err.code === 3 || err.code === 1) {
-                    navigator.geolocation.getCurrentPosition(
-                        onSuccess,
-                        (fallbackErr) => {
-                            setLocation(prev => ({ ...prev, error: fallbackErr.message, address: 'Location Access Denied' }));
-                            setIsLoadingLoc(false);
-                        },
-                        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
-                    );
-                } else {
-                    setLocation(prev => ({ ...prev, error: err.message, address: 'Location Access Denied' }));
-                    setIsLoadingLoc(false);
-                }
-            };
-
+        const onError = (err) => {
+            console.warn("fetchUserLocation (highAccuracy=true) failed, trying fallback with low accuracy...", err);
             navigator.geolocation.getCurrentPosition(
                 onSuccess,
-                onError,
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+                (fallbackErr) => {
+                    setLocation(prev => ({ ...prev, error: fallbackErr.message, address: 'Location Access Denied' }));
+                    setIsLoadingLoc(false);
+                },
+                { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
             );
         };
 
-        fetchLocation();
+        navigator.geolocation.getCurrentPosition(
+            onSuccess,
+            onError,
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }, []);
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        fetchUserLocation();
 
         let watchId;
-        const startWatch = (highAccuracy = true) => {
-            if (!navigator.geolocation) return;
+        if (navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
-                async (pos) => {
-                    const { latitude, longitude } = pos.coords;
-                    // Only update address if moved significantly (approx 100m)
-                    setLocation(prev => ({ ...prev, lat: latitude, lng: longitude }));
+                (pos) => {
+                    const { latitude, longitude, accuracy } = pos.coords;
+                    setLocation(prev => ({
+                        ...prev,
+                        lat: latitude,
+                        lng: longitude,
+                        accuracy: accuracy ? Math.round(accuracy) : prev.accuracy
+                    }));
                 },
-                (err) => {
-                    console.warn(`watchPosition (highAccuracy=${highAccuracy}) failed in Attendance.jsx:`, err);
-                    if (highAccuracy && (err.code === 3 || err.code === 1)) {
-                        if (watchId) navigator.geolocation.clearWatch(watchId);
-                        startWatch(false);
-                    }
-                },
-                { enableHighAccuracy: highAccuracy, timeout: 15000, maximumAge: 30000 }
+                (err) => console.warn("watchPosition failed:", err),
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
             );
-        };
-
-        startWatch(true);
+        }
 
         return () => {
             clearInterval(timer);
             if (watchId) navigator.geolocation.clearWatch(watchId);
         };
-    }, []);
+    }, [fetchUserLocation]);
 
     // Current date for Mark Attendance
     const today = new Date();
@@ -424,7 +467,7 @@ const Attendance = () => {
         {
             targetId: 'att-tab-mark',
             title: 'Mark Attendance Tab',
-            description: 'This tab is your clock-in/out screen. Use it every day to record your work session — it captures your GPS location and a webcam selfie.',
+            description: 'This tab is your clock-in/out screen. Use it every day to record your work session: it captures your GPS location and a webcam selfie.',
             action: () => {
                 setIsCorrectionDrawerOpen(false);
                 setActiveTab('mark_attendance');
@@ -899,7 +942,7 @@ const Attendance = () => {
         return new Date(d.getTime() - yOffset).toISOString().split('T')[0];
     });
 
-    const [corrType, setCorrType] = useState('Missed Punch'); // 'Missed Punch' | 'Technical Issue' | 'On Duty' | 'Other'
+    const [corrType, setCorrType] = useState('Missed Clock-Out'); // 'Missed Clock-Out' | 'Missed Clock-In' | 'Missed Entire Day' | 'Wrong Timestamp' | 'On-Duty' | 'Other'
     const [corrOtherType, setCorrOtherType] = useState(''); // Custom type input
     const [corrMethod, setCorrMethod] = useState('add_session'); // 'add_session' | 'reset'
 
@@ -907,8 +950,10 @@ const Attendance = () => {
     const [corrIn, setCorrIn] = useState('');
     const [corrOut, setCorrOut] = useState('');
 
-    // Inputs for 'add_session'
-    const [corrSessions, setCorrSessions] = useState([{ id: Date.now(), time_in: '', time_out: '' }]);
+    // Inputs for sessions
+    const [corrSessions, setCorrSessions] = useState([{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }]);
+    const [drawerTab, setDrawerTab] = useState('editor'); // 'editor' | 'timeline'
+    const [isDraggingFile, setIsDraggingFile] = useState(false);
 
     const [corrReason, setCorrReason] = useState('');
     const [corrAttachment, setCorrAttachment] = useState(null);
@@ -923,6 +968,159 @@ const Attendance = () => {
     const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
     const [submitLoading, setSubmitLoading] = useState(false);
     const [scrollerDates, setScrollerDates] = useState([]);
+
+    // Inline Correction Request Editing & Review State
+    const [correctionFilter, setCorrectionFilter] = useState('all'); // 'all' | 'pending' | 'approved' | 'rejected'
+    const [isOverrideMode, setIsOverrideMode] = useState(false); // Manual Override by Admin
+    const [isEditingCorrection, setIsEditingCorrection] = useState(false);
+    const [editCorrectionSessions, setEditCorrectionSessions] = useState([]);
+    const [editCorrectionReason, setEditCorrectionReason] = useState('');
+    const [isSavingCorrection, setIsSavingCorrection] = useState(false);
+    const [showAdminRejectModal, setShowAdminRejectModal] = useState(false);
+    const [adminRejectReason, setAdminRejectReason] = useState('');
+    const [isAdminActionLoading, setIsAdminActionLoading] = useState(false);
+
+    const isAdminUser = Boolean(user?.user_type === 'admin' || user?.user_type === 'superadmin' || user?.role === 'admin' || user?.is_admin);
+
+    const filteredCorrectionHistory = useMemo(() => {
+        if (!Array.isArray(correctionHistory)) return [];
+        if (correctionFilter === 'all') return correctionHistory;
+        return correctionHistory.filter(r => (r.status || '').toLowerCase() === correctionFilter);
+    }, [correctionHistory, correctionFilter]);
+
+    const normalizeCorrectionSessions = useCallback((data, req) => {
+        let parsed = data;
+        if (typeof parsed === 'string') {
+            try { parsed = JSON.parse(parsed); } catch { parsed = []; }
+        }
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            const cleaned = parsed
+                .map((s, idx) => ({
+                    id: s.id || `sess-${idx}-${Date.now()}`,
+                    time_in: s.time_in ? String(s.time_in).slice(0, 5) : (s.requested_time_in ? String(s.requested_time_in).slice(0, 5) : ''),
+                    time_out: s.time_out ? String(s.time_out).slice(0, 5) : (s.requested_time_out ? String(s.requested_time_out).slice(0, 5) : ''),
+                    punch_type: s.punch_type || 'regular'
+                }))
+                .filter(s => s.time_in || s.time_out);
+            if (cleaned.length > 0) return cleaned;
+        }
+        if (req?.requested_time_in || req?.requested_time_out) {
+            const getTime = (val) => {
+                if (!val) return '';
+                const t = val.includes(' ') ? val.split(' ')[1] : (val.includes('T') ? val.split('T')[1] : val);
+                return t.substring(0, 5);
+            };
+            const inT = getTime(req.requested_time_in);
+            const outT = getTime(req.requested_time_out);
+            if (inT || outT) {
+                return [{
+                    id: 'sess-0',
+                    time_in: inT,
+                    time_out: outT,
+                    punch_type: 'regular'
+                }];
+            }
+        }
+        return [];
+    }, []);
+
+    // Shift deadline & allowed date bounds
+    const correctionDeadlineDays = useMemo(() => {
+        return myShift?.rules?.correction_deadline ?? 2;
+    }, [myShift]);
+
+    const minAllowedCorrectionDate = useMemo(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - correctionDeadlineDays);
+        const yOffset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - yOffset).toISOString().split('T')[0];
+    }, [correctionDeadlineDays]);
+
+    const maxAllowedCorrectionDate = useMemo(() => {
+        const d = new Date();
+        const yOffset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - yOffset).toISOString().split('T')[0];
+    }, []);
+
+    // Session duration calculation helper
+    const calculateSessionDurationHours = useCallback((timeIn, timeOut) => {
+        if (!timeIn || !timeOut) return 0;
+        const [h1, m1] = String(timeIn).slice(0, 5).split(':').map(Number);
+        const [h2, m2] = String(timeOut).slice(0, 5).split(':').map(Number);
+        if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return 0;
+        let startMins = h1 * 60 + m1;
+        let endMins = h2 * 60 + m2;
+        if (endMins <= startMins) {
+            endMins += 24 * 60; // Overnight shift
+        }
+        return (endMins - startMins) / 60;
+    }, []);
+
+    const totalProposedHours = useMemo(() => {
+        const valid = corrSessions.filter(s => s.time_in && s.time_out);
+        if (valid.length === 0) {
+            if (corrIn && corrOut) return calculateSessionDurationHours(corrIn, corrOut);
+            return 0;
+        }
+        return valid.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
+    }, [corrSessions, corrIn, corrOut, calculateSessionDurationHours]);
+
+    const handleSessionChange = (index, field, val) => {
+        setCorrSessions(prev => {
+            const copy = [...prev];
+            copy[index] = { ...copy[index], [field]: val };
+            return copy;
+        });
+    };
+
+    const handleAddCorrectionSession = () => {
+        setCorrSessions(prev => [
+            ...prev,
+            { id: Date.now() + Math.random(), time_in: '', time_out: '', punch_type: 'regular' }
+        ]);
+    };
+
+    const handleRemoveCorrectionSession = (index) => {
+        setCorrSessions(prev => {
+            if (prev.length <= 1) {
+                return [{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }];
+            }
+            return prev.filter((_, i) => i !== index);
+        });
+    };
+
+    const handleAutoFillMissingOut = () => {
+        const shiftEnd = myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00';
+        setCorrSessions(prev => {
+            if (prev.length === 0) return [{ id: Date.now(), time_in: '09:00', time_out: shiftEnd, punch_type: 'regular' }];
+            const updated = [...prev];
+            updated[0] = { ...updated[0], time_out: shiftEnd };
+            return updated;
+        });
+        toast.info(`Auto-filled Punch Out to standard shift end (${shiftEnd})`);
+    };
+
+    const handlePresetFullShift = () => {
+        const shiftStart = myShift?.start_time ? myShift.start_time.slice(0, 5) : '09:00';
+        const shiftEnd = myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00';
+        setCorrSessions([{ id: Date.now(), time_in: shiftStart, time_out: shiftEnd, punch_type: 'regular' }]);
+        toast.info(`Applied full shift preset (${shiftStart} to ${shiftEnd})`);
+    };
+
+    const handleResetCorrectionToOriginal = () => {
+        if (originalSessions.length > 0) {
+            setCorrSessions(originalSessions.map((s, i) => ({
+                id: Date.now() + i,
+                time_in: s.time_in || '',
+                time_out: s.time_out || '',
+                punch_type: s.punch_type || 'regular'
+            })));
+            toast.info("Reset to originally recorded punches");
+        } else {
+            setCorrSessions([{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }]);
+            toast.info("Cleared sessions (no original punches recorded for this date)");
+        }
+    };
 
     useEffect(() => {
         const d = [];
@@ -948,6 +1146,19 @@ const Attendance = () => {
 
     const [globalActiveSession, setGlobalActiveSession] = useState(false);
     const [missedPunchWarning, setMissedPunchWarning] = useState(null); // { dates: ['2026-05-01', ...] }
+
+    // Checkpoint Marking State
+    const [showCheckpointModal, setShowCheckpointModal] = useState(false);
+    const [isMarkingCheckpoint, setIsMarkingCheckpoint] = useState(false);
+    const [checkpointNote, setCheckpointNote] = useState('');
+    const [checkpointLocation, setCheckpointLocation] = useState({
+        lat: null,
+        lng: null,
+        accuracy: null,
+        address: '',
+        error: null,
+        loading: false
+    });
 
     // 1. Fetch Daily Records (for "Mark Attendance" tab)
     const fetchDailyRecords = useCallback(async (force = false) => {
@@ -1113,13 +1324,20 @@ const Attendance = () => {
                     const first = history[0];
                     const requestId = first.acr_id || first.request_id || first.id;
                     const cachedDetail = attendanceCacheData.correctionDetails[requestId];
-                    if (cachedDetail) {
-                        setSelectedRequest({ ...first, ...(cachedDetail.data || cachedDetail) });
-                    } else {
-                        setSelectedRequest(first);
-                    }
+                    const full = cachedDetail ? { ...first, ...(cachedDetail.data || cachedDetail) } : first;
+                    const normProposed = normalizeCorrectionSessions(full.proposed_data, full);
+                    const normOriginal = normalizeCorrectionSessions(full.original_data, full);
+                    setSelectedRequest({
+                        ...full,
+                        proposed_data: normProposed,
+                        original_data: normOriginal
+                    });
+                    setEditCorrectionSessions(normProposed);
+                    setEditCorrectionReason(full.reason || '');
                 } else {
                     setSelectedRequest(null);
+                    setEditCorrectionSessions([]);
+                    setEditCorrectionReason('');
                 }
                 return;
             }
@@ -1136,14 +1354,33 @@ const Attendance = () => {
                     try {
                         setIsFetchingDetails(true);
                         const detail = await attendanceService.getCorrectionDetails(requestId);
-                        setSelectedRequest({ ...first, ...(detail.data || detail) });
+                        const full = { ...first, ...(detail.data || detail) };
+                        const normProposed = normalizeCorrectionSessions(full.proposed_data, full);
+                        const normOriginal = normalizeCorrectionSessions(full.original_data, full);
+                        setSelectedRequest({
+                            ...full,
+                            proposed_data: normProposed,
+                            original_data: normOriginal
+                        });
+                        setEditCorrectionSessions(normProposed);
+                        setEditCorrectionReason(full.reason || '');
                     } catch {
-                        setSelectedRequest(first);
+                        const normProposed = normalizeCorrectionSessions(first.proposed_data, first);
+                        const normOriginal = normalizeCorrectionSessions(first.original_data, first);
+                        setSelectedRequest({
+                            ...first,
+                            proposed_data: normProposed,
+                            original_data: normOriginal
+                        });
+                        setEditCorrectionSessions(normProposed);
+                        setEditCorrectionReason(first.reason || '');
                     } finally {
                         setIsFetchingDetails(false);
                     }
                 } else {
                     setSelectedRequest(null);
+                    setEditCorrectionSessions([]);
+                    setEditCorrectionReason('');
                 }
             } catch (error) {
                 console.error(error);
@@ -1152,7 +1389,7 @@ const Attendance = () => {
                 setLoading(false);
             }
         }
-    }, [activeTab, subTab]);
+    }, [activeTab, subTab, normalizeCorrectionSessions]);
 
     // 4. Fetch Existing Record & Pending Correction for Selected Date
     const loadCorrectionDataForDate = useCallback(async (targetDate) => {
@@ -1216,8 +1453,8 @@ const Attendance = () => {
             setExistingAttachmentUrl(null);
 
             const res = await attendanceService.getMyRecords(targetDate, targetDate);
-            const rawList = Array.isArray(res) 
-                ? res 
+            const rawList = Array.isArray(res)
+                ? res
                 : (Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.data) ? res.data.data : []));
 
             if (rawList && rawList.length > 0) {
@@ -1249,11 +1486,22 @@ const Attendance = () => {
                     return { id: Date.now() + i, time_in: time_in_str, time_out: time_out_str, punch_type: 'regular' };
                 });
 
-                // Save a frozen snapshot for original_data — never modified by form edits
+                // Save a frozen snapshot for original_data - never modified by form edits
                 setOriginalSessions(loadedSessions.map(s => ({ time_in: s.time_in, time_out: s.time_out })));
 
                 // Pre-fill form with existing sessions (user can edit and complete missing punch)
                 setCorrSessions(loadedSessions);
+
+                // Smart default for corrType
+                if (loadedSessions.some(s => s.time_in && !s.time_out)) {
+                    setCorrType('Missed Clock-Out');
+                } else if (loadedSessions.some(s => !s.time_in && s.time_out)) {
+                    setCorrType('Missed Clock-In');
+                } else if (loadedSessions.length === 0) {
+                    setCorrType('Missed Entire Day');
+                } else {
+                    setCorrType('Wrong Timestamp');
+                }
 
                 if (loadedSessions[0]) {
                     setCorrIn(loadedSessions[0].time_in || '');
@@ -1262,7 +1510,8 @@ const Attendance = () => {
             } else {
                 setExistingRecord(null);
                 setOriginalSessions([]);
-                setCorrSessions([{ id: Date.now(), time_in: '', time_out: '' }]);
+                setCorrSessions([{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }]);
+                setCorrType('Missed Entire Day');
                 setCorrIn('');
                 setCorrOut('');
             }
@@ -1316,6 +1565,91 @@ const Attendance = () => {
             openCamera(mode);
         } else {
             await executeDirectPunch(mode);
+        }
+    };
+
+    const handleOpenCheckpointModal = () => {
+        if (!globalActiveSession) {
+            toast.warning("You must Clock IN before marking a checkpoint.");
+            return;
+        }
+        setShowCheckpointModal(true);
+        setCheckpointNote('');
+        setCheckpointLocation({ lat: null, lng: null, accuracy: null, address: '', error: null, loading: true });
+
+        if (!navigator.geolocation) {
+            setCheckpointLocation(prev => ({ ...prev, loading: false, error: "Geolocation is not supported by your browser." }));
+            return;
+        }
+
+        const acquireLocation = (highAccuracy = true) => {
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { latitude, longitude, accuracy } = position.coords;
+                    let resolvedAddr = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.display_name) resolvedAddr = data.display_name;
+                        }
+                    } catch (_) { }
+
+                    setCheckpointLocation({
+                        lat: latitude,
+                        lng: longitude,
+                        accuracy,
+                        address: resolvedAddr,
+                        error: null,
+                        loading: false
+                    });
+                },
+                (err) => {
+                    if (highAccuracy && (err.code === 3 || err.code === 1)) {
+                        acquireLocation(false);
+                        return;
+                    }
+                    console.warn("Checkpoint geolocation error:", err);
+                    setCheckpointLocation(prev => ({
+                        ...prev,
+                        loading: false,
+                        error: err.message || "Failed to retrieve GPS location."
+                    }));
+                },
+                { enableHighAccuracy: highAccuracy, timeout: 10000, maximumAge: 0 }
+            );
+        };
+
+        acquireLocation(true);
+    };
+
+    const handleConfirmCheckpoint = async () => {
+        if (!checkpointLocation.lat || !checkpointLocation.lng) {
+            toast.error("Valid GPS coordinates are required to mark a checkpoint.");
+            return;
+        }
+
+        setIsMarkingCheckpoint(true);
+        try {
+            const payload = {
+                latitude: checkpointLocation.lat,
+                longitude: checkpointLocation.lng,
+                accuracy: checkpointLocation.accuracy,
+                address: checkpointLocation.address,
+                note: checkpointNote.trim() || undefined,
+                is_geofence_violation: false
+            };
+
+            const res = await attendanceService.markCheckpoint(payload);
+            toast.success(res.message || "Checkpoint marked successfully!");
+            setShowCheckpointModal(false);
+            setCheckpointNote('');
+            fetchDailyRecords(true);
+        } catch (err) {
+            console.error("Checkpoint error:", err);
+            toast.error(err.message || "Failed to record checkpoint");
+        } finally {
+            setIsMarkingCheckpoint(false);
         }
     };
 
@@ -1602,14 +1936,14 @@ const Attendance = () => {
     };
 
     const handleSubmitCorrection = async (e) => {
-        e.preventDefault();
-        if (!corrDate || !corrReason) {
-            toast.error("Date and Reason are required");
+        if (e && e.preventDefault) e.preventDefault();
+        if (!corrDate || !corrReason || !corrReason.trim()) {
+            toast.error("Adjustment Date and Reason are required");
             return;
         }
 
         // ENFORCE DYNAMIC CORRECTION DEADLINE
-        const deadlineDays = myShift?.rules?.correction_deadline || 2;
+        const deadlineDays = myShift?.rules?.correction_deadline ?? 2;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const reqDate = new Date(corrDate);
@@ -1631,13 +1965,13 @@ const Attendance = () => {
         for (let i = 0; i < validSessions.length; i++) {
             const sessionA = validSessions[i];
             const isOvernightA = Boolean(sessionA.time_in && sessionA.time_out && sessionA.time_in >= sessionA.time_out);
-            
+
             for (let j = i + 1; j < validSessions.length; j++) {
                 const sessionB = validSessions[j];
                 const isOvernightB = Boolean(sessionB.time_in && sessionB.time_out && sessionB.time_in >= sessionB.time_out);
                 if (sessionA.time_in && sessionA.time_out && sessionB.time_in && sessionB.time_out) {
                     if (!isOvernightA && !isOvernightB && sessionA.time_in < sessionB.time_out && sessionA.time_out > sessionB.time_in) {
-                        toast.error(`Sessions cannot overlap: ${sessionA.time_in}-${sessionA.time_out} with ${sessionB.time_in}-${sessionB.time_out}`);
+                        toast.error(`Sessions cannot overlap: ${sessionA.time_in} to ${sessionA.time_out} with ${sessionB.time_in} to ${sessionB.time_out}`);
                         return;
                     }
                 }
@@ -1675,9 +2009,12 @@ const Attendance = () => {
             }
 
             const formData = new FormData();
-            formData.append('correction_type', corrType === 'Other' ? corrOtherType : (corrType === 'summary' ? 'summary' : 'punch'));
+            formData.append('correction_type', corrType === 'summary' ? 'summary' : 'punch');
             formData.append('request_date', corrDate);
-            formData.append('reason', corrReason);
+
+            const categoryTag = corrType === 'Other' && corrOtherType ? corrOtherType.trim() : corrType;
+            const formattedReason = categoryTag ? `[${categoryTag}] ${corrReason.trim()}` : corrReason.trim();
+            formData.append('reason', formattedReason);
             formData.append('original_data', JSON.stringify(original_data));
             formData.append('proposed_data', JSON.stringify(proposed_data));
 
@@ -1713,10 +2050,10 @@ const Attendance = () => {
             setCorrAttachmentPreview(null);
             setExistingAttachmentUrl(null);
             setPendingRequestId(null);
-            setCorrType('Missed Punch');
+            setCorrType('Missed Clock-Out');
             setCorrOtherType('');
             setCorrMethod('add_session');
-            setCorrSessions([{ id: Date.now(), time_in: '', time_out: '' }]);
+            setCorrSessions([{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }]);
             setExistingRecord(null);
 
             fetchCorrectionHistory();
@@ -1738,16 +2075,238 @@ const Attendance = () => {
 
     const handleRequestClick = async (req) => {
         if (isFetchingDetails) return;
+        setIsEditingCorrection(false);
+        setIsOverrideMode(false);
         try {
             setIsFetchingDetails(true);
             const requestId = req.acr_id || req.request_id || req.id;
             const res = await attendanceService.getCorrectionDetails(requestId);
-            setSelectedRequest({ ...req, ...(res.data || res) });
+            const fullData = { ...req, ...(res.data || res) };
+            const normProposed = normalizeCorrectionSessions(fullData.proposed_data, fullData);
+            const normOriginal = normalizeCorrectionSessions(fullData.original_data, fullData);
+            setSelectedRequest({
+                ...fullData,
+                proposed_data: normProposed,
+                original_data: normOriginal
+            });
+            setEditCorrectionSessions(normProposed);
+            setEditCorrectionReason(fullData.reason || '');
         } catch (error) {
             console.error("Failed to fetch correction details:", error);
-            setSelectedRequest(req);
+            const normProposed = normalizeCorrectionSessions(req.proposed_data, req);
+            const normOriginal = normalizeCorrectionSessions(req.original_data, req);
+            setSelectedRequest({
+                ...req,
+                proposed_data: normProposed,
+                original_data: normOriginal
+            });
+            setEditCorrectionSessions(normProposed);
+            setEditCorrectionReason(req.reason || '');
         } finally {
             setIsFetchingDetails(false);
+        }
+    };
+
+    const handleResetToEmployeeRequest = () => {
+        if (!selectedRequest) return;
+        const normProposed = normalizeCorrectionSessions(selectedRequest.proposed_data, selectedRequest);
+        setEditCorrectionSessions(normProposed);
+        setEditCorrectionReason(selectedRequest.reason || '');
+        setIsOverrideMode(false);
+        toast.info("Reset to employee's original submitted request");
+    };
+
+    const handleStartInlineEdit = () => {
+        if (!selectedRequest) return;
+        const proposed = Array.isArray(selectedRequest.proposed_data) && selectedRequest.proposed_data.length > 0
+            ? selectedRequest.proposed_data.map((s, idx) => ({
+                id: s.id || `session-${idx}-${Date.now()}`,
+                time_in: s.time_in ? String(s.time_in).slice(0, 5) : '',
+                time_out: s.time_out ? String(s.time_out).slice(0, 5) : '',
+                punch_type: s.punch_type || 'regular'
+            }))
+            : [{ id: Date.now(), time_in: '09:00', time_out: '18:00', punch_type: 'regular' }];
+        setEditCorrectionSessions(proposed);
+        setEditCorrectionReason(selectedRequest.reason || '');
+        setIsEditingCorrection(true);
+    };
+
+    const handleCancelInlineEdit = () => {
+        setIsEditingCorrection(false);
+        if (selectedRequest) {
+            setEditCorrectionSessions(Array.isArray(selectedRequest.proposed_data) ? selectedRequest.proposed_data : []);
+            setEditCorrectionReason(selectedRequest.reason || '');
+        }
+    };
+
+    const handleAddInlineSession = () => {
+        setEditCorrectionSessions(prev => [
+            ...prev,
+            { id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }
+        ]);
+    };
+
+    const handleRemoveInlineSession = (idx) => {
+        setEditCorrectionSessions(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const handleEditSessionTime = (idx, field, val) => {
+        setEditCorrectionSessions(prev => prev.map((s, i) => i === idx ? { ...s, [field]: val } : s));
+    };
+
+    const handleSaveInlineEdit = async (andApprove = false) => {
+        if (!selectedRequest) return;
+        try {
+            setIsSavingCorrection(true);
+            const reqId = selectedRequest.acr_id || selectedRequest.id;
+            const validSessions = editCorrectionSessions.filter(s => s.time_in || s.time_out);
+            if (validSessions.length === 0) {
+                toast.error("Please specify at least one session with a time");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('correction_type', 'punch');
+            formData.append('request_date', selectedRequest.request_date);
+            formData.append('reason', editCorrectionReason.trim() || selectedRequest.reason || 'Attendance adjustment');
+            formData.append('original_data', JSON.stringify(selectedRequest.original_data || []));
+            formData.append('proposed_data', JSON.stringify(validSessions));
+            formData.append('existing_request_id', reqId);
+
+            await attendanceService.submitCorrectionRequest(formData);
+
+            if (andApprove) {
+                await attendanceService.updateCorrectionStatus(reqId, 'approved', 'Approved with adjustments');
+                toast.success("Request updated and approved successfully!");
+            } else {
+                toast.success("Correction request updated successfully!");
+            }
+
+            setIsEditingCorrection(false);
+            fetchCorrectionHistory();
+            const updatedRes = await attendanceService.getCorrectionDetails(reqId);
+            setSelectedRequest(prev => ({
+                ...prev,
+                ...(updatedRes.data || updatedRes),
+                proposed_data: validSessions,
+                reason: editCorrectionReason.trim() || prev?.reason,
+                status: andApprove ? 'approved' : prev?.status
+            }));
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to save changes");
+        } finally {
+            setIsSavingCorrection(false);
+        }
+    };
+
+    const handleAdminApprove = async () => {
+        if (!selectedRequest) return;
+        try {
+            setIsAdminActionLoading(true);
+            const reqId = selectedRequest.acr_id || selectedRequest.id;
+
+            const originalProposed = Array.isArray(selectedRequest.proposed_data) ? selectedRequest.proposed_data : [];
+            const currentSessions = editCorrectionSessions.filter(s => s.time_in || s.time_out);
+
+            const isModified = isOverrideMode && (
+                JSON.stringify(originalProposed.map(s => ({ in: s.time_in ? String(s.time_in).slice(0, 5) : '', out: s.time_out ? String(s.time_out).slice(0, 5) : '' }))) !==
+                JSON.stringify(currentSessions.map(s => ({ in: s.time_in ? String(s.time_in).slice(0, 5) : '', out: s.time_out ? String(s.time_out).slice(0, 5) : '' }))) ||
+                (editCorrectionReason && editCorrectionReason.trim() !== (selectedRequest.reason || '').trim())
+            );
+
+            if (isModified && currentSessions.length > 0) {
+                const formData = new FormData();
+                formData.append('correction_type', 'punch');
+                formData.append('request_date', selectedRequest.request_date);
+                formData.append('reason', editCorrectionReason.trim() || selectedRequest.reason || 'Attendance adjustment');
+                formData.append('original_data', JSON.stringify(selectedRequest.original_data || []));
+                formData.append('proposed_data', JSON.stringify(currentSessions));
+                formData.append('existing_request_id', reqId);
+                await attendanceService.submitCorrectionRequest(formData);
+            }
+
+            await attendanceService.updateCorrectionStatus(reqId, 'approved', isModified ? 'Approved with manual override' : 'Approved by administrator');
+            toast.success(isModified ? "Request updated with manual override and approved!" : "Request approved successfully!");
+
+            setIsOverrideMode(false);
+            fetchCorrectionHistory();
+            const updatedRes = await attendanceService.getCorrectionDetails(reqId);
+            const fullData = {
+                ...selectedRequest,
+                ...(updatedRes.data || updatedRes),
+                status: 'approved',
+                proposed_data: currentSessions.length > 0 ? currentSessions : selectedRequest.proposed_data
+            };
+            setSelectedRequest(fullData);
+            setEditCorrectionSessions(fullData.proposed_data);
+            fetchDailyRecords(true);
+            fetchMonthlyRecords(true);
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to approve request");
+        } finally {
+            setIsAdminActionLoading(false);
+        }
+    };
+
+    const handleEmployeeUpdateRequest = async () => {
+        if (!selectedRequest) return;
+        try {
+            setIsSavingCorrection(true);
+            const reqId = selectedRequest.acr_id || selectedRequest.id;
+            const validSessions = editCorrectionSessions.filter(s => s.time_in || s.time_out);
+            if (validSessions.length === 0) {
+                toast.error("Please enter at least one session with a time");
+                return;
+            }
+            const formData = new FormData();
+            formData.append('correction_type', 'punch');
+            formData.append('request_date', selectedRequest.request_date);
+            formData.append('reason', editCorrectionReason.trim() || selectedRequest.reason || 'Attendance adjustment');
+            formData.append('original_data', JSON.stringify(selectedRequest.original_data || []));
+            formData.append('proposed_data', JSON.stringify(validSessions));
+            formData.append('existing_request_id', reqId);
+            await attendanceService.submitCorrectionRequest(formData);
+            toast.success("Correction request updated successfully!");
+            fetchCorrectionHistory();
+            const updatedRes = await attendanceService.getCorrectionDetails(reqId);
+            setSelectedRequest(prev => ({
+                ...prev,
+                ...(updatedRes.data || updatedRes),
+                proposed_data: validSessions,
+                reason: editCorrectionReason.trim() || prev?.reason
+            }));
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to update request");
+        } finally {
+            setIsSavingCorrection(false);
+        }
+    };
+
+    const handleAdminReject = async () => {
+        if (!selectedRequest) return;
+        if (!adminRejectReason.trim()) {
+            toast.error("Please enter a reason for rejection");
+            return;
+        }
+        try {
+            setIsAdminActionLoading(true);
+            const reqId = selectedRequest.acr_id || selectedRequest.id;
+            await attendanceService.updateCorrectionStatus(reqId, 'rejected', adminRejectReason.trim());
+            toast.success("Request rejected");
+            setShowAdminRejectModal(false);
+            setAdminRejectReason('');
+            setSelectedRequest(prev => prev ? { ...prev, status: 'rejected', review_comments: adminRejectReason.trim() } : null);
+            fetchCorrectionHistory();
+            fetchDailyRecords(true);
+            fetchMonthlyRecords(true);
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to reject request");
+        } finally {
+            setIsAdminActionLoading(false);
         }
     };
 
@@ -2071,75 +2630,21 @@ const Attendance = () => {
     return (
         <DashboardLayout title="Attendance" tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
             <div className="pb-10 overflow-x-hidden" style={{ zoom: 0.8 }}>
-                {/* Premium Header / Greeting */}
-                <div className="pt-6 pb-10 bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-900 dark:from-indigo-900/40 dark:via-indigo-950/40 dark:to-black rounded-2xl shadow-xl relative overflow-hidden">
-                    {/* Animated Background Blobs */}
-                    <motion.div
-                        animate={{
-                            scale: [1, 1.2, 1],
-                            rotate: [0, 90, 0],
-                        }}
-                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                        className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/20 blur-3xl rounded-full"
-                    />
-                    <motion.div
-                        animate={{
-                            scale: [1, 1.5, 1],
-                            x: [0, 50, 0],
-                        }}
-                        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                        className="absolute -bottom-24 -left-24 w-[30rem] h-[30rem] bg-sky-500/10 blur-3xl rounded-full"
-                    />
-
-                    <div className="relative z-10 w-full px-6 mx-auto">
-                        <div className="flex justify-between items-start mb-10">
-                            <div>
-                                <h1 className="text-2xl font-black text-white tracking-tight">
-                                    Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.user_name?.split(' ')[0] || 'User'}!
-                                </h1>
-                                <p className="text-indigo-100/70 text-lg font-medium mt-2">
-                                    {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Current Time Widget */}
-                        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
-                            <div className="flex items-center gap-6">
-                                <div className="w-14 h-14 bg-white/20 backdrop-blur-lg rounded-xl flex items-center justify-center text-white shadow-inner">
-                                    <Clock size={40} strokeWidth={2.5} />
-                                </div>
-                                <div>
-                                    <span className="block text-xs font-black text-indigo-200 tracking-[0.2em] mb-1 opacity-80">Current Time</span>
-                                    <span className="text-3xl font-black text-white font-mono tracking-tighter">
-                                        {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="w-full md:w-auto flex flex-col md:items-end gap-3">
-                                <span className="block text-xs font-black text-indigo-200 tracking-[0.2em] opacity-80">Your Location</span>
-                                <div className="flex items-center gap-3 text-white/90 font-bold text-sm bg-white/10 px-6 py-4 rounded-2xl border border-white/10 shadow-lg backdrop-blur-xl">
-                                    <div className="w-8 h-8 rounded-full bg-indigo-500/30 flex items-center justify-center">
-                                        <MapPin size={18} className="text-indigo-300" />
-                                    </div>
-                                    <span className="truncate max-w-[200px] md:max-w-[400px]" title={location.address}>
-                                        {isLoadingLoc ? 'Locating...' : location.address}
-                                    </span>
-                                    <button
-                                        onClick={() => window.location.reload()}
-                                        className="ml-2 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
-                                    >
-                                        <RefreshCw size={14} className={isLoadingLoc ? 'animate-spin' : ''} />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                {/* Header & Command Center */}
+                <AttendanceTimeLocationHeader
+                    currentTime={currentTime}
+                    user={user}
+                    location={location}
+                    isLoadingLoc={isLoadingLoc}
+                    onRefreshLocation={fetchUserLocation}
+                    myShift={myShift}
+                    globalActiveSession={globalActiveSession}
+                    onOpenCheckpointModal={handleOpenCheckpointModal}
+                />
 
                 {/* Tab Switcher - Floating Style */}
-                <div className="max-w-xl mx-auto -mt-8 relative z-20 px-6">
-                    <div className="bg-white/10 dark:bg-black/20 backdrop-blur-[40px] p-1.2 flex rounded-xl border border-white/40 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1)] ring-1 ring-white/30 relative overflow-hidden group">
+                <div className="max-w-xl mx-auto -mt-6 relative z-20 px-6">
+                    <div className="bg-white/10 dark:bg-black/20 backdrop-blur-[40px] p-1.5 flex rounded-xl border border-white/40 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.1)] ring-1 ring-white/30 relative overflow-hidden group">
                         {/* Internal Liquid Highlights */}
                         <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none" />
                         <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-white/5 blur-3xl rounded-full pointer-events-none" />
@@ -2147,9 +2652,9 @@ const Attendance = () => {
                         <button
                             onClick={() => setActiveTab('mark_attendance')}
                             data-tour-id="att-tab-mark"
-                            className={`flex-1 py-4 text-sm font-normal rounded-xl transition-all duration-500 flex items-center justify-center gap-3 z-10 ${activeTab === 'mark_attendance'
-                                    ? 'bg-white text-indigo-600 shadow-[0_4px_15px_rgba(0,0,0,0.1)] transform scale-[1.01]'
-                                    : 'text-slate-200 dark:text-slate-400 hover:bg-white/5'
+                            className={`flex-1 py-4 text-sm font-semibold rounded-xl transition-all duration-500 flex items-center justify-center gap-3 z-10 cursor-pointer ${activeTab === 'mark_attendance'
+                                ? 'bg-white text-indigo-600 shadow-[0_4px_15px_rgba(0,0,0,0.1)] transform scale-[1.01]'
+                                : 'text-slate-200 dark:text-slate-400 hover:bg-white/5'
                                 }`}
                         >
                             <User size={18} strokeWidth={2.5} />
@@ -2158,9 +2663,9 @@ const Attendance = () => {
                         <button
                             onClick={() => setActiveTab('my_attendance')}
                             data-tour-id="att-tab-my-attendance"
-                            className={`flex-1 py-4 text-sm font-normal rounded-xl transition-all duration-500 flex items-center justify-center gap-3 z-10 ${activeTab === 'my_attendance'
-                                    ? 'bg-white text-indigo-600 shadow-[0_4px_15px_rgba(0,0,0,0.1)] transform scale-[1.01]'
-                                    : 'text-slate-200 dark:text-slate-400 hover:bg-white/5'
+                            className={`flex-1 py-4 text-sm font-semibold rounded-xl transition-all duration-500 flex items-center justify-center gap-3 z-10 cursor-pointer ${activeTab === 'my_attendance'
+                                ? 'bg-white text-indigo-600 shadow-[0_4px_15px_rgba(0,0,0,0.1)] transform scale-[1.01]'
+                                : 'text-slate-200 dark:text-slate-400 hover:bg-white/5'
                                 }`}
                         >
                             <History size={18} strokeWidth={2.5} />
@@ -2169,361 +2674,39 @@ const Attendance = () => {
                     </div>
                 </div>
 
-                <div className="w-full mx-auto mt-6">
+                <div className="w-full mx-auto mt-5">
                     {/* 1. MARK ATTENDANCE TAB */}
                     {activeTab === 'mark_attendance' && (
-                        <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-                            {/* Action Buttons & Correction Toggle */}
-                            <div className="flex flex-col gap-6">
-                                {/* Session Logic Calculation */}
-                                {(() => {
-                                    const hasActiveSession = globalActiveSession;
-                                    return (
-                                        <div data-tour-id="att-session-actions" className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                            {/* Time In Card */}
-                                            <button
-                                                onClick={() => handlePunchClick('IN')}
-                                                disabled={hasActiveSession || isSubmitting}
-                                                data-tour-id="att-checkin-btn"
-                                                className={`group relative p-5 rounded-xl flex items-center justify-between transition-all duration-500 overflow-hidden border-2 ${hasActiveSession
-                                                        ? 'bg-slate-50/50 dark:bg-slate-900/20 border-slate-100 dark:border-white/5 opacity-40 grayscale-[0.5]'
-                                                        : 'bg-white dark:bg-github-dark-subtle border-slate-100 dark:border-white/10 shadow-lg hover:shadow-xl hover:border-emerald-500/30 active:scale-[0.98]'
-                                                    }`}
-                                            >
-                                                <div className="flex items-center gap-4 relative z-10">
-                                                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-500 ${hasActiveSession
-                                                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                                                            : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:rotate-[15deg] group-hover:scale-110 shadow-lg shadow-emerald-500/10'
-                                                        }`}>
-                                                        <ArrowRight size={24} strokeWidth={2.5} />
-                                                    </div>
-                                                    <div className="text-left">
-                                                        <h3 className={`text-xl font-black tracking-tight ${hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>
-                                                            {isSubmitting && cameraMode === 'IN' && !showCamera ? 'Processing...' : 'Time In'}
-                                                        </h3>
-                                                        <p className="text-slate-500 dark:text-slate-400 text-[11px] font-bold mt-1 uppercase tracking-wider opacity-60">
-                                                            {hasActiveSession ? 'Session Active' : 'Start shift for today'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center transition-all duration-300 group-hover:bg-emerald-500/10 group-hover:text-emerald-500">
-                                                    <ChevronRight size={20} className={hasActiveSession ? 'text-slate-200 dark:text-slate-700' : 'text-slate-400 dark:text-slate-500'} />
-                                                </div>
-                                            </button>
-
-                                            {/* Time Out Card */}
-                                            <button
-                                                onClick={() => handlePunchClick('OUT')}
-                                                disabled={!hasActiveSession || isSubmitting}
-                                                className={`group relative p-5 rounded-xl flex items-center justify-between transition-all duration-500 overflow-hidden border-2 ${!hasActiveSession
-                                                        ? 'bg-slate-50/50 dark:bg-slate-900/20 border-slate-100 dark:border-white/5 opacity-40 grayscale-[0.5]'
-                                                        : 'bg-white dark:bg-github-dark-subtle border-slate-100 dark:border-white/10 shadow-lg hover:shadow-xl hover:border-rose-500/30 active:scale-[0.98]'
-                                                    }`}
-                                            >
-                                                <div className="flex items-center gap-4 relative z-10">
-                                                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-500 ${!hasActiveSession
-                                                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                                                            : 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 group-hover:rotate-[-15deg] group-hover:scale-110 shadow-lg shadow-rose-500/10'
-                                                        }`}>
-                                                        <LogOut size={24} strokeWidth={2.5} />
-                                                    </div>
-                                                    <div className="text-left">
-                                                        <h3 className={`text-xl font-black tracking-tight ${!hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>
-                                                            {isSubmitting && cameraMode === 'OUT' && !showCamera ? 'Processing...' : 'Time Out'}
-                                                        </h3>
-                                                        <p className="text-slate-500 dark:text-slate-400 text-[11px] font-bold mt-1 uppercase tracking-wider opacity-60">
-                                                            {!hasActiveSession ? 'No Active Session' : 'End your day'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center transition-all duration-300 group-hover:bg-rose-500/10 group-hover:text-rose-500">
-                                                    <ChevronRight size={20} className={!hasActiveSession ? 'text-slate-200 dark:text-slate-700' : 'text-slate-400 dark:text-slate-500'} />
-                                                </div>
-                                            </button>
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-
-                            {!isWorkingDayToday && !globalActiveSession && (
-                                <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-                                    <div className="p-2 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-500 rounded-lg shrink-0">
-                                        <AlertCircle size={20} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-amber-800 dark:text-amber-500">Non-Working Day</p>
-                                        <p className="text-xs text-amber-700/80 dark:text-amber-500/80 mt-0.5">
-                                            Today is not a scheduled working day. Any hours worked today will not be counted towards your regular attendance.
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {missedPunchWarning && (
-                                <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-4 rounded-xl flex flex-col sm:flex-row gap-4 justify-between items-center animate-in fade-in slide-in-from-top-2">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-500 rounded-lg relative">
-                                            <AlertCircle size={20} />
-                                            {missedPunchWarning.dates.length > 1 && (
-                                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                                    {missedPunchWarning.dates.length}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-amber-800 dark:text-amber-500">Missed Time Out</p>
-                                            <p className="text-xs text-amber-700/80 dark:text-amber-500/80 mt-0.5">
-                                                You forgot to time out on {missedPunchWarning.dates.join(', ')}. Please submit a correction request or it will be marked absent.
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => {
-                                            const targetDate = (missedPunchWarning && missedPunchWarning.dates && missedPunchWarning.dates.length > 0)
-                                                ? missedPunchWarning.dates[0]
-                                                : selectedDate;
-                                            setCorrDate(targetDate);
-                                            loadCorrectionDataForDate(targetDate);
-                                            setActiveTab('my_attendance');
-                                            setSubTab('correction');
-                                            setIsCorrectionDrawerOpen(true);
-                                        }}
-                                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap shadow-sm cursor-pointer"
-                                    >
-                                        Fix Now
-                                    </button>
-                                </div>
-                            )}
-
-                            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                <div className="flex justify-center items-center gap-4 relative" ref={calendarRef}>
-                                    <div
-                                        onClick={() => setShowCalendar(!showCalendar)}
-                                        className="flex items-center justify-center gap-2 text-slate-600 dark:text-slate-300 font-medium bg-white dark:bg-dark-card py-2.5 px-6 rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border min-w-[200px] cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors select-none"
-                                    >
-                                        <CalendarIcon size={18} />
-                                        <span>{formatDateDisplay(selectedDate)}</span>
-                                    </div>
-
-                                    {showCalendar && (
-                                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 z-[100] shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-                                            <CustomCalendar
-                                                selectedDate={selectedDate}
-                                                onChange={(date) => {
-                                                    setSelectedDate(date);
-                                                    setShowCalendar(false);
-                                                }}
-                                                onClose={() => setShowCalendar(false)}
-                                                events={calendarEvents}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Horizontal Date Scroller */}
-                            <div className="flex gap-4 overflow-x-auto py-6 px-2 no-scrollbar scroll-smooth">
-                                {scrollerDates.map((date) => {
-                                    const dateStr = date.toISOString().split('T')[0];
-                                    const isSelected = dateStr === selectedDate;
-                                    const isToday = dateStr === new Date().toISOString().split('T')[0];
-                                    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-
-                                    return (
-                                        <button
-                                            key={dateStr}
-                                            id={isSelected ? "selected-date-btn" : undefined}
-                                            onClick={() => setSelectedDate(dateStr)}
-                                            className={`flex flex-col items-center justify-center min-w-[70px] h-24 rounded-xl transition-all duration-500 relative group ${isSelected
-                                                    ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/40 transform scale-105 z-10'
-                                                    : 'bg-white dark:bg-github-dark-subtle text-slate-400 dark:text-github-dark-muted border border-slate-100 dark:border-white/5 hover:border-indigo-600/30'
-                                                }`}
-                                        >
-                                            <span className={`text-[9px] font-black uppercase tracking-widest mb-1.5 ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
-                                                {dayName}
-                                            </span>
-                                            <span className="text-xl font-black">{date.getDate()}</span>
-                                            {isToday && !isSelected && <div className="absolute bottom-3 w-1 h-1 bg-indigo-500 rounded-full animate-pulse"></div>}
-                                            {isSelected && <motion.div layoutId="activeDate" className="absolute -inset-0.5 rounded-xl border-2 border-indigo-600/50" />}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Logs Section Header */}
-                            <div className="pt-8">
-                                <div className="flex items-center justify-between mb-8 px-2">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-1.5 h-8 bg-indigo-600 rounded-full" />
-                                        <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">
-                                            {selectedDate === new Date().toISOString().split('T')[0] ? "Today's Logs" : `Logs for ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
-                                        </h3>
-                                    </div>
-                                    <button
-                                        onClick={() => {
-                                            setCorrDate(selectedDate);
-                                            loadCorrectionDataForDate(selectedDate);
-                                            setIsCorrectionDrawerOpen(true);
-                                        }}
-                                        data-tour-id="att-correction-btn"
-                                        className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-[10px] tracking-widest bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 rounded-xl hover:shadow-lg transition-all active:scale-95 border border-indigo-100/50 dark:border-indigo-500/20"
-                                    >
-                                        <Plus size={14} strokeWidth={3} /> Request Correction
-                                    </button>
-                                </div>
-
-                                {/* Daily Records List */}
-                                <div className="space-y-4">
-                                    {loading ? (
-                                        <p className="text-center text-slate-500 py-10">Loading...</p>
-                                    ) : dailySessions.length === 0 ? (
-                                        <p className="text-center text-slate-400 py-10">No attendance records for this date.</p>
-                                    ) : (
-                                        dailySessions.map((session, idx) => (
-                                            <div key={session.attendance_id || session.id} className="bg-white dark:bg-github-dark-subtle p-5 rounded-xl border border-slate-100 dark:border-white/5 shadow-md space-y-6 transition-all hover:shadow-xl">
-                                                {/* Session Header */}
-                                                <div className="flex justify-between items-center pb-4 border-b border-slate-50 dark:border-white/5">
-                                                    <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.2em] flex items-center gap-2">
-                                                        <div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-lg">
-                                                            <Clock size={14} />
-                                                        </div>
-                                                        Session #{dailySessions.length - idx}
-                                                    </span>
-                                                    <div className="flex flex-col items-end gap-2">
-                                                        {(() => {
-                                                            const isSessionOpen = !session.time_out;
-                                                            const selectedDateStr = selectedDate ? (selectedDate instanceof Date ? selectedDate.toLocaleDateString('en-CA') : String(selectedDate).split('T')[0]) : '';
-                                                            const todayDateStr = new Date().toLocaleDateString('en-CA');
-                                                            const isPastDate = Boolean(selectedDateStr && selectedDateStr < todayDateStr);
-                                                            const isSessionMissed = session.status === 'MISSED_PUNCH' || (isPastDate && isSessionOpen);
-                                                            const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'CLOSED');
-                                                            const style = getStatusStyle(sessionStatus);
-                                                            return (
-                                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-sm flex items-center gap-2 ${style.bg} ${style.text}`}>
-                                                                    <div className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                                                                    {style.label}
-                                                                </span>
-                                                            );
-                                                        })()}
-                                                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 bg-slate-50/50 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-slate-100/50 dark:border-white/5">
-                                                            <Clock size={12} className="text-indigo-500 dark:text-indigo-400 animate-pulse" />
-                                                            <span>Duration: <span className="font-black text-slate-800 dark:text-white">{session.total_hours || calculateDuration(session.time_in, session.time_out) || '--'}</span></span>
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                {/* IN/OUT Sections Grid */}
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                                    {/* Time In Section */}
-                                                    <div className="space-y-6">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-sm">
-                                                                <ArrowUpRight size={24} strokeWidth={3} />
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <span className="block text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest mb-1 opacity-70">Time In</span>
-                                                                <span className="text-2xl font-black text-slate-800 dark:text-white truncate block tracking-tight">
-                                                                    {formatTime(session.time_in, session, false)}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* In Address */}
-                                                        <div className="flex items-start gap-3 bg-slate-50/50 dark:bg-white/5 p-4 rounded-2xl border border-slate-100/50 dark:border-white/5">
-                                                            <MapPin size={16} className="text-slate-400 mt-0.5 shrink-0" />
-                                                            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
-                                                                {session.time_in_address || 'Address not captured'}
-                                                            </p>
-                                                        </div>
-
-                                                        {/* In Image */}
-                                                        <div className="space-y-3 max-w-[280px]">
-                                                            <div className="flex items-center justify-between px-1">
-                                                                <p className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest opacity-60">Verification Image</p>
-                                                                {session.time_in_image && <span className="text-[9px] font-black text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md">Captured</span>}
-                                                            </div>
-                                                            <div
-                                                                onClick={() => session.time_in_image && setViewerImage(session.time_in_image)}
-                                                                className="aspect-video rounded-xl overflow-hidden border-2 border-slate-100 dark:border-white/5 group relative shadow-inner cursor-pointer"
-                                                            >
-                                                                {session.time_in_image ? (
-                                                                    <>
-                                                                        <img src={session.time_in_image} alt="In" className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-110" />
-                                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
-                                                                            <Eye size={32} className="text-white transform scale-75 group-hover:scale-100 transition-transform duration-300" />
-                                                                        </div>
-                                                                    </>
-                                                                ) : (
-                                                                    <div className="w-full h-full bg-slate-50 dark:bg-white/5 flex flex-col items-center justify-center gap-3">
-                                                                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-300">
-                                                                            <Camera size={24} />
-                                                                        </div>
-                                                                        <span className="text-[9px] font-black text-slate-300 tracking-[0.2em]">No Image</span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Time Out Section */}
-                                                    <div className="space-y-6">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-400 shadow-sm">
-                                                                <LogOut size={24} strokeWidth={3} className="rotate-180" />
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <span className="block text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest mb-1 opacity-70">Time Out</span>
-                                                                <span className={`text-2xl font-black truncate block tracking-tight ${session.time_out ? 'text-slate-800 dark:text-white' : 'text-emerald-500 animate-pulse'}`}>
-                                                                    {session.time_out ? formatTime(session.time_out, session, true) : 'Active Session'}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Out Address */}
-                                                        <div className="flex items-start gap-3 bg-slate-50/50 dark:bg-white/5 p-4 rounded-2xl border border-slate-100/50 dark:border-white/5">
-                                                            <MapPin size={16} className="text-slate-400 mt-0.5 shrink-0" />
-                                                            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
-                                                                {session.time_out ? (session.time_out_address || 'Address not captured') : 'Ongoing session...'}
-                                                            </p>
-                                                        </div>
-
-                                                        {/* Out Image */}
-                                                        <div className="space-y-3 max-w-[280px]">
-                                                            <div className="flex items-center justify-between px-1">
-                                                                <p className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest opacity-60">Verification Image</p>
-                                                                {session.time_out_image && <span className="text-[9px] font-black text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-2 py-0.5 rounded-md">Captured</span>}
-                                                            </div>
-                                                            <div
-                                                                onClick={() => session.time_out_image && setViewerImage(session.time_out_image)}
-                                                                className="aspect-video rounded-xl overflow-hidden border-2 border-slate-100 dark:border-white/5 group relative shadow-inner cursor-pointer"
-                                                            >
-                                                                {session.time_out_image ? (
-                                                                    <>
-                                                                        <img src={session.time_out_image} alt="Out" className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-110" />
-                                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
-                                                                            <Eye size={32} className="text-white transform scale-75 group-hover:scale-100 transition-transform duration-300" />
-                                                                        </div>
-                                                                    </>
-                                                                ) : (
-                                                                    <div className="w-full h-full bg-slate-50 dark:bg-white/5 flex flex-col items-center justify-center gap-3">
-                                                                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-300">
-                                                                            <Camera size={24} />
-                                                                        </div>
-                                                                        <span className="text-[9px] font-black text-slate-300 tracking-[0.2em]">No Image</span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-
-                        </div>
+                        <MarkAttendanceTab
+                            globalActiveSession={globalActiveSession}
+                            isSubmitting={isSubmitting}
+                            isMarkingCheckpoint={isMarkingCheckpoint}
+                            cameraMode={cameraMode}
+                            showCamera={showCamera}
+                            handlePunchClick={handlePunchClick}
+                            handleOpenCheckpointModal={handleOpenCheckpointModal}
+                            dailySessions={dailySessions}
+                            isWorkingDayToday={isWorkingDayToday}
+                            missedPunchWarning={missedPunchWarning}
+                            setCorrDate={setCorrDate}
+                            loadCorrectionDataForDate={loadCorrectionDataForDate}
+                            setActiveTab={setActiveTab}
+                            setSubTab={setSubTab}
+                            setIsCorrectionDrawerOpen={setIsCorrectionDrawerOpen}
+                            calendarRef={calendarRef}
+                            showCalendar={showCalendar}
+                            setShowCalendar={setShowCalendar}
+                            selectedDate={selectedDate}
+                            setSelectedDate={setSelectedDate}
+                            formatDateDisplay={formatDateDisplay}
+                            calendarEvents={calendarEvents}
+                            scrollerDates={scrollerDates}
+                            loading={loading}
+                            formatTime={formatTime}
+                            getStatusStyle={getStatusStyle}
+                            calculateDuration={calculateDuration}
+                            setViewerImage={setViewerImage}
+                        />
                     )}
 
                     {/* 2. MY ATTENDANCE TAB */}
@@ -2601,1496 +2784,120 @@ const Attendance = () => {
 
                             {/* SUB-TAB: HISTORY (Day-Level Expandable Grouped Cards) */}
                             {subTab === 'history' && (
-                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                    {/* Month Navigation & Filter Bar */}
-                                    <div className="bg-white dark:bg-github-dark-subtle p-4 rounded-2xl border border-slate-100 dark:border-white/5 shadow-xs flex flex-wrap items-center justify-between gap-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex items-center bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200/60 dark:border-white/5 p-1">
-                                                <button
-                                                    onClick={handlePrevMonth}
-                                                    title="Previous Month"
-                                                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-white dark:hover:bg-white/10 transition-all"
-                                                >
-                                                    <ChevronLeft size={16} strokeWidth={2.5} />
-                                                </button>
-                                                <span className="px-3 text-sm font-bold text-slate-800 dark:text-white min-w-[140px] text-center select-none">
-                                                    {new Date(reportYear, reportMonthIdx, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                                                </span>
-                                                <button
-                                                    onClick={handleNextMonth}
-                                                    title="Next Month"
-                                                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-white dark:hover:bg-white/10 transition-all"
-                                                >
-                                                    <ChevronRight size={16} strokeWidth={2.5} />
-                                                </button>
-                                            </div>
-
-                                            {/* Quick "Current Month" button if not on current month */}
-                                            {(reportYear !== new Date().getFullYear() || reportMonthIdx !== new Date().getMonth()) && (
-                                                <button
-                                                    onClick={handleCurrentMonth}
-                                                    className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 px-3 py-2 rounded-xl transition-all border border-indigo-100 dark:border-indigo-800/40"
-                                                >
-                                                    Current Month
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Right Side Info Badge */}
-                                        <div className="flex items-center gap-3 text-xs font-bold text-slate-400">
-                                            <span className="flex items-center gap-1.5 bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5">
-                                                <CalendarIcon size={13} className="text-indigo-500" />
-                                                <span>{monthlySessions.length} {monthlySessions.length === 1 ? 'session recorded' : 'sessions recorded'}</span>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {groupedHistoryWeeks.length === 0 ? (
-                                        <div className="text-center py-12 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-2xl border border-slate-200 dark:border-github-dark-border border-dashed">
-                                            <Clock className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                                            <p className="text-slate-500 font-medium">No records found for {new Date(reportYear, reportMonthIdx, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-                                        </div>
-                                    ) : (
-                                        groupedHistoryWeeks.map(([week, days]) => (
-                                            <div key={week} className="space-y-4">
-                                                <div className="flex items-center justify-between sticky top-0 bg-slate-50/95 dark:bg-black/20 backdrop-blur-sm py-2 z-10">
-                                                    <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">
-                                                        {week}
-                                                    </h3>
-                                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                                        {days.length} {days.length === 1 ? 'day recorded' : 'days recorded'}
-                                                    </span>
-                                                </div>
-
-                                                <div className="grid gap-4">
-                                                    {days.map((day) => {
-                                                        const isExpanded = expandedDays.has(day.dateKey);
-                                                        const style = getStatusStyle(day.dayStatus);
-                                                        const totalHoursDisplay = day.totalDayHours > 0
-                                                            ? `${day.totalDayHours} hrs`
-                                                            : (day.hasOpenSession ? '-' : '0 hrs');
-
-                                                        return (
-                                                            <div
-                                                                key={day.dateKey}
-                                                                className={`bg-white dark:bg-dark-card rounded-2xl shadow-sm border transition-all duration-200 overflow-hidden ${isExpanded
-                                                                        ? 'border-indigo-300 dark:border-indigo-700/60 ring-1 ring-indigo-500/20'
-                                                                        : 'border-slate-100 dark:border-github-dark-border hover:border-indigo-200 dark:hover:border-indigo-800'
-                                                                    }`}
-                                                            >
-                                                                {/* DAY SUMMARY HEADER (Clickable) */}
-                                                                <div
-                                                                    onClick={() => toggleDayExpansion(day.dateKey)}
-                                                                    className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors"
-                                                                >
-                                                                    {/* Left Info: Date & Day Status */}
-                                                                    <div className="flex items-center gap-4">
-                                                                        <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-bold shrink-0 ${style.bg} ${style.text}`}>
-                                                                            <span className="text-[10px] uppercase font-black opacity-80 leading-none mb-0.5">
-                                                                                {day.date.toLocaleDateString('en-US', { month: 'short' })}
-                                                                            </span>
-                                                                            <span className="text-xl leading-none">
-                                                                                {day.date.getDate()}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div>
-                                                                            <div className="flex items-center gap-2">
-                                                                                <p className="font-bold text-slate-800 dark:text-github-dark-text text-base">
-                                                                                    {day.date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                                                                                </p>
-                                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
-                                                                                    {style.label}
-                                                                                </span>
-                                                                            </div>
-                                                                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1">
-                                                                                <span className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-full text-[11px]">
-                                                                                    {day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}
-                                                                                </span>
-                                                                                <span>•</span>
-                                                                                <span className="truncate max-w-[220px] md:max-w-[320px]" title={day.sessions[0]?.time_in_address || 'Office / Remote'}>
-                                                                                    {day.sessions[0]?.time_in_address || 'Office / Remote'}
-                                                                                </span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Right Summary: First In, Last Out, Total Hrs, Expand Toggle */}
-                                                                    <div className="flex items-center justify-between md:justify-end gap-6 text-sm">
-                                                                        <div className="flex items-center gap-6">
-                                                                            <div>
-                                                                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">First In</p>
-                                                                                <p className="font-mono font-medium text-slate-700 dark:text-slate-300">
-                                                                                    {formatTime(day.firstIn, day.firstSession, false)}
-                                                                                </p>
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">Last Out</p>
-                                                                                <p className="font-mono font-medium text-slate-700 dark:text-slate-300">
-                                                                                    {day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : '--:--'}
-                                                                                </p>
-                                                                            </div>
-                                                                            <div className="text-right min-w-[70px]">
-                                                                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">Total</p>
-                                                                                <p className="font-bold text-indigo-600 dark:text-indigo-400 text-sm">
-                                                                                    {totalHoursDisplay}
-                                                                                </p>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        {/* Expand/Collapse Chevron */}
-                                                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${isExpanded
-                                                                                ? 'bg-indigo-600 text-white rotate-180 shadow-sm'
-                                                                                : 'bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-slate-600 dark:hover:text-white'
-                                                                            }`}>
-                                                                            <ChevronDown size={16} strokeWidth={2.5} />
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* EXPANDED PUNCH BREAKDOWN */}
-                                                                <AnimatePresence>
-                                                                    {isExpanded && (
-                                                                        <motion.div
-                                                                            initial={{ opacity: 0, height: 0 }}
-                                                                            animate={{ opacity: 1, height: 'auto' }}
-                                                                            exit={{ opacity: 0, height: 0 }}
-                                                                            transition={{ duration: 0.2 }}
-                                                                            className="border-t border-slate-100 dark:border-github-dark-border/60 bg-slate-50/60 dark:bg-white/[0.015] p-5"
-                                                                        >
-                                                                            <div className="space-y-3">
-                                                                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-white/5 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                                                                                    <span>Punches & Sessions Breakdown</span>
-                                                                                    <span>{day.sessions.length} recorded {day.sessions.length === 1 ? 'punch pair' : 'punch pairs'}</span>
-                                                                                </div>
-
-                                                                                <div className="grid gap-3">
-                                                                                    {day.sessions.map((session, sIdx) => {
-                                                                                        const isSessionOpen = !session.time_out;
-                                                                                        const isSessionMissed = session.status === 'MISSED_PUNCH' || (day.isPastDay && isSessionOpen);
-                                                                                        const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'CLOSED');
-                                                                                        const sStyle = getStatusStyle(sessionStatus);
-                                                                                        const sDuration = isSessionOpen
-                                                                                            ? (isSessionMissed ? '-' : 'In Progress')
-                                                                                            : (session.total_hours ? `${session.total_hours} hrs` : (calculateDuration(session.time_in, session.time_out) || '-'));
-
-                                                                                        return (
-                                                                                            <div
-                                                                                                key={session.attendance_id || sIdx}
-                                                                                                className="bg-white dark:bg-github-dark-subtle/80 p-4 rounded-xl border border-slate-100 dark:border-white/5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4"
-                                                                                            >
-                                                                                                {/* Session Title & Badge */}
-                                                                                                <div className="flex items-center gap-3">
-                                                                                                    <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-black shrink-0">
-                                                                                                        #{sIdx + 1}
-                                                                                                    </div>
-                                                                                                    <div>
-                                                                                                        <div className="flex items-center gap-2">
-                                                                                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                                                                                                                Session {sIdx + 1}
-                                                                                                            </span>
-                                                                                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${sStyle.bg} ${sStyle.text}`}>
-                                                                                                                <span className={`w-1.5 h-1.5 rounded-full ${sStyle.dot}`}></span>
-                                                                                                                {sStyle.label}
-                                                                                                            </span>
-                                                                                                        </div>
-                                                                                                        <p className="text-[11px] text-slate-400 font-medium">
-                                                                                                            Duration: <span className="font-bold text-indigo-600 dark:text-indigo-400">{sDuration}</span>
-                                                                                                        </p>
-                                                                                                    </div>
-                                                                                                </div>
-
-                                                                                                {/* In / Out Details */}
-                                                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 max-w-2xl text-xs">
-                                                                                                    {/* In Block */}
-                                                                                                    <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
-                                                                                                        <div className="min-w-0">
-                                                                                                            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-black uppercase text-[10px] tracking-wider mb-0.5">
-                                                                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                                                                                Punch In
-                                                                                                            </div>
-                                                                                                            <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                                                                                                                {formatTime(session.time_in, session, false)}
-                                                                                                            </p>
-                                                                                                            <p className="text-[11px] text-slate-500 truncate mt-0.5" title={session.time_in_address || 'Office / Remote'}>
-                                                                                                                {session.time_in_address || 'Office / Remote'}
-                                                                                                            </p>
-                                                                                                        </div>
-                                                                                                        {session.time_in_image && (
-                                                                                                            <button
-                                                                                                                type="button"
-                                                                                                                onClick={(e) => {
-                                                                                                                    e.stopPropagation();
-                                                                                                                    setPreviewImage(session.time_in_image);
-                                                                                                                }}
-                                                                                                                className="w-9 h-9 rounded-lg border border-slate-200 dark:border-white/10 overflow-hidden shrink-0 hover:scale-105 active:scale-95 transition-all shadow-xs"
-                                                                                                                title="View Selfie"
-                                                                                                            >
-                                                                                                                <img src={session.time_in_image} alt="In Selfie" className="w-full h-full object-cover" />
-                                                                                                            </button>
-                                                                                                        )}
-                                                                                                    </div>
-
-                                                                                                    {/* Out Block */}
-                                                                                                    <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
-                                                                                                        <div className="min-w-0">
-                                                                                                            <div className="flex items-center gap-1.5 text-rose-500 dark:text-rose-400 font-black uppercase text-[10px] tracking-wider mb-0.5">
-                                                                                                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                                                                                                                Punch Out
-                                                                                                            </div>
-                                                                                                            <p className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                                                                                                                {session.time_out ? formatTime(session.time_out, session, true) : (session.status === 'MISSED_PUNCH' ? 'Missed Punch' : '--:--')}
-                                                                                                            </p>
-                                                                                                            <p className="text-[11px] text-slate-500 truncate mt-0.5" title={session.time_out_address || (session.time_out ? 'Office / Remote' : 'No punch out')}>
-                                                                                                                {session.time_out_address || (session.time_out ? 'Office / Remote' : 'No punch out recorded')}
-                                                                                                            </p>
-                                                                                                        </div>
-                                                                                                        {session.time_out_image && (
-                                                                                                            <button
-                                                                                                                type="button"
-                                                                                                                onClick={(e) => {
-                                                                                                                    e.stopPropagation();
-                                                                                                                    setPreviewImage(session.time_out_image);
-                                                                                                                }}
-                                                                                                                className="w-9 h-9 rounded-lg border border-slate-200 dark:border-white/10 overflow-hidden shrink-0 hover:scale-105 active:scale-95 transition-all shadow-xs"
-                                                                                                                title="View Selfie"
-                                                                                                            >
-                                                                                                                <img src={session.time_out_image} alt="Out Selfie" className="w-full h-full object-cover" />
-                                                                                                            </button>
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                </div>
-
-                                                                                                {/* Late Reason Note */}
-                                                                                                {session.late_minutes > 0 && (
-                                                                                                    <div className="w-full md:w-auto p-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200/50 dark:border-amber-500/20 rounded-lg flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
-                                                                                                        <AlertCircle size={14} className="shrink-0" />
-                                                                                                        <span>Late: {session.late_minutes}m {session.late_reason ? `(${session.late_reason})` : ''}</span>
-                                                                                                    </div>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        );
-                                                                                    })}
-                                                                                </div>
-                                                                            </div>
-                                                                        </motion.div>
-                                                                    )}
-                                                                </AnimatePresence>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
+                                <AttendanceHistoryTab
+                                    handlePrevMonth={handlePrevMonth}
+                                    handleNextMonth={handleNextMonth}
+                                    handleCurrentMonth={handleCurrentMonth}
+                                    reportYear={reportYear}
+                                    reportMonthIdx={reportMonthIdx}
+                                    monthlySessions={monthlySessions}
+                                    groupedHistoryWeeks={groupedHistoryWeeks}
+                                    expandedDays={expandedDays}
+                                    toggleDayExpansion={toggleDayExpansion}
+                                    getStatusStyle={getStatusStyle}
+                                    formatTime={formatTime}
+                                    calculateDuration={calculateDuration}
+                                    setPreviewImage={setPreviewImage}
+                                    myShift={myShift}
+                                    setIsCorrectionDrawerOpen={setIsCorrectionDrawerOpen}
+                                    handleOpenCheckpointModal={handleOpenCheckpointModal}
+                                    setSubTab={setSubTab}
+                                />
                             )}
 
                             {/* SUB-TAB: ANALYTICS */}
                             {subTab === 'analytics' && (
-                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                    {/* Date Filters */}
-                                    <div className="bg-white dark:bg-dark-card p-4 rounded-2xl border border-slate-200 dark:border-github-dark-border flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-                                                <CalendarIcon size={20} />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-xs font-black text-slate-800 dark:text-github-dark-text uppercase tracking-wider">Analytics Period</h4>
-                                                <p className="text-[11px] text-slate-400 dark:text-github-dark-muted font-bold mt-0.5">Configure the date range for metrics and charts</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            {/* Filter Type Segment Selector */}
-                                            <div className="bg-slate-100 dark:bg-white/5 p-1 rounded-xl flex gap-1 border border-slate-200/50 dark:border-white/5 shrink-0">
-                                                {[
-                                                    { id: 'this_month', label: 'This Month' },
-                                                    { id: 'last_month', label: 'Last Month' },
-                                                    { id: 'select_month', label: 'Select Month' },
-                                                    { id: 'custom', label: 'Custom' },
-                                                ].map(type => (
-                                                    <button
-                                                        key={type.id}
-                                                        type="button"
-                                                        onClick={() => setAnalyticsFilterType(type.id)}
-                                                        className={`px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider rounded-lg transition-all ${analyticsFilterType === type.id
-                                                                ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
-                                                            }`}
-                                                    >
-                                                        {type.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-
-                                            {/* Contextual Inputs */}
-                                            {analyticsFilterType === 'select_month' && (
-                                                <div className="w-44">
-                                                    <MonthPicker
-                                                        value={analyticsSelectedMonth}
-                                                        onChange={(val) => setAnalyticsSelectedMonth(val)}
-                                                        compact={true}
-                                                    />
-                                                </div>
-                                            )}
-
-                                            {analyticsFilterType === 'custom' && (
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-36">
-                                                        <DatePicker
-                                                            value={analyticsStartDate}
-                                                            onChange={(val) => setAnalyticsStartDate(val)}
-                                                            compact={true}
-                                                            placeholder="Start Date"
-                                                        />
-                                                    </div>
-                                                    <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-black uppercase">To</span>
-                                                    <div className="w-36">
-                                                        <DatePicker
-                                                            value={analyticsEndDate}
-                                                            onChange={(val) => setAnalyticsEndDate(val)}
-                                                            compact={true}
-                                                            placeholder="End Date"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {analyticsLoading ? (
-                                        <div className="py-20 flex flex-col items-center justify-center bg-white dark:bg-dark-card rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm">
-                                            <RefreshCw className="w-10 h-10 animate-spin text-indigo-600 dark:text-indigo-400 mb-4" />
-                                            <p className="text-xs font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest">Compiling Analytics Data...</p>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            {/* 1. KPI Cards Row */}
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                                                {/* Card 1: Total Days */}
-                                                <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
-                                                    <div>
-                                                        <p className="text-sm text-slate-500 font-medium">Total Days</p>
-                                                        <h3 className="text-3xl font-bold text-slate-800 dark:text-github-dark-text mt-1">{analyticsSessions.length}</h3>
-                                                    </div>
-                                                    <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                                                        <CalendarIcon size={24} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border relative overflow-hidden">
-                                                    <div className="flex justify-between items-start z-10 relative">
-                                                        <div>
-                                                            <p className="text-sm text-slate-500 font-medium">Present</p>
-                                                            <h3 className="text-3xl font-bold text-slate-800 dark:text-github-dark-text mt-1">
-                                                                {analyticsSessions.length > 0 ? Math.round((analyticsSessions.filter(s => s.status !== 'ABSENT' && s.status !== 'LATE' && s.status !== 'OVERTIME').length / analyticsSessions.length) * 100) : 0}%
-                                                            </h3>
-                                                        </div>
-                                                        <div className="h-12 w-12 rounded-full border-4 border-emerald-100 dark:border-emerald-900/30 border-t-emerald-500 flex items-center justify-center">
-                                                            <span className="text-[10px] font-bold text-emerald-600">
-                                                                {analyticsSessions.length > 0 ? Math.round((analyticsSessions.filter(s => s.status !== 'ABSENT' && s.status !== 'LATE' && s.status !== 'OVERTIME').length / analyticsSessions.length) * 100) : 0}%
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Card 3: Late % */}
-                                                <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border relative overflow-hidden">
-                                                    <div className="flex justify-between items-start z-10 relative">
-                                                        <div>
-                                                            <p className="text-sm text-slate-500 font-medium">Late</p>
-                                                            <h3 className="text-3xl font-bold text-slate-800 dark:text-github-dark-text mt-1">
-                                                                {analyticsSessions.length > 0 ? Math.round((analyticsSessions.filter(s => s.late_minutes > 0).length / analyticsSessions.length) * 100) : 0}%
-                                                            </h3>
-                                                        </div>
-                                                        <div className="h-12 w-12 rounded-full border-4 border-amber-100 dark:border-amber-900/30 border-t-amber-500 flex items-center justify-center">
-                                                            <span className="text-[10px] font-bold text-amber-600">
-                                                                {analyticsSessions.length > 0 ? Math.round((analyticsSessions.filter(s => s.late_minutes > 0).length / analyticsSessions.length) * 100) : 0}%
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Card 4: Overtime Days */}
-                                                <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
-                                                    <div>
-                                                        <p className="text-sm text-slate-500 font-medium">Overtime</p>
-                                                        <h3 className="text-3xl font-bold text-slate-800 dark:text-github-dark-text mt-1">
-                                                            {analyticsSessions.filter(s => s.status === 'OVERTIME').length}
-                                                        </h3>
-                                                    </div>
-                                                    <div className="w-12 h-12 rounded-full bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400">
-                                                        <History size={24} />
-                                                    </div>
-                                                </div>
-
-                                                {/* Card 5: Avg Hours */}
-                                                <div className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border flex items-center justify-between">
-                                                    <div>
-                                                        <p className="text-sm text-slate-500 font-medium">Avg Hours</p>
-                                                        <h3 className="text-3xl font-bold text-slate-800 dark:text-github-dark-text mt-1">
-                                                            {analyticsSessions.length > 0
-                                                                ? (analyticsSessions.reduce((acc, s) => acc + getSessionHours(s), 0) / analyticsSessions.length).toFixed(1)
-                                                                : '0'}
-                                                        </h3>
-                                                    </div>
-                                                    <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                                                        <Clock size={24} />
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* 2. Attendance Trends (Full Width) */}
-                                            <div className="bg-white dark:bg-dark-card p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border">
-                                                <div className="flex justify-between items-center mb-6">
-                                                    <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Total Attendance Report</h3>
-                                                    <button className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400">
-                                                        <MoreVertical size={18} />
-                                                    </button>
-                                                </div>
-                                                <div className="h-72">
-                                                    <Bar
-                                                        data={chartData}
-                                                        options={{
-                                                            responsive: true,
-                                                            maintainAspectRatio: false,
-                                                            plugins: {
-                                                                legend: { display: false },
-                                                                tooltip: {
-                                                                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                                                                    titleColor: '#fff',
-                                                                    bodyColor: '#e2e8f0',
-                                                                    borderColor: 'rgba(255, 255, 255, 0.1)',
-                                                                    borderWidth: 1,
-                                                                    padding: 12,
-                                                                    boxPadding: 6,
-                                                                    usePointStyle: true,
-                                                                    callbacks: {
-                                                                        title: function (context) {
-                                                                            const index = context[0].dataIndex;
-                                                                            const session = context[0].dataset.sessions?.[index];
-                                                                            if (session) {
-                                                                                const dateStr = session.check_in || session.time_in;
-                                                                                if (dateStr) {
-                                                                                    return new Date(dateStr).toLocaleDateString('en-US', {
-                                                                                        weekday: 'long',
-                                                                                        year: 'numeric',
-                                                                                        month: 'short',
-                                                                                        day: 'numeric'
-                                                                                    });
-                                                                                }
-                                                                            }
-                                                                            return context[0].label;
-                                                                        },
-                                                                        label: function (context) {
-                                                                            const index = context.dataIndex;
-                                                                            const session = context.dataset.sessions?.[index];
-                                                                            const hours = context.parsed.y;
-                                                                            const labelLines = [`Worked: ${hours} hrs`];
-                                                                            if (session) {
-                                                                                if (session.status) {
-                                                                                    labelLines.push(`Status: ${session.status}`);
-                                                                                }
-                                                                                if (session.time_in) {
-                                                                                    const inTime = new Date(session.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                                                                                    labelLines.push(`In: ${inTime}`);
-                                                                                }
-                                                                                if (session.time_out) {
-                                                                                    const outTime = new Date(session.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                                                                                    labelLines.push(`Out: ${outTime}`);
-                                                                                } else if (session.time_in) {
-                                                                                    labelLines.push(`Out: Active / Missed`);
-                                                                                }
-                                                                            }
-                                                                            return labelLines;
-                                                                        }
-                                                                    }
-                                                                }
-                                                            },
-                                                            scales: {
-                                                                y: {
-                                                                    beginAtZero: true,
-                                                                    grid: { color: 'rgba(200, 200, 200, 0.1)', borderDash: [5, 5] },
-                                                                    ticks: { color: '#94a3b8' }
-                                                                },
-                                                                x: {
-                                                                    grid: { display: false },
-                                                                    ticks: { color: '#94a3b8' }
-                                                                }
-                                                            },
-                                                            borderRadius: 6,
-                                                            barThickness: 24
-                                                        }}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* 3. Bottom Row: Status & Weekly Pattern */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                {/* Status Breakdown */}
-                                                <div className="bg-white dark:bg-dark-card p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border">
-                                                    <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text mb-6">Attendance Status</h3>
-                                                    <div className="h-64 flex justify-center relative">
-                                                        <Pie
-                                                            data={pieData}
-                                                            options={{
-                                                                responsive: true,
-                                                                maintainAspectRatio: false,
-                                                                plugins: {
-                                                                    legend: {
-                                                                        position: 'right',
-                                                                        labels: { usePointStyle: true, boxWidth: 8, padding: 20 }
-                                                                    }
-                                                                }
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                {/* Weekly Activity Line/Area Chart */}
-                                                <div className="bg-white dark:bg-dark-card p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border">
-                                                    <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text mb-6">Weekly Activity</h3>
-                                                    <div className="h-64">
-                                                        <Line
-                                                            data={{
-                                                                labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-                                                                datasets: [{
-                                                                    label: 'Avg Hours',
-                                                                    data: [0, 1, 2, 3, 4, 5, 6].map(d => {
-                                                                        const sessionsOnDay = analyticsSessions.filter(s => new Date(s.time_in).getDay() === d);
-                                                                        if (sessionsOnDay.length === 0) return 0;
-                                                                        const total = sessionsOnDay.reduce((acc, s) => acc + getSessionHours(s), 0);
-                                                                        return parseFloat((total / sessionsOnDay.length).toFixed(1));
-                                                                    }),
-                                                                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                                                                    borderColor: '#4f46e5',
-                                                                    borderWidth: 2,
-                                                                    tension: 0.4,
-                                                                    fill: true,
-                                                                    pointBackgroundColor: '#4f46e5',
-                                                                    pointHoverRadius: 6,
-                                                                }]
-                                                            }}
-                                                            options={{
-                                                                responsive: true,
-                                                                maintainAspectRatio: false,
-                                                                plugins: {
-                                                                    legend: { display: false },
-                                                                    tooltip: {
-                                                                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                                                                        titleColor: '#fff',
-                                                                        bodyColor: '#e2e8f0',
-                                                                        callbacks: {
-                                                                            label: function (context) {
-                                                                                return `Avg Hours: ${context.parsed.y} hrs`;
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                },
-                                                                scales: {
-                                                                    y: {
-                                                                        beginAtZero: true,
-                                                                        grid: { color: 'rgba(200, 200, 200, 0.1)', borderDash: [5, 5] },
-                                                                        ticks: { color: '#94a3b8' }
-                                                                    },
-                                                                    x: {
-                                                                        grid: { display: false },
-                                                                        ticks: { color: '#94a3b8' }
-                                                                    }
-                                                                }
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
+                                <AttendanceAnalyticsTab
+                                    analyticsFilterType={analyticsFilterType}
+                                    setAnalyticsFilterType={setAnalyticsFilterType}
+                                    analyticsSelectedMonth={analyticsSelectedMonth}
+                                    setAnalyticsSelectedMonth={setAnalyticsSelectedMonth}
+                                    analyticsStartDate={analyticsStartDate}
+                                    setAnalyticsStartDate={setAnalyticsStartDate}
+                                    analyticsEndDate={analyticsEndDate}
+                                    setAnalyticsEndDate={setAnalyticsEndDate}
+                                    analyticsLoading={analyticsLoading}
+                                    analyticsSessions={analyticsSessions}
+                                    getSessionHours={getSessionHours}
+                                    chartData={chartData}
+                                    pieData={pieData}
+                                />
                             )}
                             {/* SUB-TAB: CORRECTION REQUESTS */}
                             {subTab === 'correction' && (
-                                <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-                                    {/* Split Panel */}
-                                    <div className="flex flex-col lg:flex-row gap-6 items-start">
-                                        {/* LEFT — Request List */}
-                                        <div
-                                            data-tour-id="att-correction-list"
-                                            className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col lg:sticky lg:top-6"
-                                            style={{ height: 'calc(100vh - 120px)', minHeight: '650px' }}
-                                        >
-                                            <div className="p-4 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-center">
-                                                <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text uppercase tracking-wider">My Requests</h3>
-                                                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-800">
-                                                    {correctionHistory.length} Total
-                                                </span>
-                                            </div>
-                                            <div className="overflow-y-auto flex-1 p-3 space-y-2 no-scrollbar">
-                                                {loading ? (
-                                                    <div className="p-10 text-center text-slate-400 text-sm">Loading…</div>
-                                                ) : correctionHistory.length === 0 ? (
-                                                    <div className="p-10 text-center">
-                                                        <FileClock size={32} className="mx-auto mb-3 text-slate-300 dark:text-slate-600" />
-                                                        <p className="text-sm text-slate-400 dark:text-github-dark-muted italic">No correction requests yet.</p>
-                                                    </div>
-                                                ) : (
-                                                    correctionHistory.map((req) => (
-                                                        <div
-                                                            key={req.acr_id}
-                                                            onClick={() => handleRequestClick(req)}
-                                                            className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm ${selectedRequest?.acr_id === req.acr_id
-                                                                    ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border-indigo-400/40 dark:border-indigo-500/40 shadow-indigo-500/5'
-                                                                    : 'bg-slate-50/40 dark:bg-github-dark-subtle/20 border-slate-200/60 dark:border-github-dark-border/80 hover:bg-slate-50/80 dark:hover:bg-github-dark-subtle/40 hover:border-slate-300 dark:hover:border-github-dark-border'
-                                                                }`}
-                                                        >
-                                                            <div className="flex justify-between items-start mb-3">
-                                                                <div className="flex items-center gap-2.5">
-                                                                    <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
-                                                                        {req.profile_image_url && req.profile_image_url.startsWith('http') ? (
-                                                                            <img src={req.profile_image_url} alt={req.user_name} className="w-full h-full object-cover" />
-                                                                        ) : (
-                                                                            (req.user_name || 'U').charAt(0).toUpperCase()
-                                                                        )}
-                                                                    </div>
-                                                                    <div>
-                                                                        <p className={`text-xs font-bold leading-none ${selectedRequest?.acr_id === req.acr_id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-github-dark-text'}`}>{req.user_name}</p>
-                                                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium mt-1 inline-block">ID: {req.user_id}</span>
-                                                                    </div>
-                                                                </div>
-                                                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${req.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                                                                        : req.status === 'rejected' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                                                                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                                                                    }`}>{req.status}</span>
-                                                            </div>
-                                                            <p className={`text-sm font-semibold mb-1 ${selectedRequest?.acr_id === req.acr_id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-github-dark-text'}`}>
-                                                                {formatCorrectionDate(req.request_date)}
-                                                            </p>
-                                                            <p className="text-xs text-slate-500 dark:text-github-dark-muted italic line-clamp-1">"{req.reason}"</p>
-                                                            <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2.5 font-mono border-t border-slate-100/50 dark:border-github-dark-border/30 pt-2">
-                                                                <span>Sub. {req.submitted_at ? formatCorrectionDate(req.submitted_at) : '—'}</span>
-                                                                <span className="font-bold text-[9px] text-indigo-600 dark:text-indigo-400 bg-transparent dark:bg-transparent p-0">{(req.correction_type || '').replace('_', ' ')}</span>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div
-                                            className="w-full lg:w-2/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col lg:sticky lg:top-6"
-                                            style={{ height: 'calc(100vh - 120px)', minHeight: '650px' }}
-                                        >
-                                            {isFetchingDetails ? (
-                                                <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400">
-                                                    <RefreshCw className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
-                                                    <p className="text-xs font-bold uppercase tracking-wider">Fetching details…</p>
-                                                </div>
-                                            ) : selectedRequest ? (
-                                                <>
-                                                    {/* Detail Header */}
-                                                    <div className="p-5 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-start">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-sm text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
-                                                                {selectedRequest.profile_image_url && selectedRequest.profile_image_url.startsWith('http') ? (
-                                                                    <img src={selectedRequest.profile_image_url} alt={selectedRequest.user_name} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    (selectedRequest.user_name || 'U').charAt(0).toUpperCase()
-                                                                )}
-                                                            </div>
-                                                            <div>
-                                                                <h2 className="text-lg font-bold text-slate-900 dark:text-github-dark-text mb-0.5">Request #{selectedRequest.acr_id}</h2>
-                                                                <p className="text-xs text-slate-500 dark:text-github-dark-muted">
-                                                                    By <span className="font-bold text-slate-700 dark:text-slate-300">{selectedRequest.user_name}</span> • {formatCorrectionDate(selectedRequest.request_date)}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-2.5">
-                                                            {selectedRequest.status === 'pending' && (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setCorrDate(selectedRequest.request_date);
-                                                                        setIsCorrectionDrawerOpen(true);
-                                                                    }}
-                                                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm shadow-indigo-600/20 hover:shadow-indigo-600/30 transition-all active:scale-95 cursor-pointer"
-                                                                >
-                                                                    <Edit3 size={13} /> Edit Request
-                                                                </button>
-                                                            )}
-                                                            <span className={`text-xs font-bold uppercase px-3 py-1.5 rounded-lg border ${selectedRequest.status === 'approved'
-                                                                    ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/30'
-                                                                    : selectedRequest.status === 'rejected'
-                                                                        ? 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/30'
-                                                                        : 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/30'
-                                                                }`}>
-                                                                {selectedRequest.status}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="flex-1 overflow-y-auto no-scrollbar">
-
-                                                        {/* ── Visual Sync Timeline ── */}
-                                                        {(() => {
-                                                            const originalSnap = Array.isArray(selectedRequest.original_data) ? selectedRequest.original_data : [];
-                                                            const proposedSnap = Array.isArray(selectedRequest.proposed_data) ? selectedRequest.proposed_data : [];
-                                                            const fmtTime = (t) => t ? String(t).substring(0, 5) : '';
-                                                            const originalTasks = originalSnap.map((s, i) => ({ id: `orig-${i}`, startTime: fmtTime(s.time_in), endTime: fmtTime(s.time_out) })).filter(t => t.startTime && t.endTime);
-                                                            const proposedTasks = proposedSnap.map((s, i) => ({ id: `prop-${i}`, startTime: fmtTime(s.time_in), endTime: fmtTime(s.time_out) })).filter(t => t.startTime && t.endTime);
-                                                            const allTasks = [...originalTasks, ...proposedTasks];
-                                                            if (allTasks.length === 0) return null;
-                                                            const getMinutes = (t, isEnd = false, startT = null) => { 
-                                                                if (!t) return 0;
-                                                                const [h, m] = t.split(':').map(Number); 
-                                                                let mins = (h || 0) * 60 + (m || 0);
-                                                                if (isEnd && startT) {
-                                                                    const [sh, sm] = startT.split(':').map(Number);
-                                                                    const sMins = (sh || 0) * 60 + (sm || 0);
-                                                                    if (mins <= sMins) mins += 1440; // Overnight +1 Day
-                                                                }
-                                                                return mins;
-                                                            };
-                                                            let minMin = Math.min(...allTasks.map(t => getMinutes(t.startTime)));
-                                                            let maxMin = Math.max(...allTasks.map(t => getMinutes(t.endTime, true, t.startTime)));
-                                                            let startHour = Math.max(0, Math.floor((minMin - 60) / 60));
-                                                            let endHour = Math.ceil((maxMin + 60) / 60);
-                                                            const span = Math.max(1, endHour - startHour);
-                                                            const timeToPos = (time, isEnd = false, startT = null) => { 
-                                                                if (!time) return 0; 
-                                                                const mins = getMinutes(time, isEnd, startT); 
-                                                                return Math.max(0, Math.min(100, ((mins - startHour * 60) / (span * 60)) * 100)); 
-                                                            };
-                                                            const getDurationPct = (s, e) => Math.max(0, timeToPos(e, true, s) - timeToPos(s));
-                                                            const changesList = [];
-                                                            const origCopy = originalTasks.map(t => ({ ...t }));
-                                                            proposedTasks.forEach(prop => {
-                                                                const match = origCopy.find(o => o.startTime === prop.startTime && o.endTime === prop.endTime);
-                                                                if (match) { match.matched = true; } else {
-                                                                    const over = origCopy.find(o => !o.matched && (Math.abs(getMinutes(o.startTime) - getMinutes(prop.startTime)) < 120 || Math.abs(getMinutes(o.endTime, true, o.startTime) - getMinutes(prop.endTime, true, prop.startTime)) < 120));
-                                                                    if (over) { over.matched = true; changesList.push({ type: 'MODIFY', task: prop, original: over }); }
-                                                                    else { changesList.push({ type: 'ADD', task: prop }); }
-                                                                }
-                                                            });
-                                                            origCopy.filter(o => !o.matched).forEach(o => changesList.push({ type: 'DELETE', task: o }));
-                                                            const hourStep = span > 8 ? 2 : 1;
-                                                            return (
-                                                                <div className="bg-slate-50 dark:bg-[#13151f] border-b border-slate-200 dark:border-github-dark-border px-6 pt-4 pb-5">
-                                                                    {/* Title row */}
-                                                                    <div className="flex items-center gap-2 mb-4">
-                                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Visual Sync Timeline</span>
-                                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800">
-                                                                            {(selectedRequest.correction_type || 'correction').toUpperCase()}
-                                                                        </span>
-                                                                        {/* Legend */}
-                                                                        <div className="ml-auto flex items-center gap-3 text-[9px] font-bold uppercase text-slate-400">
-                                                                            <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded-sm bg-slate-400/30 border border-slate-400/40"></span>Original</span>
-                                                                            <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded-sm bg-emerald-500/20 border border-emerald-500/40"></span>Proposed</span>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Scale */}
-                                                                    <div className="relative mb-1 h-5">
-                                                                        {Array.from({ length: span + 1 }, (_, i) => startHour + i)
-                                                                            .filter((_, i) => i % hourStep === 0)
-                                                                            .map((h, i, arr) => (
-                                                                                <span key={h} className="absolute text-[9px] text-slate-400 font-mono -translate-x-1/2" style={{ left: `${((h - startHour) / span) * 100}%` }}>
-                                                                                    {h}:00
-                                                                                </span>
-                                                                            ))}
-                                                                    </div>
-
-                                                                    {/* Tick lines + rows */}
-                                                                    <div className="relative">
-                                                                        {/* Vertical grid lines */}
-                                                                        <div className="absolute inset-0 pointer-events-none flex">
-                                                                            {Array.from({ length: span + 1 }, (_, i) => i).map(i => (
-                                                                                <div key={i} className="absolute top-0 bottom-0 border-l border-dashed border-slate-300/40 dark:border-github-dark-border/40" style={{ left: `${(i / span) * 100}%` }} />
-                                                                            ))}
-                                                                        </div>
-
-                                                                        {/* Original row */}
-                                                                        <div className="mb-1">
-                                                                            <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Original</div>
-                                                                            <div className="relative h-8 bg-slate-200/40 dark:bg-slate-800/40 rounded-lg border border-slate-200 dark:border-github-dark-border/50 overflow-hidden">
-                                                                                {originalTasks.map(task => (
-                                                                                    <div key={task.id}
-                                                                                        className="absolute inset-y-1 rounded-md bg-slate-400/25 border border-slate-400/40 flex items-center justify-center overflow-hidden"
-                                                                                        style={{ left: `${timeToPos(task.startTime)}%`, width: `${getDurationPct(task.startTime, task.endTime)}%` }}>
-                                                                                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 px-1 truncate">{fmtTime(task.startTime)}–{fmtTime(task.endTime)}</span>
-                                                                                    </div>
-                                                                                ))}
-                                                                                {originalTasks.length === 0 && (
-                                                                                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Original Records</div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-
-                                                                        {/* Proposed row */}
-                                                                        <div>
-                                                                            <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Proposed</div>
-                                                                            <div className="relative h-8 bg-slate-200/40 dark:bg-slate-800/40 rounded-lg border border-slate-200 dark:border-github-dark-border/50 overflow-hidden">
-                                                                                {proposedTasks.map(task => {
-                                                                                    const isNew = changesList.some(c => c.type === 'ADD' && c.task.id === task.id);
-                                                                                    const isChanged = changesList.some(c => c.type === 'MODIFY' && c.task.id === task.id);
-                                                                                    const cls = isNew
-                                                                                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-600 dark:text-emerald-400'
-                                                                                        : isChanged
-                                                                                            ? 'bg-amber-500/20 border-amber-500/50 text-amber-600 dark:text-amber-400'
-                                                                                            : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-600 dark:text-indigo-400';
-                                                                                    return (
-                                                                                        <div key={task.id}
-                                                                                            className={`absolute inset-y-1 rounded-md border flex items-center justify-center overflow-hidden ${cls}`}
-                                                                                            style={{ left: `${timeToPos(task.startTime)}%`, width: `${getDurationPct(task.startTime, task.endTime)}%` }}>
-                                                                                            {isNew && <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]" />}
-                                                                                            <span className="text-[10px] font-mono font-bold px-1 truncate">{fmtTime(task.startTime)}–{fmtTime(task.endTime)}</span>
-                                                                                        </div>
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })()}
-
-                                                        {/* ── Info Cards ── */}
-                                                        <div className="p-5 space-y-4">
-
-                                                            {/* Meta row */}
-                                                            <div className="grid grid-cols-2 gap-3">
-                                                                <div className="bg-slate-50 dark:bg-github-dark-subtle/40 rounded-xl p-3 border border-slate-100 dark:border-github-dark-border/50">
-                                                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Correction Type</p>
-                                                                    <p className="text-xs font-bold text-slate-700 dark:text-github-dark-text capitalize">
-                                                                        {selectedRequest.correction_type === 'summary' ? 'Summary Adjustment' : 'Punch Attendance'}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="bg-slate-50 dark:bg-github-dark-subtle/40 rounded-xl p-3 border border-slate-100 dark:border-github-dark-border/50">
-                                                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Submitted Date</p>
-                                                                    <p className="text-xs font-bold text-slate-700 dark:text-github-dark-text">
-                                                                        {selectedRequest.submitted_at ? new Date(selectedRequest.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Proposed Sessions */}
-                                                            {Array.isArray(selectedRequest.proposed_data) && selectedRequest.proposed_data.length > 0 && (
-                                                                <div className="bg-slate-50 dark:bg-[#1a1c26] rounded-xl border border-slate-200 dark:border-github-dark-border overflow-hidden">
-                                                                    <div className="px-4 py-3 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between">
-                                                                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-github-dark-text">Proposed Sessions</h3>
-                                                                        <span className="text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
-                                                                            {selectedRequest.proposed_data.length} session{selectedRequest.proposed_data.length !== 1 ? 's' : ''}
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="divide-y divide-slate-100 dark:divide-github-dark-border">
-                                                                        {selectedRequest.proposed_data.map((s, i) => (
-                                                                            <div key={i} className="flex items-center px-4 py-3 gap-4">
-                                                                                <span className="text-[10px] font-black text-slate-400 w-5 shrink-0">#{i + 1}</span>
-                                                                                <div className="flex items-center gap-2 flex-1">
-                                                                                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-                                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">In</span>
-                                                                                    <span className="text-sm font-black text-slate-800 dark:text-github-dark-text font-mono">{String(s.time_in || '').substring(0, 5)}</span>
-                                                                                </div>
-                                                                                <span className="text-slate-300 dark:text-slate-600">→</span>
-                                                                                <div className="flex items-center gap-2 flex-1 justify-end">
-                                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Out</span>
-                                                                                    <span className="text-sm font-black text-slate-800 dark:text-github-dark-text font-mono">{String(s.time_out || '').substring(0, 5)}</span>
-                                                                                    <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span>
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Reason & Attachment */}
-                                                            <div className="bg-slate-50 dark:bg-[#1e202e] rounded-xl border border-slate-200 dark:border-github-dark-border p-4 space-y-3">
-                                                                <div>
-                                                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1.5">
-                                                                        <FileClock size={12} /> Request Reason
-                                                                    </h3>
-                                                                    <p className="text-sm text-slate-700 dark:text-slate-200 italic leading-relaxed">
-                                                                        "{selectedRequest.reason || 'No reason provided.'}"
-                                                                    </p>
-                                                                </div>
-
-                                                                {/* Supporting Attachment Document */}
-                                                                {selectedRequest.attachment_url && (
-                                                                    <div className="pt-2.5 border-t border-slate-200/80 dark:border-github-dark-border flex items-center justify-between">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Paperclip size={13} className="text-indigo-500" />
-                                                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Supporting Proof</span>
-                                                                        </div>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => setPreviewImage(selectedRequest.attachment_url)}
-                                                                            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-800/40 px-2.5 py-1 rounded-lg hover:shadow-xs transition-all cursor-pointer"
-                                                                        >
-                                                                            <Eye size={12} /> View Attachment
-                                                                        </button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Reviewer Decision */}
-                                                            {selectedRequest.status !== 'pending' && (
-                                                                <div className={`rounded-xl border p-4 ${selectedRequest.status === 'approved'
-                                                                        ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/30'
-                                                                        : 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800/30'
-                                                                    }`}>
-                                                                    <h3 className={`text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-1.5 ${selectedRequest.status === 'approved'
-                                                                            ? 'text-emerald-600 dark:text-emerald-400'
-                                                                            : 'text-red-600 dark:text-red-400'
-                                                                        }`}>
-                                                                        <CheckCircle size={12} /> Reviewer Decision
-                                                                    </h3>
-                                                                    <p className="text-sm text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
-                                                                        {selectedRequest.review_comments || 'No reviewer comments provided.'}
-                                                                    </p>
-                                                                    <p className="mt-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                                                                        Reviewed {selectedRequest.reviewed_at ? formatDateDisplay(selectedRequest.reviewed_at) : '—'}
-                                                                    </p>
-                                                                </div>
-                                                            )}
-
-                                                        </div>
-                                                    </div>
-
-                                                </>
-                                            ) : (
-                                                <div className="flex-1 flex flex-col items-center justify-center h-full text-slate-400 p-12">
-                                                    <FileText size={48} className="mb-4 opacity-40" />
-                                                    <p className="text-sm">Select a request to view details</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                    </div>
-                                </div>
+                                <AttendanceCorrectionTab
+                                    filteredCorrectionHistory={filteredCorrectionHistory}
+                                    correctionHistory={correctionHistory}
+                                    correctionFilter={correctionFilter}
+                                    setCorrectionFilter={setCorrectionFilter}
+                                    loading={loading}
+                                    selectedRequest={selectedRequest}
+                                    handleRequestClick={handleRequestClick}
+                                    calculateSessionDurationHours={calculateSessionDurationHours}
+                                    formatCorrectionDate={formatCorrectionDate}
+                                    formatDateDisplay={formatDateDisplay}
+                                    isFetchingDetails={isFetchingDetails}
+                                    isAdminUser={isAdminUser}
+                                    isOverrideMode={isOverrideMode}
+                                    setIsOverrideMode={setIsOverrideMode}
+                                    setShowAdminRejectModal={setShowAdminRejectModal}
+                                    showAdminRejectModal={showAdminRejectModal}
+                                    adminRejectReason={adminRejectReason}
+                                    setAdminRejectReason={setAdminRejectReason}
+                                    handleAdminReject={handleAdminReject}
+                                    isAdminActionLoading={isAdminActionLoading}
+                                    handleAdminApprove={handleAdminApprove}
+                                    handleEmployeeUpdateRequest={handleEmployeeUpdateRequest}
+                                    isSavingCorrection={isSavingCorrection}
+                                    handleResetToEmployeeRequest={handleResetToEmployeeRequest}
+                                    editCorrectionSessions={editCorrectionSessions}
+                                    setEditCorrectionSessions={setEditCorrectionSessions}
+                                    normalizeCorrectionSessions={normalizeCorrectionSessions}
+                                    setPreviewImage={setPreviewImage}
+                                    editCorrectionReason={editCorrectionReason}
+                                    setEditCorrectionReason={setEditCorrectionReason}
+                                />
                             )}
                             {/* SUB-TAB: REPORTS (Self-Service) */}
                             {subTab === 'reports' && (
-                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                    {/* Control Bar: Generate Report */}
-                                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border p-4 space-y-4">
-                                        {/* Parameters Grid */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 items-end">
-                                            {/* Report Type Dropdown */}
-                                            <div className="relative xl:col-span-4" ref={reportsTypeDropdownRef}>
-                                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Report Type</label>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setReportsIsTypeDropdownOpen(!reportsIsTypeDropdownOpen)}
-                                                    className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
-                                                >
-                                                    <span className="truncate">
-                                                        {(() => {
-                                                            const opts = [
-                                                                { value: 'attendance_detailed', label: 'Detailed Attendance Report' },
-                                                                { value: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
-                                                                { value: 'matrix_daily', label: 'Daily Attendance Report' },
-                                                                { value: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix' },
-                                                                { value: 'matrix_monthly', label: 'Monthly Attendance Report' },
-                                                                { value: 'attendance_summary', label: 'Monthly Summary Report' },
-                                                                { value: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix' },
-                                                                { value: 'matrix_weekly', label: 'Weekly Attendance Report' }
-                                                            ];
-                                                            return opts.find(o => o.value === reportsReportType)?.label || reportsReportType;
-                                                        })()}
-                                                    </span>
-                                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${reportsIsTypeDropdownOpen ? 'rotate-180' : ''}`} />
-                                                </button>
-
-                                                {reportsIsTypeDropdownOpen && (
-                                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
-                                                        {[
-                                                            { value: 'attendance_detailed', label: 'Detailed Attendance Report' },
-                                                            { value: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
-                                                            { value: 'matrix_daily', label: 'Daily Attendance Report' },
-                                                            { value: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix' },
-                                                            { value: 'matrix_monthly', label: 'Monthly Attendance Report' },
-                                                            { value: 'attendance_summary', label: 'Monthly Summary Report' },
-                                                            { value: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix' },
-                                                            { value: 'matrix_weekly', label: 'Weekly Attendance Report' }
-                                                        ].map((opt) => (
-                                                            <button
-                                                                key={opt.value}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setReportsReportType(opt.value);
-                                                                    setReportsIsTypeDropdownOpen(false);
-                                                                }}
-                                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${reportsReportType === opt.value
-                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                                                                        : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                    }`}
-                                                            >
-                                                                {opt.label}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Date/Month/Week Pickers */}
-                                            <div className="xl:col-span-5">
-                                                {reportsUseCustomRange ? (
-                                                    <div className="grid grid-cols-2 gap-3.5">
-                                                        <DatePicker
-                                                            label="Start Date"
-                                                            value={reportsCustomStartDate}
-                                                            onChange={(val) => setReportsCustomStartDate(val)}
-                                                            compact={true}
-                                                        />
-                                                        <DatePicker
-                                                            label="End Date"
-                                                            value={reportsCustomEndDate}
-                                                            onChange={(val) => setReportsCustomEndDate(val)}
-                                                            compact={true}
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    <div>
-                                                        {['matrix_monthly', 'attendance_matrix_monthly', 'attendance_detailed', 'attendance_summary'].includes(reportsReportType) ? (
-                                                            <MonthPicker
-                                                                label="Select Month"
-                                                                value={reportsSelectedMonth}
-                                                                onChange={(val) => setReportsSelectedMonth(val)}
-                                                                compact={true}
-                                                            />
-                                                        ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportsReportType) ? (
-                                                            <div className="grid grid-cols-2 gap-3.5">
-                                                                <MonthPicker
-                                                                    label="Select Month"
-                                                                    value={reportsSelectedMonth}
-                                                                    onChange={(val) => setReportsSelectedMonth(val)}
-                                                                    compact={true}
-                                                                />
-                                                                <div className="relative" ref={reportsWeekDropdownRef}>
-                                                                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Select Week</label>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setReportsIsWeekDropdownOpen(!reportsIsWeekDropdownOpen)}
-                                                                        className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
-                                                                    >
-                                                                        <span className="truncate">{reportsWeeks.find(w => w.value === reportsSelectedWeek)?.label || 'Select Week'}</span>
-                                                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${reportsIsWeekDropdownOpen ? 'rotate-180' : ''}`} />
-                                                                    </button>
-
-                                                                    {reportsIsWeekDropdownOpen && (
-                                                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
-                                                                            {reportsWeeks.map((w, idx) => (
-                                                                                <button
-                                                                                    key={idx}
-                                                                                    type="button"
-                                                                                    onClick={() => {
-                                                                                        setReportsSelectedWeek(w.value);
-                                                                                        setReportsIsWeekDropdownOpen(false);
-                                                                                    }}
-                                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${reportsSelectedWeek === w.value
-                                                                                            ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                                                                                            : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                        }`}
-                                                                                >
-                                                                                    {w.label}
-                                                                                </button>
-                                                                            ))}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <DatePicker
-                                                                label="Select Date"
-                                                                value={reportsSelectedDate}
-                                                                onChange={(val) => setReportsSelectedDate(val)}
-                                                                compact={true}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Columns Selection Dropdown */}
-                                            <div className="relative xl:col-span-3" ref={reportsColsDropdownRef}>
-                                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Columns to Include</label>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setReportsIsColsDropdownOpen(!reportsIsColsDropdownOpen)}
-                                                    className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
-                                                >
-                                                    <span className="truncate">
-                                                        {Object.values(reportsExportColumns).filter(Boolean).length} Columns
-                                                    </span>
-                                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${reportsIsColsDropdownOpen ? 'rotate-180' : ''}`} />
-                                                </button>
-
-                                                {reportsIsColsDropdownOpen && (
-                                                    <div className="absolute right-0 mt-1 w-full min-w-[220px] bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-3 space-y-2.5">
-                                                        {[
-                                                            { id: 'shift', label: 'Shift' },
-                                                            { id: 'timeIn', label: 'Time In' },
-                                                            { id: 'timeOut', label: 'Time Out' },
-                                                            { id: 'workedHours', label: 'Worked Hours' },
-                                                            { id: 'requiredHours', label: 'Required Hours' },
-                                                            { id: 'late', label: 'Lateness Info' },
-                                                            { id: 'location', label: 'Locations' },
-                                                            { id: 'attendanceDays', label: 'Attendance Summary' }
-                                                        ].map((col) => (
-                                                            <button
-                                                                key={col.id}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setReportsExportColumns(prev => ({
-                                                                        ...prev,
-                                                                        [col.id]: !prev[col.id]
-                                                                    }));
-                                                                }}
-                                                                className="w-full flex items-center gap-2.5 cursor-pointer focus:outline-none group text-left"
-                                                            >
-                                                                <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${reportsExportColumns[col.id]
-                                                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
-                                                                        : 'bg-white dark:bg-github-dark-subtle border-slate-300 dark:border-github-dark-border group-hover:border-indigo-400 dark:group-hover:border-indigo-500'
-                                                                    }`}>
-                                                                    {reportsExportColumns[col.id] && (
-                                                                        <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <polyline points="20 6 9 17 4 12" />
-                                                                        </svg>
-                                                                    )}
-                                                                </div>
-                                                                <span className="text-xs font-semibold text-slate-600 dark:text-github-dark-muted select-none">
-                                                                    {col.label}
-                                                                </span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Action Toolbar */}
-                                        <div className="border-t border-slate-100 dark:border-[#30363d] pt-3 flex flex-col sm:flex-row items-center justify-between gap-4">
-                                            {/* Date Range Toggle */}
-                                            <div className="flex items-center">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setReportsUseCustomRange(!reportsUseCustomRange)}
-                                                    className="flex items-center gap-2.5 cursor-pointer focus:outline-none group"
-                                                >
-                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${reportsUseCustomRange
-                                                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
-                                                            : 'bg-white dark:bg-[#161b22] border-slate-300 dark:border-[#30363d] group-hover:border-indigo-400 dark:group-hover:border-indigo-500'
-                                                        }`}>
-                                                        {reportsUseCustomRange && (
-                                                            <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <polyline points="20 6 9 17 4 12" />
-                                                            </svg>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted select-none">
-                                                        Use Custom Date Range
-                                                    </span>
-                                                </button>
-                                            </div>
-
-                                            {/* Format Tabs & Action Buttons */}
-                                            <div data-tour-id="att-reports-download-actions" className="flex flex-wrap items-center gap-4 w-full sm:w-auto justify-end">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Format:</span>
-                                                    <div className="h-8 flex items-center p-1 bg-slate-100 dark:bg-[#161b22] rounded-md border border-slate-200 dark:border-[#30363d]">
-                                                        {[
-                                                            { id: 'xlsx', label: 'Excel' },
-                                                            { id: 'csv', label: 'CSV' },
-                                                            { id: 'pdf', label: 'PDF' }
-                                                        ].map((format) => {
-                                                            const isSelected = reportsFileFormat === format.id;
-                                                            return (
-                                                                <button
-                                                                    key={format.id}
-                                                                    type="button"
-                                                                    onClick={() => setReportsFileFormat(format.id)}
-                                                                    className={`h-full px-3 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${isSelected
-                                                                            ? 'bg-indigo-600 text-white shadow-sm'
-                                                                            : 'text-slate-500 hover:text-slate-700 dark:text-github-dark-muted dark:hover:text-github-dark-text'
-                                                                        }`}
-                                                                >
-                                                                    {format.label}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-
-                                                <button
-                                                    onClick={handleReportsGenerate}
-                                                    disabled={reportsIsGenerating}
-                                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-md shadow-md transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 h-8 text-[10px] cursor-pointer"
-                                                >
-                                                    {reportsIsGenerating ? (
-                                                        <>
-                                                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                                            <span>Generating...</span>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Download size={12} />
-                                                            <span>Download Report</span>
-                                                        </>
-                                                    )}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Preview and History Views */}
-                                    <div className="space-y-4">
-                                        {/* Tabs */}
-                                        <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-xl w-fit">
-                                            {[
-                                                { id: 'preview', label: 'Data Preview', icon: Eye },
-                                                { id: 'history', label: 'Export History', icon: DownloadCloud }
-                                            ].map((tab) => {
-                                                const isSelected = reportsActiveTab === tab.id;
-                                                return (
-                                                    <button
-                                                        key={tab.id}
-                                                        onClick={() => setReportsActiveTab(tab.id)}
-                                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ${isSelected
-                                                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                                                : 'text-slate-500 dark:text-github-dark-muted hover:text-slate-700 dark:hover:text-slate-202'
-                                                            }`}
-                                                    >
-                                                        <tab.icon size={15} className={`${isSelected ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
-                                                        <span className="leading-none">{tab.label}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {/* Content Card */}
-                                        <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden transition-all">
-                                            {reportsActiveTab === 'preview' && (
-                                                <>
-                                                    <div className="p-5 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/10 flex justify-between items-center shrink-0">
-                                                        <div>
-                                                            <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
-                                                                <Table className="text-slate-400" size={18} />
-                                                                Report Preview
-                                                            </h3>
-                                                            <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-1">
-                                                                Report data for <span className="font-medium text-slate-700 dark:text-slate-300">{reportsReportType.replace(/_/g, ' ')}</span>
-                                                            </p>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Report Summary Cards */}
-                                                    {reportsPreviewData.rows && reportsPreviewData.rows.length > 0 && reportsReportType !== 'employee_master' && (
-                                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 p-5 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/5">
-                                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex items-center justify-between">
-                                                                <div>
-                                                                    <span className="text-[10px] font-bold text-slate-450 dark:text-github-dark-muted uppercase tracking-wider">Total Present</span>
-                                                                    <h3 className="text-xl font-black text-emerald-600 mt-0.5">{reportsSummary.present}</h3>
-                                                                </div>
-                                                                <div className="p-2 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
-                                                                    <CheckCircle size={16} />
-                                                                </div>
-                                                            </div>
-                                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex items-center justify-between">
-                                                                <div>
-                                                                    <span className="text-[10px] font-bold text-slate-450 dark:text-github-dark-muted uppercase tracking-wider">Total Absent</span>
-                                                                    <h3 className="text-xl font-black text-rose-600 mt-0.5">{reportsSummary.absent}</h3>
-                                                                </div>
-                                                                <div className="p-2 bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 rounded-lg">
-                                                                    <XCircle size={16} />
-                                                                </div>
-                                                            </div>
-                                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex items-center justify-between">
-                                                                <div>
-                                                                    <span className="text-[10px] font-bold text-slate-455 dark:text-github-dark-muted uppercase tracking-wider">Total Leave</span>
-                                                                    <h3 className="text-xl font-black text-sky-600 mt-0.5">{reportsSummary.leave}</h3>
-                                                                </div>
-                                                                <div className="p-2 bg-sky-50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400 rounded-lg">
-                                                                    <CalendarIcon size={16} />
-                                                                </div>
-                                                            </div>
-                                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex items-center justify-between">
-                                                                <div>
-                                                                    <span className="text-[10px] font-bold text-slate-455 dark:text-github-dark-muted uppercase tracking-wider">Total Half Day</span>
-                                                                    <h3 className="text-xl font-black text-indigo-600 mt-0.5">{reportsSummary.halfDay}</h3>
-                                                                </div>
-                                                                <div className="p-2 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 rounded-lg">
-                                                                    <Clock size={16} />
-                                                                </div>
-                                                            </div>
-                                                            <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex items-center justify-between">
-                                                                <div>
-                                                                    <span className="text-[10px] font-bold text-slate-455 dark:text-github-dark-muted uppercase tracking-wider">Total Overtime</span>
-                                                                    <h3 className="text-xl font-black text-purple-600 mt-0.5">{reportsSummary.overtime.toFixed(1)}h</h3>
-                                                                </div>
-                                                                <div className="p-2 bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400 rounded-lg">
-                                                                    <TrendingUp size={16} />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    <div className="overflow-x-auto bg-slate-100 dark:bg-[#161b22]/50 p-4 border-t border-slate-200 dark:border-[#30363d] no-scrollbar">
-                                                        {reportsLoadingPreview ? (
-                                                            <div className="flex flex-col items-center justify-center py-20 gap-4">
-                                                                <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-                                                                <p className="text-slate-500 text-sm font-medium">Loading preview data...</p>
-                                                            </div>
-                                                        ) : reportsPreviewData.rows && reportsPreviewData.rows.length > 0 ? (
-                                                            <table className="w-full text-left border-collapse bg-white dark:bg-[#0d1117] text-slate-800 dark:text-github-dark-text shadow-sm rounded border border-slate-300 dark:border-[#30363d]" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
-                                                                <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-github-dark-subtle/95 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-[#30363d]">
-                                                                    {reportsPreviewData.headers ? (
-                                                                        <>
-                                                                            <tr className="text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-[#30363d]">
-                                                                                {reportsPreviewData.headers[0].map((cell, idx) => (
-                                                                                    <th
-                                                                                        key={idx}
-                                                                                        rowSpan={cell.rowspan}
-                                                                                        colSpan={cell.colspan}
-                                                                                        className="px-4 py-3 whitespace-nowrap tracking-wider text-center text-xs font-bold uppercase border border-[#3A6085]"
-                                                                                        style={{ backgroundColor: '#1F4E78', color: '#FFFFFF' }}
-                                                                                    >
-                                                                                        {cell.label}
-                                                                                    </th>
-                                                                                ))}
-                                                                            </tr>
-                                                                            <tr className="text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold">
-                                                                                {reportsPreviewData.headers[1].map((cell, idx) => (
-                                                                                    <th
-                                                                                        key={idx}
-                                                                                        className="px-4 py-2.5 whitespace-nowrap tracking-wider text-center text-xs font-bold uppercase border border-[#3A6085]"
-                                                                                        style={{ backgroundColor: '#1F4E78', color: '#FFFFFF' }}
-                                                                                    >
-                                                                                        {cell.label}
-                                                                                    </th>
-                                                                                ))}
-                                                                            </tr>
-                                                                        </>
-                                                                    ) : (
-                                                                        <tr className="text-xs uppercase font-bold border-b border-slate-200 dark:border-[#30363d]">
-                                                                            {reportsPreviewData.columns.map((col, idx) => {
-                                                                                const alignment = getAlignmentClass(col);
-                                                                                return (
-                                                                                    <th
-                                                                                        key={idx}
-                                                                                        className="px-4 py-3 whitespace-nowrap tracking-wider text-xs font-bold uppercase border border-[#3A6085]"
-                                                                                        style={{
-                                                                                            backgroundColor: '#1F4E78',
-                                                                                            color: '#FFFFFF',
-                                                                                            textAlign: alignment
-                                                                                        }}
-                                                                                    >
-                                                                                        {col?.toString().split('\n').map((line, lIdx) => (
-                                                                                            <div key={lIdx} className="leading-tight">{line}</div>
-                                                                                        ))}
-                                                                                    </th>
-                                                                                );
-                                                                            })}
-                                                                        </tr>
-                                                                    )}
-                                                                </thead>
-                                                                <tbody>
-                                                                    {reportsPreviewData.rows.map((row, rIdx) => {
-                                                                        const isTotalsRow = row[0]?.toString().toUpperCase() === 'TOTALS';
-                                                                        const isEven = rIdx % 2 === 0;
-                                                                        return (
-                                                                            <tr key={rIdx} className="transition-colors hover:bg-slate-100/50 dark:hover:bg-slate-800/10">
-                                                                                {row.map((cell, cIdx) => {
-                                                                                    const colHeader = reportsPreviewData.columns[cIdx]?.toString() || '';
-                                                                                    const cellStyle = getCellStyle(cell, colHeader, isTotalsRow, isEven);
-                                                                                    const alignment = getAlignmentClass(colHeader);
-                                                                                    return (
-                                                                                        <td
-                                                                                            key={cIdx}
-                                                                                            className="px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors"
-                                                                                            style={{ ...cellStyle, textAlign: alignment }}
-                                                                                        >
-                                                                                            {cell?.toString().split('\n').map((line, lIdx) => (
-                                                                                                <div key={lIdx} className="leading-normal">{line}</div>
-                                                                                            ))}
-                                                                                        </td>
-                                                                                    );
-                                                                                })}
-                                                                            </tr>
-                                                                        );
-                                                                    })}
-                                                                </tbody>
-                                                            </table>
-                                                        ) : (
-                                                            <div className="flex flex-col items-center justify-center py-20 gap-3">
-                                                                <Table className="text-slate-200 dark:text-slate-700" size={48} />
-                                                                <p className="text-slate-500 text-sm">No data available for this selection.</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </>
-                                            )}
-
-                                            {reportsActiveTab === 'history' && (
-                                                <>
-                                                    <div className="p-5 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/10 flex justify-between items-center">
-                                                        <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
-                                                            <DownloadCloud className="text-slate-400" size={18} />
-                                                            Export History
-                                                        </h3>
-                                                    </div>
-                                                    <div className="overflow-x-auto">
-                                                        <table className="w-full text-left border-collapse">
-                                                            <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-[#161b22]/95 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-[#30363d]">
-                                                                <tr className="bg-slate-50/50 dark:bg-github-dark-subtle/50 text-xs uppercase text-slate-500 dark:text-github-dark-muted font-bold">
-                                                                    <th className="px-6 py-5">File Name</th>
-                                                                    <th className="px-6 py-5">Generated</th>
-                                                                    <th className="px-6 py-5">Status</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-slate-100 dark:divide-[#30363d]">
-                                                                {reportsExportHistory.map((file) => (
-                                                                    <tr key={file.id} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group">
-                                                                        <td className="px-6 py-5">
-                                                                            <div className="flex items-center gap-4">
-                                                                                <div className={`p-2.5 rounded-lg shadow-sm ${file.name.endsWith('.pdf') ? 'bg-red-50 text-red-600' : file.name.endsWith('.csv') ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'} dark:bg-github-dark-subtle dark:text-slate-300`}>
-                                                                                    {file.name.endsWith('.pdf') ? <FileText size={18} /> : file.name.endsWith('.csv') ? <FileType size={18} /> : <FileSpreadsheet size={18} />}
-                                                                                </div>
-                                                                                <div>
-                                                                                    <p className="text-sm font-semibold text-slate-800 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1">{file.type}</p>
-                                                                                    <p className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">{file.size}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        </td>
-                                                                        <td className="px-6 py-5 text-sm font-medium text-slate-600 dark:text-github-dark-muted">
-                                                                            {file.date}
-                                                                        </td>
-                                                                        <td className="px-6 py-5">
-                                                                            {file.status === 'Ready' ? (
-                                                                                <a
-                                                                                    href={file.file_url}
-                                                                                    target="_blank"
-                                                                                    rel="noopener noreferrer"
-                                                                                    download={file.name}
-                                                                                    className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full shadow-sm hover:bg-emerald-100 dark:hover:bg-emerald-800/30 transition-all cursor-pointer"
-                                                                                >
-                                                                                    <CheckCircle size={14} /> Ready (Download)
-                                                                                </a>
-                                                                            ) : file.status === 'Generating' ? (
-                                                                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full shadow-sm animate-pulse">
-                                                                                    <div className="w-3.5 h-3.5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div> Generating...
-                                                                                </span>
-                                                                            ) : (
-                                                                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-full shadow-sm">
-                                                                                    <AlertCircle size={14} /> Failed
-                                                                                </span>
-                                                                            )}
-                                                                        </td>
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
+                                <AttendanceReportsTab
+                                    reportsTypeDropdownRef={reportsTypeDropdownRef}
+                                    reportsIsTypeDropdownOpen={reportsIsTypeDropdownOpen}
+                                    setReportsIsTypeDropdownOpen={setReportsIsTypeDropdownOpen}
+                                    reportsReportType={reportsReportType}
+                                    setReportsReportType={setReportsReportType}
+                                    reportsUseCustomRange={reportsUseCustomRange}
+                                    setReportsUseCustomRange={setReportsUseCustomRange}
+                                    reportsCustomStartDate={reportsCustomStartDate}
+                                    setReportsCustomStartDate={setReportsCustomStartDate}
+                                    reportsCustomEndDate={reportsCustomEndDate}
+                                    setReportsCustomEndDate={setReportsCustomEndDate}
+                                    reportsSelectedMonth={reportsSelectedMonth}
+                                    setReportsSelectedMonth={setReportsSelectedMonth}
+                                    reportsSelectedWeek={reportsSelectedWeek}
+                                    setReportsSelectedWeek={setReportsSelectedWeek}
+                                    reportsWeeks={reportsWeeks}
+                                    reportsWeekDropdownRef={reportsWeekDropdownRef}
+                                    reportsIsWeekDropdownOpen={reportsIsWeekDropdownOpen}
+                                    setReportsIsWeekDropdownOpen={setReportsIsWeekDropdownOpen}
+                                    reportsSelectedDate={reportsSelectedDate}
+                                    setReportsSelectedDate={setReportsSelectedDate}
+                                    reportsColsDropdownRef={reportsColsDropdownRef}
+                                    reportsIsColsDropdownOpen={reportsIsColsDropdownOpen}
+                                    setReportsIsColsDropdownOpen={setReportsIsColsDropdownOpen}
+                                    reportsExportColumns={reportsExportColumns}
+                                    setReportsExportColumns={setReportsExportColumns}
+                                    reportsFileFormat={reportsFileFormat}
+                                    setReportsFileFormat={setReportsFileFormat}
+                                    handleReportsGenerate={handleReportsGenerate}
+                                    reportsIsGenerating={reportsIsGenerating}
+                                    reportsActiveTab={reportsActiveTab}
+                                    setReportsActiveTab={setReportsActiveTab}
+                                    reportsPreviewData={reportsPreviewData}
+                                    reportsSummary={reportsSummary}
+                                    reportsLoadingPreview={reportsLoadingPreview}
+                                    reportsExportHistory={reportsExportHistory}
+                                />
                             )}
                         </div>
                     )}
@@ -4099,31 +2906,107 @@ const Attendance = () => {
                     {showConfirmSubmit && createPortal(
                         <div className="fixed inset-0 z-[9000] overflow-y-auto">
                             <div className="flex min-h-full items-center justify-center p-4 text-center animate-in fade-in duration-200">
-                                <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => !submitLoading && setShowConfirmSubmit(false)} />
-                                <div className="relative bg-white dark:bg-dark-card w-full max-w-md rounded-xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden animate-in zoom-in-95 duration-200">
-                                    <div className="p-6 text-center">
-                                        <div className="w-16 h-16 bg-amber-50 dark:bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                                            <AlertCircle size={32} />
+                                <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-md" onClick={() => !submitLoading && setShowConfirmSubmit(false)} />
+                                <div className="relative bg-white dark:bg-github-dark-subtle w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+                                    <div className="p-6 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-gradient-to-r from-indigo-50/70 to-transparent dark:from-github-dark-bg/50">
+                                        <div className="flex items-center gap-3.5">
+                                            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20">
+                                                <FileClock size={22} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-base font-semibold text-slate-800 dark:text-github-dark-text tracking-tight">Review & Submit Adjustment</h3>
+                                                <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">
+                                                    {pendingRequestId ? `Updating Request #${pendingRequestId}` : 'New Request Submission'}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <h3 className="text-xl font-black text-slate-900 dark:text-github-dark-text tracking-tight mb-2">Confirm Submission</h3>
-                                        <p className="text-sm text-slate-500 dark:text-github-dark-muted mb-6">
-                                            Are you sure you want to submit this correction request for <span className="font-bold text-slate-800 dark:text-github-dark-text">{formatDateDisplay(corrDate)}</span>?
-                                        </p>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => setShowConfirmSubmit(false)}
-                                                className="flex-1 px-4 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleConfirmSubmit}
-                                                disabled={submitLoading}
-                                                className="flex-1 px-4 py-3 text-xs font-black uppercase tracking-widest text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
-                                            >
-                                                {submitLoading ? <RefreshCw className="animate-spin" size={16} /> : "Confirm & Send"}
-                                            </button>
+                                        <button
+                                            onClick={() => !submitLoading && setShowConfirmSubmit(false)}
+                                            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer"
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+
+                                    <div className="p-6 space-y-5">
+                                        {/* Date & Category Banner */}
+                                        <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-100 dark:border-github-dark-border rounded-xl">
+                                            <div>
+                                                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Target Date</span>
+                                                <p className="text-sm font-medium text-slate-800 dark:text-github-dark-text mt-0.5">{formatCorrectionDate(corrDate)}</p>
+                                            </div>
+                                            <span className="px-3 py-1 rounded-full text-xs font-normal bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40">
+                                                {corrType === 'Other' && corrOtherType ? corrOtherType : corrType}
+                                            </span>
                                         </div>
+
+                                        {/* Proposed Punches Summary */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between px-1">
+                                                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Proposed Punches</span>
+                                                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 font-mono">
+                                                    Total: {totalProposedHours.toFixed(2)} hrs
+                                                </span>
+                                            </div>
+                                            <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-100 dark:border-github-dark-border rounded-xl space-y-2.5">
+                                                {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
+                                                    corrSessions.filter(s => s.time_in || s.time_out).map((s, idx) => {
+                                                        const isOvernight = Boolean(s.time_in && s.time_out && s.time_in >= s.time_out);
+                                                        const duration = calculateSessionDurationHours(s.time_in, s.time_out);
+                                                        return (
+                                                            <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 dark:border-github-dark-border/50 last:border-0">
+                                                                <span className="font-medium text-slate-500 dark:text-slate-400">Session #{idx + 1}</span>
+                                                                <div className="flex items-center gap-2 font-mono font-normal">
+                                                                    <span className="text-emerald-600 dark:text-emerald-400">{s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}</span>
+                                                                    <span className="text-slate-400">→</span>
+                                                                    <span className="text-rose-600 dark:text-rose-400">{s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Missing Out'}</span>
+                                                                    {isOvernight && (
+                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-sans">Overnight</span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-xs font-normal text-slate-600 dark:text-slate-300 font-mono">{duration.toFixed(1)} hrs</span>
+                                                            </div>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <p className="text-xs text-slate-400 font-normal">No punches entered</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Reason & Attachment Info */}
+                                        <div className="space-y-1.5 px-1">
+                                            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Reason</span>
+                                            <p className="text-xs text-slate-700 dark:text-slate-300 font-normal bg-slate-50/50 dark:bg-github-dark-bg/30 p-3 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                                "{corrReason}"
+                                            </p>
+                                        </div>
+
+                                        {(corrAttachment || existingAttachmentUrl) && (
+                                            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 rounded-xl text-emerald-700 dark:text-emerald-300 text-xs font-normal">
+                                                <Paperclip size={14} className="shrink-0" />
+                                                <span className="truncate">{corrAttachment ? corrAttachment.name : 'Existing proof document attached'}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="p-6 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-bg/80 flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmSubmit(false)}
+                                            disabled={submitLoading}
+                                            className="flex-1 py-3 text-xs font-medium text-slate-600 dark:text-github-dark-muted hover:bg-slate-200/60 dark:hover:bg-github-dark-bg rounded-xl transition-all cursor-pointer"
+                                        >
+                                            Back to Edit
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleConfirmSubmit}
+                                            disabled={submitLoading}
+                                            className="flex-1 py-3 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-600/20 hover:shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+                                        >
+                                            {submitLoading ? <RefreshCw className="animate-spin" size={16} /> : "Confirm & Send"}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -4176,111 +3059,35 @@ const Attendance = () => {
                         )}
                     </AnimatePresence>
 
-                    {/* --- CAMERA PORTAL --- */}
-                    {showCamera && createPortal(
-                        <div className="fixed inset-0 z-[9000] overflow-y-auto">
-                            <div className="flex min-h-full items-center justify-center p-4 text-center transition-all duration-200">
-                                <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md transition-opacity" onClick={closeCamera} />
-                                <div className="relative w-full max-w-4xl space-y-8 animate-in fade-in zoom-in-95 duration-200 text-left mx-auto">
-                                    <div className="relative flex justify-center items-center px-4">
-                                        <h3 className="text-2xl font-bold text-white tracking-tight text-center">
-                                            {cameraMode === 'IN' ? 'Check In' : 'Check Out'}
-                                        </h3>
-                                        <button
-                                            onClick={closeCamera}
-                                            className="absolute right-4 p-2.5 rounded-full bg-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-all backdrop-blur-md"
-                                        >
-                                            <X size={28} />
-                                        </button>
-                                    </div>
+                    {/* --- CHECKPOINT MARKING MODAL --- */}
+                    <CheckpointModal
+                        showCheckpointModal={showCheckpointModal}
+                        setShowCheckpointModal={setShowCheckpointModal}
+                        isMarkingCheckpoint={isMarkingCheckpoint}
+                        checkpointLocation={checkpointLocation}
+                        handleOpenCheckpointModal={handleOpenCheckpointModal}
+                        checkpointNote={checkpointNote}
+                        setCheckpointNote={setCheckpointNote}
+                        handleConfirmCheckpoint={handleConfirmCheckpoint}
+                    />
 
-                                    {(() => {
-                                        const isSelfieRequired = cameraMode === 'IN'
-                                            ? (myShift?.rules?.entry_requirements?.selfie ?? true)
-                                            : (myShift?.rules?.exit_requirements?.selfie ?? false);
-
-                                        return (
-                                            <>
-                                                {isSelfieRequired && (
-                                                    <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center aspect-video">
-                                                        {imgSrc ? (
-                                                            <img src={imgSrc} alt="Captured" className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <Webcam
-                                                                audio={false}
-                                                                ref={webcamRef}
-                                                                screenshotFormat="image/jpeg"
-                                                                className="w-full h-full object-cover"
-                                                                videoConstraints={{ facingMode: "user" }}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {requireLateReason && (!isSelfieRequired || imgSrc) && (
-                                                    <div className="space-y-3 px-2 w-full max-w-lg mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                                        <div className="flex items-center gap-2 text-amber-300 bg-amber-900/40 border border-amber-500/30 p-3 rounded-xl mb-4 text-sm font-medium">
-                                                            <AlertCircle size={18} className="shrink-0" />
-                                                            <p>{lateReasonMessage}</p>
-                                                        </div>
-                                                        <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
-                                                            Please provide a reason
-                                                        </label>
-                                                        <textarea
-                                                            value={lateReasonText}
-                                                            onChange={(e) => setLateReasonText(e.target.value)}
-                                                            placeholder="I got held up in traffic..."
-                                                            className="w-full px-4 py-3 bg-slate-800/80 border border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white placeholder-slate-400 h-24 resize-none backdrop-blur-md"
-                                                            required
-                                                        ></textarea>
-                                                    </div>
-                                                )}
-
-                                                <div className="flex justify-center gap-6 pt-2">
-                                                    {!isSelfieRequired ? (
-                                                        <div className="flex w-full gap-4 px-4 max-w-lg mx-auto">
-                                                            <button
-                                                                onClick={closeCamera}
-                                                                className="flex-1 px-8 py-4 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white border border-white/10 font-bold text-lg transition-all flex items-center justify-center gap-3 backdrop-blur-md hover:scale-[1.02] active:scale-95">
-                                                                Cancel
-                                                            </button>
-                                                            <button
-                                                                onClick={confirmAttendance}
-                                                                disabled={isSubmitting}
-                                                                className="flex-1 px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-lg shadow-xl shadow-indigo-600/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none">
-                                                                {isSubmitting ? '...' : 'Confirm'} <ArrowRight size={22} />
-                                                            </button>
-                                                        </div>
-                                                    ) : !imgSrc ? (
-                                                        <button
-                                                            onClick={capture}
-                                                            className="w-24 h-24 rounded-full bg-white text-indigo-600 hover:scale-110 active:scale-95 flex items-center justify-center shadow-xl shadow-indigo-900/20 transition-all duration-300 ring-8 ring-white/20">
-                                                            <Camera size={40} />
-                                                        </button>
-                                                    ) : (
-                                                        <div className="flex w-full gap-4 px-4 max-w-lg mx-auto">
-                                                            <button
-                                                                onClick={retake}
-                                                                className="flex-1 px-8 py-4 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white border border-white/10 font-bold text-lg transition-all flex items-center justify-center gap-3 backdrop-blur-md hover:scale-[1.02] active:scale-95">
-                                                                <RefreshCw size={22} /> Retake
-                                                            </button>
-                                                            <button
-                                                                onClick={confirmAttendance}
-                                                                disabled={isSubmitting}
-                                                                className="flex-1 px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-lg shadow-xl shadow-indigo-600/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 disabled:opacity-70 disabled:pointer-events-none">
-                                                                {isSubmitting ? '...' : 'Confirm'} <ArrowRight size={22} />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                            </div>
-                        </div>,
-                        document.body
-                    )}
+                    {/* --- CAMERA MODAL --- */}
+                    <AttendanceCameraModal
+                        showCamera={showCamera}
+                        cameraMode={cameraMode}
+                        closeCamera={closeCamera}
+                        myShift={myShift}
+                        imgSrc={imgSrc}
+                        webcamRef={webcamRef}
+                        requireLateReason={requireLateReason}
+                        lateReasonMessage={lateReasonMessage}
+                        lateReasonText={lateReasonText}
+                        setLateReasonText={setLateReasonText}
+                        capture={capture}
+                        retake={retake}
+                        confirmAttendance={confirmAttendance}
+                        isSubmitting={isSubmitting}
+                    />
                     {/* --- CORRECTION DRAWER (RIGHT SIDEBAR) --- */}
                     <AnimatePresence>
                         {isCorrectionDrawerOpen && (
@@ -4289,260 +3096,565 @@ const Attendance = () => {
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.18, ease: "easeOut" }}
                                     onClick={() => setIsCorrectionDrawerOpen(false)}
-                                    className="fixed inset-0 z-[110] bg-slate-950/20 backdrop-blur-sm cursor-pointer"
+                                    className="fixed inset-0 z-[110] bg-slate-950/40 backdrop-blur-xs cursor-pointer"
                                 />
                                 <motion.div
-                                    initial={{ x: '100%', opacity: 0.5 }}
-                                    animate={{ x: 0, opacity: 1 }}
-                                    exit={{ x: '100%', opacity: 0.5 }}
-                                    transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                                    initial={{ x: '100%' }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: '100%' }}
+                                    transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                                     data-tour-id="att-correction-drawer"
-                                    className={`fixed top-0 right-0 h-full w-full ${showAdvancedOptions ? 'max-w-4xl xl:max-w-5xl' : 'max-w-xl'} bg-white dark:bg-github-dark-subtle z-[120] shadow-2xl border-l border-slate-100 dark:border-github-dark-border flex flex-col transition-all duration-300 ease-in-out`}
+                                    className="fixed top-0 right-0 h-full w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl xl:max-w-4xl bg-white dark:bg-github-dark-subtle z-[120] shadow-2xl border-l border-slate-200 dark:border-github-dark-border flex flex-col will-change-transform"
                                 >
-                                    <div className="p-8 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-gradient-to-r from-indigo-50/50 to-transparent dark:from-github-dark-bg/30">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20">
-                                                <FileClock size={24} />
+                                    {/* Drawer Header */}
+                                    <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-gradient-to-r from-indigo-50/50 via-white to-transparent dark:from-github-dark-bg/60 dark:via-github-dark-subtle dark:to-transparent">
+                                        <div className="flex items-center gap-3.5">
+                                            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20 shrink-0">
+                                                <FileClock size={22} />
                                             </div>
                                             <div>
-                                                <h3 className="text-xl font-black text-slate-800 dark:text-github-dark-text tracking-tight">Request Correction</h3>
-                                                <p className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted tracking-widest mt-1">Submit Your Attendance Adjustments</p>
+                                                <div className="flex items-center gap-2.5">
+                                                    <h3 className="text-lg sm:text-xl font-semibold text-slate-800 dark:text-github-dark-text tracking-tight">Attendance Correction</h3>
+                                                    {pendingRequestId ? (
+                                                        <span className="text-xs font-normal bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-800/40">
+                                                            Editing #{pendingRequestId}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs font-normal bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2.5 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/40">
+                                                            Adjustment
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">
+                                                    Submit or adjust punches for manager review
+                                                </p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => setIsCorrectionDrawerOpen(false)}
-                                            className="p-3 rounded-xl bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all active:scale-90"
+                                            className="p-2.5 rounded-xl bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all active:scale-90 cursor-pointer"
+                                            title="Close drawer"
                                         >
-                                            <X size={24} />
+                                            <X size={18} />
                                         </button>
                                     </div>
 
-                                    <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                                    {/* Drawer Content */}
+                                    <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 space-y-6 custom-scrollbar">
                                         <form id="correction-form" onSubmit={handleSubmitCorrection} className="space-y-6">
                                             {/* Pending Edit Notice Banner */}
                                             {pendingRequestId && (
-                                                <div className="p-3.5 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/50 rounded-2xl flex items-center justify-between shadow-2xs">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <Edit3 size={15} className="text-indigo-600 dark:text-indigo-400" />
+                                                <div className="p-4 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 rounded-2xl flex items-center justify-between shadow-2xs">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                            <Edit3 size={15} />
+                                                        </div>
                                                         <div>
-                                                            <p className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
-                                                                Editing Pending Request #{pendingRequestId}
+                                                            <p className="text-xs font-medium text-indigo-950 dark:text-indigo-200">
+                                                                Updating Existing Pending Request #{pendingRequestId}
                                                             </p>
-                                                            <p className="text-[10px] text-indigo-700/80 dark:text-indigo-300/80">
-                                                                Changes will update your existing pending request in-place.
+                                                            <p className="text-xs font-normal text-indigo-700/80 dark:text-indigo-300/80">
+                                                                Your changes will update this pending request in-place without creating a duplicate.
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    <span className="text-[9px] font-bold uppercase tracking-wider bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-md">
+                                                    <span className="text-xs font-medium bg-indigo-200/60 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-2.5 py-1 rounded-lg">
                                                         In-Place
                                                     </span>
                                                 </div>
                                             )}
 
-                                            {/* Date & Type Grid */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                <div className="space-y-3">
-                                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1">Adjustment Date</label>
-                                                    <div data-tour-id="att-correction-date" className="relative z-[130]">
+                                            {/* Shift Policy & Deadline Alert */}
+                                            <div className="p-3.5 bg-slate-50 dark:bg-github-dark-bg/50 border border-slate-200/80 dark:border-github-dark-border rounded-xl flex items-center gap-3">
+                                                <Info size={16} className="text-indigo-500 shrink-0" />
+                                                <div className="text-xs font-normal text-slate-600 dark:text-slate-300">
+                                                    <span className="font-medium text-slate-800 dark:text-slate-100">Shift Policy: </span>
+                                                    Corrections are accepted within <span className="font-medium text-indigo-600 dark:text-indigo-400">{correctionDeadlineDays} days</span> of the attendance date. Eligible dates: <span className="font-normal text-slate-700 dark:text-slate-200">{minAllowedCorrectionDate}</span> to <span className="font-normal text-slate-700 dark:text-slate-200">Today ({maxAllowedCorrectionDate})</span>.
+                                                </div>
+                                            </div>
+
+                                            {/* Date & Category Grid - Perfectly Aligned */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                                                <div data-tour-id="att-correction-date" className="space-y-1.5">
+                                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                        Adjustment Date
+                                                    </label>
+                                                    <div className="relative z-[130]">
                                                         <DatePicker
                                                             value={corrDate}
                                                             onChange={(val) => {
                                                                 setCorrDate(val);
                                                                 loadCorrectionDataForDate(val);
                                                             }}
-                                                            maxDate={new Date().toISOString().split('T')[0]}
+                                                            minDate={minAllowedCorrectionDate}
+                                                            maxDate={maxAllowedCorrectionDate}
                                                         />
                                                     </div>
                                                 </div>
 
-                                                <div data-tour-id="att-correction-type" className="space-y-3">
+                                                <div data-tour-id="att-correction-type">
                                                     <ThemedSelect
-                                                        label="Correction Type"
+                                                        label="Correction Category"
                                                         value={corrType}
                                                         onChange={(val) => setCorrType(val)}
                                                         options={[
-                                                            { label: 'Missed Punch', value: 'Missed Punch' },
-                                                            { label: 'Other', value: 'Other' }
+                                                            { label: 'Missed Clock-Out', value: 'Missed Clock-Out' },
+                                                            { label: 'Missed Clock-In', value: 'Missed Clock-In' },
+                                                            { label: 'Missed Entire Day', value: 'Missed Entire Day' },
+                                                            { label: 'Wrong Timestamp / Glitch', value: 'Wrong Timestamp' },
+                                                            { label: 'On-Duty / Field Visit', value: 'On-Duty' },
+                                                            { label: 'Other Reason', value: 'Other' }
                                                         ]}
                                                     />
                                                 </div>
                                             </div>
 
                                             {corrType === 'Other' && (
-                                                <motion.input
-                                                    initial={{ opacity: 0, y: -10 }}
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -4 }}
                                                     animate={{ opacity: 1, y: 0 }}
-                                                    type="text"
-                                                    placeholder="Specify Adjustment Type"
-                                                    value={corrOtherType}
-                                                    onChange={(e) => setCorrOtherType(e.target.value)}
-                                                    className="w-full px-5 py-4 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-github-dark-text font-bold shadow-sm"
-                                                    required
-                                                />
+                                                    className="space-y-1.5"
+                                                >
+                                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                        Specify Other Category
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g., Biometric sensor failure, Travel exception..."
+                                                        value={corrOtherType}
+                                                        onChange={(e) => setCorrOtherType(e.target.value)}
+                                                        className="w-full h-11 px-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl text-sm font-normal text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                                                        required
+                                                    />
+                                                </motion.div>
                                             )}
 
-                                            {/* ─── ADVANCED OPTIONS ACCORDION (Interactive Visual Correction Timeline) ─── */}
-                                            <div className="border border-slate-200 dark:border-github-dark-border rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-github-dark-bg/30">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowAdvancedOptions(prev => !prev)}
-                                                    className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-100/60 dark:hover:bg-github-dark-bg/60 transition-colors"
-                                                >
-                                                    <div className="flex items-center gap-2.5">
-                                                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-github-dark-text">Advanced Options: Custom Punch Timeline</span>
-                                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/40">Optional</span>
+                                            {/* Original Attendance Context Card */}
+                                            <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <History size={15} className="text-slate-400" />
+                                                        <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                                                            Originally Logged on {formatCorrectionDate(corrDate)}
+                                                        </span>
                                                     </div>
-                                                    <div className={`transition-transform duration-200 ${showAdvancedOptions ? 'rotate-180' : 'rotate-0'}`}>
-                                                        <ChevronDown size={18} className="text-slate-400" />
-                                                    </div>
-                                                </button>
-
-                                                <AnimatePresence>
-                                                    {showAdvancedOptions && (
-                                                        <motion.div
-                                                            initial={{ height: 0, opacity: 0 }}
-                                                            animate={{ height: 'auto', opacity: 1 }}
-                                                            exit={{ height: 0, opacity: 0 }}
-                                                            className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-5 space-y-6 bg-white dark:bg-github-dark-subtle/50"
-                                                        >
-                                                            <VisualCorrectionTimeline
-                                                                requestData={{
-                                                                    original_data: originalSessions,
-                                                                    proposed_data: corrSessions.filter(s => s.time_in || s.time_out),
-                                                                    correction_type: corrType,
-                                                                    status: 'draft'
-                                                                }}
-                                                                editable={true}
-                                                                onSessionsChange={(updated) => {
-                                                                    setCorrSessions(updated.map((s, idx) => ({
-                                                                        id: `session-${idx}-${s.time_in || s.time_out}`,
-                                                                        time_in: s.time_in || '',
-                                                                        time_out: s.time_out || '',
-                                                                        punch_type: s.punch_type || 'regular'
-                                                                    })));
-                                                                }}
-                                                            />
-                                                        </motion.div>
+                                                    {originalSessions.length === 0 ? (
+                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40">
+                                                            No Punches Recorded
+                                                        </span>
+                                                    ) : originalSessions.some(s => s.time_in && !s.time_out) ? (
+                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40">
+                                                            Punch Out Missing
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
+                                                            Punches Recorded
+                                                        </span>
                                                     )}
-                                                </AnimatePresence>
+                                                </div>
+
+                                                {originalSessions.length > 0 ? (
+                                                    <div className="space-y-2 pt-0.5">
+                                                        {originalSessions.map((s, idx) => (
+                                                            <div key={idx} className="flex items-center justify-between text-xs bg-white dark:bg-github-dark-subtle/80 p-2.5 rounded-xl border border-slate-200/70 dark:border-github-dark-border/60">
+                                                                <span className="font-medium text-slate-500 dark:text-slate-400">Session #{idx + 1}</span>
+                                                                <div className="flex items-center gap-2 font-mono font-normal">
+                                                                    <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}>
+                                                                        {s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}
+                                                                    </span>
+                                                                    <span className="text-slate-400">→</span>
+                                                                    <span className={s.time_out ? "text-rose-600 dark:text-rose-400" : "text-amber-500 dark:text-amber-400 italic"}>
+                                                                        {s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Not Clocked Out'}
+                                                                    </span>
+                                                                </div>
+                                                                {s.time_in && s.time_out ? (
+                                                                    <span className="text-xs font-normal text-slate-500">
+                                                                        {calculateSessionDurationHours(s.time_in, s.time_out).toFixed(1)} hrs
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-xs font-normal text-amber-500">
+                                                                        Incomplete
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs text-slate-400 dark:text-slate-400 font-normal py-0.5">
+                                                        No mobile or biometric punches found for this date. Enter your requested session times below.
+                                                    </p>
+                                                )}
+
+                                                {/* Auto-fill actions */}
+                                                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/60 dark:border-github-dark-border/40">
+                                                    {originalSessions.some(s => s.time_in && !s.time_out) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleAutoFillMissingOut}
+                                                            className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                        >
+                                                            <Sparkles size={13} /> Auto-fill Missing Out ({myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00'})
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={handlePresetFullShift}
+                                                        className="px-3 py-1.5 rounded-xl bg-white dark:bg-github-dark-bg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50 border border-slate-200 dark:border-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                    >
+                                                        <Clock size={13} /> Full Shift Preset ({myShift?.start_time ? myShift.start_time.slice(0, 5) : '09:00'} to {myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00'})
+                                                    </button>
+                                                    {originalSessions.length > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleResetCorrectionToOriginal}
+                                                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                        >
+                                                            <RotateCcw size={13} /> Reset to Logged
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
 
-                                            {/* Reason Section */}
-                                            <div className="space-y-3">
-                                                <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1">Reason for Adjustment</label>
+                                            {/* Proposed Sessions Section with Tab Selector */}
+                                            <div className="space-y-3.5">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                            Proposed Work Sessions
+                                                        </label>
+                                                        <p className="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">
+                                                            Total Proposed: <span className="font-medium text-emerald-600 dark:text-emerald-400 font-mono">{totalProposedHours.toFixed(2)} hrs</span>
+                                                        </p>
+                                                    </div>
+
+                                                    {/* View Mode Switcher */}
+                                                    <div className="flex items-center p-0.5 bg-slate-100 dark:bg-github-dark-bg rounded-xl border border-slate-200 dark:border-github-dark-border">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDrawerTab('editor')}
+                                                            className={`px-3 py-1.5 rounded-lg text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer ${drawerTab === 'editor'
+                                                                    ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 font-medium shadow-xs'
+                                                                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                                                                }`}
+                                                        >
+                                                            <Edit3 size={13} /> Form Editor
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDrawerTab('timeline')}
+                                                            className={`px-3 py-1.5 rounded-lg text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer ${drawerTab === 'timeline'
+                                                                    ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 font-medium shadow-xs'
+                                                                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                                                                }`}
+                                                        >
+                                                            <Clock size={13} /> Visual Timeline
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* TAB 1: DIRECT PUNCH FORM EDITOR */}
+                                                {drawerTab === 'editor' && (
+                                                    <div className="space-y-3">
+                                                        {corrSessions.map((session, idx) => {
+                                                            const duration = calculateSessionDurationHours(session.time_in, session.time_out);
+                                                            const isOvernight = Boolean(session.time_in && session.time_out && session.time_in >= session.time_out);
+                                                            return (
+                                                                <div
+                                                                    key={session.id || idx}
+                                                                    className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3 relative group"
+                                                                >
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                                                                                Session #{idx + 1}
+                                                                            </span>
+                                                                            {duration > 0 && (
+                                                                                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 font-mono">
+                                                                                    {duration.toFixed(2)} hrs
+                                                                                </span>
+                                                                            )}
+                                                                            {isOvernight && (
+                                                                                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40">
+                                                                                    Overnight (+1 Day)
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {corrSessions.length > 1 && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleRemoveCorrectionSession(idx)}
+                                                                                className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors cursor-pointer"
+                                                                                title="Remove session"
+                                                                            >
+                                                                                <Trash2 size={15} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                                        <div className="space-y-1.5">
+                                                                            <span className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                                                Punch In Time
+                                                                            </span>
+                                                                            <TimePicker
+                                                                                value={session.time_in || ''}
+                                                                                onChange={(val) => handleSessionChange(idx, 'time_in', val)}
+                                                                                icon={<Clock size={15} className="text-emerald-500" />}
+                                                                                placeholder="Set clock in time"
+                                                                                className="w-full"
+                                                                            />
+                                                                        </div>
+
+                                                                        <div className="space-y-1.5">
+                                                                            <span className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                                                Punch Out Time
+                                                                            </span>
+                                                                            <TimePicker
+                                                                                value={session.time_out || ''}
+                                                                                onChange={(val) => handleSessionChange(idx, 'time_out', val)}
+                                                                                icon={<Clock size={15} className="text-rose-500" />}
+                                                                                placeholder="Set clock out time"
+                                                                                className="w-full"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+
+                                                        {/* Add Session Button */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleAddCorrectionSession}
+                                                            className="w-full h-11 border border-dashed border-slate-300 dark:border-github-dark-border hover:border-indigo-400 dark:hover:border-indigo-500 rounded-xl text-xs font-normal text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                                        >
+                                                            <Plus size={15} /> Add Another Session (Split Shift / Break)
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {/* TAB 2: INTERACTIVE VISUAL TIMELINE */}
+                                                {drawerTab === 'timeline' && (
+                                                    <VisualCorrectionTimeline
+                                                        requestData={{
+                                                            original_data: originalSessions,
+                                                            proposed_data: corrSessions.filter(s => s.time_in || s.time_out),
+                                                            correction_type: corrType,
+                                                            status: 'draft'
+                                                        }}
+                                                        editable={true}
+                                                        onSessionsChange={(updated) => {
+                                                            setCorrSessions(updated.map((s, idx) => ({
+                                                                id: `session-${idx}-${s.time_in || s.time_out}`,
+                                                                time_in: s.time_in || '',
+                                                                time_out: s.time_out || '',
+                                                                punch_type: s.punch_type || 'regular'
+                                                            })));
+                                                        }}
+                                                    />
+                                                )}
+                                            </div>
+
+                                            {/* Reason Section & Quick Reason Chips */}
+                                            <div className="space-y-2.5">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                        Reason for Adjustment
+                                                    </label>
+                                                    <span className="text-xs font-normal text-slate-400">Required</span>
+                                                </div>
+
+                                                {/* Quick reason presets */}
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {[
+                                                        "Forgot to punch out before leaving",
+                                                        "Forgot to punch in upon arrival",
+                                                        "App GPS / connection timeout",
+                                                        "Webcam capture error",
+                                                        "On-duty offsite client meeting"
+                                                    ].map((r, i) => (
+                                                        <button
+                                                            key={i}
+                                                            type="button"
+                                                            onClick={() => setCorrReason(r)}
+                                                            className="text-xs font-normal px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 dark:bg-github-dark-bg dark:hover:bg-indigo-950/40 text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-github-dark-border transition-colors cursor-pointer"
+                                                        >
+                                                            {r}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
                                                 <textarea
                                                     data-tour-id="att-correction-reason"
                                                     value={corrReason}
                                                     onChange={(e) => setCorrReason(e.target.value)}
-                                                    placeholder="Please provide context for this correction..."
-                                                    className="w-full px-5 py-4 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-github-dark-text font-medium h-24 resize-none shadow-sm"
+                                                    placeholder="Please provide details for the correction request..."
+                                                    className="w-full px-4 py-3 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-normal text-sm h-24 resize-none shadow-2xs placeholder:text-slate-400"
                                                     required
                                                 />
                                             </div>
 
-                                            {/* Supporting Attachment Section (Optional) */}
+                                            {/* Supporting Attachment Section */}
                                             <div className="space-y-2.5">
                                                 <div className="flex items-center justify-between">
-                                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1">
+                                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
                                                         Supporting Proof / Attachment
                                                     </label>
-                                                    <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase">Optional</span>
+                                                    <span className="text-xs font-normal text-slate-400">Optional</span>
                                                 </div>
 
                                                 {corrAttachment ? (
-                                                    <div className="flex items-center justify-between p-3.5 bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/40 rounded-2xl">
-                                                        <div className="flex items-center gap-2.5 min-w-0">
-                                                            <Paperclip size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-                                                            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                                                                {corrAttachment.name}
-                                                            </span>
-                                                            <span className="text-[10px] text-slate-400 font-mono">
-                                                                ({(corrAttachment.size / 1024).toFixed(1)} KB)
-                                                            </span>
+                                                    <div className="flex items-center justify-between p-3.5 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-xl">
+                                                        <div className="flex items-center gap-3 min-w-0">
+                                                            {corrAttachmentPreview ? (
+                                                                <div
+                                                                    onClick={() => setPreviewImage(corrAttachmentPreview)}
+                                                                    className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-700 cursor-pointer hover:opacity-80 transition-opacity"
+                                                                    title="Click to zoom preview"
+                                                                >
+                                                                    <img src={corrAttachmentPreview} alt="Preview" className="w-full h-full object-cover" />
+                                                                </div>
+                                                            ) : (
+                                                                <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                                    <FileText size={20} />
+                                                                </div>
+                                                            )}
+                                                            <div className="min-w-0">
+                                                                <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                                                                    {corrAttachment.name}
+                                                                </p>
+                                                                <p className="text-xs font-normal text-slate-400 font-mono">
+                                                                    {(corrAttachment.size / 1024).toFixed(1)} KB • Click to preview
+                                                                </p>
+                                                            </div>
                                                         </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setCorrAttachment(null);
-                                                                setCorrAttachmentPreview(null);
-                                                            }}
-                                                            className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-white/60 dark:hover:bg-github-dark-bg transition-colors"
-                                                            title="Remove attachment"
-                                                        >
-                                                            <X size={15} />
-                                                        </button>
+                                                        <div className="flex items-center gap-1.5">
+                                                            {corrAttachmentPreview && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPreviewImage(corrAttachmentPreview)}
+                                                                    className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-github-dark-bg rounded-lg transition-colors cursor-pointer"
+                                                                    title="Zoom preview"
+                                                                >
+                                                                    <Eye size={16} />
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setCorrAttachment(null);
+                                                                    setCorrAttachmentPreview(null);
+                                                                }}
+                                                                className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer"
+                                                                title="Remove attachment"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 ) : existingAttachmentUrl ? (
-                                                    <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-2xl">
+                                                    <div className="flex items-center justify-between p-3.5 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-xl">
                                                         <div className="flex items-center gap-2.5 min-w-0">
-                                                            <Paperclip size={15} className="text-indigo-500 shrink-0" />
-                                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                                                Existing document attached
+                                                            <Paperclip size={16} className="text-indigo-500 shrink-0" />
+                                                            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                                                                Existing document attached to pending request
                                                             </span>
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <a
-                                                                href={existingAttachmentUrl}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPreviewImage(existingAttachmentUrl)}
+                                                                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
                                                             >
                                                                 <Eye size={13} /> View
-                                                            </a>
+                                                            </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setExistingAttachmentUrl(null)}
-                                                                className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-white/60 dark:hover:bg-github-dark-bg transition-colors"
+                                                                className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer"
                                                                 title="Remove attachment"
                                                             >
-                                                                <X size={15} />
+                                                                <Trash2 size={15} />
                                                             </button>
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 dark:border-github-dark-border hover:border-indigo-400 dark:hover:border-indigo-600 rounded-2xl cursor-pointer bg-slate-50/50 dark:bg-github-dark-bg/30 hover:bg-indigo-50/20 transition-all group">
-                                                        <UploadCloud size={22} className="text-slate-400 group-hover:text-indigo-500 transition-colors mb-1.5" />
-                                                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                                                            Click to upload receipt, medical slip, or proof file
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-400 mt-0.5">
-                                                            Images, PDF, Documents (up to 5MB)
-                                                        </span>
-                                                        <input
-                                                            type="file"
-                                                            className="hidden"
-                                                            accept="image/*,.pdf,.doc,.docx"
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) {
-                                                                    setCorrAttachment(file);
-                                                                    if (file.type.startsWith('image/')) {
-                                                                        setCorrAttachmentPreview(URL.createObjectURL(file));
-                                                                    } else {
-                                                                        setCorrAttachmentPreview(null);
-                                                                    }
+                                                    <div
+                                                        onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+                                                        onDragLeave={() => setIsDraggingFile(false)}
+                                                        onDrop={(e) => {
+                                                            e.preventDefault();
+                                                            setIsDraggingFile(false);
+                                                            const file = e.dataTransfer.files?.[0];
+                                                            if (file) {
+                                                                setCorrAttachment(file);
+                                                                if (file.type.startsWith('image/')) {
+                                                                    setCorrAttachmentPreview(URL.createObjectURL(file));
+                                                                } else {
+                                                                    setCorrAttachmentPreview(null);
                                                                 }
-                                                            }}
-                                                        />
-                                                    </label>
+                                                            }
+                                                        }}
+                                                        className={`flex flex-col items-center justify-center p-5 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${isDraggingFile
+                                                                ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-950/40'
+                                                                : 'border-slate-200 dark:border-github-dark-border hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-github-dark-bg/30 hover:bg-indigo-50/10'
+                                                            }`}
+                                                    >
+                                                        <label className="w-full flex flex-col items-center justify-center cursor-pointer">
+                                                            <UploadCloud size={24} className="text-slate-400 group-hover:text-indigo-500 transition-colors mb-1.5" />
+                                                            <span className="text-xs font-medium text-slate-700 dark:text-slate-200 text-center">
+                                                                Drag & drop receipt, doctor slip, or proof file here
+                                                            </span>
+                                                            <span className="text-[11px] font-normal text-slate-400 dark:text-slate-400 mt-0.5">
+                                                                Images (JPG, PNG), PDF, Documents (up to 5MB)
+                                                            </span>
+                                                            <input
+                                                                type="file"
+                                                                className="hidden"
+                                                                accept="image/*,.pdf,.doc,.docx"
+                                                                onChange={(e) => {
+                                                                    const file = e.target.files?.[0];
+                                                                    if (file) {
+                                                                        setCorrAttachment(file);
+                                                                        if (file.type.startsWith('image/')) {
+                                                                            setCorrAttachmentPreview(URL.createObjectURL(file));
+                                                                        } else {
+                                                                            setCorrAttachmentPreview(null);
+                                                                        }
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </label>
+                                                    </div>
                                                 )}
                                             </div>
                                         </form>
                                     </div>
 
-                                    <div className="p-8 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-bg/80">
+                                    {/* Drawer Footer */}
+                                    <div className="px-6 py-5 sm:px-8 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/70 dark:bg-github-dark-bg/80 space-y-3">
+                                        <div className="flex items-center justify-between text-xs px-1">
+                                            <span className="text-slate-500 dark:text-slate-400 font-normal">
+                                                Adjusted Work Time:
+                                            </span>
+                                            <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400 text-sm">
+                                                {totalProposedHours.toFixed(2)} hrs ({corrSessions.filter(s => s.time_in || s.time_out).length} session{corrSessions.filter(s => s.time_in || s.time_out).length !== 1 ? 's' : ''})
+                                            </span>
+                                        </div>
                                         <button
                                             type="submit"
                                             form="correction-form"
                                             data-tour-id="att-correction-submit-btn"
-                                            className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black tracking-[0.15em] rounded-[1.25rem] shadow-xl shadow-indigo-600/20 hover:shadow-indigo-600/40 transition-all active:scale-[0.98] flex items-center justify-center gap-3 group"
+                                            className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-xl shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
                                         >
-                                            <FileClock size={20} className="group-hover:scale-110 transition-transform" />
-                                            {pendingRequestId ? `Save & Update Request (#${pendingRequestId})` : 'Submit Request'}
+                                            <FileClock size={18} />
+                                            {pendingRequestId ? `Review & Update Request (#${pendingRequestId})` : 'Review & Submit Adjustment'}
                                         </button>
-                                        <p className="text-[9px] text-center text-slate-400 font-bold mt-4 tracking-widest opacity-60">
-                                            {pendingRequestId ? 'Updates will be reflected immediately in manager review queue' : 'Requires Admin Approval'}
+                                        <p className="text-xs text-center text-slate-400 dark:text-slate-500 font-normal">
+                                            {pendingRequestId ? 'Updates will immediately reflect in manager review queue' : 'Requires Manager / HR Approval'}
                                         </p>
                                     </div>
                                 </motion.div>

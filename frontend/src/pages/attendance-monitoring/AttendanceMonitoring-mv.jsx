@@ -128,7 +128,7 @@ const processAttendanceData = (staff) => {
                 rawOut: outTime,
                 in: inStr,
                 out: outStr,
-                date: inTime ? inTime.toLocaleDateString() : '-',
+                date: inTime ? inTime.toLocaleDateString() : 'N/A',
                 isActive,
                 inLocation: inLoc,
                 outLocation: outLoc,
@@ -161,8 +161,8 @@ const processAttendanceData = (staff) => {
 
         const totalHrs = formatTotalTime(totalMin, u.total_hours > 0 ? Number(u.total_hours) : 0);
         const lastLocation = u.sessions && u.sessions.length > 0
-            ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : '-')
-            : '-';
+            ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : 'N/A')
+            : 'N/A';
 
         // Recreate allStatuses to retain compatibility with stats counts
         let allStatuses = [];
