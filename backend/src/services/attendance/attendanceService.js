@@ -851,7 +851,7 @@ export async function reviewCorrectionRequest({
 
   const dbUpdate = {
     status,
-    reviewer_notes: review_comments || null,
+    review_comments: review_comments || null,
     reviewed_by: reviewer_id,
     reviewed_at: attendanceDB.fn.now(),
     audit_trail: JSON.stringify(auditTrail),
@@ -876,47 +876,71 @@ export async function reviewCorrectionRequest({
     const shift = await getUserShift(correction.user_id);
     const rules = ShiftService.getShiftRules(shift);
 
-    // Delete all existing records for the day
-    await attendanceDB("attn_records")
-      .where({ user_id: correction.user_id })
-      .whereRaw("DATE(time_in) = ?", [finalDateStr])
-      .del();
+    // Normalize and filter valid sessions
+    const normalizedSessions = sessionsToApply
+      .map(s => ({
+        time_in: s.time_in || s.in || '',
+        time_out: s.time_out || s.out || null
+      }))
+      .filter(s => s.time_in);
 
-    // Calculate aggregate totals and statuses using Service logic
-    const sortedSessions = [...sessionsToApply].sort((a, b) => a.time_in.localeCompare(b.time_in));
-    const evaluatedSessions = StatusService.evaluateSessionList(rules, sortedSessions, finalDateStr);
+    if (normalizedSessions.length > 0) {
+      // Delete all existing records for the day
+      await attendanceDB("attn_records")
+        .where({ user_id: correction.user_id })
+        .whereRaw("DATE(time_in) = ?", [finalDateStr])
+        .del();
 
-    // Insert the approved sessions
-    const newRecords = sessionsToApply.map(s => {
-      const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
-      const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
-      return {
-        user_id: correction.user_id,
-        time_in: toMySQLDateTime(`${finalDateStr} ${tIn}`),
-        time_out: tOut ? toMySQLDateTime(`${finalDateStr} ${tOut}`) : null,
-        status: 'CLOSED',
-        created_at: attendanceDB.fn.now(),
-        updated_at: attendanceDB.fn.now(),
-        time_in_address: 'Manual Correction',
-        time_out_address: 'Manual Correction',
-        altered_by: reviewer_id
+      // Calculate aggregate totals and statuses using Service logic
+      const sortedSessions = [...normalizedSessions].sort((a, b) => (a.time_in || '').localeCompare(b.time_in || ''));
+      const evaluatedSessions = StatusService.evaluateSessionList(rules, sortedSessions, finalDateStr);
+
+      const formatSessionTime = (dStr, tStr) => {
+        if (!tStr) return null;
+        const str = String(tStr).trim();
+        if (str.includes('T') || (str.includes('-') && str.includes(':'))) {
+          return toMySQLDateTime(str);
+        }
+        const time = str.length === 5 ? str + ':00' : str;
+        return toMySQLDateTime(`${dStr} ${time}`);
       };
-    });
 
-    await attendanceDB("attn_records").insert(newRecords);
+      // Insert the approved sessions
+      const newRecords = normalizedSessions.map(s => {
+        return {
+          user_id: correction.user_id,
+          time_in: formatSessionTime(finalDateStr, s.time_in),
+          time_out: formatSessionTime(finalDateStr, s.time_out),
+          time_in_lat: 0.0,
+          time_in_lng: 0.0,
+          time_out_lat: 0.0,
+          time_out_lng: 0.0,
+          time_in_address: 'Manual Correction',
+          time_out_address: 'Manual Correction',
+          time_in_image_key: '',
+          time_out_image_key: '',
+          status: 'CLOSED',
+          created_at: attendanceDB.fn.now(),
+          updated_at: attendanceDB.fn.now(),
+          altered_by: reviewer_id
+        };
+      });
 
-    // Sync Daily Summary (Now uses the combined state of the sessions)
-    const manualBase = {
-      is_manual_adjustment: true,
-      adjusted_by: reviewer_id,
-      updated_at: attendanceDB.fn.now()
-    };
+      await attendanceDB("attn_records").insert(newRecords);
 
-    await syncDailyAttendance(correction.user_id, finalDateStr, {
-      ...manualBase,
-      is_altered: true,
-      adjustment_reason: `Correction Request #${acr_id}`
-    });
+      // Sync Daily Summary (Now uses the combined state of the sessions)
+      const manualBase = {
+        is_manual_adjustment: true,
+        adjusted_by: reviewer_id,
+        updated_at: attendanceDB.fn.now()
+      };
+
+      await syncDailyAttendance(correction.user_id, finalDateStr, {
+        ...manualBase,
+        is_altered: true,
+        adjustment_reason: `Correction Request #${acr_id}`
+      });
+    }
   }
 }
 

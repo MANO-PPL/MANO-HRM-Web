@@ -775,6 +775,7 @@ const AttendanceMonitoring = () => {
     const [selectedRequestId, setSelectedRequestId] = useState(null);
     const [selectedRequestData, setSelectedRequestData] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [actionLoading, setActionLoading] = useState(false);
     const [reviewComment, setReviewComment] = useState('');
     const [requestsLoading, setRequestsLoading] = useState(false);
     const [correctionSearchTerm, setCorrectionSearchTerm] = useState('');
@@ -1140,31 +1141,27 @@ const AttendanceMonitoring = () => {
     }, []);
 
     useEffect(() => {
-        // Always fetch requests to keep the badge count updated
-        fetchCorrectionRequests();
-
         if (activeTab === 'live') {
             fetchData(false, false);
             // Auto refresh every 15 seconds (Live Monitoring)
             const interval = setInterval(() => fetchData(true, true), 15000);
             return () => clearInterval(interval);
+        } else if (activeTab === 'requests') {
+            fetchCorrectionRequests(correctionRequests.length > 0);
         }
     }, [activeTab, selectedDate]);
 
+    // Initial badge count load on mount
     useEffect(() => {
-        if (activeTab === 'requests') {
-            fetchCorrectionRequests();
+        fetchCorrectionRequests(true);
+    }, []);
+
+    const fetchCorrectionRequests = async (silent = false) => {
+        if (!silent && correctionRequests.length === 0) {
+            setRequestsLoading(true);
         }
-    }, [activeTab]);
-
-
-
-    const fetchCorrectionRequests = async () => {
-        setRequestsLoading(true);
         try {
             const params = { limit: 10000 };
-            // Removed date filters as per user request
-
             const res = await attendanceService.getCorrectionRequests(params);
 
             // Sort: Pending first, then by date (newest first)
@@ -1178,24 +1175,26 @@ const AttendanceMonitoring = () => {
             setRequestCount(sortedData.filter(r => r.status === 'pending').length);
 
             // Auto-select first request if none selected or if previously selected one is gone
-            if (res.data && res.data.length > 0) {
-                if (!selectedRequestData || !res.data.find(r => r.acr_id === selectedRequestData.acr_id)) {
-                    setSelectedRequestId(res.data[0].acr_id);
-                    fetchRequestDetail(res.data[0].acr_id);
+            if (sortedData.length > 0) {
+                if (!selectedRequestId || !sortedData.find(r => r.acr_id === selectedRequestId)) {
+                    setSelectedRequestId(sortedData[0].acr_id);
+                    fetchRequestDetail(sortedData[0].acr_id, silent);
                 }
             } else {
                 setSelectedRequestData(null);
                 setSelectedRequestId(null);
             }
         } catch (error) {
-            toast.error(error.message);
+            if (!silent) toast.error(error.message);
         } finally {
             setRequestsLoading(false);
         }
     };
 
-    const fetchRequestDetail = async (acr_id) => {
-        setDetailLoading(true);
+    const fetchRequestDetail = async (acr_id, silent = false) => {
+        if (!silent && (!selectedRequestData || selectedRequestData.acr_id !== acr_id)) {
+            setDetailLoading(true);
+        }
         try {
             const data = await attendanceService.getCorrectionDetails(acr_id);
             setSelectedRequestData(data);
@@ -1210,47 +1209,75 @@ const AttendanceMonitoring = () => {
             setOverrideIn('');
             setOverrideOut('');
         } catch (error) {
-            toast.error("Failed to fetch request details");
+            if (!silent) toast.error("Failed to fetch request details");
         } finally {
-            setDetailLoading(false);
+            if (!silent) setDetailLoading(false);
         }
     };
 
     const handleUpdateStatus = async (acr_id, status) => {
+        setActionLoading(true);
         try {
             const overrides = {};
             if (status === 'approved' && overrideMode) {
                 const valid = overrideSessions.filter(s => s.time_in && s.time_out);
                 if (valid.length === 0) {
                     toast.error("At least one valid session required for manual correction");
+                    setActionLoading(false);
                     return;
                 }
                 overrides.sessions = valid;
             }
 
+            // 1. Optimistic Update (Immediate UI response)
+            const updatedComment = reviewComment || null;
+            setSelectedRequestData(prev => prev && prev.acr_id === acr_id ? {
+                ...prev,
+                status,
+                review_comments: updatedComment,
+                audit_trail: [
+                    ...(Array.isArray(prev.audit_trail) ? prev.audit_trail : []),
+                    { action: status, at: new Date().toISOString(), comments: updatedComment }
+                ]
+            } : prev);
+            setCorrectionRequests(prev => prev.map(r => r.acr_id === acr_id ? { ...r, status } : r));
+            setRequestCount(prev => Math.max(0, prev - 1));
+
+            // 2. Network Request
             await attendanceService.updateCorrectionStatus(acr_id, status, reviewComment, overrides);
             toast.success(`Request ${status} successfully`);
-            fetchCorrectionRequests();
-            fetchData(true, true); // Refetch live dashboard data silently
-            if (selectedRequestData && selectedRequestData.acr_id === acr_id) {
-                fetchRequestDetail(acr_id);
-            }
+
+            // 3. Silent background refresh without reloading screens
+            fetchCorrectionRequests(true);
+            fetchRequestDetail(acr_id, true);
         } catch (error) {
             toast.error(error.message);
+            // Revert state by silent re-fetch
+            fetchCorrectionRequests(true);
+            fetchRequestDetail(acr_id, true);
+        } finally {
+            setActionLoading(false);
         }
     };
 
     const handleAcknowledgeRequest = async (acrId, status, rejectReason = '') => {
+        setActionLoading(true);
         try {
+            // Optimistic update
+            setSelectedRequestData(prev => prev && prev.acr_id === acrId ? { ...prev, status, review_comments: rejectReason } : prev);
+            setCorrectionRequests(prev => prev.map(r => r.acr_id === acrId ? { ...r, status } : r));
+            setRequestCount(prev => Math.max(0, prev - 1));
+
             await attendanceService.updateCorrectionStatus(acrId, status, rejectReason);
             toast.success(`Request ${status} successfully`);
-            fetchCorrectionRequests();
-            fetchData(true, true); // Refetch live dashboard data silently
-            if (selectedRequestData && selectedRequestData.acr_id === acrId) {
-                fetchRequestDetail(acrId);
-            }
+            fetchCorrectionRequests(true);
+            fetchRequestDetail(acrId, true);
         } catch (error) {
             toast.error(error.message);
+            fetchCorrectionRequests(true);
+            fetchRequestDetail(acrId, true);
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -2621,8 +2648,25 @@ const AttendanceMonitoring = () => {
                                 { /* Date Navigation Removed */}
                             </div>
                             <div className="overflow-y-auto no-scrollbar flex-1 p-3 space-y-3">
-                                {requestsLoading ? (
-                                    <div className="p-10 text-center text-slate-400">Loading...</div>
+                                {requestsLoading && correctionRequests.length === 0 ? (
+                                    <div className="space-y-3 p-1">
+                                        {[1, 2, 3, 4].map(i => (
+                                            <div key={i} className="p-4 rounded-xl border border-slate-200/60 dark:border-github-dark-border/80 bg-slate-50/40 dark:bg-github-dark-subtle/20 animate-pulse space-y-3">
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-white/10" />
+                                                        <div className="space-y-1.5">
+                                                            <div className="w-24 h-3 bg-slate-200 dark:bg-white/10 rounded" />
+                                                            <div className="w-12 h-2 bg-slate-200 dark:bg-white/5 rounded" />
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-14 h-4 bg-slate-200 dark:bg-white/10 rounded-full" />
+                                                </div>
+                                                <div className="w-28 h-3.5 bg-slate-200 dark:bg-white/10 rounded" />
+                                                <div className="w-3/4 h-2.5 bg-slate-200 dark:bg-white/5 rounded" />
+                                            </div>
+                                        ))}
+                                    </div>
                                 ) : filteredRequests.length === 0 ? (
                                     <div className="p-10 text-center text-slate-400">No requests found.</div>
                                 ) : (
@@ -2703,15 +2747,17 @@ const AttendanceMonitoring = () => {
                                             <div className="flex gap-2.5">
                                                 <button
                                                     onClick={() => handleUpdateStatus(selectedRequestData.acr_id, 'rejected')}
-                                                    className="px-4 py-2 border border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-95 flex items-center gap-1.5"
+                                                    disabled={actionLoading}
+                                                    className="px-4 py-2 border border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-95 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
-                                                    <XCircle size={15} /> Reject
+                                                    {actionLoading ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={15} />} Reject
                                                 </button>
                                                 <button
                                                     onClick={() => handleUpdateStatus(selectedRequestData.acr_id, 'approved')}
-                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-emerald-600/10 hover:shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center gap-1.5"
+                                                    disabled={actionLoading}
+                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-emerald-600/10 hover:shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
-                                                    <CheckCircle size={15} /> Approve
+                                                    {actionLoading ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={15} />} Approve
                                                 </button>
                                             </div>
                                         ) : (

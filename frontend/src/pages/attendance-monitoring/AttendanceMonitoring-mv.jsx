@@ -1650,14 +1650,14 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
                 {request.status?.toUpperCase() === 'PENDING' && (
                     <div className="flex gap-4">
                         <button
-                            onClick={() => handleAction('REJECTED')}
+                            onClick={() => handleAction('rejected')}
                             disabled={isProcessing}
                             className="flex-1 py-4 bg-white dark:bg-github-dark-subtle border-2 border-rose-100 dark:border-rose-500/20 text-rose-500 font-black rounded-xl active:scale-95 transition-all shadow-sm disabled:opacity-50"
                         >
                             Reject
                         </button>
                         <button
-                            onClick={() => handleAction('APPROVED')}
+                            onClick={() => handleAction('approved')}
                             disabled={isProcessing}
                             className="flex-1 py-4 bg-emerald-500 text-white font-black rounded-xl active:scale-95 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                         >

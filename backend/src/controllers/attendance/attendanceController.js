@@ -457,7 +457,9 @@ export const reviewCorrectionRequest = catchAsync(async (req, res) => {
     return res.status(403).json({ error: "Access denied" });
   }
 
-  if (!["approved", "rejected"].includes(status)) {
+  const normalizedStatus = typeof status === "string" ? status.toLowerCase() : "";
+
+  if (!["approved", "rejected"].includes(normalizedStatus)) {
     return res.status(400).json({ error: "Invalid status" });
   }
 
@@ -466,7 +468,7 @@ export const reviewCorrectionRequest = catchAsync(async (req, res) => {
       acr_id,
       org_id,
       reviewer_id,
-      status,
+      status: normalizedStatus,
       review_comments,
       adminOverrideSessions: sessions
     });
@@ -475,7 +477,7 @@ export const reviewCorrectionRequest = catchAsync(async (req, res) => {
     const io = req.app.get('io');
     notifyCorrectionStatusUpdated({ org_id, reviewer_id, acr_id, io }).catch(console.error);
 
-    res.json({ message: `Request ${status} successfully` });
+    res.json({ message: `Request ${normalizedStatus} successfully` });
   } catch (err) {
     if (err.status) {
       return res.status(err.status).json({ error: err.message });
