@@ -632,7 +632,7 @@ const MobileAttendanceMonitoring = () => {
                                     <Icon size={12} className={`${isActive ? 'text-indigo-500' : 'text-slate-400'} -mt-[1px]`} />
                                     <span className="truncate leading-none">{label}</span>
                                     {tab === 'requests' && requestCount > 0 && !isActive && (
-                                        <span className="ml-1 bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
+                                        <span className={`ml-1.5 ${requestCount > 9 ? 'min-w-[20px] h-5 px-1.5 rounded-full' : 'w-5 h-5 rounded-full aspect-square'} bg-red-600 text-white text-[11px] font-bold inline-flex items-center justify-center leading-none`}>
                                             {requestCount}
                                         </span>
                                     )}

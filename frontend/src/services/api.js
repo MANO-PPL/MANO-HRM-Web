@@ -137,8 +137,9 @@ export const getAccessToken = () => accessToken;
 
 api.interceptors.request.use(
     (config) => {
-        if (accessToken) {
-            config.headers['Authorization'] = `Bearer ${accessToken}`;
+        const token = accessToken || (typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null);
+        if (token) {
+            config.headers['Authorization'] = `Bearer ${token}`;
         }
         try {
             config.headers['x-timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';

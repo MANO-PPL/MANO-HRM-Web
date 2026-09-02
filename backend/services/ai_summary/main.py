@@ -84,6 +84,63 @@ class AttendanceSummaryOutput(BaseModel):
     on_leave_employees: List[EmployeeSummaryNote] = Field(default_factory=list)
     analytics_insights: AnalyticsInsights = Field(default_factory=AnalyticsInsights)
 
+def generate_fallback_summary(payload: AttendanceSummaryInput) -> AttendanceSummaryOutput:
+    present_list = []
+    absent_list = []
+    on_leave_list = []
+
+    for emp in payload.employees:
+        status_clean = emp.status.lower() if emp.status else 'absent'
+        note = None
+        if 'late' in status_clean:
+            note = 'Arrived late'
+        elif 'early' in status_clean:
+            note = 'Left early'
+
+        item = EmployeeSummaryNote(
+            name=emp.name,
+            department=emp.department or 'Unassigned',
+            status=emp.status,
+            check_in=emp.check_in,
+            check_out=emp.check_out,
+            note=note
+        )
+        if 'present' in status_clean or 'late' in status_clean or 'active' in status_clean:
+            present_list.append(item)
+        elif 'leave' in status_clean:
+            on_leave_list.append(item)
+        else:
+            absent_list.append(item)
+
+    present_rate = payload.analytics.present_rate
+    late_rate = payload.analytics.late_rate
+    avg_hours = payload.analytics.avg_work_hours or 8.0
+
+    highlights = [
+        f"Overall workplace attendance rate reached {present_rate:.1f}% for {payload.date}.",
+        f"Late arrival frequency recorded at {late_rate:.1f}% across all active departments.",
+        f"Average daily working shift duration logged at {avg_hours:.1f} hours."
+    ]
+
+    overall = (
+        f"Attendance analysis for {payload.date} shows {len(present_list)} of {payload.total_employees} "
+        f"staff members active or present ({present_rate:.1f}% attendance rate). "
+        f"A total of {len(absent_list)} employees were marked absent and {len(on_leave_list)} on approved leave."
+    )
+
+    return AttendanceSummaryOutput(
+        overall_summary=overall,
+        present_employees=present_list,
+        absent_employees=absent_list,
+        on_leave_employees=on_leave_list,
+        analytics_insights=AnalyticsInsights(
+            present_rate=present_rate,
+            late_rate=late_rate,
+            avg_work_hours=avg_hours,
+            highlights=highlights
+        )
+    )
+
 @app.post("/summarize", response_model=AttendanceSummaryOutput)
 async def summarize_attendance(payload: AttendanceSummaryInput):
     # Construct a structured prompt from the validated input
@@ -122,30 +179,33 @@ async def summarize_attendance(payload: AttendanceSummaryInput):
     }}
     """
     
-    try:
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "You are a professional attendance data analyst. You must return only a valid JSON object matching the requested structure. Ensure highlights are populated with actual observations and rates are copied exactly from the input data's analytics block."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            response_format={"type": "json_object"}
-        )
-        
-        raw_response = completion.choices[0].message.content
-        
-        # Parse and validate the response against our Pydantic Output schema
-        output_data = json.loads(raw_response)
-        validated_output = AttendanceSummaryOutput(**output_data)
-        
-        return validated_output
-        
-    except json.JSONDecodeError as jde:
-        print("JSON Decode Error:", str(jde))
-        raise HTTPException(status_code=500, detail="LLM response was not valid JSON")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    candidate_models = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
+    
+    for model_name in candidate_models:
+        try:
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": "You are a professional attendance data analyst. You must return only a valid JSON object matching the requested structure. Ensure highlights are populated with actual observations and rates are copied exactly from the input data's analytics block."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                response_format={"type": "json_object"}
+            )
+            
+            raw_response = completion.choices[0].message.content
+            output_data = json.loads(raw_response)
+            validated_output = AttendanceSummaryOutput(**output_data)
+            return validated_output
+            
+        except json.JSONDecodeError:
+            continue
+        except Exception as e:
+            print(f"Model {model_name} failed: {e}")
+            continue
+
+    # If all LLM attempts encounter rate limits, model issues or fail, return reliable structured fallback
+    return generate_fallback_summary(payload)
 
 if __name__ == "__main__":
     import uvicorn

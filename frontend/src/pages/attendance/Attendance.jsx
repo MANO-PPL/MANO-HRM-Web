@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import DashboardLayout from '../../components/DashboardLayout';
+import CorrectionDocumentModal from '../../components/attendance/CorrectionDocumentModal';
 import { useTour } from '../../context/TourContext';
 import Webcam from 'react-webcam';
 import {
@@ -981,6 +982,14 @@ const Attendance = () => {
     const [isAdminActionLoading, setIsAdminActionLoading] = useState(false);
 
     const isAdminUser = Boolean(user?.user_type === 'admin' || user?.user_type === 'superadmin' || user?.role === 'admin' || user?.is_admin);
+    const isAdminOrHr = Boolean(
+        user?.user_type === 'admin' ||
+        user?.user_type === 'superadmin' ||
+        user?.user_type === 'hr' ||
+        user?.role === 'admin' ||
+        user?.role === 'hr' ||
+        user?.is_admin
+    );
 
     const filteredCorrectionHistory = useMemo(() => {
         if (!Array.isArray(correctionHistory)) return [];
@@ -999,7 +1008,8 @@ const Attendance = () => {
                     id: s.id || `sess-${idx}-${Date.now()}`,
                     time_in: s.time_in ? String(s.time_in).slice(0, 5) : (s.requested_time_in ? String(s.requested_time_in).slice(0, 5) : ''),
                     time_out: s.time_out ? String(s.time_out).slice(0, 5) : (s.requested_time_out ? String(s.requested_time_out).slice(0, 5) : ''),
-                    punch_type: s.punch_type || 'regular'
+                    punch_type: s.punch_type || 'regular',
+                    ...(s.attachment ? { attachment: s.attachment } : {})
                 }))
                 .filter(s => s.time_in || s.time_out);
             if (cleaned.length > 0) return cleaned;
@@ -2838,24 +2848,9 @@ const Attendance = () => {
                                     formatDateDisplay={formatDateDisplay}
                                     isFetchingDetails={isFetchingDetails}
                                     isAdminUser={isAdminUser}
-                                    isOverrideMode={isOverrideMode}
-                                    setIsOverrideMode={setIsOverrideMode}
-                                    setShowAdminRejectModal={setShowAdminRejectModal}
-                                    showAdminRejectModal={showAdminRejectModal}
-                                    adminRejectReason={adminRejectReason}
-                                    setAdminRejectReason={setAdminRejectReason}
-                                    handleAdminReject={handleAdminReject}
-                                    isAdminActionLoading={isAdminActionLoading}
-                                    handleAdminApprove={handleAdminApprove}
-                                    handleEmployeeUpdateRequest={handleEmployeeUpdateRequest}
-                                    isSavingCorrection={isSavingCorrection}
-                                    handleResetToEmployeeRequest={handleResetToEmployeeRequest}
-                                    editCorrectionSessions={editCorrectionSessions}
-                                    setEditCorrectionSessions={setEditCorrectionSessions}
+                                    isAdminOrHr={isAdminOrHr}
                                     normalizeCorrectionSessions={normalizeCorrectionSessions}
                                     setPreviewImage={setPreviewImage}
-                                    editCorrectionReason={editCorrectionReason}
-                                    setEditCorrectionReason={setEditCorrectionReason}
                                 />
                             )}
                             {/* SUB-TAB: REPORTS (Self-Service) */}
@@ -3662,60 +3657,13 @@ const Attendance = () => {
                         )}
                     </AnimatePresence>
 
-                    {/* SELFIE & ATTACHMENT PREVIEW LIGHTBOX MODAL */}
-                    <AnimatePresence>
-                        {previewImage && (
-                            <div
-                                className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
-                                onClick={() => setPreviewImage(null)}
-                            >
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    className="relative max-w-lg w-full bg-slate-900 border border-white/10 rounded-3xl p-5 shadow-2xl overflow-hidden"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
-                                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                                            {String(previewImage).match(/\.(pdf|doc|docx)/i) ? 'Attached Document' : 'Attachment / Selfie Preview'}
-                                        </h4>
-                                        <button
-                                            onClick={() => setPreviewImage(null)}
-                                            className="p-1.5 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
-                                        >
-                                            <X size={16} />
-                                        </button>
-                                    </div>
-                                    {String(previewImage).match(/\.(pdf|doc|docx)/i) ? (
-                                        <div className="py-8 flex flex-col items-center text-center">
-                                            <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4">
-                                                <Paperclip size={32} />
-                                            </div>
-                                            <h5 className="text-base font-bold text-white mb-1">Supporting Proof Document</h5>
-                                            <p className="text-xs text-slate-400 mb-6">Open document in a new tab or download for verification.</p>
-                                            <a
-                                                href={previewImage}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2"
-                                            >
-                                                <Eye size={14} /> Open Document
-                                            </a>
-                                        </div>
-                                    ) : (
-                                        <div className="rounded-2xl overflow-hidden bg-black/50 max-h-[70vh] flex items-center justify-center">
-                                            <img
-                                                src={previewImage}
-                                                alt="Attachment Preview"
-                                                className="max-w-full max-h-[68vh] object-contain rounded-xl"
-                                            />
-                                        </div>
-                                    )}
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>
+                    {/* UNIVERSAL DOCUMENT & SELFIE PREVIEW LIGHTBOX MODAL (Image, Word, PowerPoint, PDF, Excel, etc.) */}
+                    {previewImage && (
+                        <CorrectionDocumentModal
+                            previewUrl={previewImage}
+                            onClose={() => setPreviewImage(null)}
+                        />
+                    )}
                 </div>
             </div>
         </DashboardLayout>

@@ -67,7 +67,9 @@ import {
 } from 'recharts';
 import { useTour } from '../../context/TourContext';
 import axios from 'axios';
-import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
+import api from '../../services/api';
+import CorrectionRequestsTab from './components/CorrectionRequestsTab';
+import CorrectionDocumentModal from '../../components/attendance/CorrectionDocumentModal';
 
 
 
@@ -85,7 +87,7 @@ const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
                     // Min zoom is calculated so that the map width (256 * 2^zoom) is >= container width
                     const calculatedMinZoom = Math.max(3, Math.ceil(Math.log2(containerWidth / 256)));
                     map.setMinZoom(calculatedMinZoom);
-                    
+
                     if (map.getZoom() < calculatedMinZoom) {
                         map.setZoom(calculatedMinZoom);
                     }
@@ -98,7 +100,7 @@ const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
         const resizeObserver = new ResizeObserver(() => {
             updateMinZoom();
         });
-        
+
         const container = map.getContainer();
         if (container) {
             resizeObserver.observe(container);
@@ -131,7 +133,7 @@ const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
 
 
 const MapSidebarContent = ({ selectedCluster, onClose }) => {
-    const [selectedUser, setSelectedUser] = useState(() => 
+    const [selectedUser, setSelectedUser] = useState(() =>
         selectedCluster.data.length === 1 ? selectedCluster.data[0] : null
     );
     const [searchQuery, setSearchQuery] = useState('');
@@ -255,15 +257,14 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
                                                     {m.user.role} • {m.user.department}
                                                 </p>
                                                 <div className="flex items-center gap-2 mt-1.5">
-                                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${
-                                                        m.session.isActive && m.type === 'in'
+                                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${m.session.isActive && m.type === 'in'
                                                             ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 animate-pulse'
-                                                            : m.type === 'in' 
-                                                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' 
-                                                            : m.type === 'out' 
-                                                            ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400' 
-                                                            : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'
-                                                    }`}>
+                                                            : m.type === 'in'
+                                                                ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                                : m.type === 'out'
+                                                                    ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                                                                    : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'
+                                                        }`}>
                                                         {m.session.isActive && m.type === 'in' ? 'Active' : m.type === 'combined' ? 'Full Session' : m.type === 'in' ? 'Check In' : 'Check Out'}
                                                     </span>
                                                     <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-mono flex items-center gap-1">
@@ -376,17 +377,16 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
                                                         {selectedUser.session.isActive && selectedUser.type === 'in' ? 'Active Session' : selectedUser.type === 'in' ? 'Check In' : 'Check Out'}
                                                     </span>
                                                 </div>
-                                                <span className={`text-[10px] font-bold ${
-                                                    selectedUser.session.isActive && selectedUser.type === 'in'
+                                                <span className={`text-[10px] font-bold ${selectedUser.session.isActive && selectedUser.type === 'in'
                                                         ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 animate-pulse'
-                                                        : selectedUser.type === 'in' 
-                                                        ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' 
-                                                        : 'text-rose-600 bg-rose-50 dark:bg-rose-900/30'
-                                                } px-2.5 py-0.5 rounded-md uppercase`}>
+                                                        : selectedUser.type === 'in'
+                                                            ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30'
+                                                            : 'text-rose-600 bg-rose-50 dark:bg-rose-900/30'
+                                                    } px-2.5 py-0.5 rounded-md uppercase`}>
                                                     {selectedUser.type === 'in' ? selectedUser.session.in : selectedUser.session.out}
                                                 </span>
                                             </div>
-                                            { (selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage) ? (
+                                            {(selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage) ? (
                                                 <div className="flex justify-center w-full mt-2" onClick={() => setPreviewImage(selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage)}>
                                                     <img src={selectedUser.type === 'in' ? selectedUser.session.inImage : selectedUser.session.outImage} alt="Selfie" className="max-h-56 max-w-full w-auto block rounded-2xl shadow-md object-contain cursor-pointer transition-transform hover:scale-105" />
                                                 </div>
@@ -451,7 +451,7 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
 const parseTimeInTimezone = (r, isOut) => {
     const rawVal = isOut ? r.time_out : r.time_in;
     if (!rawVal) return null;
-    
+
     if (rawVal instanceof Date) {
         return rawVal;
     }
@@ -465,8 +465,8 @@ const parseTimeInTimezone = (r, isOut) => {
             const parsedUtc = new Date(metaUtc);
             if (!isNaN(parsedUtc.getTime())) return parsedUtc;
         }
-    } catch (e) {}
-    
+    } catch (e) { }
+
     try {
         const str = String(rawVal).trim();
         const parts = str.split(/[- :T.]/);
@@ -497,12 +497,12 @@ const formatTotalTime = (totalMin, fallbackHours) => {
     } else if (fallbackHours > 0) {
         minutes = fallbackHours * 60;
     }
-    
+
     if (minutes <= 0) return '-';
-    
+
     const hrs = Math.floor(minutes / 60);
     const mins = Math.round(minutes % 60);
-    
+
     if (hrs > 0 && mins > 0) {
         return `${hrs} ${hrs === 1 ? 'hr' : 'hrs'} ${mins} ${mins === 1 ? 'min' : 'mins'}`;
     } else if (hrs > 0) {
@@ -839,12 +839,12 @@ const AttendanceMonitoring = () => {
                     });
                 }
                 const logged = Number((totalMin / 60).toFixed(2));
-                
+
                 const expectedHoursDecimal = parseFloat(emp.expectedHours);
                 const expected = isNaN(expectedHoursDecimal) ? 8.0 : expectedHoursDecimal;
-                
+
                 const truncatedName = emp.name.length > 15 ? `${emp.name.slice(0, 12)}...` : emp.name;
-                
+
                 return {
                     name: truncatedName,
                     fullName: emp.name,
@@ -882,28 +882,28 @@ const AttendanceMonitoring = () => {
         setAiSummaryError(null);
         try {
             const token = localStorage.getItem('accessToken');
-            
+
             // Construct payload matching Python schema
             let presentCount = 0;
             let lateCount = 0;
             const deptStats = {};
-            
+
             attendanceData.forEach(emp => {
                 const statusLower = emp.status ? emp.status.toLowerCase() : '';
                 const isPresent = statusLower.includes('present') || statusLower.includes('late') || statusLower.includes('active') || statusLower.includes('overtime');
                 const isLate = statusLower.includes('late');
-                
+
                 if (isPresent) presentCount++;
                 if (isLate) lateCount++;
-                
+
                 const dept = emp.department || 'Unassigned';
                 if (!deptStats[dept]) deptStats[dept] = { present: 0, absent: 0, late: 0 };
-                
+
                 if (isPresent) deptStats[dept].present++;
                 if (isLate) deptStats[dept].late++;
                 if (statusLower.includes('absent')) deptStats[dept].absent++;
             });
-            
+
             const total = attendanceData.length || 1;
             const analytics = {
                 present_rate: Math.round((presentCount / total) * 100),
@@ -921,7 +921,7 @@ const AttendanceMonitoring = () => {
             const employees = attendanceData.map(emp => {
                 const firstSession = emp.sessions && emp.sessions.length > 0 ? emp.sessions[0] : null;
                 const lastSession = emp.sessions && emp.sessions.length > 0 ? emp.sessions[emp.sessions.length - 1] : null;
-                
+
                 let status = 'absent';
                 const statusLower = emp.status ? emp.status.toLowerCase() : '';
                 if (statusLower.includes('active') || statusLower.includes('present') || statusLower.includes('overtime')) {
@@ -956,9 +956,7 @@ const AttendanceMonitoring = () => {
                 analytics: analytics
             };
 
-            const res = await axios.post('/api/attendance/ai-summary', payload, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await api.post('/attendance/ai-summary', payload);
             setAiSummaryData(res.data);
         } catch (err) {
             console.error("AI Summary Error:", err);
@@ -975,7 +973,7 @@ const AttendanceMonitoring = () => {
             setAiSummaryLoading(false);
         }
     };
-    
+
     // Automatically clear AI Summary data when date changes
     useEffect(() => {
         setAiSummaryData(null);
@@ -1323,7 +1321,7 @@ const AttendanceMonitoring = () => {
         const matchesDept = departmentFilter === 'All' || item.department === departmentFilter;
         const matchesDesg = desgFilter === 'All' || item.role === desgFilter;
         const matchesShift = shiftFilter === 'All' || (shiftFilter === 'open_shift' ? !item.shift_id : String(item.shift_id) === String(shiftFilter));
-        
+
         let matchesStatus = true;
         if (statusFilter === 'present') {
             matchesStatus = item.status !== 'Absent' && item.status !== 'Week Off' && item.status !== 'Holiday' && item.status !== 'Leave';
@@ -1334,7 +1332,7 @@ const AttendanceMonitoring = () => {
         } else if (statusFilter === 'active') {
             matchesStatus = item.allStatuses ? item.allStatuses.includes('Active') : item.status.includes('Active');
         }
-        
+
         return matchesSearch && matchesDept && matchesDesg && matchesShift && matchesStatus;
     });
 
@@ -1510,12 +1508,11 @@ const AttendanceMonitoring = () => {
             <style>
                 {`
                 .leaflet-container {
-                    background-color: ${
-                        activeTheme === 'dark' ? '#0f0f11' : 
-                        activeTheme === 'voyager' ? '#cadbe3' : 
-                        activeTheme === 'streets' ? '#aad3df' : 
-                        activeTheme === 'satellite' ? '#040810' : 
-                        '#e4edf2'
+                    background-color: ${activeTheme === 'dark' ? '#0f0f11' :
+                        activeTheme === 'voyager' ? '#cadbe3' :
+                            activeTheme === 'streets' ? '#aad3df' :
+                                activeTheme === 'satellite' ? '#040810' :
+                                    '#e4edf2'
                     } !important;
                 }
                 .leaflet-tile-pane {
@@ -1634,7 +1631,7 @@ const AttendanceMonitoring = () => {
                                 <FileText size={14} className={`${activeTab === 'requests' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
                                 <span className="leading-none">Correction Requests</span>
                                 {requestCount > 0 && activeTab !== 'requests' && (
-                                    <span className="absolute -top-1.5 -right-2 w-4 h-4 bg-red-500 text-white text-[9px] font-bold flex items-center justify-center rounded-full animate-pulse border border-white dark:border-github-dark-subtle shadow-sm leading-none">
+                                    <span className={`absolute -top-1.5 -right-2 ${requestCount > 9 ? 'min-w-[20px] h-5 px-1.5 rounded-full' : 'w-5 h-5 rounded-full aspect-square'} bg-red-600 text-white text-[11px] font-bold flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-xs leading-none select-none`}>
                                         {requestCount}
                                     </span>
                                 )}
@@ -1711,8 +1708,8 @@ const AttendanceMonitoring = () => {
                                                                         setIsDeptDropdownOpen(false);
                                                                     }}
                                                                     className={`w-full flex items-center justify-between px-4 py-2 text-xs font-medium transition-colors text-left cursor-pointer ${isSelected
-                                                                            ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                                                                         }`}
                                                                 >
                                                                     <span>{dept.label}</span>
@@ -1765,8 +1762,8 @@ const AttendanceMonitoring = () => {
                                                                         setIsDesgDropdownOpen(false);
                                                                     }}
                                                                     className={`w-full flex items-center justify-between px-4 py-2 text-xs font-medium transition-colors text-left cursor-pointer ${isSelected
-                                                                            ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                                                                         }`}
                                                                 >
                                                                     <span>{desg.label}</span>
@@ -1819,8 +1816,8 @@ const AttendanceMonitoring = () => {
                                                                         setIsShiftDropdownOpen(false);
                                                                     }}
                                                                     className={`w-full flex items-center justify-between px-4 py-2 text-xs font-medium transition-colors text-left cursor-pointer ${isSelected
-                                                                            ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                                                                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                                                                         }`}
                                                                 >
                                                                     <span>{s.label}</span>
@@ -1889,11 +1886,10 @@ const AttendanceMonitoring = () => {
                                             <button
                                                 key={view.id}
                                                 onClick={() => setActiveView(view.id)}
-                                                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
-                                                    isSelected
+                                                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs transition-all duration-200 cursor-pointer ${isSelected
                                                         ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
                                                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
-                                                }`}
+                                                    }`}
                                             >
                                                 <view.icon size={13} className={`${isSelected ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-400'} -mt-[1px]`} />
                                                 <span className="leading-none">{view.label}</span>
@@ -1907,1210 +1903,796 @@ const AttendanceMonitoring = () => {
 
                     <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} flex flex-col space-y-4`}>
 
-                    {activeTab === 'live' ? (
-                        <>
-                            {/* Stats Cards */}
-                            <div data-tour-id="attendance-live-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                                {statCards.map((stat, index) => {
-                                    const isSelected = statusFilter === stat.id;
-                                    return (
-                                        <div
-                                            key={index}
-                                            onClick={() => setStatusFilter(isSelected ? 'All' : stat.id)}
-                                            className={`p-4 rounded-lg shadow-sm flex items-center justify-between transition-all duration-300 cursor-pointer select-none bg-white dark:bg-dark-card border-2 ${
-                                                isSelected
-                                                    ? 'border-indigo-500 dark:border-indigo-500 scale-[1.01] shadow-md'
-                                                    : 'border-slate-200 dark:border-github-dark-border hover:border-slate-350 dark:hover:border-slate-700'
-                                            }`}
-                                        >
-                                            <div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <p className="text-sm font-medium text-slate-500 dark:text-github-dark-muted">{stat.label}</p>
-                                                    {isSelected && (
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                                                    )}
-                                                </div>
-                                                <p className="text-2xl font-bold text-slate-800 dark:text-github-dark-text mt-1">{stat.value}</p>
-                                            </div>
-                                            <div className={`p-3 rounded-lg ${stat.bg} ${stat.color}`}>
-                                                {stat.icon}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Main Content */}
-                            <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} transition-colors duration-300 flex flex-col space-y-4`}>
-
-
-
-
-                                <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0 overflow-y-auto' : ''} custom-scrollbar ${activeView === 'map' ? 'flex flex-col' : ''}`}>
-                                    {activeView === 'table' ? (
-                                        <div data-tour-id="attendance-live-monitor" className="bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 min-h-[450px]">
-                                            <div className="overflow-x-auto custom-scrollbar">
-                                                <div className="min-w-[2000px]">
-                                                    {/* Timeline Header */}
-                                                    <div className="flex bg-slate-50 dark:bg-github-dark-subtle border-b border-slate-200 dark:border-github-dark-border">
-                                                        <div className="w-[300px] shrink-0 px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 border-r border-slate-200 dark:border-github-dark-border sticky left-0 bg-slate-50 dark:bg-github-dark-subtle z-30">
-                                                            Employee Details
-                                                        </div>
-                                                        <div className="flex-1 flex">
-                                                            {Array.from({ length: 24 }, (_, i) => i).map(hour => (
-                                                                <div key={hour} className="flex-1 py-4 text-center text-[10px] font-bold text-slate-400 border-r border-slate-200 dark:border-github-dark-border/30 last:border-r-0">
-                                                                    {hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                        {activeTab === 'live' ? (
+                            <>
+                                {/* Stats Cards */}
+                                <div data-tour-id="attendance-live-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                                    {statCards.map((stat, index) => {
+                                        const isSelected = statusFilter === stat.id;
+                                        return (
+                                            <div
+                                                key={index}
+                                                onClick={() => setStatusFilter(isSelected ? 'All' : stat.id)}
+                                                className={`p-4 rounded-lg shadow-sm flex items-center justify-between transition-all duration-300 cursor-pointer select-none bg-white dark:bg-dark-card border-2 ${isSelected
+                                                        ? 'border-indigo-500 dark:border-indigo-500 scale-[1.01] shadow-md'
+                                                        : 'border-slate-200 dark:border-github-dark-border hover:border-slate-350 dark:hover:border-slate-700'
+                                                    }`}
+                                            >
+                                                <div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <p className="text-sm font-medium text-slate-500 dark:text-github-dark-muted">{stat.label}</p>
+                                                        {isSelected && (
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                                                        )}
                                                     </div>
+                                                    <p className="text-2xl font-bold text-slate-800 dark:text-github-dark-text mt-1">{stat.value}</p>
+                                                </div>
+                                                <div className={`p-3 rounded-lg ${stat.bg} ${stat.color}`}>
+                                                    {stat.icon}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
 
-                                                    {/* Timeline Rows */}
-                                                    <div className="divide-y divide-slate-100 dark:divide-github-dark-border/50">
-                                                        {loading && attendanceData.length === 0 ? (
-                                                            <div className="p-10 text-center text-slate-400">Loading timeline...</div>
-                                                        ) : filteredData.length === 0 ? (
-                                                            <div className="p-10 text-center text-slate-400">No employees found.</div>
-                                                        ) : (
-                                                            filteredData.map((item, rowIdx) => {
-                                                                const timeToPct = (date) => {
-                                                                    if (!date) return null;
-                                                                    const targetTz = orgTimezone || resolvedTz || 'Asia/Kolkata';
-                                                                    try {
-                                                                        const parts = new Intl.DateTimeFormat('en-US', {
-                                                                            timeZone: targetTz,
-                                                                            hour: 'numeric',
-                                                                            minute: 'numeric',
-                                                                            hour12: false
-                                                                        }).formatToParts(date);
-                                                                        let h = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
-                                                                        if (h === 24) h = 0;
-                                                                        const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
-                                                                        const totalMinutes = h * 60 + m;
-                                                                        return Math.max(0, Math.min(100, (totalMinutes / (24 * 60)) * 100));
-                                                                    } catch (e) {
-                                                                        const totalMinutes = date.getHours() * 60 + date.getMinutes();
-                                                                        return Math.max(0, Math.min(100, (totalMinutes / (24 * 60)) * 100));
-                                                                    }
-                                                                };
+                                {/* Main Content */}
+                                <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0' : ''} transition-colors duration-300 flex flex-col space-y-4`}>
 
-                                                                return (
-                                                                    <div key={item.id} className="relative z-10 flex hover:bg-slate-50/50 dark:hover:bg-indigo-500/5 transition-colors group cursor-pointer hover:z-20" onClick={() => setSelectedLiveUser(item)}>
-                                                                        {/* Employee Info (Sticky) */}
-                                                                        <div className="w-[300px] shrink-0 px-6 py-4 flex items-center gap-3 border-r border-slate-200 dark:border-github-dark-border sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-github-dark-subtle z-20">
-                                                                            <div className="flex items-center gap-4">
-                                                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm overflow-hidden ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle dark:text-github-dark-muted' : 'bg-gradient-to-br from-indigo-500/10 to-purple-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20'}`}>
-                                                                                    {item.avatar.startsWith('http') ? (
-                                                                                        <img src={item.avatar} alt={item.name} className="w-full h-full object-cover" />
-                                                                                    ) : (
-                                                                                        item.avatar
-                                                                                    )}
-                                                                                </div>
-                                                                                <div className="min-w-0">
-                                                                                    <p className="font-bold text-sm text-slate-800 dark:text-github-dark-text truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{item.name}</p>
-                                                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30'}`}>
-                                                                                            {item.status.split(' ')[0]}
-                                                                                        </span>
 
-                                                                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-mono font-bold">
-                                                                                            {item.totalHours && (item.totalHours.toLowerCase().includes('hr') || item.totalHours.toLowerCase().includes('min') || item.totalHours === '-') ? item.totalHours : `${item.totalHours} Hrs`}
-                                                                                            {item.expectedHours && item.expectedHours !== '-' && ` / ${item.expectedHours}`}
-                                                                                        </span>
+
+
+                                    <div className={`${(activeTab === 'requests' || (activeTab === 'live' && activeView === 'map')) ? 'flex-1 min-h-0 overflow-y-auto' : ''} custom-scrollbar ${activeView === 'map' ? 'flex flex-col' : ''}`}>
+                                        {activeView === 'table' ? (
+                                            <div data-tour-id="attendance-live-monitor" className="bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 min-h-[450px]">
+                                                <div className="overflow-x-auto custom-scrollbar">
+                                                    <div className="min-w-[2000px]">
+                                                        {/* Timeline Header */}
+                                                        <div className="flex bg-slate-50 dark:bg-github-dark-subtle border-b border-slate-200 dark:border-github-dark-border">
+                                                            <div className="w-[300px] shrink-0 px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 border-r border-slate-200 dark:border-github-dark-border sticky left-0 bg-slate-50 dark:bg-github-dark-subtle z-30">
+                                                                Employee Details
+                                                            </div>
+                                                            <div className="flex-1 flex">
+                                                                {Array.from({ length: 24 }, (_, i) => i).map(hour => (
+                                                                    <div key={hour} className="flex-1 py-4 text-center text-[10px] font-bold text-slate-400 border-r border-slate-200 dark:border-github-dark-border/30 last:border-r-0">
+                                                                        {hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Timeline Rows */}
+                                                        <div className="divide-y divide-slate-100 dark:divide-github-dark-border/50">
+                                                            {loading && attendanceData.length === 0 ? (
+                                                                <div className="p-10 text-center text-slate-400">Loading timeline...</div>
+                                                            ) : filteredData.length === 0 ? (
+                                                                <div className="p-10 text-center text-slate-400">No employees found.</div>
+                                                            ) : (
+                                                                filteredData.map((item, rowIdx) => {
+                                                                    const timeToPct = (date) => {
+                                                                        if (!date) return null;
+                                                                        const targetTz = orgTimezone || resolvedTz || 'Asia/Kolkata';
+                                                                        try {
+                                                                            const parts = new Intl.DateTimeFormat('en-US', {
+                                                                                timeZone: targetTz,
+                                                                                hour: 'numeric',
+                                                                                minute: 'numeric',
+                                                                                hour12: false
+                                                                            }).formatToParts(date);
+                                                                            let h = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+                                                                            if (h === 24) h = 0;
+                                                                            const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+                                                                            const totalMinutes = h * 60 + m;
+                                                                            return Math.max(0, Math.min(100, (totalMinutes / (24 * 60)) * 100));
+                                                                        } catch (e) {
+                                                                            const totalMinutes = date.getHours() * 60 + date.getMinutes();
+                                                                            return Math.max(0, Math.min(100, (totalMinutes / (24 * 60)) * 100));
+                                                                        }
+                                                                    };
+
+                                                                    return (
+                                                                        <div key={item.id} className="relative z-10 flex hover:bg-slate-50/50 dark:hover:bg-indigo-500/5 transition-colors group cursor-pointer hover:z-20" onClick={() => setSelectedLiveUser(item)}>
+                                                                            {/* Employee Info (Sticky) */}
+                                                                            <div className="w-[300px] shrink-0 px-6 py-4 flex items-center gap-3 border-r border-slate-200 dark:border-github-dark-border sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-github-dark-subtle z-20">
+                                                                                <div className="flex items-center gap-4">
+                                                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm overflow-hidden ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle dark:text-github-dark-muted' : 'bg-gradient-to-br from-indigo-500/10 to-purple-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20'}`}>
+                                                                                        {item.avatar.startsWith('http') ? (
+                                                                                            <img src={item.avatar} alt={item.name} className="w-full h-full object-cover" />
+                                                                                        ) : (
+                                                                                            item.avatar
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <div className="min-w-0">
+                                                                                        <p className="font-bold text-sm text-slate-800 dark:text-github-dark-text truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{item.name}</p>
+                                                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30'}`}>
+                                                                                                {item.status.split(' ')[0]}
+                                                                                            </span>
+
+                                                                                            <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-mono font-bold">
+                                                                                                {item.totalHours && (item.totalHours.toLowerCase().includes('hr') || item.totalHours.toLowerCase().includes('min') || item.totalHours === '-') ? item.totalHours : `${item.totalHours} Hrs`}
+                                                                                                {item.expectedHours && item.expectedHours !== '-' && ` / ${item.expectedHours}`}
+                                                                                            </span>
+                                                                                        </div>
                                                                                     </div>
                                                                                 </div>
                                                                             </div>
-                                                                        </div>
 
-                                                                        {/* Timeline Grid */}
-                                                                        <div className="flex-1 relative flex h-20 items-center">
-                                                                            {/* Hour Grid Lines */}
-                                                                            <div className="absolute inset-0 flex">
-                                                                                {Array.from({ length: 24 }).map((_, i) => (
-                                                                                    <div key={i} className="flex-1 border-r border-slate-100 dark:border-github-dark-border/30 last:border-r-0"></div>
-                                                                                ))}
-                                                                            </div>
+                                                                            {/* Timeline Grid */}
+                                                                            <div className="flex-1 relative flex h-20 items-center">
+                                                                                {/* Hour Grid Lines */}
+                                                                                <div className="absolute inset-0 flex">
+                                                                                    {Array.from({ length: 24 }).map((_, i) => (
+                                                                                        <div key={i} className="flex-1 border-r border-slate-100 dark:border-github-dark-border/30 last:border-r-0"></div>
+                                                                                    ))}
+                                                                                </div>
 
-                                                                            {/* Session Blocks */}
-                                                                            <div className="absolute inset-x-0 h-10 z-10 px-2">
-                                                                                {item.sessions.map((session, sIdx) => {
-                                                                                    const startPos = timeToPct(session.rawIn);
-                                                                                    const endPos = session.isActive ? timeToPct(getCurrentTimeInTimezone(orgTimezone)) : timeToPct(session.rawOut);
-                                                                                    const width = endPos - startPos;
+                                                                                {/* Session Blocks */}
+                                                                                <div className="absolute inset-x-0 h-10 z-10 px-2">
+                                                                                    {item.sessions.map((session, sIdx) => {
+                                                                                        const startPos = timeToPct(session.rawIn);
+                                                                                        const endPos = session.isActive ? timeToPct(getCurrentTimeInTimezone(orgTimezone)) : timeToPct(session.rawOut);
+                                                                                        const width = endPos - startPos;
 
-                                                                                    if (startPos === null) return null;
+                                                                                        if (startPos === null) return null;
 
-                                                                                    return (
-                                                                                        <div
-                                                                                            key={sIdx}
-                                                                                            className={`absolute top-0 h-full rounded-md border-2 shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all cursor-pointer group/session ${session.isActive ? 'bg-gradient-to-r from-indigo-500 to-blue-500 border-indigo-400/50 animate-pulse' : 'bg-gradient-to-r from-emerald-500 to-teal-500 border-emerald-400/50'}`}
-                                                                                            style={{ left: `${startPos}%`, width: `${Math.max(width, 1)}%` }}
-                                                                                        >
-                                                                                            {/* Floating Labels on active */}
-                                                                                            {session.isActive && (
-                                                                                                <div className="absolute -top-6 left-0 right-0 text-center">
-                                                                                                    <span className="text-[8px] font-black bg-indigo-500 text-white px-2 py-0.5 rounded-md uppercase tracking-widest shadow-lg">Active Now</span>
-                                                                                                </div>
-                                                                                            )}
+                                                                                        return (
+                                                                                            <div
+                                                                                                key={sIdx}
+                                                                                                className={`absolute top-0 h-full rounded-md border-2 shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all cursor-pointer group/session ${session.isActive ? 'bg-gradient-to-r from-indigo-500 to-blue-500 border-indigo-400/50 animate-pulse' : 'bg-gradient-to-r from-emerald-500 to-teal-500 border-emerald-400/50'}`}
+                                                                                                style={{ left: `${startPos}%`, width: `${Math.max(width, 1)}%` }}
+                                                                                            >
+                                                                                                {/* Floating Labels on active */}
+                                                                                                {session.isActive && (
+                                                                                                    <div className="absolute -top-6 left-0 right-0 text-center">
+                                                                                                        <span className="text-[8px] font-black bg-indigo-500 text-white px-2 py-0.5 rounded-md uppercase tracking-widest shadow-lg">Active Now</span>
+                                                                                                    </div>
+                                                                                                )}
 
-                                                                                            {/* Tooltip on Hover */}
-                                                                                            <div className={`absolute ${rowIdx < 2 ? 'top-full mt-3' : 'bottom-full mb-3'} left-1/2 -translate-x-1/2 px-4 py-3.5 bg-slate-955 dark:bg-[#0d1117] text-white text-[10px] rounded-xl opacity-0 group-hover/session:opacity-100 transition-all duration-300 transform ${rowIdx < 2 ? '-translate-y-2' : 'translate-y-2'} group-hover/session:translate-y-0 whitespace-normal z-50 pointer-events-none shadow-2xl border border-slate-700 dark:border-github-dark-border w-[320px]`}>
-                                                                                                {/* Timing Info */}
-                                                                                                <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
-                                                                                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Session Timing</span>
-                                                                                                    <span className="font-mono font-bold text-indigo-400">{session.in} - {session.out}</span>
-                                                                                                </div>
-                                                                                                
-                                                                                                <div className="grid grid-cols-2 gap-4">
-                                                                                                    {/* In details */}
-                                                                                                    <div className="space-y-2 flex flex-col items-center">
-                                                                                                        <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wider block self-start">Punch In</span>
-                                                                                                        {session.inImage ? (
-                                                                                                            <div className="flex justify-center w-full my-1 cursor-pointer" onClick={() => setPreviewImage(session.inImage)}>
-                                                                                                                <img src={session.inImage} alt="In Selfie" className="max-h-32 max-w-full w-auto block rounded-xl shadow-sm object-contain hover:scale-105 transition-transform" />
+                                                                                                {/* Tooltip on Hover */}
+                                                                                                <div className={`absolute ${rowIdx < 2 ? 'top-full mt-3' : 'bottom-full mb-3'} left-1/2 -translate-x-1/2 px-4 py-3.5 bg-slate-955 dark:bg-[#0d1117] text-white text-[10px] rounded-xl opacity-0 group-hover/session:opacity-100 transition-all duration-300 transform ${rowIdx < 2 ? '-translate-y-2' : 'translate-y-2'} group-hover/session:translate-y-0 whitespace-normal z-50 pointer-events-none shadow-2xl border border-slate-700 dark:border-github-dark-border w-[320px]`}>
+                                                                                                    {/* Timing Info */}
+                                                                                                    <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
+                                                                                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Session Timing</span>
+                                                                                                        <span className="font-mono font-bold text-indigo-400">{session.in} - {session.out}</span>
+                                                                                                    </div>
+
+                                                                                                    <div className="grid grid-cols-2 gap-4">
+                                                                                                        {/* In details */}
+                                                                                                        <div className="space-y-2 flex flex-col items-center">
+                                                                                                            <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wider block self-start">Punch In</span>
+                                                                                                            {session.inImage ? (
+                                                                                                                <div className="flex justify-center w-full my-1 cursor-pointer" onClick={() => setPreviewImage(session.inImage)}>
+                                                                                                                    <img src={session.inImage} alt="In Selfie" className="max-h-32 max-w-full w-auto block rounded-xl shadow-sm object-contain hover:scale-105 transition-transform" />
+                                                                                                                </div>
+                                                                                                            ) : (
+                                                                                                                <div className="w-24 h-20 rounded-lg border border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 text-[8px] gap-1 bg-black/10 my-1">
+                                                                                                                    <Camera size={12} />
+                                                                                                                    <span>No Selfie In</span>
+                                                                                                                </div>
+                                                                                                            )}
+                                                                                                            <div className="flex items-start gap-1 w-full text-[9px] leading-tight text-slate-300">
+                                                                                                                <MapPin size={8} className="text-emerald-500 shrink-0 mt-0.5" />
+                                                                                                                <span className="break-words">{session.inLocation}</span>
                                                                                                             </div>
-                                                                                                        ) : (
-                                                                                                            <div className="w-24 h-20 rounded-lg border border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 text-[8px] gap-1 bg-black/10 my-1">
-                                                                                                                <Camera size={12} />
-                                                                                                                <span>No Selfie In</span>
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                        <div className="flex items-start gap-1 w-full text-[9px] leading-tight text-slate-300">
-                                                                                                            <MapPin size={8} className="text-emerald-500 shrink-0 mt-0.5" />
-                                                                                                            <span className="break-words">{session.inLocation}</span>
+                                                                                                        </div>
+
+                                                                                                        {/* Out details */}
+                                                                                                        <div className="space-y-2 flex flex-col items-center">
+                                                                                                            <span className="text-[8px] font-bold text-rose-400 uppercase tracking-wider block self-start">Punch Out</span>
+                                                                                                            {session.outImage ? (
+                                                                                                                <div className="flex justify-center w-full my-1 cursor-pointer" onClick={() => setPreviewImage(session.outImage)}>
+                                                                                                                    <img src={session.outImage} alt="Out Selfie" className="max-h-32 max-w-full w-auto block rounded-xl shadow-sm object-contain hover:scale-105 transition-transform" />
+                                                                                                                </div>
+                                                                                                            ) : (
+                                                                                                                <div className="w-24 h-20 rounded-lg border border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 text-[8px] gap-1 bg-black/10 my-1">
+                                                                                                                    <Camera size={12} />
+                                                                                                                    <span>{session.isActive ? 'Ongoing...' : 'No Selfie Out'}</span>
+                                                                                                                </div>
+                                                                                                            )}
+                                                                                                            {session.outLocation ? (
+                                                                                                                <div className="flex items-start gap-1 w-full text-[9px] leading-tight text-slate-300">
+                                                                                                                    <MapPin size={8} className="text-rose-500 shrink-0 mt-0.5" />
+                                                                                                                    <span className="break-words">{session.outLocation}</span>
+                                                                                                                </div>
+                                                                                                            ) : (
+                                                                                                                <span className="text-[8px] text-slate-500 italic block self-start">{session.isActive ? 'Session Active' : 'N/A'}</span>
+                                                                                                            )}
                                                                                                         </div>
                                                                                                     </div>
 
-                                                                                                    {/* Out details */}
-                                                                                                    <div className="space-y-2 flex flex-col items-center">
-                                                                                                        <span className="text-[8px] font-bold text-rose-400 uppercase tracking-wider block self-start">Punch Out</span>
-                                                                                                        {session.outImage ? (
-                                                                                                            <div className="flex justify-center w-full my-1 cursor-pointer" onClick={() => setPreviewImage(session.outImage)}>
-                                                                                                                <img src={session.outImage} alt="Out Selfie" className="max-h-32 max-w-full w-auto block rounded-xl shadow-sm object-contain hover:scale-105 transition-transform" />
-                                                                                                            </div>
-                                                                                                        ) : (
-                                                                                                            <div className="w-24 h-20 rounded-lg border border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 text-[8px] gap-1 bg-black/10 my-1">
-                                                                                                                <Camera size={12} />
-                                                                                                                <span>{session.isActive ? 'Ongoing...' : 'No Selfie Out'}</span>
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                        {session.outLocation ? (
-                                                                                                            <div className="flex items-start gap-1 w-full text-[9px] leading-tight text-slate-300">
-                                                                                                                <MapPin size={8} className="text-rose-500 shrink-0 mt-0.5" />
-                                                                                                                <span className="break-words">{session.outLocation}</span>
-                                                                                                            </div>
-                                                                                                        ) : (
-                                                                                                            <span className="text-[8px] text-slate-500 italic block self-start">{session.isActive ? 'Session Active' : 'N/A'}</span>
-                                                                                                        )}
-                                                                                                    </div>
+                                                                                                    {/* Arrow */}
+                                                                                                    <div className={`absolute ${rowIdx < 2 ? '-top-1.5 border-l border-t' : '-bottom-1.5 border-r border-b'} left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-955 dark:bg-[#0d1117] rotate-45 border-slate-700 dark:border-github-dark-border`}></div>
                                                                                                 </div>
-
-                                                                                                {/* Arrow */}
-                                                                                                <div className={`absolute ${rowIdx < 2 ? '-top-1.5 border-l border-t' : '-bottom-1.5 border-r border-b'} left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-955 dark:bg-[#0d1117] rotate-45 border-slate-700 dark:border-github-dark-border`}></div>
                                                                                             </div>
-                                                                                        </div>
-                                                                                    );
-                                                                                })}
-                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
 
-                                                                            {/* Background Indicator for late arrival */}
-                                                                            {item.allStatuses && item.allStatuses.includes('Late') && item.sessions[0] && (
-                                                                                <div
-                                                                                    className="absolute left-0 h-1 bg-amber-400/20 rounded-full"
-                                                                                    style={{ width: `${timeToPct(item.sessions[0].rawIn)}%` }}
-                                                                                    title="Late Arrival Period"
-                                                                                ></div>
-                                                                            )}
+                                                                                {/* Background Indicator for late arrival */}
+                                                                                {item.allStatuses && item.allStatuses.includes('Late') && item.sessions[0] && (
+                                                                                    <div
+                                                                                        className="absolute left-0 h-1 bg-amber-400/20 rounded-full"
+                                                                                        style={{ width: `${timeToPct(item.sessions[0].rawIn)}%` }}
+                                                                                        title="Late Arrival Period"
+                                                                                    ></div>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                );
-                                                            })
-                                                        )}
+                                                                    );
+                                                                })
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ) : activeView === 'cards' ? (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                            {loading ? (
-                                                <div className="col-span-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
-                                                    {Array.from({ length: 8 }).map((_, i) => (
-                                                        <div key={i} className="bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border/60 p-5 space-y-4">
-                                                            <div className="flex items-center gap-4">
-                                                                <div className="w-12 h-12 rounded-lg bg-slate-200 dark:bg-slate-700/60"></div>
-                                                                <div className="space-y-2 flex-1">
-                                                                    <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-3/4"></div>
-                                                                    <div className="h-3 bg-slate-150 dark:bg-slate-800/80 rounded w-1/2"></div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="h-6 bg-slate-100 dark:bg-slate-800/80 rounded w-1/3"></div>
-                                                            <div className="grid grid-cols-2 gap-3 pt-2">
-                                                                <div className="h-10 bg-slate-100 dark:bg-slate-800/50 rounded-lg"></div>
-                                                                <div className="h-10 bg-slate-100 dark:bg-slate-800/50 rounded-lg"></div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : filteredData.length > 0 ? (
-                                                filteredData.map((item, index) => {
-                                                    const showDivider = item.status === 'Absent' && index > 0 && filteredData[index - 1].status !== 'Absent';
-
-                                                    return (
-                                                        <React.Fragment key={item.id}>
-                                                            {showDivider && (
-                                                                <div className="col-span-full py-6 flex items-center gap-4">
-                                                                    <div className="h-px bg-slate-200 dark:bg-slate-700 flex-1"></div>
-                                                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Not Checked In</span>
-                                                                    <div className="h-px bg-slate-200 dark:bg-slate-700 flex-1"></div>
-                                                                </div>
-                                                            )}
-                                                            <div
-                                                                onClick={() => setSelectedLiveUser(item)}
-                                                                data-tour-id={index === 0 ? "attendance-employee-card" : undefined}
-                                                                className={`bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border/60 hover:shadow-md transition-all duration-300 overflow-hidden group flex flex-col cursor-pointer ${item.status === 'Absent' ? 'opacity-70 grayscale-[0.3]' : ''}`}
-                                                            >
-                                                                {/* Card Header */}
-                                                                <div className="p-5 flex items-start justify-between">
-                                                                    <div className="flex gap-4">
-                                                                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-lg shadow-sm overflow-hidden ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle dark:text-github-dark-muted' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'}`}>
-                                                                            {item.avatar.startsWith('http') ? (
-                                                                                <img src={`${item.avatar}?t=${avatarTimestamp}`} alt={item.name} className="w-full h-full object-cover" />
-                                                                            ) : (
-                                                                                item.avatar
-                                                                            )}
-                                                                        </div>
-                                                                        <div>
-                                                                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text line-clamp-1" title={item.name}>{item.name}</h3>
-                                                                            <p className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">{item.role}</p>
-                                                                        </div>
+                                        ) : activeView === 'cards' ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                                {loading ? (
+                                                    <div className="col-span-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
+                                                        {Array.from({ length: 8 }).map((_, i) => (
+                                                            <div key={i} className="bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border/60 p-5 space-y-4">
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="w-12 h-12 rounded-lg bg-slate-200 dark:bg-slate-700/60"></div>
+                                                                    <div className="space-y-2 flex-1">
+                                                                        <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-3/4"></div>
+                                                                        <div className="h-3 bg-slate-150 dark:bg-slate-800/80 rounded w-1/2"></div>
                                                                     </div>
-                                                                    <button className="text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                                                                        <MoreVertical size={18} />
-                                                                    </button>
                                                                 </div>
-
-                                                                {/* Status Badge Line */}
-                                                                <div className="px-5 pb-4 flex flex-wrap items-center gap-2">
-                                                                    {item.allStatuses && item.allStatuses.map(statusBadge => (
-                                                                        <span key={statusBadge} className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border shadow-sm ${getStatusStyle(statusBadge).replace('bg-', 'bg-opacity-10 border-').replace('text-', 'text-')}`}>
-                                                                            <div className={`w-1.5 h-1.5 rounded-full mr-2 ${statusBadge === 'Active' ? 'animate-pulse bg-current' : 'bg-current'}`}></div>
-                                                                            {statusBadge}
-                                                                        </span>
-                                                                    ))}
-                                                                 </div>
-
-                                                                {/* Divider */}
-                                                                <div className="h-px bg-slate-100 dark:bg-github-dark-subtle mx-5"></div>
-
-                                                                {/* Card Body - Latest Session Only */}
-                                                                <div className="p-5 flex-1 overflow-hidden">
-                                                                    {item.status === 'Absent' ? (
-                                                                        <div className="h-full flex flex-col items-center justify-center text-slate-400 py-4 italic">
-                                                                            <Clock size={20} className="mb-2 opacity-30" />
-                                                                            <span className="text-xs">No activity yet</span>
-                                                                        </div>
-                                                                    ) : item.sessions.length > 0 ? (
-                                                                        <div className="relative pl-4 border-l-2 border-indigo-500">
-                                                                            {/* Session Indicator Dot */}
-                                                                            <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-md border-2 border-white dark:border-dark-card shadow-sm ${item.sessions[0].isActive ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-
-                                                                            <div className="flex items-center justify-between mb-2">
-                                                                                <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest">
-                                                                                    Latest Session
-                                                                                </span>
-                                                                                {item.sessions[0].isActive && (
-                                                                                    <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[9px] font-bold uppercase animate-pulse">
-                                                                                        Active
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
-
-                                                                            <div className="grid grid-cols-2 gap-4">
-                                                                                <div className="space-y-1">
-                                                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase">
-                                                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                                                        In {item.sessions[0].in}
-                                                                                    </div>
-                                                                                    <div className="flex items-start gap-1 text-[9px] text-slate-500 dark:text-github-dark-muted bg-slate-50 dark:bg-github-dark-subtle/50 p-1.5 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                                        <MapPin size={10} className="shrink-0 mt-0.5 text-indigo-400" />
-                                                                                        <span className="break-words whitespace-normal" title={item.sessions[0].inLocation}>{item.sessions[0].inLocation}</span>
-                                                                                    </div>
-                                                                                </div>
-
-                                                                                <div className="space-y-1">
-                                                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase">
-                                                                                        <div className={`w-1.5 h-1.5 rounded-full ${item.sessions[0].isActive ? 'bg-slate-300 dark:bg-slate-600' : 'bg-red-500'}`}></div>
-                                                                                        Out {item.sessions[0].out}
-                                                                                    </div>
-                                                                                    {item.sessions[0].outLocation ? (
-                                                                                        <div className="flex items-start gap-1 text-[9px] text-slate-500 dark:text-github-dark-muted bg-slate-50 dark:bg-github-dark-subtle/50 p-1.5 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                                            <MapPin size={10} className="shrink-0 mt-0.5 text-rose-400" />
-                                                                                            <span className="break-words whitespace-normal" title={item.sessions[0].outLocation}>{item.sessions[0].outLocation}</span>
-                                                                                        </div>
-                                                                                    ) : item.sessions[0].isActive ? (
-                                                                                        <div className="h-full flex items-center p-1.5">
-                                                                                            <span className="text-[10px] text-slate-300 dark:text-slate-600 italic">Ongoing...</span>
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <div className="h-full flex items-center p-1.5">
-                                                                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">System Checkout</span>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-
-                                                                            {/* More Sessions Indicator */}
-                                                                            {item.sessions.length > 1 && (
-                                                                                <div className="mt-3 text-center">
-                                                                                    <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-full cursor-pointer hover:bg-indigo-100 transition-colors">
-                                                                                        +{item.sessions.length - 1} more sessions
-                                                                                    </span>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    ) : null}
+                                                                <div className="h-6 bg-slate-100 dark:bg-slate-800/80 rounded w-1/3"></div>
+                                                                <div className="grid grid-cols-2 gap-3 pt-2">
+                                                                    <div className="h-10 bg-slate-100 dark:bg-slate-800/50 rounded-lg"></div>
+                                                                    <div className="h-10 bg-slate-100 dark:bg-slate-800/50 rounded-lg"></div>
                                                                 </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : filteredData.length > 0 ? (
+                                                    filteredData.map((item, index) => {
+                                                        const showDivider = item.status === 'Absent' && index > 0 && filteredData[index - 1].status !== 'Absent';
 
-                                                                {/* Card Footer (Duration) */}
-                                                                {item.status !== 'Absent' && (
-                                                                    <div className="bg-slate-50 dark:bg-github-dark-subtle/50 px-5 py-3 border-t border-slate-100 dark:border-github-dark-border flex items-center justify-between">
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Daily Time</span>
-                                                                            <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-                                                                                {item.totalHours}
-                                                                                {item.expectedHours && item.expectedHours !== '-' && (
-                                                                                    <span className="text-xs text-slate-400 dark:text-github-dark-muted font-normal">
-                                                                                        (Expected: {item.expectedHours})
-                                                                                    </span>
-                                                                                )}
-                                                                            </span>
-                                                                        </div>
-                                                                        {item.sessions.length > 1 && (
-                                                                            <div className="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm">
-                                                                                <Activity size={12} className="text-indigo-500" />
-                                                                                <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{item.sessions.length} Sessions</span>
-                                                                            </div>
-                                                                        )}
+                                                        return (
+                                                            <React.Fragment key={item.id}>
+                                                                {showDivider && (
+                                                                    <div className="col-span-full py-6 flex items-center gap-4">
+                                                                        <div className="h-px bg-slate-200 dark:bg-slate-700 flex-1"></div>
+                                                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Not Checked In</span>
+                                                                        <div className="h-px bg-slate-200 dark:bg-slate-700 flex-1"></div>
                                                                     </div>
                                                                 )}
-                                                            </div>
-                                                        </React.Fragment>
-                                                    );
-                                                })
-                                            ) : (
-                                                <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
-                                                    <div className="bg-slate-100 dark:bg-github-dark-subtle p-4 rounded-full mb-4">
-                                                        <Search size={32} />
-                                                    </div>
-                                                    <p className="text-lg font-medium text-slate-600 dark:text-slate-300">No employees found</p>
-                                                                     <p className="text-sm">Try adjusting your filters or search terms</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : activeView === 'map' ? (
-                                        /* Map View Layout */
-                                        <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]">
-                                            <div className="flex-1 h-full relative">
-                                                <MapContainer
-                                                    center={[20, 78]}
-                                                    zoom={5}
-                                                    minZoom={3}
-                                                    maxBounds={[[-90, -180], [90, 180]]}
-                                                    maxBoundsViscosity={1.0}
-                                                    className="h-full w-full z-0"
-                                                    attributionControl={false}
-                                                >
-                                                    <TileLayer url={MAP_THEMES[activeTheme].url} noWrap={true} />
-
-                                                    {/* Map Theme Switcher Overlay */}
-                                                    <div className="absolute top-4 right-4 z-[1001]">
-                                                        <div className="relative">
-                                                            <button
-                                                                onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-                                                                className="flex items-center gap-2 bg-white dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text px-4 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-github-dark-border hover:border-indigo-500/50 transition-all group"
-                                                            >
-                                                                <Layers size={18} className="text-indigo-500 group-hover:scale-110 transition-transform" />
-                                                                <span className="text-sm font-semibold">{MAP_THEMES[activeTheme].name}</span>
-                                                                <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
-                                                            </button>
-
-                                                            {isThemeMenuOpen && (
-                                                                <>
-                                                                    <div className="fixed inset-0 z-10" onClick={() => setIsThemeMenuOpen(false)} />
-                                                                    <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-20">
-                                                                        <div className="py-1">
-                                                                            {Object.entries(MAP_THEMES).map(([id, theme]) => (
-                                                                                <button
-                                                                                    key={id}
-                                                                                    onClick={() => {
-                                                                                        setActiveTheme(id);
-                                                                                        setIsThemeMenuOpen(false);
-                                                                                    }}
-                                                                                    className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-colors ${activeTheme === id
-                                                                                        ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-bold'
-                                                                                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                                                                                        }`}
-                                                                                >
-                                                                                    <span>{theme.name}</span>
-                                                                                    {activeTheme === id && <Check size={14} className="text-indigo-500" />}
-                                                                                </button>
-                                                                            ))}
+                                                                <div
+                                                                    onClick={() => setSelectedLiveUser(item)}
+                                                                    data-tour-id={index === 0 ? "attendance-employee-card" : undefined}
+                                                                    className={`bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border/60 hover:shadow-md transition-all duration-300 overflow-hidden group flex flex-col cursor-pointer ${item.status === 'Absent' ? 'opacity-70 grayscale-[0.3]' : ''}`}
+                                                                >
+                                                                    {/* Card Header */}
+                                                                    <div className="p-5 flex items-start justify-between">
+                                                                        <div className="flex gap-4">
+                                                                            <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-lg shadow-sm overflow-hidden ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle dark:text-github-dark-muted' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'}`}>
+                                                                                {item.avatar.startsWith('http') ? (
+                                                                                    <img src={`${item.avatar}?t=${avatarTimestamp}`} alt={item.name} className="w-full h-full object-cover" />
+                                                                                ) : (
+                                                                                    item.avatar
+                                                                                )}
+                                                                            </div>
+                                                                            <div>
+                                                                                <h3 className="font-bold text-slate-800 dark:text-github-dark-text line-clamp-1" title={item.name}>{item.name}</h3>
+                                                                                <p className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">{item.role}</p>
+                                                                            </div>
                                                                         </div>
+                                                                        <button className="text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                                                                            <MoreVertical size={18} />
+                                                                        </button>
                                                                     </div>
-                                                                </>
-                                                            )}
+
+                                                                    {/* Status Badge Line */}
+                                                                    <div className="px-5 pb-4 flex flex-wrap items-center gap-2">
+                                                                        {item.allStatuses && item.allStatuses.map(statusBadge => (
+                                                                            <span key={statusBadge} className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border shadow-sm ${getStatusStyle(statusBadge).replace('bg-', 'bg-opacity-10 border-').replace('text-', 'text-')}`}>
+                                                                                <div className={`w-1.5 h-1.5 rounded-full mr-2 ${statusBadge === 'Active' ? 'animate-pulse bg-current' : 'bg-current'}`}></div>
+                                                                                {statusBadge}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+
+                                                                    {/* Divider */}
+                                                                    <div className="h-px bg-slate-100 dark:bg-github-dark-subtle mx-5"></div>
+
+                                                                    {/* Card Body - Latest Session Only */}
+                                                                    <div className="p-5 flex-1 overflow-hidden">
+                                                                        {item.status === 'Absent' ? (
+                                                                            <div className="h-full flex flex-col items-center justify-center text-slate-400 py-4 italic">
+                                                                                <Clock size={20} className="mb-2 opacity-30" />
+                                                                                <span className="text-xs">No activity yet</span>
+                                                                            </div>
+                                                                        ) : item.sessions.length > 0 ? (
+                                                                            <div className="relative pl-4 border-l-2 border-indigo-500">
+                                                                                {/* Session Indicator Dot */}
+                                                                                <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-md border-2 border-white dark:border-dark-card shadow-sm ${item.sessions[0].isActive ? 'bg-indigo-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+
+                                                                                <div className="flex items-center justify-between mb-2">
+                                                                                    <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest">
+                                                                                        Latest Session
+                                                                                    </span>
+                                                                                    {item.sessions[0].isActive && (
+                                                                                        <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[9px] font-bold uppercase animate-pulse">
+                                                                                            Active
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+
+                                                                                <div className="grid grid-cols-2 gap-4">
+                                                                                    <div className="space-y-1">
+                                                                                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase">
+                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                                                            In {item.sessions[0].in}
+                                                                                        </div>
+                                                                                        <div className="flex items-start gap-1 text-[9px] text-slate-500 dark:text-github-dark-muted bg-slate-50 dark:bg-github-dark-subtle/50 p-1.5 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                                                            <MapPin size={10} className="shrink-0 mt-0.5 text-indigo-400" />
+                                                                                            <span className="break-words whitespace-normal" title={item.sessions[0].inLocation}>{item.sessions[0].inLocation}</span>
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div className="space-y-1">
+                                                                                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase">
+                                                                                            <div className={`w-1.5 h-1.5 rounded-full ${item.sessions[0].isActive ? 'bg-slate-300 dark:bg-slate-600' : 'bg-red-500'}`}></div>
+                                                                                            Out {item.sessions[0].out}
+                                                                                        </div>
+                                                                                        {item.sessions[0].outLocation ? (
+                                                                                            <div className="flex items-start gap-1 text-[9px] text-slate-500 dark:text-github-dark-muted bg-slate-50 dark:bg-github-dark-subtle/50 p-1.5 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                                                                <MapPin size={10} className="shrink-0 mt-0.5 text-rose-400" />
+                                                                                                <span className="break-words whitespace-normal" title={item.sessions[0].outLocation}>{item.sessions[0].outLocation}</span>
+                                                                                            </div>
+                                                                                        ) : item.sessions[0].isActive ? (
+                                                                                            <div className="h-full flex items-center p-1.5">
+                                                                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 italic">Ongoing...</span>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <div className="h-full flex items-center p-1.5">
+                                                                                                <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">System Checkout</span>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                {/* More Sessions Indicator */}
+                                                                                {item.sessions.length > 1 && (
+                                                                                    <div className="mt-3 text-center">
+                                                                                        <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-full cursor-pointer hover:bg-indigo-100 transition-colors">
+                                                                                            +{item.sessions.length - 1} more sessions
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : null}
+                                                                    </div>
+
+                                                                    {/* Card Footer (Duration) */}
+                                                                    {item.status !== 'Absent' && (
+                                                                        <div className="bg-slate-50 dark:bg-github-dark-subtle/50 px-5 py-3 border-t border-slate-100 dark:border-github-dark-border flex items-center justify-between">
+                                                                            <div className="flex flex-col">
+                                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Daily Time</span>
+                                                                                <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                                                                                    {item.totalHours}
+                                                                                    {item.expectedHours && item.expectedHours !== '-' && (
+                                                                                        <span className="text-xs text-slate-400 dark:text-github-dark-muted font-normal">
+                                                                                            (Expected: {item.expectedHours})
+                                                                                        </span>
+                                                                                    )}
+                                                                                </span>
+                                                                            </div>
+                                                                            {item.sessions.length > 1 && (
+                                                                                <div className="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm">
+                                                                                    <Activity size={12} className="text-indigo-500" />
+                                                                                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{item.sessions.length} Sessions</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </React.Fragment>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
+                                                        <div className="bg-slate-100 dark:bg-github-dark-subtle p-4 rounded-full mb-4">
+                                                            <Search size={32} />
                                                         </div>
+                                                        <p className="text-lg font-medium text-slate-600 dark:text-slate-300">No employees found</p>
+                                                        <p className="text-sm">Try adjusting your filters or search terms</p>
                                                     </div>
+                                                )}
+                                            </div>
+                                        ) : activeView === 'map' ? (
+                                            /* Map View Layout */
+                                            <div className="flex-1 min-h-0 flex gap-0 bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500 relative min-h-[450px]">
+                                                <div className="flex-1 h-full relative">
+                                                    <MapContainer
+                                                        center={[20, 78]}
+                                                        zoom={5}
+                                                        minZoom={3}
+                                                        maxBounds={[[-90, -180], [90, 180]]}
+                                                        maxBoundsViscosity={1.0}
+                                                        className="h-full w-full z-0"
+                                                        attributionControl={false}
+                                                    >
+                                                        <TileLayer url={MAP_THEMES[activeTheme].url} noWrap={true} />
 
-                                                    <MapRecenter data={filteredData} searchTerm={searchTerm} departmentFilter={departmentFilter} />
+                                                        {/* Map Theme Switcher Overlay */}
+                                                        <div className="absolute top-4 right-4 z-[1001]">
+                                                            <div className="relative">
+                                                                <button
+                                                                    onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+                                                                    className="flex items-center gap-2 bg-white dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text px-4 py-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-github-dark-border hover:border-indigo-500/50 transition-all group"
+                                                                >
+                                                                    <Layers size={18} className="text-indigo-500 group-hover:scale-110 transition-transform" />
+                                                                    <span className="text-sm font-semibold">{MAP_THEMES[activeTheme].name}</span>
+                                                                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
+                                                                </button>
 
-                                                    {(() => {
-                                                        const areCoordsSame = (lat1, lng1, lat2, lng2) => {
-                                                            if (!lat1 || !lng1 || !lat2 || !lng2) return false;
-                                                            return Math.abs(Number(lat1) - Number(lat2)) < 0.0001 &&
-                                                                Math.abs(Number(lng1) - Number(lng2)) < 0.0001;
-                                                        };
+                                                                {isThemeMenuOpen && (
+                                                                    <>
+                                                                        <div className="fixed inset-0 z-10" onClick={() => setIsThemeMenuOpen(false)} />
+                                                                        <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-20">
+                                                                            <div className="py-1">
+                                                                                {Object.entries(MAP_THEMES).map(([id, theme]) => (
+                                                                                    <button
+                                                                                        key={id}
+                                                                                        onClick={() => {
+                                                                                            setActiveTheme(id);
+                                                                                            setIsThemeMenuOpen(false);
+                                                                                        }}
+                                                                                        className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-colors ${activeTheme === id
+                                                                                            ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-bold'
+                                                                                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                                                            }`}
+                                                                                    >
+                                                                                        <span>{theme.name}</span>
+                                                                                        {activeTheme === id && <Check size={14} className="text-indigo-500" />}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
 
-                                                        const createClusterCustomIcon = function (cluster) {
-                                                            const count = cluster.getChildCount();
-                                                            return L.divIcon({
-                                                                className: 'cluster-marker',
-                                                                html: `<div class="cluster-marker-inner">
+                                                        <MapRecenter data={filteredData} searchTerm={searchTerm} departmentFilter={departmentFilter} />
+
+                                                        {(() => {
+                                                            const areCoordsSame = (lat1, lng1, lat2, lng2) => {
+                                                                if (!lat1 || !lng1 || !lat2 || !lng2) return false;
+                                                                return Math.abs(Number(lat1) - Number(lat2)) < 0.0001 &&
+                                                                    Math.abs(Number(lng1) - Number(lng2)) < 0.0001;
+                                                            };
+
+                                                            const createClusterCustomIcon = function (cluster) {
+                                                                const count = cluster.getChildCount();
+                                                                return L.divIcon({
+                                                                    className: 'cluster-marker',
+                                                                    html: `<div class="cluster-marker-inner">
                                                                     <span>${count}</span>
                                                                     <div class="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
                                                                         <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                                                                     </div>
                                                                    </div>`,
-                                                                iconSize: [44, 44],
-                                                                iconAnchor: [22, 22]
-                                                            });
-                                                        };
+                                                                    iconSize: [44, 44],
+                                                                    iconAnchor: [22, 22]
+                                                                });
+                                                            };
 
-                                                        return (
-                                                            <>
-                                                                <MarkerClusterGroup
-                                                                    ref={setClusterGroupElement}
-                                                                    chunkedLoading
-                                                                    iconCreateFunction={createClusterCustomIcon}
-                                                                    maxClusterRadius={40}
-                                                                    spiderfyOnMaxZoom={false}
-                                                                    showCoverageOnHover={false}
-                                                                    zoomToBoundsOnClick={false}
-                                                                >
-                                                                    {filteredData.flatMap(user => {
-                                                                        return user.sessions.flatMap((session, sIdx) => {
-                                                                            const isCombined = areCoordsSame(session.inLat, session.inLng, session.outLat, session.outLng);
+                                                            return (
+                                                                <>
+                                                                    <MarkerClusterGroup
+                                                                        ref={setClusterGroupElement}
+                                                                        chunkedLoading
+                                                                        iconCreateFunction={createClusterCustomIcon}
+                                                                        maxClusterRadius={40}
+                                                                        spiderfyOnMaxZoom={false}
+                                                                        showCoverageOnHover={false}
+                                                                        zoomToBoundsOnClick={false}
+                                                                    >
+                                                                        {filteredData.flatMap(user => {
+                                                                            return user.sessions.flatMap((session, sIdx) => {
+                                                                                const isCombined = areCoordsSame(session.inLat, session.inLng, session.outLat, session.outLng);
 
-                                                                            const markersToRender = [];
+                                                                                const markersToRender = [];
 
-                                                                            if (isCombined) {
-                                                                                markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
-                                                                            } else {
-                                                                                if (session.inLat && session.inLng) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
-                                                                                if (session.outLat && session.outLng) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
-                                                                            }
+                                                                                if (isCombined) {
+                                                                                    markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
+                                                                                } else {
+                                                                                    if (session.inLat && session.inLng) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
+                                                                                    if (session.outLat && session.outLng) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
+                                                                                }
 
-                                                                            return markersToRender.map(m => {
-                                                                                const markerKey = `${user.id}-${sIdx}-${m.type}`;
-                                                                                const { type, lat, lng } = m;
-                                                                                const isSelected = selectedCluster && selectedCluster.data.some(item => item.user.id === user.id && item.type === type);
+                                                                                return markersToRender.map(m => {
+                                                                                    const markerKey = `${user.id}-${sIdx}-${m.type}`;
+                                                                                    const { type, lat, lng } = m;
+                                                                                    const isSelected = selectedCluster && selectedCluster.data.some(item => item.user.id === user.id && item.type === type);
 
-                                                                                return (
-                                                                                    <Marker
-                                                                                        key={markerKey}
-                                                                                        position={[Number(lat), Number(lng)]}
-                                                                                        customSessionData={{ user, session, type }}
-                                                                                        eventHandlers={{
-                                                                                            click: () => {
-                                                                                                setSelectedCluster({
-                                                                                                    position: [Number(lat), Number(lng)],
-                                                                                                    data: [{ user, session, type }]
-                                                                                                });
-                                                                                            }
-                                                                                        }}
-                                                                                        icon={L.divIcon({
-                                                                                            className: `user-marker-${type}`,
-                                                                                            html: `<div class="marker-inner relative ${isSelected ? 'locked' : ''}">
+                                                                                    return (
+                                                                                        <Marker
+                                                                                            key={markerKey}
+                                                                                            position={[Number(lat), Number(lng)]}
+                                                                                            customSessionData={{ user, session, type }}
+                                                                                            eventHandlers={{
+                                                                                                click: () => {
+                                                                                                    setSelectedCluster({
+                                                                                                        position: [Number(lat), Number(lng)],
+                                                                                                        data: [{ user, session, type }]
+                                                                                                    });
+                                                                                                }
+                                                                                            }}
+                                                                                            icon={L.divIcon({
+                                                                                                className: `user-marker-${type}`,
+                                                                                                html: `<div class="marker-inner relative ${isSelected ? 'locked' : ''}">
                                                                                             <div class="w-10 h-10 rounded-full border-2 ${type === 'in' ? 'border-emerald-500' : type === 'out' ? 'border-rose-500' : 'border-transparent'} bg-white dark:bg-github-dark-subtle shadow-lg overflow-hidden flex items-center justify-center" ${type === 'combined' ? 'style="border-image: linear-gradient(to bottom right, #10b981 50%, #f43f5e 50%) 1;"' : ''}>
                                                                                                 ${type === 'combined' ? `
                                                                                                     <div class="absolute inset-0 border-2 border-emerald-500 rounded-full" style="clip-path: polygon(0 0, 100% 0, 0 100%);"></div>
                                                                                                     <div class="absolute inset-0 border-2 border-rose-500 rounded-full" style="clip-path: polygon(100% 0, 100% 100%, 0 100%);"></div>
                                                                                                 ` : ''}
                                                                                                 ${user.avatar.startsWith('http')
-                                                                                                    ? `<img src="${user.avatar}" class="w-full h-full object-cover" />`
-                                                                                                    : `<span class="text-xs font-black text-slate-600 dark:text-slate-300">${user.avatar}</span>`
-                                                                                                }
+                                                                                                        ? `<img src="${user.avatar}" class="w-full h-full object-cover" />`
+                                                                                                        : `<span class="text-xs font-black text-slate-600 dark:text-slate-300">${user.avatar}</span>`
+                                                                                                    }
                                                                                             </div>
                                                                                             <div class="absolute -bottom-1 -right-1 w-4 h-4 ${type === 'in' ? 'bg-emerald-500' : type === 'out' ? 'bg-rose-500' : 'bg-indigo-600'} rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center shadow-sm">
                                                                                                 ${type === 'in' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>' :
-                                                                                                    type === 'out' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' :
-                                                                                                        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'}
+                                                                                                        type === 'out' ? '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' :
+                                                                                                            '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'}
                                                                                             </div>
                                                                                            </div>`,
-                                                                                            iconSize: [40, 40],
-                                                                                            iconAnchor: [20, 20]
-                                                                                        })}
-                                                                                    >
-                                                                                    </Marker>
-                                                                                );
+                                                                                                iconSize: [40, 40],
+                                                                                                iconAnchor: [20, 20]
+                                                                                            })}
+                                                                                        >
+                                                                                        </Marker>
+                                                                                    );
+                                                                                });
                                                                             });
-                                                                        });
-                                                                    })}
-                                                                </MarkerClusterGroup>
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </MapContainer>
-                                            </div>
-                                            <AnimatePresence>
-                                                {selectedCluster && (
-                                                    <MapSidebarContent
-                                                        selectedCluster={selectedCluster}
-                                                        onClose={() => setSelectedCluster(null)}
-                                                    />
-                                                )}
-                                            </AnimatePresence>
-                                        </div>
-                                    ) : activeView === 'graph' ? (
-                                        /* Graph View Layout */
-                                        <div className="space-y-6 animate-in fade-in duration-500">
-                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                {/* Status Distribution */}
-                                                <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
-                                                    <div className="flex items-center justify-between mb-6">
-                                                        <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Attendance Status</h3>
-                                                        <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-md">
-                                                            <PieChartIcon size={20} />
-                                                        </div>
-                                                    </div>
-                                                    <div className="h-[300px] w-full">
-                                                        <ResponsiveContainer width="100%" height="100%">
-                                                            <PieChart>
-                                                                <Pie
-                                                                    data={getStatusData()}
-                                                                    cx="50%"
-                                                                    cy="50%"
-                                                                    innerRadius={70}
-                                                                    outerRadius={100}
-                                                                    paddingAngle={8}
-                                                                    dataKey="value"
-                                                                    stroke="none"
-                                                                >
-                                                                    {getStatusData().map((entry, index) => (
-                                                                        <Cell key={`cell-${index}`} fill={entry.color} className="hover:opacity-80 transition-opacity cursor-pointer" />
-                                                                    ))}
-                                                                </Pie>
-                                                                <Tooltip
-                                                                    contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', borderColor: 'rgba(51, 65, 85, 0.5)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                                                                    itemStyle={{ color: '#fff', fontWeight: 'bold' }}
-                                                                />
-                                                                <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                                                            </PieChart>
-                                                        </ResponsiveContainer>
-                                                    </div>
+                                                                        })}
+                                                                    </MarkerClusterGroup>
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </MapContainer>
                                                 </div>
-
-                                                {/* Department Breakdown */}
-                                                <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
-                                                    <div className="flex items-center justify-between mb-6">
-                                                        <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Department Metrics</h3>
-                                                        <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg">
-                                                            <BarChartIcon size={20} />
-                                                        </div>
-                                                    </div>
-                                                    <div className="h-[300px] w-full">
-                                                        <ResponsiveContainer width="100%" height="100%">
-                                                            <BarChart data={getDepartmentData()}>
-                                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.3} />
-                                                                <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-                                                                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-                                                                <Tooltip
-                                                                    cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
-                                                                    contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', borderColor: 'rgba(51, 65, 85, 0.5)', borderRadius: '12px', color: '#fff' }}
-                                                                />
-                                                                <Legend iconType="circle" />
-                                                                <Bar dataKey="Present" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-                                                                <Bar dataKey="Late" stackId="a" fill="#f59e0b" />
-                                                                <Bar dataKey="Absent" stackId="a" fill="#ef4444" radius={[6, 6, 0, 0]} />
-                                                            </BarChart>
-                                                        </ResponsiveContainer>
-                                                    </div>
-                                                </div>
+                                                <AnimatePresence>
+                                                    {selectedCluster && (
+                                                        <MapSidebarContent
+                                                            selectedCluster={selectedCluster}
+                                                            onClose={() => setSelectedCluster(null)}
+                                                        />
+                                                    )}
+                                                </AnimatePresence>
                                             </div>
-
-                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                {/* Check-in Activity */}
-                                                <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
-                                                    <div className="flex items-center justify-between mb-6">
-                                                        <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Staff Activity Timeline</h3>
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
-                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-github-dark-muted uppercase">Login</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
-                                                                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-github-dark-muted uppercase">Active</span>
+                                        ) : activeView === 'graph' ? (
+                                            /* Graph View Layout */
+                                            <div className="space-y-6 animate-in fade-in duration-500">
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                    {/* Status Distribution */}
+                                                    <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
+                                                        <div className="flex items-center justify-between mb-6">
+                                                            <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Attendance Status</h3>
+                                                            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-md">
+                                                                <PieChartIcon size={20} />
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                    <div className="h-[300px] w-full">
-                                                        <ResponsiveContainer width="100%" height="100%">
-                                                            <AreaChart data={getTimelineData()}>
-                                                                <defs>
-                                                                    <linearGradient id="colorActive" x1="0" y1="0" x2="0" y2="1">
-                                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                                                    </linearGradient>
-                                                                    <linearGradient id="colorCheckins" x1="0" y1="0" x2="0" y2="1">
-                                                                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                                                                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                                                                    </linearGradient>
-                                                                </defs>
-                                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.3} />
-                                                                <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} interval={1} />
-                                                                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                                                                <Tooltip
-                                                                    contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', borderColor: 'rgba(51, 65, 85, 0.5)', borderRadius: '12px', color: '#fff' }}
-                                                                />
-                                                                <Area name="Active Staff" type="monotone" dataKey="active" stroke="#10b981" fillOpacity={1} fill="url(#colorActive)" strokeWidth={3} />
-                                                                <Area name="Staff Check-ins" type="monotone" dataKey="checkins" stroke="#6366f1" fillOpacity={1} fill="url(#colorCheckins)" strokeWidth={3} />
-                                                            </AreaChart>
-                                                        </ResponsiveContainer>
-                                                    </div>
-                                                </div>
-
-                                                {/* Login Frequency */}
-                                                <div className="bg-white dark:bg-dark-card p-6 rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
-                                                    <div className="flex items-center justify-between mb-6">
-                                                        <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Session Frequency</h3>
-                                                        <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
-                                                            <Activity size={20} />
-                                                        </div>
-                                                    </div>
-                                                    <div className="h-[300px] w-full">
-                                                        <ResponsiveContainer width="100%" height="100%">
-                                                            <BarChart data={getLoginFrequencyData()} layout="vertical" margin={{ left: 20 }}>
-                                                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" opacity={0.3} />
-                                                                <XAxis type="number" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                                                                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={80} />
-                                                                <Tooltip
-                                                                    cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
-                                                                    contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', borderColor: 'rgba(51, 65, 85, 0.5)', borderRadius: '12px', color: '#fff' }}
-                                                                />
-                                                                <Bar dataKey="value" name="Employees" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={24}>
-                                                                    {getLoginFrequencyData().map((entry, index) => (
-                                                                        <Cell key={`cell-${index}`} fill={`url(#gradBar-${index})`} />
-                                                                    ))}
-                                                                </Bar>
-                                                                <defs>
-                                                                    {getLoginFrequencyData().map((_, i) => (
-                                                                        <linearGradient key={i} id={`gradBar-${i}`} x1="0" y1="0" x2="1" y2="0">
-                                                                            <stop offset="0%" stopColor="#6366f1" />
-                                                                            <stop offset="100%" stopColor="#a855f7" />
-                                                                        </linearGradient>
-                                                                    ))}
-                                                                </defs>
-                                                            </BarChart>
-                                                        </ResponsiveContainer>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Shift Hours Progress */}
-                                            <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
-                                                <div className="flex items-center justify-between mb-6">
-                                                    <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
-                                                        <Clock size={20} className="text-indigo-500" /> Shift Hours Progress
-                                                    </h3>
-                                                    <span className="text-xs font-semibold text-slate-500 dark:text-github-dark-muted">
-                                                        Actual logged hours vs. Expected shift duration today
-                                                    </span>
-                                                </div>
-                                                {presentStaffChartData.length === 0 ? (
-                                                    <p className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-12">
-                                                        No checked-in employees to track shift hours.
-                                                    </p>
-                                                ) : (
-                                                    <div className="h-[400px] w-full overflow-y-auto pr-2 custom-scrollbar">
-                                                        <div style={{ height: Math.max(350, presentStaffChartData.length * 45) }}>
+                                                        <div className="h-[300px] w-full">
                                                             <ResponsiveContainer width="100%" height="100%">
-                                                                <BarChart
-                                                                    data={presentStaffChartData}
-                                                                    layout="vertical"
-                                                                    margin={{ top: 10, right: 30, left: 20, bottom: 10 }}
-                                                                    barGap={4}
-                                                                >
-                                                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" opacity={0.3} />
-                                                                    <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} domain={[0, 'dataMax + 1']} />
-                                                                    <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={100} />
-                                                                    <Tooltip content={<CustomHoursTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} />
-                                                                    <Legend verticalAlign="top" height={36} iconType="circle" />
-                                                                    <Bar dataKey="logged" name="Logged Hours" fill="#10b981" radius={[0, 4, 4, 0]} barSize={12} />
-                                                                    <Bar dataKey="expected" name="Expected Hours" fill="#94a3b8" radius={[0, 4, 4, 0]} barSize={12} opacity={0.5} />
+                                                                <PieChart>
+                                                                    <Pie
+                                                                        data={getStatusData()}
+                                                                        cx="50%"
+                                                                        cy="50%"
+                                                                        innerRadius={70}
+                                                                        outerRadius={100}
+                                                                        paddingAngle={8}
+                                                                        dataKey="value"
+                                                                        stroke="none"
+                                                                    >
+                                                                        {getStatusData().map((entry, index) => (
+                                                                            <Cell key={`cell-${index}`} fill={entry.color} className="hover:opacity-80 transition-opacity cursor-pointer" />
+                                                                        ))}
+                                                                    </Pie>
+                                                                    <Tooltip
+                                                                        contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', borderColor: 'rgba(51, 65, 85, 0.5)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                                                                        itemStyle={{ color: '#fff', fontWeight: 'bold' }}
+                                                                    />
+                                                                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                                                </PieChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Department Breakdown */}
+                                                    <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
+                                                        <div className="flex items-center justify-between mb-6">
+                                                            <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Department Metrics</h3>
+                                                            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg">
+                                                                <BarChartIcon size={20} />
+                                                            </div>
+                                                        </div>
+                                                        <div className="h-[300px] w-full">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <BarChart data={getDepartmentData()}>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.3} />
+                                                                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                                                                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                                                                    <Tooltip
+                                                                        cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                                                        contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', borderColor: 'rgba(51, 65, 85, 0.5)', borderRadius: '12px', color: '#fff' }}
+                                                                    />
+                                                                    <Legend iconType="circle" />
+                                                                    <Bar dataKey="Present" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                                                                    <Bar dataKey="Late" stackId="a" fill="#f59e0b" />
+                                                                    <Bar dataKey="Absent" stackId="a" fill="#ef4444" radius={[6, 6, 0, 0]} />
                                                                 </BarChart>
                                                             </ResponsiveContainer>
                                                         </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                    // Approvals Tab Content
-                    <div data-tour-id="attendance-requests-queue" className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 h-[calc(100vh-210px)] min-h-[580px]">
-
-                        {/* Left Sidebar: Requests List */}
-                        <div className="w-full lg:w-80 bg-white dark:bg-dark-card rounded-xl shadow-xs border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col h-full shrink-0">
-                            {/* Header and Search */}
-                            <div className="p-3 border-b border-slate-100 dark:border-github-dark-border space-y-2.5 bg-slate-50/50 dark:bg-github-dark-subtle/30">
-                                <div className="flex justify-between items-center px-0.5">
-                                    <div className="flex items-center gap-1.5">
-                                        <FileClock size={14} className="text-slate-500 dark:text-slate-400" />
-                                        <h3 className="text-xs font-bold text-slate-800 dark:text-github-dark-text uppercase tracking-wider">Correction Requests</h3>
-                                    </div>
-                                    <div className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
-                                        {requestCount} Pending
-                                    </div>
-                                </div>
-
-                                <div className="relative">
-                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
-                                    <input
-                                        type="text"
-                                        placeholder="Search by employee name..."
-                                        value={correctionSearchTerm}
-                                        onChange={(e) => setCorrectionSearchTerm(e.target.value)}
-                                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-github-dark-subtle/70 border border-slate-200 dark:border-github-dark-border rounded-lg focus:ring-1 focus:ring-slate-400 outline-none transition-all shadow-2xs font-medium"
-                                    />
-                                </div>
-                            </div>
-                            <div className="overflow-y-auto no-scrollbar flex-1 p-3 space-y-3">
-                                {requestsLoading ? (
-                                    <div className="p-10 text-center text-slate-400">Loading...</div>
-                                ) : filteredRequests.length === 0 ? (
-                                    <div className="p-8 text-center text-slate-400 flex flex-col items-center gap-2">
-                                        <CheckCircle className="w-6 h-6 text-slate-300 dark:text-slate-600" />
-                                        <span className="text-xs font-medium">No requests found.</span>
-                                    </div>
-                                ) : (
-                                    filteredRequests.map((request) => {
-                                        const isSelected = selectedRequestId === request.acr_id;
-                                        return (
-                                            <div
-                                                key={request.acr_id}
-                                                onClick={() => {
-                                                    setSelectedRequestId(request.acr_id);
-                                                    fetchRequestDetail(request.acr_id);
-                                                }}
-                                                className={`p-3 rounded-xl border transition-all cursor-pointer shadow-2xs ${isSelected
-                                                    ? 'bg-slate-50 dark:bg-slate-800/40 border-slate-800 dark:border-slate-300 shadow-xs ring-1 ring-slate-400/20'
-                                                    : 'bg-white dark:bg-github-dark-subtle/30 border-slate-200 dark:border-github-dark-border hover:bg-slate-50 dark:hover:bg-github-dark-subtle/60 hover:border-slate-300'
-                                                    }`}
-                                            >
-                                                <div className="flex justify-between items-start mb-1.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-[10px] overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
-                                                            {request.profile_image_url && request.profile_image_url.startsWith('http') ? (
-                                                                <img src={`${request.profile_image_url}?t=${avatarTimestamp}`} alt={request.user_name} className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                (request.user_name || 'U').charAt(0).toUpperCase()
-                                                            )}
-                                                        </div>
-                                                        <div>
-                                                            <p className={`text-xs font-bold leading-tight ${isSelected ? 'text-slate-900 dark:text-white' : 'text-slate-800 dark:text-github-dark-text'}`}>{request.user_name}</p>
-                                                            <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium inline-block">ID: {request.user_id}</span>
-                                                        </div>
-                                                    </div>
-                                                    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md border ${request.status === 'approved' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40'
-                                                        : request.status === 'rejected' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800/40'
-                                                            : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
-                                                        }`}>{request.status}</span>
                                                 </div>
 
-                                                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 mb-1">
-                                                    <Calendar size={11} className="text-slate-400 shrink-0" />
-                                                    <span>{formatCorrectionDate(request.request_date)}</span>
-                                                </div>
-
-                                                {request.reason && (
-                                                    <p className="text-[10px] text-slate-500 dark:text-github-dark-muted italic line-clamp-1 pl-1.5 border-l-2 border-slate-300 dark:border-github-dark-border my-1">
-                                                        "{request.reason}"
-                                                    </p>
-                                                )}
-
-                                                <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1.5 font-mono border-t border-slate-100 dark:border-github-dark-border/40 pt-1.5">
-                                                    <span>Sub. {request.submitted_at ? new Date(request.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : 'N/A'}</span>
-                                                    <span className="font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                                                        {(request.correction_type || '').replace('_', ' ')}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Right Detail Panel */}
-                        <div className="flex-1 bg-white dark:bg-dark-card rounded-xl shadow-xs border border-slate-200 dark:border-github-dark-border flex flex-col h-full overflow-hidden">
-                            {detailLoading ? (
-                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-400 dark:text-github-dark-muted">
-                                    <RefreshCw className="w-6 h-6 animate-spin text-slate-500 mb-2" />
-                                    <p className="text-xs font-bold uppercase tracking-wider">Loading request details...</p>
-                                </div>
-                            ) : selectedRequestData ? (
-                                <>
-                                    {/* Detail Panel Header */}
-                                    <div className="p-3.5 border-b border-slate-100 dark:border-github-dark-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50 dark:bg-github-dark-subtle/30 shrink-0">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center font-bold text-xs overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
-                                                {selectedRequestData.profile_image_url && selectedRequestData.profile_image_url.startsWith('http') ? (
-                                                    <img src={`${selectedRequestData.profile_image_url}?t=${avatarTimestamp}`} alt={selectedRequestData.user_name} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    (selectedRequestData.user_name || 'U').charAt(0).toUpperCase()
-                                                )}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h2 className="text-sm font-bold text-slate-900 dark:text-github-dark-text tracking-tight">Request #{selectedRequestData.acr_id}</h2>
-                                                    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md border ${selectedRequestData.status === 'approved'
-                                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40'
-                                                        : selectedRequestData.status === 'rejected'
-                                                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800/40'
-                                                            : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
-                                                        }`}>
-                                                        {selectedRequestData.status}
-                                                    </span>
-                                                </div>
-                                                <p className="text-[11px] text-slate-500 dark:text-github-dark-muted font-medium mt-0.5">
-                                                    By <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRequestData.user_name}</span> ({selectedRequestData.designation || 'Employee'}) • <span className="text-slate-700 dark:text-slate-300 font-semibold">{formatCorrectionDate(selectedRequestData.request_date)}</span>
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {selectedRequestData.status === 'pending' && (
-                                            <div className="flex items-center gap-2 self-end sm:self-auto">
-                                                <button
-                                                    onClick={() => handleUpdateStatus(selectedRequestData.acr_id, 'rejected')}
-                                                    className="px-4 py-2 border border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-95 flex items-center gap-1.5"
-                                                >
-                                                    <XCircle size={15} /> Reject
-                                                </button>
-                                                <button
-                                                    onClick={() => handleUpdateStatus(selectedRequestData.acr_id, 'approved')}
-                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-emerald-600/10 hover:shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center gap-1.5"
-                                                >
-                                                    <CheckCircle size={15} /> Approve
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Admin Override Toggle Bar */}
-                                    {selectedRequestData.status === 'pending' && (
-                                        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between">
-                                            <div className="flex items-center gap-2.5">
-                                                <input
-                                                    type="checkbox"
-                                                    id="overrideToggle"
-                                                    checked={overrideMode}
-                                                    onChange={(e) => {
-                                                        const isChecked = e.target.checked;
-                                                        setOverrideMode(isChecked);
-                                                        if (isChecked && selectedRequestData) {
-                                                            const getTime = (val) => {
-                                                                if (!val) return '';
-                                                                const timePart = val.includes(' ') ? val.split(' ')[1] : (val.includes('T') ? val.split('T')[1] : val);
-                                                                return timePart.substring(0, 5);
-                                                            };
-                                                            setOverrideIn(getTime(selectedRequestData.requested_time_in));
-                                                            setOverrideOut(getTime(selectedRequestData.requested_time_out));
-                                                            setOverrideMethod(selectedRequestData.correction_method || 'fix');
-                                                        }
-                                                    }}
-                                                    className="w-3.5 h-3.5 text-slate-900 rounded border-slate-300 dark:border-github-dark-border focus:ring-slate-500 cursor-pointer"
-                                                />
-                                                <div>
-                                                    <label htmlFor="overrideToggle" className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 select-none cursor-pointer flex items-center gap-1">
-                                                        <Sparkles size={12} className="text-slate-500 dark:text-slate-400" /> Admin Override Mode
-                                                    </label>
-                                                    <p className="text-[10px] text-slate-500 dark:text-github-dark-muted font-medium">Enable to adjust proposed punches before approving</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Main Scrollable Content Body */}
-                                    <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4 bg-slate-50/30 dark:bg-transparent">
-
-                                        {/* Card 1: High-Fidelity Before/After Timeline */}
-                                        <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-3.5 shadow-2xs">
-                                            <VisualCorrectionTimeline
-                                                requestData={overrideMode ? { ...selectedRequestData, proposed_data: overrideSessions } : selectedRequestData}
-                                                editable={overrideMode}
-                                                onSessionsChange={(updated) => {
-                                                    setOverrideSessions(updated);
-                                                    if (updated[0]) {
-                                                        setOverrideIn(updated[0].time_in || '');
-                                                        setOverrideOut(updated[0].time_out || '');
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-
-                                        {/* Card 2: Employee Stated Reason & Attachments */}
-                                        <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-3.5 shadow-2xs">
-                                            <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1.5">
-                                                <FileClock size={13} className="text-indigo-500 dark:text-indigo-400" /> Employee Stated Reason
-                                            </h3>
-                                            <p className="text-xs text-slate-700 dark:text-slate-200 italic leading-relaxed pl-2.5 border-l-2 border-indigo-500/60">
-                                                "{selectedRequestData.reason || 'No specific reason provided.'}"
-                                            </p>
-
-                                            {/* Supporting Attachment Link / Viewer */}
-                                            {selectedRequestData.attachment_url && (
-                                                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-github-dark-border/60 flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <Paperclip size={13} className="text-indigo-500" />
-                                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Supporting Proof / Attachment</span>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setPreviewImage(selectedRequestData.attachment_url)}
-                                                        className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-800/40 px-2.5 py-1 rounded-lg hover:shadow-xs transition-all cursor-pointer"
-                                                    >
-                                                        <Eye size={12} /> View Attachment
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Card 3: Side-by-Side Comparison of Sessions */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {/* Original Sessions */}
-                                            <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border overflow-hidden shadow-2xs flex flex-col">
-                                                <div className="px-3.5 py-2.5 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-slate-50/70 dark:bg-github-dark-subtle/30">
-                                                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                                                        <Clock size={12} className="text-slate-500" /> Original Captured Sessions
-                                                    </h3>
-                                                    <span className="text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-md">
-                                                        {Array.isArray(selectedRequestData.original_data) && selectedRequestData.original_data.length > 0
-                                                            ? `${selectedRequestData.original_data.length} session${selectedRequestData.original_data.length !== 1 ? 's' : ''}`
-                                                            : 'Absent'}
-                                                    </span>
-                                                </div>
-                                                <div className="p-3 flex-1 flex flex-col justify-center">
-                                                    {Array.isArray(selectedRequestData.original_data) && selectedRequestData.original_data.length > 0 ? (
-                                                        <div className="space-y-1.5">
-                                                            {selectedRequestData.original_data.map((s, i) => (
-                                                                <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-slate-50/80 dark:bg-github-dark-bg/40 border border-slate-200/80 dark:border-github-dark-border/60">
-                                                                    <span className="text-[9px] font-bold text-slate-400 w-5 shrink-0">#{i + 1}</span>
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className="w-2 h-2 rounded-full bg-[#1D9E75] shrink-0"></span>
-                                                                        <span className="text-[9px] font-bold text-slate-400 uppercase">In</span>
-                                                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">{String(s.time_in || '--:--').substring(0, 5)}</span>
-                                                                    </div>
-                                                                    <ArrowRight size={12} className="text-slate-400 dark:text-slate-600 shrink-0" />
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Out</span>
-                                                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 font-mono">{String(s.time_out || '--:--').substring(0, 5)}</span>
-                                                                        <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
-                                                                    </div>
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                    {/* Check-in Activity */}
+                                                    <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
+                                                        <div className="flex items-center justify-between mb-6">
+                                                            <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Staff Activity Timeline</h3>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                                    <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                                                                    <span className="text-[10px] font-bold text-slate-500 dark:text-github-dark-muted uppercase">Login</span>
                                                                 </div>
-                                                            ))}
+                                                                <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-lg border border-slate-100 dark:border-github-dark-border">
+                                                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                                                    <span className="text-[10px] font-bold text-slate-500 dark:text-github-dark-muted uppercase">Active</span>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                    ) : (
-                                                        <p className="text-[11px] text-slate-400 dark:text-github-dark-muted italic text-center py-4">
-                                                            No original clock-in/out records existed for this date.
+                                                        <div className="h-[300px] w-full">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <AreaChart data={getTimelineData()}>
+                                                                    <defs>
+                                                                        <linearGradient id="colorActive" x1="0" y1="0" x2="0" y2="1">
+                                                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                                                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                                                        </linearGradient>
+                                                                        <linearGradient id="colorCheckins" x1="0" y1="0" x2="0" y2="1">
+                                                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                                                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                                                        </linearGradient>
+                                                                    </defs>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.3} />
+                                                                    <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} interval={1} />
+                                                                    <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                                                                    <Tooltip
+                                                                        contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', borderColor: 'rgba(51, 65, 85, 0.5)', borderRadius: '12px', color: '#fff' }}
+                                                                    />
+                                                                    <Area name="Active Staff" type="monotone" dataKey="active" stroke="#10b981" fillOpacity={1} fill="url(#colorActive)" strokeWidth={3} />
+                                                                    <Area name="Staff Check-ins" type="monotone" dataKey="checkins" stroke="#6366f1" fillOpacity={1} fill="url(#colorCheckins)" strokeWidth={3} />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Login Frequency */}
+                                                    <div className="bg-white dark:bg-dark-card p-6 rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
+                                                        <div className="flex items-center justify-between mb-6">
+                                                            <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text">Session Frequency</h3>
+                                                            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
+                                                                <Activity size={20} />
+                                                            </div>
+                                                        </div>
+                                                        <div className="h-[300px] w-full">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <BarChart data={getLoginFrequencyData()} layout="vertical" margin={{ left: 20 }}>
+                                                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" opacity={0.3} />
+                                                                    <XAxis type="number" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                                                                    <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={80} />
+                                                                    <Tooltip
+                                                                        cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                                                        contentStyle={{ backgroundColor: 'rgba(30, 41, 59, 0.9)', backdropFilter: 'blur(8px)', borderColor: 'rgba(51, 65, 85, 0.5)', borderRadius: '12px', color: '#fff' }}
+                                                                    />
+                                                                    <Bar dataKey="value" name="Employees" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={24}>
+                                                                        {getLoginFrequencyData().map((entry, index) => (
+                                                                            <Cell key={`cell-${index}`} fill={`url(#gradBar-${index})`} />
+                                                                        ))}
+                                                                    </Bar>
+                                                                    <defs>
+                                                                        {getLoginFrequencyData().map((_, i) => (
+                                                                            <linearGradient key={i} id={`gradBar-${i}`} x1="0" y1="0" x2="1" y2="0">
+                                                                                <stop offset="0%" stopColor="#6366f1" />
+                                                                                <stop offset="100%" stopColor="#a855f7" />
+                                                                            </linearGradient>
+                                                                        ))}
+                                                                    </defs>
+                                                                </BarChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Shift Hours Progress */}
+                                                <div className="bg-white dark:bg-dark-card p-6 rounded-lg border border-slate-200 dark:border-github-dark-border shadow-sm hover:shadow-md transition-all">
+                                                    <div className="flex items-center justify-between mb-6">
+                                                        <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
+                                                            <Clock size={20} className="text-indigo-500" /> Shift Hours Progress
+                                                        </h3>
+                                                        <span className="text-xs font-semibold text-slate-500 dark:text-github-dark-muted">
+                                                            Actual logged hours vs. Expected shift duration today
+                                                        </span>
+                                                    </div>
+                                                    {presentStaffChartData.length === 0 ? (
+                                                        <p className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-12">
+                                                            No checked-in employees to track shift hours.
                                                         </p>
+                                                    ) : (
+                                                        <div className="h-[400px] w-full overflow-y-auto pr-2 custom-scrollbar">
+                                                            <div style={{ height: Math.max(350, presentStaffChartData.length * 45) }}>
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <BarChart
+                                                                        data={presentStaffChartData}
+                                                                        layout="vertical"
+                                                                        margin={{ top: 10, right: 30, left: 20, bottom: 10 }}
+                                                                        barGap={4}
+                                                                    >
+                                                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" opacity={0.3} />
+                                                                        <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} domain={[0, 'dataMax + 1']} />
+                                                                        <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} width={100} />
+                                                                        <Tooltip content={<CustomHoursTooltip />} cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} />
+                                                                        <Legend verticalAlign="top" height={36} iconType="circle" />
+                                                                        <Bar dataKey="logged" name="Logged Hours" fill="#10b981" radius={[0, 4, 4, 0]} barSize={12} />
+                                                                        <Bar dataKey="expected" name="Expected Hours" fill="#94a3b8" radius={[0, 4, 4, 0]} barSize={12} opacity={0.5} />
+                                                                    </BarChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
-
-                                            {/* Proposed Sessions */}
-                                            <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border overflow-hidden shadow-2xs flex flex-col">
-                                                <div className="px-3.5 py-2.5 border-b border-indigo-100/60 dark:border-indigo-900/30 flex items-center justify-between bg-indigo-50/30 dark:bg-indigo-950/20">
-                                                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
-                                                        <Sparkles size={12} className="text-indigo-500" /> Proposed Sessions
-                                                    </h3>
-                                                    <span className="text-[10px] font-semibold bg-indigo-100/80 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-200/50 dark:border-indigo-800/40">
-                                                        {Array.isArray(selectedRequestData.proposed_data) ? selectedRequestData.proposed_data.length : 0} session(s)
-                                                    </span>
-                                                </div>
-                                                <div className="p-3 flex-1 flex flex-col justify-center">
-                                                    {Array.isArray(selectedRequestData.proposed_data) && selectedRequestData.proposed_data.length > 0 ? (
-                                                        <div className="space-y-1.5">
-                                                            {selectedRequestData.proposed_data.map((s, i) => (
-                                                                <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-indigo-50/20 dark:bg-indigo-950/15 border border-indigo-100/70 dark:border-indigo-900/40">
-                                                                    <span className="text-[9px] font-bold text-indigo-500 w-5 shrink-0">#{i + 1}</span>
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className="w-2 h-2 rounded-full bg-[#1D9E75] shrink-0"></span>
-                                                                        <span className="text-[9px] font-bold text-slate-400 uppercase">In</span>
-                                                                        <span className="text-xs font-semibold text-slate-800 dark:text-github-dark-text font-mono">{String(s.time_in || '').substring(0, 5)}</span>
-                                                                    </div>
-                                                                    <ArrowRight size={12} className="text-indigo-400 dark:text-indigo-500 shrink-0" />
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className="text-[9px] font-bold text-slate-400 uppercase">Out</span>
-                                                                        <span className="text-xs font-semibold text-slate-800 dark:text-github-dark-text font-mono">{String(s.time_out || '').substring(0, 5)}</span>
-                                                                        <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0"></span>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-[11px] text-slate-400 dark:text-github-dark-muted italic text-center py-4">
-                                                            No proposed sessions submitted.
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Card 4: Auditor Comments (Single clean status representation) */}
-                                        {selectedRequestData.status !== 'pending' ? (
-                                            <div className={`rounded-xl border p-3.5 shadow-2xs ${selectedRequestData.status === 'approved'
-                                                ? 'bg-emerald-50/30 dark:bg-emerald-950/15 border-emerald-500/20'
-                                                : 'bg-rose-50/30 dark:bg-rose-950/15 border-rose-500/20'
-                                                }`}>
-                                                <div className="flex items-center gap-1.5 mb-1.5">
-                                                    <CheckCircle size={13} className={selectedRequestData.status === 'approved' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'} />
-                                                    <h3 className={`text-[10px] font-bold uppercase tracking-wider ${selectedRequestData.status === 'approved' ? 'text-emerald-800 dark:text-emerald-300' : 'text-rose-800 dark:text-rose-300'}`}>
-                                                        Auditor Decision & Remarks
-                                                    </h3>
-                                                </div>
-                                                <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed pl-1">
-                                                    {selectedRequestData.review_comments || 'No specific reviewer comments noted.'}
-                                                </p>
-                                                <p className="mt-2 text-[10px] text-slate-400 font-medium pl-1">
-                                                    Reviewed on {selectedRequestData.reviewed_at ? formatCorrectionDate(selectedRequestData.reviewed_at) : 'N/A'}
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-3.5 shadow-2xs">
-                                                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1.5">
-                                                    <MessageSquare size={12} className="text-indigo-500" /> Auditor Review Comments (Optional)
-                                                </h3>
-                                                <textarea
-                                                    value={reviewComment}
-                                                    onChange={(e) => setReviewComment(e.target.value)}
-                                                    placeholder="Add auditor review comments, remarks, or justification before approving or rejecting..."
-                                                    className="w-full p-2.5 text-xs bg-slate-50 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500/30 text-slate-800 dark:text-github-dark-text resize-none h-16 font-medium"
-                                                ></textarea>
-                                            </div>
-                                        )}
-
-                                        {/* Card 5: Audit Trail */}
-                                        {(() => {
-                                            const trail = typeof selectedRequestData.audit_trail === 'string'
-                                                ? (() => { try { return JSON.parse(selectedRequestData.audit_trail); } catch { return []; } })()
-                                                : (Array.isArray(selectedRequestData.audit_trail) ? selectedRequestData.audit_trail : []);
-                                            if (trail && trail.length > 0) {
-                                                return (
-                                                    <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-3.5 shadow-2xs">
-                                                        <h4 className="text-[11px] uppercase tracking-wider text-slate-700 dark:text-slate-300 font-bold mb-3 flex items-center gap-1.5">
-                                                            <Activity size={12} className="text-indigo-500" /> Audit Trail & History
-                                                        </h4>
-                                                        <div className="relative pl-3.5 border-l-2 border-slate-200 dark:border-github-dark-border space-y-3">
-                                                            {trail.map((event, idx) => (
-                                                                <div key={idx} className="relative">
-                                                                    <div className="absolute -left-[19px] top-1 w-2 h-2 rounded-full bg-indigo-500 border-2 border-white dark:border-dark-card ring-1 ring-indigo-200 dark:ring-indigo-800"></div>
-                                                                    <p className="text-xs font-bold text-slate-800 dark:text-github-dark-text">
-                                                                        {String(event.action).charAt(0).toUpperCase() + String(event.action).slice(1)}
-                                                                    </p>
-                                                                    <p className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">
-                                                                        {new Date(event.at).toLocaleString()} • by {event.by === selectedRequestData.user_id ? selectedRequestData.user_name : 'Admin'}
-                                                                    </p>
-                                                                    {event.comments && (
-                                                                        <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 italic pl-2 border-l border-slate-200 dark:border-github-dark-border">"{event.comments}"</p>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            }
-                                            return null;
-                                        })()}
-
+                                        ) : null}
                                     </div>
-                                </>
-                            ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-400 dark:text-github-dark-muted">
-                                    <FileClock className="w-10 h-10 text-slate-300 dark:text-slate-600 mb-2" />
-                                    <p className="text-xs font-bold uppercase tracking-wider">No Request Selected</p>
-                                    <p className="text-[11px] font-medium text-slate-400 mt-0.5">Select a request from the left list to review</p>
                                 </div>
-                            )}
-                        </div>
-                    </div>
-                    )}
-
-                    {/* --- Live Attendance Detail Sidebar --- */}
-                    <AnimatePresence>
-                        {selectedLiveUser && (
-                            <UserAttendanceDetailsModal
-                                user={selectedLiveUser}
-                                onClose={() => setSelectedLiveUser(null)}
+                            </>
+                        ) : (
+                            // Approvals Tab Content
+                            <CorrectionRequestsTab
+                                correctionRequests={correctionRequests}
+                                setCorrectionRequests={setCorrectionRequests}
+                                selectedRequestId={selectedRequestId}
+                                setSelectedRequestId={setSelectedRequestId}
+                                selectedRequestData={selectedRequestData}
+                                setSelectedRequestData={setSelectedRequestData}
+                                requestsLoading={requestsLoading}
+                                detailLoading={detailLoading}
+                                fetchCorrectionRequests={fetchCorrectionRequests}
+                                fetchRequestDetail={fetchRequestDetail}
+                                formatCorrectionDate={formatCorrectionDate}
+                                setPreviewImage={setPreviewImage}
+                                avatarTimestamp={avatarTimestamp}
                             />
                         )}
-                    </AnimatePresence>
 
-                    {/* --- Image / Attachment Preview Lightbox --- */}
-                    {previewImage && createPortal(
+                        {/* --- Live Attendance Detail Sidebar --- */}
                         <AnimatePresence>
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-md flex items-center justify-center p-4"
-                                onClick={() => setPreviewImage(null)}
-                            >
-                                <button
-                                    className="absolute top-4 right-4 p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
-                                    onClick={() => setPreviewImage(null)}
-                                    title="Close preview"
-                                >
-                                    <XCircle size={28} />
-                                </button>
-                                <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
-                                    {String(previewImage).match(/\.(pdf|doc|docx)/i) ? (
-                                        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-2xl flex flex-col items-center max-w-md text-center border border-slate-200 dark:border-slate-800">
-                                            <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4">
-                                                <Paperclip size={32} />
-                                            </div>
-                                            <h4 className="text-lg font-bold text-slate-800 dark:text-white mb-1">Attached Document</h4>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">Open the document in a new window or download it for review.</p>
-                                            <a
-                                                href={previewImage}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
-                                            >
-                                                <Eye size={16} /> Open Document
-                                            </a>
-                                        </div>
-                                    ) : (
-                                        <motion.img
-                                            initial={{ scale: 0.9, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            exit={{ scale: 0.9, opacity: 0 }}
-                                            src={previewImage}
-                                            alt="Attachment Preview"
-                                            className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-white/10"
-                                        />
-                                    )}
-                                </div>
-                            </motion.div>
-                        </AnimatePresence>,
-                        document.body
-                    )}
+                            {selectedLiveUser && (
+                                <UserAttendanceDetailsModal
+                                    user={selectedLiveUser}
+                                    onClose={() => setSelectedLiveUser(null)}
+                                />
+                            )}
+                        </AnimatePresence>
 
+                        {/* --- Universal Document & Image Preview Modal (Image, Word, PowerPoint, PDF, Excel, etc.) --- */}
+                        {previewImage && (
+                            <CorrectionDocumentModal
+                                previewUrl={previewImage}
+                                onClose={() => setPreviewImage(null)}
+                            />
+                        )}
+
+                    </div>
                 </div>
-            </div>
                 {/* AI Summary Panel */}
                 <AnimatePresence>
                     {isAiSummaryOpen && (
@@ -3166,7 +2748,7 @@ const AttendanceMonitoring = () => {
                                             <AlertTriangle size={48} className="text-rose-500 mb-4 opacity-80" />
                                             <h4 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-2">Analysis Failed</h4>
                                             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">{aiSummaryError}</p>
-                                            <button 
+                                            <button
                                                 onClick={generateAiSummary}
                                                 className="mt-6 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-colors"
                                             >
@@ -3236,7 +2818,7 @@ const AttendanceMonitoring = () => {
                                                     <h4 className="text-xs font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest flex items-center gap-2">
                                                         <Users size={14} className="text-indigo-500" /> Attendance Breakdown
                                                     </h4>
-                                                    
+
                                                     {aiSummaryData.present_employees.length > 0 && (
                                                         <div className="mb-4">
                                                             <h5 className="text-xs font-bold text-emerald-500 mb-2">Present ({aiSummaryData.present_employees.length})</h5>
@@ -3554,28 +3136,28 @@ const CustomHoursTooltip = ({ active, payload }) => {
         const data = payload[0].payload;
         const loggedHrs = data.logged;
         const expectedHrs = data.expected;
-        
+
         const totalMin = Math.round(loggedHrs * 60);
         const h = Math.floor(totalMin / 60);
         const m = totalMin % 60;
         const loggedFormatted = `${h}h ${m}m`;
-        
+
         const pct = expectedHrs > 0 ? Math.round((loggedHrs / expectedHrs) * 100) : 0;
-        
+
         return (
             <div className="bg-slate-800/95 dark:bg-[#161b22]/95 border border-slate-700 dark:border-github-dark-border p-3 rounded-xl text-white shadow-xl text-xs backdrop-blur-sm">
                 <p className="font-bold mb-1.5 text-slate-200">{data.fullName}</p>
                 <div className="space-y-1 font-medium">
                     <p className="flex justify-between gap-4">
-                        <span className="text-slate-400 font-bold">Logged:</span> 
+                        <span className="text-slate-400 font-bold">Logged:</span>
                         <span className="font-bold text-indigo-400">{loggedFormatted}</span>
                     </p>
                     <p className="flex justify-between gap-4">
-                        <span className="text-slate-400 font-bold">Expected:</span> 
+                        <span className="text-slate-400 font-bold">Expected:</span>
                         <span className="font-bold text-slate-300">{expectedHrs} hrs</span>
                     </p>
                     <p className="flex justify-between gap-4 border-t border-slate-700/50 pt-1 mt-1 font-bold">
-                        <span className="text-slate-400 font-bold">Progress:</span> 
+                        <span className="text-slate-400 font-bold">Progress:</span>
                         <span className={pct >= 100 ? "text-emerald-400" : "text-amber-400"}>{pct}%</span>
                     </p>
                 </div>
