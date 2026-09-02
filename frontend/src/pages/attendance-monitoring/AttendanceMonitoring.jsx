@@ -2838,24 +2838,6 @@ const AttendanceMonitoring = () => {
                                                     <p className="text-[10px] text-slate-500 dark:text-github-dark-muted font-medium">Enable to adjust proposed punches before approving</p>
                                                 </div>
                                             </div>
-
-                                            {overrideMode && (
-                                                <div className="flex bg-white dark:bg-github-dark-subtle p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs">
-                                                    {['add_session', 'reset'].map(m => (
-                                                        <button
-                                                            key={m}
-                                                            type="button"
-                                                            onClick={() => setOverrideMethod(m)}
-                                                            className={`px-2.5 py-0.5 text-[11px] font-semibold uppercase rounded-md transition-all ${overrideMethod === m || (m === 'add_session' && overrideMethod === 'fix')
-                                                                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-xs'
-                                                                : 'text-slate-500 hover:text-slate-700 dark:text-github-dark-muted dark:hover:text-slate-200'
-                                                                }`}
-                                                        >
-                                                            {m === 'add_session' ? 'Manual Correction' : 'Reset Day'}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
                                         </div>
                                     )}
 
