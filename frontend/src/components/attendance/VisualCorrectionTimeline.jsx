@@ -488,7 +488,7 @@ export default function VisualCorrectionTimeline({ requestData, editable = true,
     const isAbsent = originalPunches.length === 0;
 
     return (
-        <div className={`bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-2xl p-4 sm:p-5 select-none space-y-5 ${className}`}>
+        <div className={`bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl p-4 sm:p-5 select-none space-y-5 shadow-2xs ${className}`}>
             {/* Header & Helper Banner */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 dark:border-github-dark-border/40 gap-2">
                 <div>
