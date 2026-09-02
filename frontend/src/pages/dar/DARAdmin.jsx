@@ -34,7 +34,7 @@ const DARAdmin = ({ embedded = false, activeTab: propActiveTab, setActiveTab: pr
                         dept: u.dept_name,
                         shift: u.shift_name,
                         role: u.user_type,
-                        designation: u.desg_name || '-'
+                        designation: u.desg_name || 'N/A'
                     })));
                 }
             } catch (e) {
