@@ -288,8 +288,9 @@ export const attendanceService = {
     // Update correction status (Admin only)
     async updateCorrectionStatus(acr_id, status, review_comments, overrides = {}) {
         try {
+            const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : status;
             const res = await api.patch(`${API_BASE_URL}/correct-request/${acr_id}`, {
-                status,
+                status: normalizedStatus,
                 review_comments,
                 ...overrides
             });
