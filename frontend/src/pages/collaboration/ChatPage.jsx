@@ -326,7 +326,7 @@ const ChatPage = () => {
         }
     }, [rooms, loadingRooms, selectedRoom, hasAttemptedAutoSelect]);
 
-    // Set up Socket listeners — registered ONCE per socket instance.
+    // Set up Socket listeners - registered ONCE per socket instance.
     // We read the current room via selectedRoomRef so we never need to
     // re-subscribe just because the active room changed (which was causing
     // a brief listener gap and dropped messages on every room switch).
@@ -510,7 +510,7 @@ const ChatPage = () => {
 
                 // Keep selected room sidebar metadata in sync (members list, etc.)
                 // but do NOT overwrite the whole selectedRoom while user is actively
-                // chatting — that could cause a re-render flicker.
+                // chatting - that could cause a re-render flicker.
                 if (currentRoom) {
                     const updatedSelected = mapped.find(r => r.room_id === currentRoom.room_id);
                     if (updatedSelected) {
