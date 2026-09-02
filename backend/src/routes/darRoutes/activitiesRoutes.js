@@ -16,5 +16,7 @@ router.get('/list', authenticateJWT, DarActivityController.listActivities);
 router.get('/settings', authenticateJWT, DarActivityController.getSettings);
 // GET /dar/activity/admin/all
 router.get('/admin/all', authenticateJWT, DarActivityController.getAllActivitiesAdmin);
+// POST /dar/activity/batch-save
+router.post('/batch-save', authenticateJWT, DarActivityController.batchSyncActivities);
 
 export default router;

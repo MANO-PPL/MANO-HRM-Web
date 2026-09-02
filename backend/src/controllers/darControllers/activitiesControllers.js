@@ -102,3 +102,17 @@ export const getAllActivitiesAdmin = catchAsync(async (req, res) => {
 
     res.json({ ok: true, data: activities });
 });
+
+export const batchSyncActivities = catchAsync(async (req, res) => {
+    const { activity_date, tasks } = req.body;
+    const { user_id, org_id } = req.user;
+
+    const result = await DarActivityService.batchSyncActivities({
+        org_id,
+        user_id,
+        activity_date,
+        tasks
+    });
+
+    res.json({ ok: true, message: "Activities synced successfully", ...result });
+});

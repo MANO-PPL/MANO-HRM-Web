@@ -917,85 +917,68 @@ async function runImportSimulation(orgId, payload) {
     };
 }
 
+import { reconcileUserDarForDate } from './darReconciliationService.js';
+import { toMySQLDate, toMySQLTime, getZonedNow } from '../../utils/dateUtils.js';
+
 // Helper: Get Org Buffer Settings
 export async function getOrgBuffer(org_id) {
     const settings = await attendanceDB("attn_dar_settings").where({ org_id }).first();
     return settings ? settings.buffer_minutes : 30;
 }
 
-// Helper: Validation Logic
-export async function validateActivityTime(user_id, date, start_time, end_time, buffer_minutes) {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-
-    if (date > todayStr) {
-        return { valid: true, mode: 'PLANNING' };
+// Helper: Validation Logic (Supports Advance Day Planning & Raw Intent Staging)
+export async function validateActivityTime(user_id, date, start_time, end_time, buffer_minutes = 30) {
+    if (!start_time || !end_time) {
+        return { valid: false, message: 'start_time and end_time are required.' };
     }
-
-    const allowedEndDateTime = new Date(now.getTime() + buffer_minutes * 60000);
 
     if (start_time === end_time) {
         return { valid: false, message: 'start_time and end_time cannot be the same.' };
     }
 
-    const baseStart = new Date(`${date}T${start_time}Z`);
-    const baseEnd = new Date(`${date}T${end_time}Z`);
-    if (baseEnd <= baseStart) {
-        // Treat as overnight activity ending next day.
-        baseEnd.setUTCDate(baseEnd.getUTCDate() + 1);
+    const zoned = getZonedNow('Asia/Kolkata');
+    const todayStr = zoned.dateStr;
+    const nowTimeStr = zoned.timeStr;
+    const taskDate = toMySQLDate(date);
+
+    // Future Dates: Always valid in PLANNING mode
+    if (taskDate > todayStr) {
+        return { valid: true, mode: 'PLANNING' };
     }
 
-    // For overnight shifts, users often log tasks after midnight against the "shift day"
-    // (the date they clocked in). To support that, also consider a +1 day interpretation.
-    const nextDay = new Date(`${date}T00:00:00Z`);
-    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-    const nextDayStr = nextDay.toISOString().split('T')[0];
-    const rolledStart = new Date(`${nextDayStr}T${start_time}Z`);
-    const rolledEnd = new Date(`${nextDayStr}T${end_time}Z`);
-    if (rolledEnd <= rolledStart) {
-        rolledEnd.setUTCDate(rolledEnd.getUTCDate() + 1);
-    }
-
-    // Pull sessions around the requested date so overnight sessions are included.
-    const from = new Date(`${date}T00:00:00Z`);
-    from.setUTCDate(from.getUTCDate() - 1);
-    const to = new Date(`${date}T00:00:00Z`);
-    to.setUTCDate(to.getUTCDate() + 1);
-    const fromStr = from.toISOString().split('T')[0];
-    const toStr = to.toISOString().split('T')[0];
-
+    // Check attendance sessions for this user on this date
     const attendance = await attendanceDB('attn_records')
         .where('user_id', user_id)
-        .whereRaw('DATE(time_in) BETWEEN ? AND ?', [fromStr, toStr])
+        .whereRaw('DATE(time_in) = ?', [taskDate])
         .orderBy('time_in', 'asc');
 
-    if (!attendance || attendance.length === 0) {
-        return { valid: false, message: 'No attendance session found around this date.' };
-    }
-
-    const candidates = [
-        { start: baseStart, end: baseEnd, label: 'same_day' },
-        { start: rolledStart, end: rolledEnd, label: 'next_day' },
-    ];
-
-    for (const session of attendance) {
-        const sessionStart = new Date(session.time_in);
-        const sessionEnd = session.time_out ? new Date(session.time_out) : allowedEndDateTime;
-
-        for (const candidate of candidates) {
-            if (candidate.start >= sessionStart && candidate.end <= sessionEnd) {
-                if (candidate.end > allowedEndDateTime) {
-                    return {
-                        valid: false,
-                        message: `Cannot log future tasks (Buffer: ${buffer_minutes}m). Allowed until: ${allowedEndDateTime.toLocaleTimeString()}`
-                    };
-                }
-                return { valid: true, mode: 'EXECUTION', resolved: candidate.label };
-            }
+    // If logging for TODAY: Allow advance full-day planning if employee has clocked in or is planning ahead
+    if (taskDate === todayStr) {
+        if (!attendance || attendance.length === 0) {
+            // No clock-in yet today: stage as advance PLANNED task
+            return { valid: true, mode: 'PLANNING' };
         }
+
+        const cleanStart = start_time.length === 5 ? `${start_time}:00` : start_time;
+        const cleanEnd = end_time.length === 5 ? `${end_time}:00` : end_time;
+
+        // If task ends in the future relative to current time + buffer: stage as PLANNED
+        const nowPlusBufferMin = (zoned.date.getHours() * 60) + zoned.date.getMinutes() + buffer_minutes;
+        const taskEndMin = (Number(cleanEnd.split(':')[0]) * 60) + Number(cleanEnd.split(':')[1]);
+
+        if (taskEndMin > nowPlusBufferMin) {
+            return { valid: true, mode: 'PLANNING' };
+        }
+
+        return { valid: true, mode: 'EXECUTION' };
     }
 
-    return { valid: false, message: `Task time (${start_time}-${end_time}) must be within a valid 'Time In' session.` };
+    // For PAST dates: Must match at least one verified attendance session
+    if (!attendance || attendance.length === 0) {
+        return { valid: false, message: 'No attendance session found for this past date. Please submit an attendance/DAR correction request.' };
+    }
+
+    return { valid: true, mode: 'EXECUTION' };
 }
 
 // Helper: Shared Validation & Status Determination
@@ -1012,42 +995,151 @@ export async function processActivityValidation(org_id, user_id, body) {
 }
 
 export async function createActivity({ org_id, user_id, activity_date, start_time, end_time, title, description, activity_type, status }) {
+    const cleanDate = toMySQLDate(activity_date);
     const [activity_id] = await attendanceDB("attn_daily_activities").insert({
         user_id,
-        activity_date,
+        activity_date: cleanDate,
         start_time,
         end_time,
+        raw_start_time: start_time,
+        raw_end_time: end_time,
+        parent_activity_id: null,
         title,
         description,
         activity_type,
-        status,
-        created_at: attendanceDB.fn.now()
+        status: status || 'COMPLETED',
+        created_at: attendanceDB.fn.now(),
+        updated_at: attendanceDB.fn.now()
     });
+
+    // Run reconciliation to split/clip according to active attendance
+    try {
+        await reconcileUserDarForDate(user_id, cleanDate);
+    } catch (rErr) {
+        console.warn('DAR auto-reconciliation warning on create:', rErr);
+    }
+
     return activity_id;
 }
 
 export async function updateActivity({ activity_id, org_id, user_id, activity_date, start_time, end_time, title, description, activity_type, status }) {
+    const cleanDate = toMySQLDate(activity_date);
     await attendanceDB("attn_daily_activities")
         .where({ activity_id, user_id })
         .update({
-            activity_date,
+            activity_date: cleanDate,
             start_time,
             end_time,
+            raw_start_time: start_time,
+            raw_end_time: end_time,
             title,
             description,
             activity_type,
-            status,
+            status: status || 'COMPLETED',
             updated_at: attendanceDB.fn.now()
         });
+
+    // Run reconciliation
+    try {
+        await reconcileUserDarForDate(user_id, cleanDate);
+    } catch (rErr) {
+        console.warn('DAR auto-reconciliation warning on update:', rErr);
+    }
+}
+
+export async function batchSyncActivities({ org_id, user_id, activity_date, tasks }) {
+    const cleanDate = toMySQLDate(activity_date);
+    if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
+        return { success: true, count: 0 };
+    }
+
+    const trx = await attendanceDB.transaction();
+    try {
+        const savedIds = [];
+        for (const task of tasks) {
+            const cleanStart = toMySQLTime(task.start_time || task.startTime);
+            const cleanEnd = toMySQLTime(task.end_time || task.endTime);
+            if (!cleanStart || !cleanEnd) continue;
+
+            const isExisting = task.id && !String(task.id).startsWith('new-') && !String(task.id).startsWith('evt-');
+            if (isExisting) {
+                const numericId = parseInt(String(task.id).replace('act-', ''), 10);
+                await trx('attn_daily_activities')
+                    .where({ activity_id: numericId, user_id })
+                    .update({
+                        activity_date: cleanDate,
+                        start_time: cleanStart,
+                        end_time: cleanEnd,
+                        raw_start_time: cleanStart,
+                        raw_end_time: cleanEnd,
+                        title: task.title || 'Untitled Task',
+                        description: task.description || '',
+                        activity_type: (task.activity_type || task.category || 'General').toUpperCase(),
+                        status: task.status || 'PLANNED',
+                        updated_at: trx.fn.now()
+                    });
+                savedIds.push(numericId);
+            } else {
+                const [newId] = await trx('attn_daily_activities').insert({
+                    user_id,
+                    activity_date: cleanDate,
+                    start_time: cleanStart,
+                    end_time: cleanEnd,
+                    raw_start_time: cleanStart,
+                    raw_end_time: cleanEnd,
+                    parent_activity_id: null,
+                    title: task.title || 'Untitled Task',
+                    description: task.description || '',
+                    activity_type: (task.activity_type || task.category || 'General').toUpperCase(),
+                    status: task.status || 'PLANNED',
+                    created_at: trx.fn.now(),
+                    updated_at: trx.fn.now()
+                });
+                savedIds.push(newId);
+            }
+        }
+        await trx.commit();
+
+        // Invalidate Redis cache for this user DAR if cache exists
+        try {
+            const { invalidateCachePattern } = await import('../cache/cacheService.js');
+            await invalidateCachePattern(`dar:*${user_id}*`);
+        } catch (cErr) {}
+
+        // Reconcile once fast
+        await reconcileUserDarForDate(user_id, cleanDate);
+
+        return { success: true, count: savedIds.length };
+    } catch (err) {
+        await trx.rollback();
+        throw err;
+    }
 }
 
 export async function deleteActivity({ activity_id, org_id, user_id }) {
+    // Delete any child split slices first, then the activity itself
+    await attendanceDB("attn_daily_activities")
+        .where({ parent_activity_id: activity_id, user_id })
+        .del();
+
     return attendanceDB("attn_daily_activities")
         .where({ activity_id, user_id })
         .del();
 }
 
 export async function listActivities({ org_id, user_id, date, date_from, date_to }) {
+    const todayStr = getZonedNow('Asia/Kolkata').dateStr;
+    const targetDate = date ? toMySQLDate(date) : todayStr;
+
+    // Reconcile on-the-fly when listing today's activities so elapsed time updates PLANNED -> COMPLETED and breaks split dynamically
+    if (targetDate === todayStr || (!date && (!date_to || date_to >= todayStr))) {
+        try {
+            await reconcileUserDarForDate(user_id, todayStr);
+        } catch (rErr) {
+            console.warn('DAR auto-reconciliation on list warning:', rErr);
+        }
+    }
+
     let query = attendanceDB("attn_daily_activities")
         .select(
             "*",
@@ -1063,6 +1155,7 @@ export async function listActivities({ org_id, user_id, date, date_from, date_to
 
     return query.orderBy("activity_date", "asc").orderBy("start_time", "asc");
 }
+
 
 export async function getAllActivitiesAdmin({ org_id, date, startDate, endDate }) {
     let query = attendanceDB('attn_daily_activities as da')
