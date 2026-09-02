@@ -852,19 +852,16 @@ const MobileAttendancePage = () => {
         setSubmitLoading(true);
         try {
             const original_data = originalSessions;
-            const validSessions = correctionForm.sessions.filter(s => s.in && s.out);
-
-            for (let i = 0; i < validSessions.length; i++) {
-                if (validSessions[i].in >= validSessions[i].out) {
-                    toast.error("Time In must be before Time Out.");
-                    setSubmitLoading(false);
-                    return;
-                }
-            }
-
             let proposed_data = [];
             if (validSessions.length > 0) {
-                proposed_data = validSessions.map(s => ({ time_in: s.in, time_out: s.out }));
+                proposed_data = validSessions.map(s => {
+                    const isOvernight = Boolean(s.in && s.out && s.in >= s.out);
+                    return {
+                        time_in: s.in,
+                        time_out: s.out,
+                        is_overnight: isOvernight
+                    };
+                });
             } else if (originalSessions.length > 0) {
                 proposed_data = originalSessions.map(s => ({ time_in: s.time_in || '09:00', time_out: s.time_out || '18:00' }));
             } else {

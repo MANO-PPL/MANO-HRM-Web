@@ -261,13 +261,18 @@ async function processUserAttendanceForDate(user, dateStr) {
             }
 
             try {
-                await attendanceDB('attn_punches')
+                const openPunches = await attendanceDB('attn_punches')
                     .where({ user_id: user.user_id })
                     .whereNull('deleted_at')
                     .whereRaw('DATE(punch_time) = ?', [dateStr])
-                    .where({ punch_type: 'in' })
-                    .where(qb => qb.whereNull('status').orWhere('status', 'active'))
-                    .update({ status: 'missed_punch' });
+                    .where({ punch_type: 'in' });
+
+                for (const p of openPunches) {
+                    let meta = {};
+                    try { meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {}); } catch (_) {}
+                    meta.missed_punch = true;
+                    await attendanceDB('attn_punches').where({ id: p.id }).update({ metadata: JSON.stringify(meta) });
+                }
             } catch (_) {}
 
             try {

@@ -96,10 +96,14 @@ export function calculateLateArrival(localTime, rules) {
         const timePart = toMySQLTime(localTime);
         if (timePart) {
             const [curH, curM] = timePart.split(':').map(Number);
-            const currentMinutes = curH * 60 + curM;
+            let currentMinutes = curH * 60 + curM;
 
             const [shiftH, shiftM] = startTimeStr.split(':').map(Number);
             const shiftMinutes = shiftH * 60 + shiftM;
+
+            if (shiftMinutes >= 1080 && currentMinutes < 720) {
+                currentMinutes += 1440;
+            }
 
             if (currentMinutes > shiftMinutes) {
                 minutesLate = currentMinutes - shiftMinutes;

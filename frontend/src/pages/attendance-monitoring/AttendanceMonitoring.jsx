@@ -524,7 +524,8 @@ const processAttendanceData = (staff) => {
 
             const inStr = formatTime(inTime);
             let outStr = '-';
-            let isActive = !r.time_out && r.status !== 'MISSED_PUNCH' && r.status !== 'ABSENT';
+            const isMissedOrAbsent = u.status === 'MISSED_PUNCH' || u.status === 'Missed Punch' || u.status === 'ABSENT' || u.status === 'Absent' || r.status === 'MISSED_PUNCH' || r.status === 'ABSENT';
+            let isActive = !r.time_out && !isMissedOrAbsent;
 
             const outTime = parseTimeInTimezone(r, true);
             if (outTime) {
@@ -575,7 +576,9 @@ const processAttendanceData = (staff) => {
         };
         const status = statusMap[u.status] || u.status || 'Absent';
 
-        const totalHrs = formatTotalTime(totalMin, u.total_hours > 0 ? Number(u.total_hours) : 0);
+        const totalHrs = (status === 'Missed Punch' || status === 'Absent')
+            ? '-'
+            : formatTotalTime(totalMin, u.total_hours > 0 ? Number(u.total_hours) : 0);
         const expectedHrs = u.expected_hours !== undefined && u.expected_hours !== null && u.expected_hours > 0 ? `${Number(u.expected_hours).toFixed(1)} hrs` : '-';
         const lastLocation = u.sessions && u.sessions.length > 0
             ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : '-')

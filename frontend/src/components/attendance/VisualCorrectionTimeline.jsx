@@ -5,29 +5,51 @@ import { RefreshCw, Trash2, Plus, X, Clock, AlertCircle, CheckSquare, Square, Pl
 export default function VisualCorrectionTimeline({ requestData, editable = true, onSessionsChange }) {
     if (!requestData) return null;
 
-    // Timeline Configuration (06:00 AM to 20:00 / 08:00 PM)
-    const START_HOUR = 6;
-    const END_HOUR = 20;
-    const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60; // 840 mins
+    // Detect if this session/shift is a Night Shift (crosses midnight or starts in evening)
+    const isNightShift = useMemo(() => {
+        const checkSession = (s) => {
+            if (!s) return false;
+            const tIn = s.time_in ? String(s.time_in).slice(0, 5) : null;
+            const tOut = s.time_out ? String(s.time_out).slice(0, 5) : null;
+            if (s.is_overnight) return true;
+            if (tIn && tOut && tOut <= tIn) return true;
+            if (tIn && parseInt(tIn.split(':')[0], 10) >= 19) return true;
+            return false;
+        };
+        const origHasNight = Array.isArray(requestData?.original_data) && requestData.original_data.some(checkSession);
+        const propHasNight = Array.isArray(requestData?.proposed_data) && requestData.proposed_data.some(checkSession);
+        return origHasNight || propHasNight;
+    }, [requestData]);
+
+    // Timeline Configuration (Day: 06:00 AM - 08:00 PM | Night: 08:00 PM - 08:00 AM next day)
+    const START_HOUR = isNightShift ? 20 : 6;
+    const END_HOUR = isNightShift ? 32 : 20;
+    const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
+    const ticks = isNightShift ? [20, 22, 24, 26, 28, 30, 32] : [6, 8, 10, 12, 14, 16, 18, 20];
 
     // Time conversion helpers
-    const parseMinutes = (timeStr) => {
+    const parseMinutes = useCallback((timeStr) => {
         if (!timeStr) return null;
         const clean = String(timeStr).trim();
         const timePart = clean.includes(' ') ? clean.split(' ')[1] : (clean.includes('T') ? clean.split('T')[1] : clean);
         const [h, m] = timePart.split(':').map(Number);
         if (isNaN(h)) return null;
-        return h * 60 + (isNaN(m) ? 0 : m);
-    };
+        let mins = h * 60 + (isNaN(m) ? 0 : m);
+        if (isNightShift && h < 12) {
+            mins += 1440; // Next-day early morning hours
+        }
+        return mins;
+    }, [isNightShift]);
 
-    const minutesToTimeStr = (totalMins) => {
+    const minutesToTimeStr = useCallback((totalMins) => {
         const clamped = Math.max(START_HOUR * 60, Math.min(END_HOUR * 60, totalMins));
-        const h = Math.floor(clamped / 60);
+        let h = Math.floor(clamped / 60);
+        if (h >= 24) h = h - 24;
         const m = clamped % 60;
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    };
+    }, [START_HOUR, END_HOUR]);
 
-    const formatDisplayTime = (timeStr) => {
+    const formatDisplayTime = useCallback((timeStr) => {
         if (!timeStr) return '--:--';
         const clean = String(timeStr).trim();
         const timePart = clean.includes(' ') ? clean.split(' ')[1] : (clean.includes('T') ? clean.split('T')[1] : clean);
@@ -36,13 +58,13 @@ export default function VisualCorrectionTimeline({ requestData, editable = true,
         const period = h >= 12 ? 'PM' : 'AM';
         const displayH = h % 12 === 0 ? 12 : h % 12;
         return `${displayH}:${String(m || 0).padStart(2, '0')} ${period}`;
-    };
+    }, []);
 
-    const getPosPercent = (mins) => {
+    const getPosPercent = useCallback((mins) => {
         if (mins === null || isNaN(mins)) return 0;
         const clamped = Math.max(START_HOUR * 60, Math.min(END_HOUR * 60, mins));
         return ((clamped - START_HOUR * 60) / TOTAL_MINUTES) * 100;
-    };
+    }, [START_HOUR, TOTAL_MINUTES]);
 
     // Flatten original punches
     const originalPunches = useMemo(() => {
@@ -474,7 +496,6 @@ export default function VisualCorrectionTimeline({ requestData, editable = true,
     const outCount = punches.filter(p => p.type === 'out').length;
     const normalCount = punches.filter(p => p.type === 'normal').length;
 
-    const ticks = [6, 8, 10, 12, 14, 16, 18, 20];
     const isSummaryOverride = (requestData.correction_type || '').toLowerCase() === 'summary';
     const isAbsent = originalPunches.length === 0;
 
@@ -523,7 +544,8 @@ export default function VisualCorrectionTimeline({ requestData, editable = true,
                         {/* Ticks and Labels */}
                         {ticks.map(h => {
                             const pct = getPosPercent(h * 60);
-                            const displayHour = h > 12 ? `${h - 12} PM` : h === 12 ? '12 PM' : `${h} AM`;
+                            const normH = h >= 24 ? h - 24 : h;
+                            const displayHour = normH === 0 || normH === 24 ? '12 AM' : normH === 12 ? '12 PM' : normH > 12 ? `${normH - 12} PM` : `${normH} AM`;
                             return (
                                 <div key={h} className="absolute top-7 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ left: `${pct}%` }}>
                                     <div className="w-[1.5px] h-3 bg-slate-400/80 dark:bg-slate-600 -translate-y-1.5 rounded-full" />
@@ -624,7 +646,8 @@ export default function VisualCorrectionTimeline({ requestData, editable = true,
                         {/* Ticks and Labels */}
                         {ticks.map(h => {
                             const pct = getPosPercent(h * 60);
-                            const displayHour = h > 12 ? `${h - 12} PM` : h === 12 ? '12 PM' : `${h} AM`;
+                            const normH = h >= 24 ? h - 24 : h;
+                            const displayHour = normH === 0 || normH === 24 ? '12 AM' : normH === 12 ? '12 PM' : normH > 12 ? `${normH - 12} PM` : `${normH} AM`;
                             return (
                                 <div key={h} className="absolute top-7 -translate-x-1/2 flex flex-col items-center pointer-events-none" style={{ left: `${pct}%` }}>
                                     <div className="w-[1.5px] h-3 bg-slate-400/80 dark:bg-slate-600 -translate-y-1.5 rounded-full" />

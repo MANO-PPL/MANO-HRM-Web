@@ -225,8 +225,9 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     if (overrides.status) {
       finalStatus = overrides.status;
     } else if (sessions.some(s => !s.out_punch)) {
-      // User is currently clocked in (session active)
-      finalStatus = "PRESENT";
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const isPastDate = sanitizedDate < todayDateStr;
+      finalStatus = isPastDate ? "MISSED_PUNCH" : "PRESENT";
     } else if (sessionCount === 0) {
       finalStatus = "ABSENT";
     } else {
@@ -258,7 +259,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       late_minutes: lateMinutes,
       late_reason: lateReason,
       overtime_hours: overtimeHours,
-      status: finalStatus,
+      status: (finalStatus === 'LATE' || finalStatus === 'OVERTIME') ? 'PRESENT' : finalStatus,
       shift_id: shift ? shift.shift_id : null,
       remarks: [...new Set(remarks)].join("; ") || null,
       updated_at: attendanceDB.fn.now(),
@@ -920,7 +921,6 @@ export async function reviewCorrectionRequest({
 
   const dbUpdate = {
     status,
-    reviewer_notes: review_comments || null,
     reviewed_by: reviewer_id,
     reviewed_at: attendanceDB.fn.now(),
     review_comments: review_comments || null,
@@ -963,7 +963,12 @@ export async function reviewCorrectionRequest({
         .where({ user_id: correction.user_id, date: finalDateStr })
         .update(updatePayload);
     } else if (sessionsToApply.length > 0) {
-      // Cases 1 - 7: Punch Corrections (Add, Edit, Remove, Merge)
+      // Cases 1 - 7: Punch Corrections (Add, Edit, Remove, Merge, Overnight)
+      // Calculate next calendar date string for overnight shifts crossing midnight (e.g. 22:00 -> 06:00)
+      const nextDate = new Date(`${finalDateStr}T12:00:00`);
+      nextDate.setDate(nextDate.getDate() + 1);
+      const nextDateStr = nextDate.toISOString().split('T')[0];
+
       // Soft-delete existing non-deleted punches for that day in attn_punches (stamped with correction_id)
       await attendanceDB("attn_punches")
         .where({ user_id: correction.user_id })
@@ -980,6 +985,10 @@ export async function reviewCorrectionRequest({
         const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
         const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
 
+        // Detect overnight crossing midnight (e.g. 22:00 -> 06:00)
+        const isOvernight = Boolean(tIn && tOut && tOut.slice(0, 5) <= tIn.slice(0, 5));
+        const outDateStr = isOvernight ? nextDateStr : finalDateStr;
+
         if (tIn) {
           newPunches.push({
             user_id: correction.user_id,
@@ -988,7 +997,7 @@ export async function reviewCorrectionRequest({
             punch_nature: 'fabricated',
             correction_id: acr_id,
             location: JSON.stringify({ address: 'Manual Correction', is_geofence_violation: false }),
-            metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id }),
+            metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id, is_overnight: isOvernight }),
             created_at: attendanceDB.fn.now()
           });
         }
@@ -996,12 +1005,12 @@ export async function reviewCorrectionRequest({
         if (tOut) {
           newPunches.push({
             user_id: correction.user_id,
-            punch_time: `${finalDateStr} ${tOut}`,
+            punch_time: `${outDateStr} ${tOut}`,
             punch_type: 'out',
             punch_nature: 'fabricated',
             correction_id: acr_id,
             location: JSON.stringify({ address: 'Manual Correction', is_geofence_violation: false }),
-            metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id }),
+            metadata: JSON.stringify({ note: 'Correction Approved', correction_id: acr_id, is_overnight: isOvernight }),
             created_at: attendanceDB.fn.now()
           });
         }
@@ -1021,10 +1030,13 @@ export async function reviewCorrectionRequest({
       const newRecords = sessionsToApply.map(s => {
         const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
         const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
+        const isOvernight = Boolean(tIn && tOut && tOut.slice(0, 5) <= tIn.slice(0, 5));
+        const outDateStr = isOvernight ? nextDateStr : finalDateStr;
+
         return {
           user_id: correction.user_id,
           time_in: `${finalDateStr} ${tIn}`,
-          time_out: tOut ? `${finalDateStr} ${tOut}` : null,
+          time_out: tOut ? `${outDateStr} ${tOut}` : null,
           status: 'CLOSED',
           created_at: attendanceDB.fn.now(),
           updated_at: attendanceDB.fn.now(),

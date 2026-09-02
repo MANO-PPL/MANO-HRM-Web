@@ -1630,14 +1630,13 @@ const Attendance = () => {
 
         for (let i = 0; i < validSessions.length; i++) {
             const sessionA = validSessions[i];
-            if (sessionA.time_in && sessionA.time_out && sessionA.time_in >= sessionA.time_out) {
-                toast.error(`Invalid range in Session #${i + 1}: In (${sessionA.time_in}) must be before Out (${sessionA.time_out})`);
-                return;
-            }
+            const isOvernightA = Boolean(sessionA.time_in && sessionA.time_out && sessionA.time_in >= sessionA.time_out);
+            
             for (let j = i + 1; j < validSessions.length; j++) {
                 const sessionB = validSessions[j];
+                const isOvernightB = Boolean(sessionB.time_in && sessionB.time_out && sessionB.time_in >= sessionB.time_out);
                 if (sessionA.time_in && sessionA.time_out && sessionB.time_in && sessionB.time_out) {
-                    if (sessionA.time_in < sessionB.time_out && sessionA.time_out > sessionB.time_in) {
+                    if (!isOvernightA && !isOvernightB && sessionA.time_in < sessionB.time_out && sessionA.time_out > sessionB.time_in) {
                         toast.error(`Sessions cannot overlap: ${sessionA.time_in}-${sessionA.time_out} with ${sessionB.time_in}-${sessionB.time_out}`);
                         return;
                     }
@@ -1656,16 +1655,22 @@ const Attendance = () => {
             let proposed_data = [];
 
             if (validSessions.length > 0) {
-                proposed_data = validSessions.map(s => ({
-                    ...(s.time_in ? { time_in: s.time_in } : {}),
-                    ...(s.time_out ? { time_out: s.time_out } : {}),
-                    punch_type: s.punch_type || 'regular'
-                }));
+                proposed_data = validSessions.map(s => {
+                    const isOvernight = Boolean(s.time_in && s.time_out && s.time_in >= s.time_out);
+                    return {
+                        ...(s.time_in ? { time_in: s.time_in } : {}),
+                        ...(s.time_out ? { time_out: s.time_out } : {}),
+                        punch_type: s.punch_type || 'regular',
+                        is_overnight: isOvernight
+                    };
+                });
             } else if (corrIn || corrOut) {
+                const isOvernight = Boolean(corrIn && corrOut && corrIn >= corrOut);
                 proposed_data = [{
                     ...(corrIn ? { time_in: corrIn } : {}),
                     ...(corrOut ? { time_out: corrOut } : {}),
-                    punch_type: 'regular'
+                    punch_type: 'regular',
+                    is_overnight: isOvernight
                 }];
             }
 
@@ -3332,26 +3337,39 @@ const Attendance = () => {
                                                             const proposedTasks = proposedSnap.map((s, i) => ({ id: `prop-${i}`, startTime: fmtTime(s.time_in), endTime: fmtTime(s.time_out) })).filter(t => t.startTime && t.endTime);
                                                             const allTasks = [...originalTasks, ...proposedTasks];
                                                             if (allTasks.length === 0) return null;
-                                                            const getMinutes = (t) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+                                                            const getMinutes = (t, isEnd = false, startT = null) => { 
+                                                                if (!t) return 0;
+                                                                const [h, m] = t.split(':').map(Number); 
+                                                                let mins = (h || 0) * 60 + (m || 0);
+                                                                if (isEnd && startT) {
+                                                                    const [sh, sm] = startT.split(':').map(Number);
+                                                                    const sMins = (sh || 0) * 60 + (sm || 0);
+                                                                    if (mins <= sMins) mins += 1440; // Overnight +1 Day
+                                                                }
+                                                                return mins;
+                                                            };
                                                             let minMin = Math.min(...allTasks.map(t => getMinutes(t.startTime)));
-                                                            let maxMin = Math.max(...allTasks.map(t => getMinutes(t.endTime)));
+                                                            let maxMin = Math.max(...allTasks.map(t => getMinutes(t.endTime, true, t.startTime)));
                                                             let startHour = Math.max(0, Math.floor((minMin - 60) / 60));
-                                                            let endHour = Math.min(24, Math.ceil((maxMin + 60) / 60));
+                                                            let endHour = Math.ceil((maxMin + 60) / 60);
                                                             const span = Math.max(1, endHour - startHour);
-                                                            const timeToPos = (time) => { if (!time) return 0; const [h, m] = time.split(':').map(Number); const mins = (h || 0) * 60 + (m || 0); return Math.max(0, Math.min(100, ((mins - startHour * 60) / (span * 60)) * 100)); };
-                                                            const getDurationPct = (s, e) => Math.max(0, timeToPos(e) - timeToPos(s));
+                                                            const timeToPos = (time, isEnd = false, startT = null) => { 
+                                                                if (!time) return 0; 
+                                                                const mins = getMinutes(time, isEnd, startT); 
+                                                                return Math.max(0, Math.min(100, ((mins - startHour * 60) / (span * 60)) * 100)); 
+                                                            };
+                                                            const getDurationPct = (s, e) => Math.max(0, timeToPos(e, true, s) - timeToPos(s));
                                                             const changesList = [];
                                                             const origCopy = originalTasks.map(t => ({ ...t }));
                                                             proposedTasks.forEach(prop => {
                                                                 const match = origCopy.find(o => o.startTime === prop.startTime && o.endTime === prop.endTime);
                                                                 if (match) { match.matched = true; } else {
-                                                                    const over = origCopy.find(o => !o.matched && (Math.abs(getMinutes(o.startTime) - getMinutes(prop.startTime)) < 120 || Math.abs(getMinutes(o.endTime) - getMinutes(prop.endTime)) < 120));
+                                                                    const over = origCopy.find(o => !o.matched && (Math.abs(getMinutes(o.startTime) - getMinutes(prop.startTime)) < 120 || Math.abs(getMinutes(o.endTime, true, o.startTime) - getMinutes(prop.endTime, true, prop.startTime)) < 120));
                                                                     if (over) { over.matched = true; changesList.push({ type: 'MODIFY', task: prop, original: over }); }
                                                                     else { changesList.push({ type: 'ADD', task: prop }); }
                                                                 }
                                                             });
                                                             origCopy.filter(o => !o.matched).forEach(o => changesList.push({ type: 'DELETE', task: o }));
-                                                            // Show only every 2nd hour if span > 8 to avoid crowding
                                                             const hourStep = span > 8 ? 2 : 1;
                                                             return (
                                                                 <div className="bg-slate-50 dark:bg-[#13151f] border-b border-slate-200 dark:border-github-dark-border px-6 pt-4 pb-5">
