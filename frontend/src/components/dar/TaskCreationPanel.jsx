@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../services/api';
-import { X, Plus, Clock, AlertCircle, Trash2, Calendar, ChevronLeft, ChevronRight, Video, MapPin, Link as LinkIcon } from 'lucide-react';
+import { X, Plus, Clock, AlertCircle, Trash2, Calendar, ChevronLeft, ChevronRight, Video, MapPin, Link as LinkIcon, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import MiniCalendar from '../dar/MiniCalendar';
@@ -56,6 +56,8 @@ const TaskCreationPanel = ({ onClose, onUpdate, initialTimeIn = "09:30", attenda
     const [showReasonModal, setShowReasonModal] = useState(false);
     const [reason, setReason] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
 
     const [openCategoryIdx, setOpenCategoryIdx] = useState(null);
     const dropdownRef = useRef(null);
@@ -163,13 +165,13 @@ const TaskCreationPanel = ({ onClose, onUpdate, initialTimeIn = "09:30", attenda
     }, []);
 
     const handleSaveClick = async () => {
-        // Filter for unsaved OR (Today + Planned) tasks
-        // This logic forces 'PLANNED' tasks to be re-submitted for validation when execution day arrives
+        if (isSaving) return; // Prevent double/triple click race conditions
+
         const todayStr = new Date().toISOString().split('T')[0];
         const isToday = date === todayStr;
 
         const tasksToSave = inputs.filter(t =>
-            !t.isSaved || (isToday && t.status === 'PLANNED')
+            !t.isSaved || (isToday && t.status === 'PLANNED') || t.status === 'UNATTENDED_DRAFT'
         );
 
         if (tasksToSave.length === 0) {
@@ -182,60 +184,65 @@ const TaskCreationPanel = ({ onClose, onUpdate, initialTimeIn = "09:30", attenda
             return;
         }
 
-        // Submit sequentially (Normal Flow)
-        for (const task of tasksToSave) {
-            try {
-                if (task.type === 'TASK') {
-                    const payload = {
-                        title: task.title || "Untitled Task",
-                        description: task.description,
-                        start_time: task.startTime,
-                        end_time: task.endTime,
-                        activity_date: date,
-                        activity_type: (task.category || 'General').toUpperCase(),
-                        status: date > todayStr ? 'PLANNED' : 'COMPLETED'
-                    };
-                    const isExisting = task.id && !String(task.id).startsWith('new-');
-                    if (isExisting) {
-                        await api.put(`/dar/activities/update/${task.id}`, payload);
-                    } else {
-                        await api.post('/dar/activities/create', payload);
-                    }
-                } else {
-                    // MEETING or EVENT
-                    const payload = {
-                        title: task.title || `Unnamed ${task.type.toLowerCase()}`,
-                        description: task.description,
-                        start_time: task.startTime,
-                        end_time: task.endTime,
-                        event_date: date,
-                        type: task.type,
-                        location: task.locationType === 'online' ? task.meetLink : task.address
-                    };
-                    const isExisting = task.id && !String(task.id).startsWith('new-');
-                    if (isExisting) {
-                        await api.put(`/dar/events/update/${task.id}`, payload);
-                    } else {
-                        await api.post('/dar/events/create', payload);
-                    }
-                }
-            } catch (err) {
-                setConfirmModal({
-                    isOpen: true,
-                    title: 'Save Failed',
-                    message: `Failed to save "${task.title}": ${err.response?.data?.message || err.message}`,
-                    type: 'warning',
-                    confirmText: 'Dismiss',
-                    onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-                });
-                return; // Stop on error
-            }
-        }
+        setIsSaving(true);
+        try {
+            // 1. Separate DAR tasks and meeting/event tasks
+            const darTasks = tasksToSave
+                .filter(t => t.type === 'TASK')
+                .map(task => ({
+                    id: task.id,
+                    title: task.title || "Untitled Task",
+                    description: task.description,
+                    start_time: task.startTime,
+                    end_time: task.endTime,
+                    activity_type: (task.category || 'General').toUpperCase(),
+                    status: date > todayStr ? 'PLANNED' : (task.status || 'COMPLETED')
+                }));
 
-        // If all success
-        toast.success("Daily tasks saved successfully!");
-        if (onDraftUpdate) onDraftUpdate(null); // Clear drafts on successful save
-        onClose();
+            const eventTasks = tasksToSave.filter(t => t.type !== 'TASK');
+
+            // 2. High-performance atomic batch save for all DAR tasks
+            if (darTasks.length > 0) {
+                await api.post('/dar/activities/batch-save', {
+                    activity_date: date,
+                    tasks: darTasks
+                });
+            }
+
+            // 3. Save any meetings or events
+            for (const ev of eventTasks) {
+                const payload = {
+                    title: ev.title || `Unnamed ${ev.type.toLowerCase()}`,
+                    description: ev.description,
+                    start_time: ev.startTime,
+                    end_time: ev.endTime,
+                    event_date: date,
+                    type: ev.type,
+                    location: ev.locationType === 'online' ? ev.meetLink : ev.address
+                };
+                const isExisting = ev.id && !String(ev.id).startsWith('new-');
+                if (isExisting) {
+                    await api.put(`/dar/events/update/${ev.id}`, payload);
+                } else {
+                    await api.post('/dar/events/create', payload);
+                }
+            }
+
+            toast.success("Daily tasks saved successfully!");
+            if (onDraftUpdate) onDraftUpdate(null); // Clear drafts on successful save
+            onClose();
+        } catch (err) {
+            setConfirmModal({
+                isOpen: true,
+                title: 'Save Failed',
+                message: `Failed to save tasks: ${err.response?.data?.message || err.message}`,
+                type: 'warning',
+                confirmText: 'Dismiss',
+                onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+            });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleSubmitRequest = async () => {
@@ -430,8 +437,8 @@ const TaskCreationPanel = ({ onClose, onUpdate, initialTimeIn = "09:30", attenda
 
         // Validation
         if (field === 'startTime') {
-            if (isBefore(value, initialTimeIn)) {
-                task.error = "Cannot start before Time In";
+            if (date === today && initialTimeIn && isBefore(value, initialTimeIn)) {
+                task.error = `Cannot start before Time In (${initialTimeIn})`;
             } else {
                 task.error = null;
             }
@@ -938,18 +945,26 @@ const TaskCreationPanel = ({ onClose, onUpdate, initialTimeIn = "09:30", attenda
                     </button>
                 ) : (
                     <button
-                        className={`w-full py-2.5 font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] text-[10px] flex items-center justify-center gap-2 ${isPastDate
-                            ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-200/50 text-white'
-                            : 'bg-gray-900 hover:bg-black shadow-gray-200 dark:shadow-none text-white'}`}
+                        disabled={isSaving}
+                        className={`w-full py-2.5 font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] text-[10px] flex items-center justify-center gap-2 ${isSaving
+                            ? 'bg-gray-700 dark:bg-gray-800 text-gray-200 cursor-not-allowed opacity-90'
+                            : isPastDate
+                                ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-200/50 text-white cursor-pointer'
+                                : 'bg-gray-900 hover:bg-black shadow-gray-200 dark:shadow-none text-white cursor-pointer'}`}
                         onClick={handleSaveClick}
                     >
-                        {isPastDate ? (
+                        {isSaving ? (
+                            <>
+                                <Loader2 size={14} className="animate-spin text-white" />
+                                <span>Saving Tasks...</span>
+                            </>
+                        ) : isPastDate ? (
                             <>
                                 <AlertCircle size={14} />
-                                Submit Request for Approval
+                                <span>Submit Request for Approval</span>
                             </>
                         ) : (
-                            "Save & Continue"
+                            <span>Save & Continue</span>
                         )}
                     </button>
                 )}
