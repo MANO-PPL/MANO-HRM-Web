@@ -29,6 +29,13 @@ import {
 import ConfirmationModal from '../../components/modals/ConfirmationModal';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import PolicyDirectory from './components/PolicyDirectory';
+import PolicyRulesBuilder from './components/PolicyRulesBuilder';
+import PolicyStaffAssignment from './components/PolicyStaffAssignment';
+import PolicyFormDrawer from './components/PolicyFormDrawer';
+import PolicyRuleFormDrawer from './components/PolicyRuleFormDrawer';
+import AdjustBalanceDrawer from './components/AdjustBalanceDrawer';
+
 const LeavePolicies = () => {
     // Core state
     const [policies, setPolicies] = useState([]);
@@ -472,741 +479,79 @@ const LeavePolicies = () => {
 
     return (
         <div className="flex flex-col lg:flex-row gap-4 h-full w-full overflow-hidden">
-            
             {/* COLUMN 1: Policies Directory List */}
-            <div className={`w-full lg:w-1/4 h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0 ${activeMobileTab !== 'list' ? 'hidden lg:flex' : 'flex'}`}>
-                <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
-                    <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-black uppercase text-slate-750 dark:text-github-dark-text tracking-wider">Leave Policies</h3>
-                        <button
-                            onClick={openAddPolicy}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
-                        >
-                            <Plus size={14} />
-                            Create
-                        </button>
-                    </div>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                        <input
-                            type="text"
-                            placeholder="Search policies..."
-                            value={policySearch}
-                            onChange={(e) => setPolicySearch(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg outline-none transition-all focus:ring-2 focus:ring-indigo-500/20 text-slate-755 dark:text-github-dark-text"
-                        />
-                    </div>
-                </div>
-
-                <div className="overflow-y-auto flex-1 p-2 space-y-1.5 no-scrollbar max-h-[400px] lg:max-h-none">
-                    {loading && policies.length === 0 ? (
-                        <div className="flex justify-center items-center py-10">
-                            <Loader2 className="animate-spin text-indigo-650" size={24} />
-                        </div>
-                    ) : filteredPolicies.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic p-6 text-center">No policies found.</p>
-                    ) : (
-                        filteredPolicies.map((policy) => {
-                            const isSelected = policy.lp_id === selectedPolicyId;
-                            return (
-                                <div
-                                    key={policy.lp_id}
-                                    onClick={() => {
-                                        setSelectedPolicyId(policy.lp_id);
-                                        setActiveMobileTab('details');
-                                    }}
-                                    className={`p-3 rounded-lg border transition-all cursor-pointer group ${isSelected
-                                        ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-900/50 shadow-sm'
-                                        : 'bg-white dark:bg-dark-card border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                        }`}
-                                >
-                                    <div className="flex justify-between items-start mb-1">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-2 h-2 rounded-full ${policy.is_active ? 'bg-indigo-500' : 'bg-slate-350 dark:bg-slate-600'}`} />
-                                            <h4 className={`font-semibold text-sm ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-850 dark:text-github-dark-text'}`}>{policy.name}</h4>
-                                        </div>
-                                        {!policy.is_active && (
-                                            <span className="text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">
-                                                Inactive
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p className="text-xs text-slate-500 dark:text-github-dark-muted truncate">{policy.description || 'No description'}</p>
-                                    <div className="flex items-center gap-3 text-[10px] text-slate-450 mt-2 font-semibold">
-                                        <span className="flex items-center gap-1"><Clock size={10} /> Rules: {policy.rules?.length || 0}</span>
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-            </div>
+            <PolicyDirectory
+                policies={policies}
+                selectedPolicyId={selectedPolicyId}
+                setSelectedPolicyId={setSelectedPolicyId}
+                loading={loading}
+                policySearch={policySearch}
+                setPolicySearch={setPolicySearch}
+                openAddPolicy={openAddPolicy}
+                activeMobileTab={activeMobileTab}
+                setActiveMobileTab={setActiveMobileTab}
+            />
 
             {/* COLUMN 2: Selected Policy & Leave Rules Details */}
             <div className={`flex-1 h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden ${activeMobileTab !== 'details' ? 'hidden lg:flex' : 'flex'}`}>
                 {showEditBalanceDrawer ? (
-                    <>
-                        <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/25">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg">
-                                    <Edit2 size={20} />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-slate-800 dark:text-github-dark-text">Adjust Balance</h3>
-                                    <p className="text-[10px] text-slate-400 font-bold">{editingBalance?.user_name} - {editingBalance?.leave_type}</p>
-                                </div>
-                            </div>
-                            <button onClick={() => setShowEditBalanceDrawer(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-github-dark-muted rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSaveBalance} className="flex-1 p-6 space-y-5">
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Allocated Quota</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={balanceForm.allocated}
-                                    onChange={(e) => setBalanceForm({ ...balanceForm, allocated: Number(e.target.value) })}
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Carried Forward</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={balanceForm.carried_forward}
-                                    onChange={(e) => setBalanceForm({ ...balanceForm, carried_forward: Number(e.target.value) })}
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Used Days</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={balanceForm.used}
-                                    onChange={(e) => setBalanceForm({ ...balanceForm, used: Number(e.target.value) })}
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                    required
-                                />
-                            </div>
-
-                            <div className="pt-4 border-t border-slate-100 dark:border-github-dark-border">
-                                <button
-                                    type="submit"
-                                    disabled={isSavingBalance}
-                                    className="w-full py-3 bg-indigo-650 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer text-xs"
-                                >
-                                    {isSavingBalance ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
-                                    <span>Save Adjustments</span>
-                                </button>
-                            </div>
-                        </form>
-                    </>
+                    <AdjustBalanceDrawer
+                        editingBalance={editingBalance}
+                        balanceForm={balanceForm}
+                        setBalanceForm={setBalanceForm}
+                        onSaveBalance={handleSaveBalance}
+                        onClose={() => setShowEditBalanceDrawer(false)}
+                        isSavingBalance={isSavingBalance}
+                    />
                 ) : showPolicyDrawer ? (
-                    <>
-                        <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/25">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg">
-                                    <Settings size={20} />
-                                </div>
-                                <h3 className="text-sm font-black text-slate-800 dark:text-github-dark-text">{editingPolicy ? 'Edit Leave Policy' : 'Create Leave Policy'}</h3>
-                            </div>
-                            <button onClick={() => setShowPolicyDrawer(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-github-dark-muted rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSavePolicy} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Policy Name</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={policyForm.name}
-                                    onChange={(e) => setPolicyForm({ ...policyForm, name: e.target.value })}
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 font-semibold text-xs"
-                                    placeholder="e.g. Standard Entitlements"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Description</label>
-                                <textarea
-                                    value={policyForm.description}
-                                    onChange={(e) => setPolicyForm({ ...policyForm, description: e.target.value })}
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 text-xs font-semibold h-28 resize-none"
-                                    placeholder="Outline scope or details about eligibility for this policy..."
-                                />
-                            </div>
-
-                            {editingPolicy && (
-                                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-github-dark-subtle/55 border border-slate-200 dark:border-github-dark-border rounded-xl">
-                                    <div>
-                                        <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text">Policy Status</span>
-                                        <p className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Inactive policies cannot be assigned to employees.</p>
-                                    </div>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            className="sr-only peer" 
-                                            checked={policyForm.is_active} 
-                                            onChange={e => setPolicyForm({ ...policyForm, is_active: e.target.checked })} 
-                                        />
-                                        <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-                                    </label>
-                                </div>
-                            )}
-
-                            <div className="flex gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPolicyDrawer(false)}
-                                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-github-dark-text rounded-lg text-sm font-bold transition-all active:scale-[0.98] cursor-pointer"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSaving}
-                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-                                >
-                                    {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
-                                    <span>{editingPolicy ? 'Update Policy' : 'Create Policy'}</span>
-                                </button>
-                            </div>
-                        </form>
-                    </>
+                    <PolicyFormDrawer
+                        editingPolicy={editingPolicy}
+                        policyForm={policyForm}
+                        setPolicyForm={setPolicyForm}
+                        onSavePolicy={handleSavePolicy}
+                        onClose={() => setShowPolicyDrawer(false)}
+                        isSaving={isSaving}
+                    />
                 ) : showRuleDrawer ? (
-                    <>
-                        <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/25">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg">
-                                    <FileText size={20} />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-black text-slate-800 dark:text-github-dark-text">{editingRule ? 'Edit Entitlement Rule' : 'Add Entitlement Rule'}</h3>
-                                    <p className="text-[10px] text-slate-400 font-bold">{selectedPolicy.name}</p>
-                                </div>
-                            </div>
-                            <button onClick={() => setShowRuleDrawer(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-github-dark-muted rounded-lg transition-colors hover:bg-slate-50 dark:hover:bg-slate-800">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSaveRule} className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Rule Name</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={ruleForm.name}
-                                    onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 font-semibold text-xs"
-                                    placeholder="e.g. Annual Leave"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Leave Code / Abbreviation</label>
-                                <input
-                                    type="text"
-                                    required
-                                    maxLength="4"
-                                    value={ruleForm.code}
-                                    onChange={(e) => setRuleForm({ ...ruleForm, code: e.target.value.toUpperCase() })}
-                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 font-bold text-xs"
-                                    placeholder="e.g. AL"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">Days Per Year</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        required
-                                        value={ruleForm.max_balance}
-                                        onChange={(e) => setRuleForm({ ...ruleForm, max_balance: Number(e.target.value) })}
-                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 font-semibold text-xs"
-                                    />
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-github-dark-muted">When is Leave Added?</label>
-                                    <div className="relative">
-                                        <select
-                                            value={ruleForm.accural_type}
-                                            onChange={(e) => setRuleForm({ ...ruleForm, accural_type: e.target.value })}
-                                            className="w-full appearance-none px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 pr-10 cursor-pointer text-slate-700 dark:text-slate-350"
-                                        >
-                                            <option value="No Accrual">All at Once (Start of Year)</option>
-                                            <option value="Monthly">Add Monthly</option>
-                                            <option value="Quarterly">Add Every 3 Months</option>
-                                        </select>
-                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 dark:text-github-dark-muted">
-                                            <ChevronDown size={14} />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {ruleForm.accural_type !== 'No Accrual' && (
-                                <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                                    <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Days Added Each Period</label>
-                                    <input
-                                        type="number"
-                                        min="0.1"
-                                        step="0.1"
-                                        value={ruleForm.accural_amount}
-                                        onChange={(e) => setRuleForm({ ...ruleForm, accural_amount: Number(e.target.value) })}
-                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
-                                        required
-                                    />
-                                </div>
-                            )}
-
-                            <div className="p-4 bg-slate-50/50 dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl space-y-3.5">
-                                {/* Option 1: Accrue as Paid Leave */}
-                                <label className="flex items-center justify-between p-3.5 bg-white dark:bg-[#161b22] hover:bg-slate-100/50 dark:hover:bg-slate-800/40 border border-slate-200 dark:border-[#30363d] rounded-xl cursor-pointer transition-all duration-200 group">
-                                    <div className="flex flex-col gap-0.5">
-                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Accrue as Paid Leave</span>
-                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Employee gets paid as usual during this leave</span>
-                                    </div>
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={ruleForm.is_paid}
-                                            onChange={(e) => setRuleForm({ ...ruleForm, is_paid: e.target.checked })}
-                                            className="sr-only peer"
-                                        />
-                                        <div className="w-5 h-5 rounded-md border border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22] flex items-center justify-center transition-all peer-checked:bg-indigo-600 peer-checked:border-indigo-600 group-hover:scale-105">
-                                            <svg
-                                                className={`w-3.5 h-3.5 text-white transition-opacity ${ruleForm.is_paid ? 'opacity-100' : 'opacity-0'}`}
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                                strokeWidth="3.5"
-                                            >
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                </label>
-
-                                {/* Option 2: Requires Medical/Doc */}
-                                <label className="flex items-center justify-between p-3.5 bg-white dark:bg-[#161b22] hover:bg-slate-100/50 dark:hover:bg-slate-800/40 border border-slate-200 dark:border-[#30363d] rounded-xl cursor-pointer transition-all duration-200 group">
-                                    <div className="flex flex-col gap-0.5">
-                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Requires Medical/Doc</span>
-                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Must upload a doctor's note or document when applying</span>
-                                    </div>
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={ruleForm.requires_doc}
-                                            onChange={(e) => setRuleForm({ ...ruleForm, requires_doc: e.target.checked })}
-                                            className="sr-only peer"
-                                        />
-                                        <div className="w-5 h-5 rounded-md border border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22] flex items-center justify-center transition-all peer-checked:bg-indigo-600 peer-checked:border-indigo-600 group-hover:scale-105">
-                                            <svg
-                                                className={`w-3.5 h-3.5 text-white transition-opacity ${ruleForm.requires_doc ? 'opacity-100' : 'opacity-0'}`}
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                                strokeWidth="3.5"
-                                            >
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                </label>
-
-                                {/* Option 3: Encashable Leave */}
-                                <label className="flex items-center justify-between p-3.5 bg-white dark:bg-[#161b22] hover:bg-slate-100/50 dark:hover:bg-slate-800/40 border border-slate-200 dark:border-[#30363d] rounded-xl cursor-pointer transition-all duration-200 group">
-                                    <div className="flex flex-col gap-0.5">
-                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Encashable Leave</span>
-                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Unused days can be paid out in cash</span>
-                                    </div>
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={ruleForm.encashable}
-                                            onChange={(e) => setRuleForm({ ...ruleForm, encashable: e.target.checked })}
-                                            className="sr-only peer"
-                                        />
-                                        <div className="w-5 h-5 rounded-md border border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22] flex items-center justify-center transition-all peer-checked:bg-indigo-600 peer-checked:border-indigo-600 group-hover:scale-105">
-                                            <svg
-                                                className={`w-3.5 h-3.5 text-white transition-opacity ${ruleForm.encashable ? 'opacity-100' : 'opacity-0'}`}
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                                strokeWidth="3.5"
-                                            >
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                </label>
-
-                                {/* Option 4: Carry Forward to Next Year */}
-                                <label className="flex items-center justify-between p-3.5 bg-white dark:bg-[#161b22] hover:bg-slate-100/50 dark:hover:bg-slate-800/40 border border-slate-200 dark:border-[#30363d] rounded-xl cursor-pointer transition-all duration-200 group">
-                                    <div className="flex flex-col gap-0.5">
-                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Carry Forward to Next Year</span>
-                                        <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-medium">Unused days move to the next year instead of expiring</span>
-                                    </div>
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={ruleForm.carry_forward}
-                                            onChange={(e) => setRuleForm({ ...ruleForm, carry_forward: e.target.checked })}
-                                            className="sr-only peer"
-                                        />
-                                        <div className="w-5 h-5 rounded-md border border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22] flex items-center justify-center transition-all peer-checked:bg-indigo-600 peer-checked:border-indigo-600 group-hover:scale-105">
-                                            <svg
-                                                className={`w-3.5 h-3.5 text-white transition-opacity ${ruleForm.carry_forward ? 'opacity-100' : 'opacity-0'}`}
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                                strokeWidth="3.5"
-                                            >
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        </div>
-                                    </div>
-                                </label>
-
-                                {ruleForm.carry_forward && (
-                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200 p-3.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl space-y-1.5 mt-2">
-                                        <label className="block text-[10px] font-bold uppercase text-slate-500 dark:text-github-dark-muted">Max Carry Forward Cap</label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.5"
-                                            value={ruleForm.carry_forward_max}
-                                            onChange={(e) => setRuleForm({ ...ruleForm, carry_forward_max: Number(e.target.value) })}
-                                            className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-semibold text-slate-900 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                            required
-                                        />
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowRuleDrawer(false)}
-                                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-github-dark-text rounded-lg text-sm font-bold transition-all active:scale-[0.98] cursor-pointer"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSaving}
-                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-                                >
-                                    {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
-                                    <span>{editingRule ? 'Update Rule' : 'Add Rule'}</span>
-                                </button>
-                            </div>
-                        </form>
-                    </>
-                ) : selectedPolicy ? (
-                    <>
-                        {/* Header details block */}
-                        <div className="p-4 border-b border-[#e1e4e6] dark:border-github-dark-border flex flex-col justify-start gap-3 bg-slate-50/30 dark:bg-github-dark-subtle/10">
-                            {/* Mobile action bar */}
-                            <div className="flex justify-between items-center lg:hidden">
-                                <button
-                                    onClick={() => setActiveMobileTab('list')}
-                                    className="flex items-center gap-1 text-xs font-bold text-indigo-650"
-                                >
-                                    <ArrowLeft size={14} />
-                                    Policies
-                                </button>
-                                <button
-                                    onClick={() => setActiveMobileTab('staff')}
-                                    className="flex items-center gap-1 text-xs font-bold text-indigo-650"
-                                >
-                                    Manage Staff
-                                    <ChevronRight size={14} />
-                                </button>
-                            </div>
-
-                            <div className="flex justify-between items-center w-full">
-                                <div>
-                                    <h2 className="text-sm font-black text-slate-900 dark:text-github-dark-text uppercase tracking-wide flex items-center gap-2">
-                                        {selectedPolicy.name}
-                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${selectedPolicy.is_active ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-500'}`}>
-                                            {selectedPolicy.is_active ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </h2>
-                                    <p className="text-[11px] text-slate-450 dark:text-github-dark-muted mt-1 leading-normal max-w-xl">{selectedPolicy.description || 'No description provided.'}</p>
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                        onClick={(e) => openEditPolicy(selectedPolicy, e)}
-                                        className="p-1.5 text-slate-400 hover:text-indigo-655 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
-                                        title="Edit Policy"
-                                    >
-                                        <Edit2 size={13} />
-                                    </button>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); setConfirmDeletePolicy({ isOpen: true, policy: selectedPolicy }); }}
-                                        className="p-1.5 text-slate-400 hover:text-red-655 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
-                                        title="Delete Policy"
-                                    >
-                                        <Trash2 size={13} />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Rules builder and metadata cards */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar">
-                            {/* Rules config lists */}
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center pb-1.5 border-b border-slate-150 dark:border-github-dark-border">
-                                    <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-github-dark-muted flex items-center gap-1.5">
-                                        <Layers size={11} />
-                                        Entitlement Rules ({selectedPolicy.rules?.length || 0})
-                                    </h4>
-                                    <button
-                                        onClick={openAddRule}
-                                        className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-github-dark-border rounded-lg text-[10px] font-bold shadow-sm cursor-pointer"
-                                    >
-                                        <Plus size={11} />
-                                        Add Rule
-                                    </button>
-                                </div>
-
-                                {!selectedPolicy.rules || selectedPolicy.rules.length === 0 ? (
-                                    <div className="p-8 border border-dashed border-slate-250 dark:border-[#30363d] rounded-xl text-center">
-                                        <p className="text-xs text-slate-400 italic">No rules defined. Add rules to configure Sick Leaves, Casual Leaves etc.</p>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-1 gap-3.5">
-                                        {selectedPolicy.rules.map((rule) => (
-                                            <div
-                                                key={rule.rule_id}
-                                                className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-xl p-4 flex flex-col justify-between shadow-sm"
-                                            >
-                                                <div className="flex justify-between items-start gap-4">
-                                                    <div>
-                                                        <h5 className="font-bold text-xs text-slate-800 dark:text-github-dark-text">{rule.name}</h5>
-                                                        <span className="text-[9px] bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 px-2 py-0.5 rounded font-black mt-1.5 inline-block">{rule.code}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        <button
-                                                            onClick={() => openEditRule(rule)}
-                                                            className="p-1 text-slate-450 hover:text-indigo-600 rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
-                                                        >
-                                                            <Edit2 size={12} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setConfirmDeleteRule({ isOpen: true, rule })}
-                                                            className="p-1 text-slate-455 hover:text-red-650 rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="mt-4 grid grid-cols-2 gap-y-2 text-[10px] text-slate-505 dark:text-github-dark-muted font-bold">
-                                                    <div>Quota Limit: <span className="text-slate-850 dark:text-white">{rule.max_balance} Days</span></div>
-                                                    <div>Pay Type: <span className="text-slate-850 dark:text-white">{rule.is_paid ? 'Paid' : 'Unpaid'}</span></div>
-                                                    <div>Accrual Strategy: <span className="text-slate-850 dark:text-white">{rule.accural_type}</span></div>
-                                                    <div>Carry Forward: <span className="text-slate-850 dark:text-white">{rule.carry_forward ? `CF (Max ${rule.carry_forward_max})` : 'Disabled'}</span></div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </>
+                    <PolicyRuleFormDrawer
+                        selectedPolicy={selectedPolicy}
+                        editingRule={editingRule}
+                        ruleForm={ruleForm}
+                        setRuleForm={setRuleForm}
+                        onSaveRule={handleSaveRule}
+                        onClose={() => setShowRuleDrawer(false)}
+                        isSaving={isSaving}
+                    />
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400 text-center">
-                        <BookOpen size={48} className="opacity-20 mb-3" />
-                        <h4 className="font-bold text-xs">No Policy Selected</h4>
-                        <p className="text-[11px] mt-1">Select a leave policy from the directory to manage its settings and rules.</p>
-                    </div>
+                    <PolicyRulesBuilder
+                        selectedPolicy={selectedPolicy}
+                        openEditPolicy={openEditPolicy}
+                        setConfirmDeletePolicy={setConfirmDeletePolicy}
+                        openAddRule={openAddRule}
+                        openEditRule={openEditRule}
+                        setConfirmDeleteRule={setConfirmDeleteRule}
+                        activeMobileTab={activeMobileTab}
+                        setActiveMobileTab={setActiveMobileTab}
+                    />
                 )}
             </div>
 
             {/* COLUMN 3: Staff Assignments & Individual Balance Adjustments */}
-            <div className={`w-full lg:w-1/3 h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0 ${activeMobileTab !== 'staff' ? 'hidden lg:flex' : 'flex'}`}>
-                {selectedPolicy ? (
-                    <>
-                        {/* Header assigned list */}
-                        <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
-                            <div className="flex justify-between items-center">
-                                <button
-                                    onClick={() => setActiveMobileTab('details')}
-                                    className="lg:hidden flex items-center gap-1 text-xs font-bold text-indigo-650"
-                                >
-                                    <ArrowLeft size={14} />
-                                    Back Details
-                                </button>
-                                <h3 className="text-xs font-bold text-slate-800 dark:text-github-dark-text uppercase tracking-wider flex items-center gap-1.5">
-                                    <Users size={12} />
-                                    Assigned Staff ({assignedStaff.length})
-                                </h3>
-
-                                {/* Target Year selection */}
-                                <select
-                                    value={selectedYear}
-                                    onChange={(e) => setSelectedYear(Number(e.target.value))}
-                                    className="px-2 py-1.5 bg-slate-50 dark:bg-github-dark-subtle border border-[#30363d] rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-350 outline-none cursor-pointer"
-                                >
-                                    {Array.from({ length: 5 }, (_, i) => {
-                                        const y = new Date().getFullYear() - 2 + i;
-                                        return <option key={y} value={y}>{y}</option>;
-                                    })}
-                                </select>
-                            </div>
-
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
-                                <input
-                                    type="text"
-                                    placeholder="Search staff, design..."
-                                    value={balanceSearch}
-                                    onChange={(e) => setBalanceSearch(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg outline-none transition-all focus:ring-2 focus:ring-indigo-500/20 text-slate-705 dark:text-github-dark-text"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Split Staff lists */}
-                        <div className="flex-1 overflow-y-auto divide-y divide-slate-150 dark:divide-slate-800 no-scrollbar p-2 space-y-3">
-                            {/* Section 1: Assigned Staff list */}
-                            <div className="space-y-3">
-                                <h4 className="text-[10px] font-black uppercase text-indigo-650 dark:text-indigo-400 tracking-wider">Assigned Staff ({assignedStaff.length})</h4>
-                                {loadingBalances ? (
-                                    <div className="flex justify-center items-center py-4">
-                                        <Loader2 className="animate-spin text-indigo-600" size={16} />
-                                    </div>
-                                ) : assignedStaff.length === 0 ? (
-                                    <p className="text-[11px] text-slate-400 italic py-2">No assigned staff matches query.</p>
-                                ) : (
-                                    <div className="space-y-1.5">
-                                        {assignedStaff.map(user => (
-                                            <div
-                                                key={user.user_id}
-                                                className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl p-3 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 group transition-all"
-                                            >
-                                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-xs text-slate-650 overflow-hidden shrink-0">
-                                                        {user.profile_image_url && user.profile_image_url.startsWith('http') ? (
-                                                            <img src={user.profile_image_url} alt={user.user_name} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            (user.user_name || 'U').charAt(0).toUpperCase()
-                                                        )}
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="flex items-baseline justify-between gap-2">
-                                                            <p className="text-xs font-semibold text-slate-850 dark:text-github-dark-text truncate">{user.user_name}</p>
-                                                            {user.designation && (
-                                                                <span className="text-[9px] font-black text-indigo-650 dark:text-indigo-400 shrink-0 uppercase tracking-tight">{user.designation}</span>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{user.email}</p>
-                                                        
-                                                        {/* Summarize rule balances inside a clean structured layout */}
-                                                        {user.policyBalances && user.policyBalances.length > 0 && (
-                                                            <div className="grid grid-cols-1 gap-1.5 mt-2 bg-slate-50 dark:bg-github-dark-subtle/50 p-2 rounded-lg border border-slate-200 dark:border-github-dark-border">
-                                                                {user.policyBalances.map(bal => (
-                                                                    <div
-                                                                        key={bal.lb_id}
-                                                                        onClick={() => openEditBalanceDrawer(bal)}
-                                                                        className="text-[9px] font-bold text-slate-605 dark:text-slate-350 cursor-pointer hover:text-indigo-600 flex flex-col"
-                                                                        title="Adjust Balance"
-                                                                    >
-                                                                        <span className="text-[7.5px] uppercase text-slate-450 font-black tracking-wider truncate">{bal.leave_type}</span>
-                                                                        <span className="mt-0.5 text-slate-750 dark:text-slate-200">
-                                                                            Available: <strong className="text-indigo-650 dark:text-indigo-400">{Number(bal.available)}</strong>/{Number(bal.allocated)}d
-                                                                        </span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <button
-                                                    onClick={() => setConfirmUnassignUser({ isOpen: true, user, balancesToDelete: user.policyBalances || [] })}
-                                                    className="w-7 h-7 flex items-center justify-center text-slate-450 hover:text-red-650 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-full transition-all shrink-0 cursor-pointer ml-2 self-start"
-                                                    title="Unassign Policy"
-                                                >
-                                                    <UserMinus size={14} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Section 2: Available Staff list */}
-                            <div className="space-y-3 pt-3">
-                                <h4 className="text-[10px] font-black uppercase text-slate-450 dark:text-slate-400 tracking-wider">Available Staff ({availableStaff.length})</h4>
-                                {availableStaff.length === 0 ? (
-                                    <p className="text-[11px] text-slate-400 italic py-2">No available staff.</p>
-                                ) : (
-                                    <div className="space-y-1.5">
-                                        {availableStaff.map(user => (
-                                            <div
-                                                key={user.user_id}
-                                                className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl p-3 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all"
-                                            >
-                                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-xs text-slate-650 overflow-hidden shrink-0">
-                                                        {user.profile_image_url && user.profile_image_url.startsWith('http') ? (
-                                                            <img src={user.profile_image_url} alt={user.user_name} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            (user.user_name || 'U').charAt(0).toUpperCase()
-                                                        )}
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="flex items-baseline justify-between gap-2">
-                                                            <p className="text-xs font-semibold text-slate-850 dark:text-github-dark-text truncate">{user.user_name}</p>
-                                                            {user.designation && (
-                                                                <span className="text-[9px] font-black text-slate-450 dark:text-github-dark-muted shrink-0 uppercase tracking-tight">{user.designation}</span>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{user.email}</p>
-                                                    </div>
-                                                </div>
-
-                                                <button
-                                                    onClick={() => handleAssignUser(user)}
-                                                    className="w-7 h-7 flex items-center justify-center text-slate-405 hover:text-indigo-650 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 rounded-full transition-all shrink-0 cursor-pointer ml-2"
-                                                    title="Assign Policy"
-                                                >
-                                                    <UserPlus size={14} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400 text-center">
-                        <Users size={48} className="opacity-20 mb-3" />
-                        <h4 className="font-bold text-xs">No Policy Selected</h4>
-                        <p className="text-[11px] mt-1">Select a leave policy from the directory to manage assigned staff balances.</p>
-                    </div>
-                )}
-            </div>
+            <PolicyStaffAssignment
+                selectedPolicy={selectedPolicy}
+                assignedStaff={assignedStaff}
+                availableStaff={availableStaff}
+                loadingBalances={loadingBalances}
+                selectedYear={selectedYear}
+                setSelectedYear={setSelectedYear}
+                balanceSearch={balanceSearch}
+                setBalanceSearch={setBalanceSearch}
+                openEditBalanceDrawer={openEditBalanceDrawer}
+                setConfirmUnassignUser={setConfirmUnassignUser}
+                handleAssignUser={handleAssignUser}
+                activeMobileTab={activeMobileTab}
+                setActiveMobileTab={setActiveMobileTab}
+            />
 
             {/* DRAWERS & MODALS */}
 
