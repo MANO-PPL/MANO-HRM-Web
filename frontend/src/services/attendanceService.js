@@ -227,7 +227,7 @@ export const attendanceService = {
             clearCache();
             return res.data;
         } catch (error) {
-            throw new Error(error.response?.data?.error || "Failed to submit correction request");
+            throw new Error(error.response?.data?.message || error.response?.data?.error || "Failed to submit correction request");
         }
     },
 
@@ -245,7 +245,7 @@ export const attendanceService = {
                 return res.data;
             } catch (error) {
                 cache.correctionRequests.delete(cacheKey);
-                throw new Error(error.response?.data?.error || "Failed to fetch correction requests");
+                throw new Error(error.response?.data?.message || error.response?.data?.error || "Failed to fetch correction requests");
             }
         })();
 
@@ -267,7 +267,7 @@ export const attendanceService = {
                 return res.data;
             } catch (error) {
                 cache.correctionDetails.delete(acr_id);
-                throw new Error(error.response?.data?.error || "Failed to fetch correction details");
+                throw new Error(error.response?.data?.message || error.response?.data?.error || "Failed to fetch correction details");
             }
         })();
 
@@ -287,9 +287,10 @@ export const attendanceService = {
             clearCache();
             return res.data;
         } catch (error) {
-            throw new Error(error.response?.data?.error || "Failed to update correction status");
+            throw new Error(error.response?.data?.message || error.response?.data?.error || "Failed to update correction status");
         }
     },
+
     // Get Holidays
     async getHolidays() {
         if (cache.holidays) {
@@ -532,9 +533,7 @@ export const attendanceService = {
             try {
                 const res = await api.get(`${API_BASE_URL}/my-shift`);
                 const responseData = res.data;
-                // Store the full response for consistency, but also cache the shift
                 attendanceCacheData.shiftPolicy = responseData;
-                cache.shiftPolicy = responseData; // Store resolved data, not promise
                 return responseData;
             } catch (error) {
                 cache.shiftPolicy = null;
@@ -546,7 +545,8 @@ export const attendanceService = {
 
         cache.shiftPolicy = promise;
         return promise;
-    },// Get Daily Summary (User range)
+    },
+// Get Daily Summary (User range)
     async getDailySummary(dateFrom, dateTo) {
         const cacheKey = `${dateFrom || ''}_${dateTo || ''}`;
         if (cache.dailySummary.has(cacheKey)) {

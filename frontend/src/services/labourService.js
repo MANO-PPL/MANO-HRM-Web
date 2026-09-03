@@ -237,5 +237,44 @@ export const labourService = {
         } catch (error) {
             throw new Error(error.response?.data?.message || 'Failed to log labour payout');
         }
+    },
+
+    // ==========================================
+    // 5. WAGE HISTORY SERVICES
+    // ==========================================
+    async getLabourWageHistory(labourId) {
+        try {
+            const res = await api.get(`/labour/labours/${labourId}/wage-history`);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to fetch wage history');
+        }
+    },
+
+    async addLabourWageRevision(labourId, revisionData) {
+        try {
+            const res = await api.post(`/labour/labours/${labourId}/wage-history`, revisionData);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to add wage revision');
+        }
+    },
+
+    async updateLabourWageRevision(revisionId, revisionData) {
+        try {
+            const res = await api.put(`/labour/wage-history/${revisionId}`, revisionData);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to update wage revision');
+        }
+    },
+
+    async deleteLabourWageRevision(revisionId) {
+        try {
+            const res = await api.delete(`/labour/wage-history/${revisionId}`);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to delete wage revision');
+        }
     }
 };
