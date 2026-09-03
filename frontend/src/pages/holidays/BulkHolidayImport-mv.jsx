@@ -245,7 +245,7 @@ const BulkHolidayImport = () => {
                                     {previewData.slice(0, 50).map((row, idx) => (
                                         <div key={idx} className="p-4 flex items-center gap-3">
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{row.name || '-'}</p>
+                                                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{row.name || 'N/A'}</p>
                                                 <p className="text-xs text-slate-400">{row.date} • {row.type}</p>
                                             </div>
                                             <div>

@@ -260,8 +260,8 @@ const BulkHolidayImport = () => {
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                     {previewData.slice(0, 50).map((row, idx) => (
                                         <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                                            <td className="px-6 py-4 text-sm text-slate-800 dark:text-github-dark-text">{row.name || '-'}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-600 dark:text-github-dark-muted">{row.date || '-'}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-800 dark:text-github-dark-text">{row.name || 'N/A'}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-600 dark:text-github-dark-muted">{row.date || 'N/A'}</td>
                                             <td className="px-6 py-4 text-sm text-slate-600 dark:text-github-dark-muted">{row.type}</td>
                                             <td className="px-6 py-4">
                                                 {row.status === 'Valid' ? (
