@@ -13,7 +13,8 @@ import {
     AlertCircle,
     User,
     ChevronDown,
-    FileText
+    FileText,
+    FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -51,7 +52,7 @@ const PayrollMobile = () => {
     };
 
     const [employees, setEmployees] = useState(INITIAL_EMPLOYEES);
-    const [activeTab, setActiveTab] = useState('run');
+    const [activeTab, setActiveTab] = useState('run'); // 'run' | 'structure' | 'payslips'
     const [selectedMonth, setSelectedMonth] = useState(initialMonth);
     const [searchTerm, setSearchTerm] = useState('');
     const [isProcessingAll, setIsProcessingAll] = useState(false);
@@ -157,9 +158,7 @@ const PayrollMobile = () => {
                             <span>{tab.label}</span>
                         </button>
                     ))}
-                </div>
-
-                {/* Period Picker & Action Row */}
+                </div>                {/* Period Picker & Action Row */}
                 <div className="flex gap-3 justify-between items-center bg-white dark:bg-github-dark-subtle p-3 rounded-2xl border border-slate-200 dark:border-github-dark-border">
                     <select
                         value={selectedMonth}
@@ -176,23 +175,48 @@ const PayrollMobile = () => {
 
                     {activeTab === 'run' && (
                         <button
-                            onClick={handleStartProcessing}
-                            disabled={isProcessingAll || payrollStatus === 'Released'}
-                            className="px-4 py-2 bg-indigo-600 disabled:bg-slate-350 disabled:dark:bg-slate-800 text-white font-bold text-[10px] uppercase rounded-xl shadow-md active:scale-95 transition-all flex items-center gap-1"
+                            onClick={() => {
+                                if (payrollStatus === 'Released') {
+                                    toast.info("Payroll for " + selectedMonth + " is already released and frozen.");
+                                } else {
+                                    setIsProcessingAll(true);
+                                    setTimeout(() => {
+                                        setIsProcessingAll(false);
+                                        setPayrollStatus('Released');
+                                        if (!processedMonths.includes(selectedMonth)) {
+                                            setProcessedMonths([selectedMonth, ...processedMonths]);
+                                        }
+                                        toast.success("Successfully processed all salaries for " + selectedMonth + "!");
+                                    }, 1200);
+                                }
+                            }}
+                            disabled={isProcessingAll}
+                            className={`px-3 py-2 text-white font-bold rounded-xl text-[10px] uppercase tracking-wider flex items-center gap-1 shadow-md cursor-pointer ${
+                                payrollStatus === 'Released'
+                                    ? 'bg-emerald-650'
+                                    : 'bg-indigo-650'
+                            }`}
                         >
                             {isProcessingAll ? (
-                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                <span>Running...</span>
+                            ) : payrollStatus === 'Released' ? (
+                                <>
+                                    <CheckCircle size={12} />
+                                    <span>Released</span>
+                                </>
                             ) : (
-                                <CreditCard size={12} />
+                                <>
+                                    <CreditCard size={12} />
+                                    <span>Process All</span>
+                                </>
                             )}
-                            <span>{payrollStatus === 'Released' ? 'Paid' : 'Disburse'}</span>
                         </button>
                     )}
                 </div>
 
-                {/* Search Bar */}
+                {/* Search Input */}
                 <div className="relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                     <input
                         type="text"
                         placeholder="Search employee name..."

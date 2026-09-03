@@ -22,7 +22,8 @@ import {
     Minus,
     ChevronDown,
     History,
-    HelpCircle
+    HelpCircle,
+    FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -55,7 +56,7 @@ const Payroll = () => {
 
     const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('run');
+    const [activeTab, setActiveTab] = useState('run'); // 'run' | 'audit'
     const [selectedMonth, setSelectedMonth] = useState(initialMonth);
     const [searchTerm, setSearchTerm] = useState('');
     const [isProcessingAll, setIsProcessingAll] = useState(false);
@@ -179,6 +180,18 @@ const Payroll = () => {
             emp.department.toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [employees, searchTerm]);
+
+    // Audit logs filter
+    const filteredAuditLogs = useMemo(() => {
+        if (!searchTerm) return auditLogs;
+        const term = searchTerm.toLowerCase();
+        return auditLogs.filter(log => 
+            (log.performed_by_name && log.performed_by_name.toLowerCase().includes(term)) ||
+            (log.employee_name && log.employee_name.toLowerCase().includes(term)) ||
+            (log.action && log.action.toLowerCase().includes(term)) ||
+            (log.details && log.details.toLowerCase().includes(term))
+        );
+    }, [auditLogs, searchTerm]);
 
     // Financial calculations
     const totals = useMemo(() => {
@@ -773,15 +786,15 @@ const Payroll = () => {
 
     return (
         <DashboardLayout title="Payroll Management" noPadding={true}>
-            <div className="flex flex-col h-[calc(100vh-64px)] w-full overflow-hidden p-3 bg-slate-50 dark:bg-dark-bg space-y-3">
+            <div className="w-full min-h-[calc(100vh-64px)] px-2.5 pt-2 pb-10 bg-slate-50 dark:bg-dark-bg space-y-2.5">
                 
                 {/* Stats cards strip */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
                     <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex items-center justify-between">
                         <div>
-                            <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Gross Payroll ({selectedMonth})</span>
-                            <h3 className="text-xl font-black text-slate-800 dark:text-github-dark-text mt-1">₹{totals.gross.toLocaleString()}</h3>
-                            <p className="text-[10px] text-slate-455 dark:text-github-dark-muted mt-1">Basic + Allowances</p>
+                            <span className="text-[11px] font-medium text-slate-500 dark:text-github-dark-muted uppercase tracking-wider">Gross Payroll ({selectedMonth})</span>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-github-dark-text mt-0.5">₹{totals.gross.toLocaleString()}</h3>
+                            <p className="text-[10px] font-normal text-slate-400 dark:text-github-dark-muted mt-0.5">Basic + Allowances</p>
                         </div>
                         <div className="p-3 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-650 dark:text-indigo-400 rounded-xl">
                             <DollarSign size={20} />
@@ -790,9 +803,9 @@ const Payroll = () => {
 
                     <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm flex items-center justify-between">
                         <div>
-                            <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Net Disbursed</span>
-                            <h3 className="text-xl font-black text-slate-800 dark:text-github-dark-text mt-1">₹{totals.net.toLocaleString()}</h3>
-                            <p className="text-[10px] text-slate-455 dark:text-github-dark-muted mt-1">After LOP Deductions</p>
+                            <span className="text-[11px] font-medium text-slate-500 dark:text-github-dark-muted uppercase tracking-wider">Net Disbursed</span>
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-github-dark-text mt-0.5">₹{totals.net.toLocaleString()}</h3>
+                            <p className="text-[10px] font-normal text-slate-400 dark:text-github-dark-muted mt-0.5">After LOP Deductions</p>
                         </div>
                         <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 rounded-xl">
                             <CreditCard size={20} />
@@ -800,9 +813,9 @@ const Payroll = () => {
                     </div>
                 </div>
 
-                {/* View Switcher Tabs & Period Picker */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
-                    <div className="flex w-fit items-center gap-3 p-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
+                {/* View Switcher Tabs, Search, & Actions Toolbar */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
+                    <div className="flex w-fit items-center gap-1.5 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         {[
                             { id: 'run', label: 'Run Monthly Payroll', icon: CreditCard },
                             { id: 'audit', label: 'Audit Trail', icon: History }
@@ -812,10 +825,10 @@ const Payroll = () => {
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
                                         isSelected
-                                            ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                            ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
+                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
                                     }`}
                                 >
                                     <tab.icon size={14} />
@@ -825,12 +838,33 @@ const Payroll = () => {
                         })}
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Search Input */}
+                        <div className="relative w-56 sm:w-64">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder={activeTab === 'run' ? "Search employees..." : "Search audit logs..."}
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-7 py-1.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-xl text-xs font-normal text-slate-700 dark:text-github-dark-text placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm transition-all"
+                            />
+                            {searchTerm && (
+                                <button
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Month Picker Dropdown */}
                         <div className="relative">
                             <button
                                 type="button"
                                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                                className="px-3.5 py-2 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none shadow-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-[#21262d] flex items-center gap-2 select-none"
+                                className="px-3.5 py-1.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-xl text-xs font-medium text-slate-700 dark:text-github-dark-text focus:outline-none shadow-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-[#21262d] flex items-center gap-2 select-none transition-colors"
                             >
                                 <Calendar size={14} className="text-slate-400" />
                                 <span>{selectedMonth}</span>
@@ -863,10 +897,10 @@ const Payroll = () => {
                                                             setPayrollStatus(processedMonths.includes(m) ? 'Released' : 'Draft');
                                                             setIsDropdownOpen(false);
                                                         }}
-                                                        className={`w-full text-left px-4 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
+                                                        className={`w-full text-left px-4 py-2 text-xs flex items-center justify-between transition-colors ${
                                                             isSelected
-                                                                ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-650 dark:text-indigo-400'
-                                                                : 'text-slate-650 dark:text-slate-355 hover:bg-slate-50 dark:hover:bg-[#21262d]'
+                                                                ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-650 dark:text-indigo-400 font-medium'
+                                                                : 'text-slate-650 dark:text-slate-355 hover:bg-slate-50 dark:hover:bg-[#21262d] font-normal'
                                                         }`}
                                                     >
                                                         <span>{m}</span>
@@ -880,220 +914,203 @@ const Payroll = () => {
                             </AnimatePresence>
                         </div>
 
+                        {/* Locked Count Badge */}
                         {activeTab === 'run' && (
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-medium uppercase tracking-wider ${
                                 employees.filter(e => e.status === 'Finalized' || e.status === 'Paid').length === employees.length && employees.length > 0
                                     ? 'bg-emerald-100 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400'
                                     : 'bg-amber-100 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400'
                             }`}>
-                                <Lock size={10} />
+                                <Lock size={11} />
                                 {employees.filter(e => e.status === 'Finalized' || e.status === 'Paid').length}/{employees.length} Locked
                             </span>
                         )}
+
+                        {/* Export Button */}
+                        <button 
+                            onClick={handleExport}
+                            title={activeTab === 'run' ? 'Export Wage Register' : 'Export Audit Trail'}
+                            className="px-3 py-1.5 bg-[#f6f8fa] hover:bg-[#eaeef2] dark:bg-[#21262d] dark:hover:bg-[#30363d] text-[#24292f] dark:text-[#c9d1d9] border border-[#d0d7de] dark:border-[#30363d] font-medium rounded-xl shadow-sm text-xs cursor-pointer flex items-center gap-1.5 transition-colors"
+                        >
+                            <Download size={13} />
+                            <span>Export</span>
+                        </button>
                     </div>
                 </div>
 
-                {/* Main Content Card */}
-                <div className="flex-1 min-h-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden flex flex-col">
-                    
-                    {/* Search & Actions Toolbar */}
-                    <div className="p-4 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between gap-4 shrink-0 bg-slate-50/50 dark:bg-github-dark-subtle/10">
-                        <div className="relative w-72">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="Search employees..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                            />
-                        </div>
+                {/* List directly on the page */}
+                <div className="w-full overflow-x-auto bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm">
+                    {activeTab === 'run' && (
+                        loading ? (
+                            <div className="flex flex-col items-center justify-center py-24 gap-4">
+                                <div className="w-8 h-8 border-3 border-indigo-150 border-t-indigo-600 rounded-full animate-spin"></div>
+                                <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Loading real-time payroll data...</p>
+                            </div>
+                        ) : filteredEmployees.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-24 gap-3">
+                                <Users className="text-slate-200 dark:text-slate-700" size={48} />
+                                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">No payroll entries found for this month.</p>
+                            </div>
+                        ) : (
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Employee</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted text-right">Basic Salary</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted text-right">LOP Deductions</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted text-right">Net Payout</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted text-center">Status</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted text-center">Lock</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-150 dark:divide-github-dark-border">
+                                    {filteredEmployees.map((emp) => {
+                                        const netPay = emp.net_salary;
+                                        const initials = emp.name.split(' ').map(n => n[0]).join('').slice(0, 2);
 
-                        <div className="flex items-center gap-2">
-                            <button 
-                                onClick={handleExport}
-                                className="px-3.5 py-2 bg-[#f6f8fa] hover:bg-[#eaeef2] dark:bg-[#21262d] dark:hover:bg-[#30363d] text-[#24292f] dark:text-[#c9d1d9] border border-[#d0d7de] dark:border-[#30363d] font-bold uppercase tracking-wider rounded-xl shadow-sm text-[10px] cursor-pointer flex items-center gap-1.5"
-                            >
-                                <Download size={12} />
-                                <span>{activeTab === 'run' ? 'Export Wage Register' : 'Export Audit Trail'}</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Tab Panels */}
-                    <div className="flex-1 overflow-auto no-scrollbar">
-                        {activeTab === 'run' && (
-                            loading ? (
-                                <div className="flex flex-col items-center justify-center py-20 gap-4">
-                                    <div className="w-8 h-8 border-3 border-indigo-150 border-t-indigo-600 rounded-full animate-spin"></div>
-                                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Loading real-time payroll data...</p>
-                                </div>
-                            ) : filteredEmployees.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-20 gap-3">
-                                    <Users className="text-slate-200 dark:text-slate-700" size={48} />
-                                    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">No payroll entries found for this month.</p>
-                                </div>
-                            ) : (
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Employee</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-right">Basic Salary</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-right">LOP Deductions</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-right">Net Payout</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-center">Status</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-center">Lock</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-center">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-150 dark:divide-github-dark-border">
-                                        {filteredEmployees.map((emp) => {
-                                            const netPay = emp.net_salary;
-                                            const initials = emp.name.split(' ').map(n => n[0]).join('').slice(0, 2);
-
-                                            return (
-                                                <tr key={emp.id} className="hover:bg-slate-50/50 dark:hover:bg-github-dark-subtle/5 transition-colors">
-                                                    <td className="px-5 py-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shadow-inner shrink-0">
-                                                                {initials}
-                                                            </div>
-                                                            <div>
-                                                                <span className="block font-bold text-slate-800 dark:text-github-dark-text text-sm leading-none">{emp.name}</span>
-                                                                <span className="block text-[10px] font-semibold text-slate-400 mt-1">{emp.designation} · {emp.department}</span>
-                                                            </div>
+                                        return (
+                                            <tr key={emp.id} className="hover:bg-slate-50/50 dark:hover:bg-github-dark-subtle/5 transition-colors">
+                                                <td className="px-5 py-3.5">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-medium text-xs shadow-inner shrink-0">
+                                                            {initials}
                                                         </div>
-                                                    </td>
-                                                    <td className="px-5 py-4 text-right font-semibold text-slate-700 dark:text-github-dark-text">₹{emp.basic.toLocaleString()}</td>
-                                                    <td className="px-5 py-4 text-right font-semibold text-rose-500">
-                                                        {emp.lop_deduction > 0 ? `-₹${emp.lop_deduction.toLocaleString()}` : '₹0'}
-                                                        {emp.lates > 0 && <span className="block text-[8px] font-bold text-slate-450 dark:text-github-dark-muted mt-0.5">{emp.lates} LOP days</span>}
-                                                    </td>
-                                                    <td className="px-5 py-4 text-right font-black text-indigo-600 dark:text-indigo-400">
-                                                        ₹{netPay.toLocaleString()}
-                                                        {emp.overtime_amount > 0 && <span className="block text-[8px] font-bold text-emerald-500 mt-0.5">+₹{emp.overtime_amount.toLocaleString()} (OT)</span>}
-                                                    </td>
-                                                    <td className="px-5 py-4 text-center">
-                                                         {(() => {
-                                                             const s = emp.status;
-                                                             const isPaid = s === 'Paid';
-                                                             const isFinalized = s === 'Finalized';
-                                                             return (
-                                                                 <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                                                     isPaid ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                                     : isFinalized ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400'
-                                                                     : 'bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'
-                                                                 }`}>
-                                                                     {s || 'Draft'}
-                                                                 </span>
-                                                             );
-                                                         })()}
-                                                    </td>
-                                                    <td className="px-5 py-4 text-center">
+                                                        <div>
+                                                            <span className="block font-semibold text-slate-800 dark:text-github-dark-text text-sm leading-none">{emp.name}</span>
+                                                            <span className="block text-[11px] font-normal text-slate-400 mt-1">{emp.designation} · {emp.department}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-5 py-3.5 text-right font-normal text-slate-700 dark:text-github-dark-text text-xs">₹{emp.basic.toLocaleString()}</td>
+                                                <td className="px-5 py-3.5 text-right font-normal text-rose-600 dark:text-rose-400 text-xs">
+                                                    {emp.lop_deduction > 0 ? `-₹${emp.lop_deduction.toLocaleString()}` : '₹0'}
+                                                    {emp.lates > 0 && <span className="block text-[9px] font-normal text-slate-400 mt-0.5">{emp.lates} LOP days</span>}
+                                                </td>
+                                                <td className="px-5 py-3.5 text-right font-semibold text-indigo-600 dark:text-indigo-400 text-sm">
+                                                    ₹{netPay.toLocaleString()}
+                                                    {emp.overtime_amount > 0 && <span className="block text-[9px] font-normal text-emerald-600 dark:text-emerald-400 mt-0.5">+₹{emp.overtime_amount.toLocaleString()} (OT)</span>}
+                                                </td>
+                                                <td className="px-5 py-3.5 text-center">
+                                                     {(() => {
+                                                         const s = emp.status;
+                                                         const isPaid = s === 'Paid';
+                                                         const isFinalized = s === 'Finalized';
+                                                         return (
+                                                             <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-medium uppercase tracking-wider ${
+                                                                 isPaid ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                                                 : isFinalized ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400'
+                                                                 : 'bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'
+                                                             }`}>
+                                                                 {s || 'Draft'}
+                                                             </span>
+                                                         );
+                                                     })()}
+                                                </td>
+                                                <td className="px-5 py-3.5 text-center">
+                                                     <button
+                                                         onClick={() => handleLockToggle(emp)}
+                                                         disabled={lockingId === emp.id || emp.status === 'Paid'}
+                                                         title={emp.status === 'Finalized' || emp.status === 'Paid' ? 'Unlock payroll' : 'Lock & finalize payroll'}
+                                                         className={`w-7 h-7 rounded-lg flex items-center justify-center mx-auto transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                             emp.status === 'Finalized' || emp.status === 'Paid'
+                                                                 ? 'bg-indigo-100 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200'
+                                                                 : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-amber-100 hover:text-amber-600'
+                                                         }`}
+                                                     >
+                                                         {lockingId === emp.id
+                                                             ? <div className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                                                             : emp.status === 'Finalized' || emp.status === 'Paid'
+                                                                 ? <Lock size={12} />
+                                                                 : <Unlock size={12} />}
+                                                     </button>
+                                                </td>
+                                                <td className="px-5 py-3.5 text-center">
+                                                     <div className="flex items-center justify-center gap-1.5">
                                                          <button
-                                                             onClick={() => handleLockToggle(emp)}
-                                                             disabled={lockingId === emp.id || emp.status === 'Paid'}
-                                                             title={emp.status === 'Finalized' || emp.status === 'Paid' ? 'Unlock payroll' : 'Lock & finalize payroll'}
-                                                             className={`w-8 h-8 rounded-xl flex items-center justify-center mx-auto transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
-                                                                 emp.status === 'Finalized' || emp.status === 'Paid'
-                                                                     ? 'bg-indigo-100 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200'
-                                                                     : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-amber-100 hover:text-amber-600'
-                                                             }`}
+                                                             onClick={() => setSelectedPayslipEmp(emp)}
+                                                             className="px-2.5 py-1 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-text hover:bg-slate-100 dark:hover:bg-slate-800 text-[10px] font-medium rounded-lg shadow-sm cursor-pointer inline-flex items-center gap-1"
                                                          >
-                                                             {lockingId === emp.id
-                                                                 ? <div className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                                                                 : emp.status === 'Finalized' || emp.status === 'Paid'
-                                                                     ? <Lock size={13} />
-                                                                     : <Unlock size={13} />}
+                                                             <Printer size={10} />
+                                                             <span>Slip</span>
                                                          </button>
-                                                    </td>
-                                                    <td className="px-5 py-4 text-center">
-                                                        <div className="flex items-center justify-center gap-1.5">
-                                                            <button
-                                                                onClick={() => setSelectedPayslipEmp(emp)}
-                                                                className="px-2.5 py-1.5 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-text hover:bg-slate-100 dark:hover:bg-slate-800 text-[10px] font-bold uppercase rounded-lg shadow-sm cursor-pointer inline-flex items-center gap-1"
-                                                            >
-                                                                <Printer size={10} />
-                                                                <span>Slip</span>
-                                                            </button>
-                                                            <button
-                                                                onClick={() => openConfig(emp)}
-                                                                title="Configure adjustments"
-                                                                className="w-7 h-7 flex items-center justify-center border border-slate-200 dark:border-github-dark-border text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg shadow-sm cursor-pointer"
-                                                            >
-                                                                <SlidersHorizontal size={11} />
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            )
-                        )}
+                                                         <button
+                                                             onClick={() => openConfig(emp)}
+                                                             title="Configure adjustments"
+                                                             className="w-6 h-6 flex items-center justify-center border border-slate-200 dark:border-github-dark-border text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg shadow-sm cursor-pointer"
+                                                         >
+                                                             <SlidersHorizontal size={11} />
+                                                         </button>
+                                                     </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        )
+                    )}
 
-                        {activeTab === 'audit' && (
-                            loadingAudit ? (
-                                <div className="flex flex-col items-center justify-center py-20 gap-4">
-                                    <div className="w-8 h-8 border-3 border-indigo-150 border-t-indigo-600 rounded-full animate-spin"></div>
-                                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Loading detailed audit trails...</p>
-                                </div>
-                            ) : auditLogs.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-20 gap-3">
-                                    <History className="text-slate-200 dark:text-slate-700" size={48} />
-                                    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">No audit trail records found for this period.</p>
-                                </div>
-                            ) : (
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Timestamp</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted text-center">Action</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Performed By</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Employee</th>
-                                            <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted">Details</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-150 dark:divide-github-dark-border text-xs font-semibold text-slate-700 dark:text-[#c9d1d9]">
-                                        {auditLogs.map((log) => {
-                                            const actionColors = {
-                                                'PACKAGE_CREATE': 'bg-purple-100 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400',
-                                                'PACKAGE_REVISION_CREATE': 'bg-purple-100 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400',
-                                                'PACKAGE_UPDATE': 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950/20 dark:text-fuchsia-400',
-                                                'PACKAGE_DELETE': 'bg-rose-100 text-rose-700 dark:bg-rose-955/20 dark:text-rose-400',
-                                                'PACKAGE_ASSIGN': 'bg-blue-100 text-blue-700 dark:bg-blue-955/20 dark:text-blue-400',
-                                                'PACKAGE_UNASSIGN': 'bg-orange-100 text-orange-700 dark:bg-orange-955/20 dark:text-orange-400',
-                                                'LOCK': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-955/20 dark:text-indigo-400',
-                                                'UNLOCK': 'bg-amber-100 text-amber-700 dark:bg-amber-955/20 dark:text-amber-400',
-                                                'ADJUSTMENT_UPDATE': 'bg-sky-100 text-sky-700 dark:bg-sky-955/20 dark:text-sky-400',
-                                                'PAY': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-955/20 dark:text-emerald-400'
-                                            };
-                                            const colorClass = actionColors[log.action] || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400';
-                                            return (
-                                                <tr key={log.log_id} className="hover:bg-slate-50/50 dark:hover:bg-github-dark-subtle/5 transition-colors">
-                                                    <td className="px-5 py-4 whitespace-nowrap text-slate-400 dark:text-github-dark-muted font-bold text-[10.5px]">
-                                                        {new Date(log.created_at).toLocaleString('en-IN', {
-                                                            year: 'numeric', month: 'short', day: 'numeric',
-                                                            hour: '2-digit', minute: '2-digit', hour12: true
-                                                        })}
-                                                    </td>
-                                                    <td className="px-5 py-4 text-center whitespace-nowrap">
-                                                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${colorClass}`}>
-                                                            {log.action}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-5 py-4 whitespace-nowrap text-slate-700 dark:text-github-dark-text">{log.performed_by_name}</td>
-                                                    <td className="px-5 py-4 whitespace-nowrap text-slate-705 dark:text-github-dark-text">{log.employee_name || '—'}</td>
-                                                    <td className="px-5 py-4 text-slate-500 dark:text-github-dark-muted">{log.details}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            )
-                        )}
-                    </div>
+                    {activeTab === 'audit' && (
+                        loadingAudit ? (
+                            <div className="flex flex-col items-center justify-center py-24 gap-4">
+                                <div className="w-8 h-8 border-3 border-indigo-150 border-t-indigo-600 rounded-full animate-spin"></div>
+                                <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Loading detailed audit trails...</p>
+                            </div>
+                        ) : filteredAuditLogs.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-24 gap-3">
+                                <History className="text-slate-200 dark:text-slate-700" size={48} />
+                                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">No audit trail records found for this period.</p>
+                            </div>
+                        ) : (
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Timestamp</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted text-center">Action</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Performed By</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Employee</th>
+                                        <th className="px-5 py-3 text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-150 dark:divide-github-dark-border text-xs font-normal text-slate-700 dark:text-[#c9d1d9]">
+                                    {filteredAuditLogs.map((log) => {
+                                        const actionColors = {
+                                            'PACKAGE_CREATE': 'bg-purple-100 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400',
+                                            'PACKAGE_REVISION_CREATE': 'bg-purple-100 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400',
+                                            'PACKAGE_UPDATE': 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950/20 dark:text-fuchsia-400',
+                                            'PACKAGE_DELETE': 'bg-rose-100 text-rose-700 dark:bg-rose-955/20 dark:text-rose-400',
+                                            'PACKAGE_ASSIGN': 'bg-blue-100 text-blue-700 dark:bg-blue-955/20 dark:text-blue-400',
+                                            'PACKAGE_UNASSIGN': 'bg-orange-100 text-orange-700 dark:bg-orange-955/20 dark:text-orange-400',
+                                            'LOCK': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-955/20 dark:text-indigo-400',
+                                            'UNLOCK': 'bg-amber-100 text-amber-700 dark:bg-amber-955/20 dark:text-amber-400',
+                                            'ADJUSTMENT_UPDATE': 'bg-sky-100 text-sky-700 dark:bg-sky-955/20 dark:text-sky-400',
+                                            'PAY': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-955/20 dark:text-emerald-400'
+                                        };
+                                        const colorClass = actionColors[log.action] || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400';
+                                        return (
+                                            <tr key={log.log_id} className="hover:bg-slate-50/50 dark:hover:bg-github-dark-subtle/5 transition-colors">
+                                                <td className="px-5 py-3.5 whitespace-nowrap text-slate-400 dark:text-github-dark-muted font-normal text-[11px]">
+                                                    {new Date(log.created_at).toLocaleString('en-IN', {
+                                                        year: 'numeric', month: 'short', day: 'numeric',
+                                                        hour: '2-digit', minute: '2-digit', hour12: true
+                                                    })}
+                                                </td>
+                                                <td className="px-5 py-3.5 text-center whitespace-nowrap">
+                                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-medium uppercase tracking-wider ${colorClass}`}>
+                                                        {log.action}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-3.5 whitespace-nowrap font-normal text-slate-700 dark:text-github-dark-text">{log.performed_by_name}</td>
+                                                <td className="px-5 py-3.5 whitespace-nowrap font-medium text-slate-800 dark:text-github-dark-text">{log.employee_name || 'All Employees'}</td>
+                                                <td className="px-5 py-3.5 font-normal text-slate-500 dark:text-github-dark-muted">{log.details}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        )
+                    )}
                 </div>
             </div>
 

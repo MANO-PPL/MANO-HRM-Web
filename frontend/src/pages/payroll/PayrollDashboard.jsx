@@ -3,7 +3,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 import { 
     Calendar, DollarSign, Clock, CheckCircle, CreditCard, Lock, Unlock,
     ArrowRight, Download, Search, AlertCircle, Eye, X, HelpCircle,
-    Sliders, Plus, Trash2
+    Sliders, Plus, Trash2, FileSpreadsheet, LayoutList
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import payrollService from '../../services/payrollService';
@@ -405,18 +405,51 @@ const PayrollDashboard = () => {
                 <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden transition-colors duration-300">
                     {/* Search and Filters */}
                     <div className="p-5 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-subtle/25">
-                        <div className="relative w-full max-w-sm">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                            <input
-                                type="text"
-                                placeholder="Search employees..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 text-sm bg-white dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            />
+                        <div className="flex items-center gap-3 w-full max-w-md">
+                            <div className="relative w-full">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input
+                                    type="text"
+                                    placeholder="Search employees..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 text-sm bg-white dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-700 dark:text-github-dark-text outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                />
+                            </div>
                         </div>
-                        <div className="text-xs text-slate-400 dark:text-github-dark-muted font-medium">
-                            Showing {filteredRecords.length} records
+
+                        <div className="flex items-center gap-3">
+                            {/* View Mode Toggle */}
+                            <div className="flex bg-slate-100 dark:bg-github-dark-subtle p-1 rounded-xl border border-slate-200 dark:border-github-dark-border">
+                                <button
+                                    type="button"
+                                    onClick={() => setViewMode('table')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                                        viewMode === 'table'
+                                            ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                                    }`}
+                                >
+                                    <LayoutList size={14} />
+                                    <span>Table</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setViewMode('excel')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                                        viewMode === 'excel'
+                                            ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
+                                    }`}
+                                >
+                                    <FileSpreadsheet size={14} />
+                                    <span>Excel Sheet</span>
+                                </button>
+                            </div>
+
+                            <div className="text-xs text-slate-400 dark:text-github-dark-muted font-medium">
+                                Showing {filteredRecords.length} records
+                            </div>
                         </div>
                     </div>
 
@@ -850,8 +883,9 @@ const PayrollDashboard = () => {
                                         </div>
                                     </form>
                                 ) : (
-                                    <div className="bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 p-4 rounded-2xl text-xs text-blue-700 dark:text-blue-300 font-medium">
-                                        🔒 This employee's payroll status is <strong>{adjustmentsEmployee.status}</strong>. Manual adjustments are frozen and cannot be modified.
+                                    <div className="bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 p-4 rounded-2xl text-xs text-blue-700 dark:text-blue-300 font-medium flex items-center gap-2">
+                                        <Lock size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                                        <span>This employee's payroll status is <strong>{adjustmentsEmployee.status}</strong>. Manual adjustments are frozen and cannot be modified.</span>
                                     </div>
                                 )}
 
