@@ -135,5 +135,16 @@ export const cacheService = {
     } catch (err) {
       console.error(`[Cache] Delete pattern error for "${pattern}":`, err);
     }
+  },
+
+  /**
+   * Invalidate keys matching pattern (alias for delPattern)
+   */
+  async invalidatePattern(pattern) {
+    return this.delPattern(pattern);
   }
 };
+
+export const invalidateCachePattern = (pattern) => cacheService.delPattern(pattern);
+export const invalidatePattern = (pattern) => cacheService.delPattern(pattern);
+

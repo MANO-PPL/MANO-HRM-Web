@@ -6,6 +6,8 @@ import * as ShiftService from "./shiftManagementService.js";
 import * as StatusService from "./statusEvaluationService.js";
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 import { toMySQLDateTime, toMySQLDate, toMySQLTime } from "../../utils/dateUtils.js";
+import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttendanceCorrectionApprovedHook } from "../darServices/darReconciliationService.js";
+
 
 /**
  * Fetch User Shift
@@ -216,7 +218,15 @@ export async function processTimeIn(context) {
     user_agent: user_agent
   });
 
+  // DAR Reconciliation Hook on Checkin
+  try {
+    await handleAttendanceCheckinHook(user_id, localTime);
+  } catch (darErr) {
+    console.warn("DAR Checkin Reconciliation Hook warning:", darErr);
+  }
+
   // 5. Calculate Expected Hours
+
   const expectedHours = ShiftService.getExpectedHours(localTime, rules.week_off_policy, rules);
 
   return {
@@ -378,6 +388,13 @@ export async function processTimeOut(context) {
     await syncDailyAttendance(user_id, sessionDate, { status });
   } catch (dailyErr) {
     console.error("Daily Sync Error (Timeout):", dailyErr);
+  }
+
+  // DAR Reconciliation Hook on Checkout
+  try {
+    await handleAttendanceCheckoutHook(user_id, localTime);
+  } catch (darErr) {
+    console.warn("DAR Checkout Reconciliation Hook warning:", darErr);
   }
 
   // Events (Removed database notification since local toast 'Checked Out Successfully!' is already displayed)
@@ -940,6 +957,13 @@ export async function reviewCorrectionRequest({
         is_altered: true,
         adjustment_reason: `Correction Request #${acr_id}`
       });
+
+      // DAR Auto-Healing Hook on Attendance Correction Approval
+      try {
+        await handleAttendanceCorrectionApprovedHook(correction.user_id, finalDateStr);
+      } catch (darErr) {
+        console.warn("DAR Correction Reconciliation Hook warning:", darErr);
+      }
     }
   }
 }

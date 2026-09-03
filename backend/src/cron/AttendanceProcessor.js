@@ -7,6 +7,8 @@ import EventBus from '../utils/EventBus.js';
 import { PayrollCalculationService } from '../services/payroll/PayrollCalculationService.js';
 import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../services/shifts/shiftService.js';
 import { toMySQLDateTime, toMySQLDate } from '../utils/dateUtils.js';
+import { reconcileUserDarForDate } from '../services/darServices/darReconciliationService.js';
+
 
 // Grace period (in days) before an uncorrected MISSED_PUNCH becomes ABSENT
 const MISSED_PUNCH_GRACE_DAYS = 2;
@@ -296,7 +298,15 @@ async function processUserAttendanceForDate(user, dateStr) {
             console.error("Failed to trigger background payroll calculation in processUserAttendanceForDate:", err);
         });
     }
+
+    // Finalize DAR for the date (archives any remaining unworked planned tasks to UNATTENDED_DRAFT)
+    try {
+        await reconcileUserDarForDate(user.user_id, dateStr, { isEodFinalization: true });
+    } catch (darErr) {
+        console.warn(`Failed to finalize DAR for user ${user.user_id} on ${dateStr}:`, darErr);
+    }
 }
+
 
 /**
  * Escalate MISSED_PUNCH sessions that have exceeded the grace period

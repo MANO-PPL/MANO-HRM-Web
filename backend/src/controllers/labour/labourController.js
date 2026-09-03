@@ -60,6 +60,152 @@ const getMonthDetails = (dateStr) => {
 };
 
 // ==========================================
+// WAGE RATE HISTORY SCHEMA & RESOLVER
+// ==========================================
+
+let isWageHistoryTableEnsured = false;
+export const ensureWageHistoryTable = async () => {
+    if (isWageHistoryTableEnsured) return;
+    try {
+        const hasTable = await attendanceDB.schema.hasTable('labour_wage_history');
+        if (!hasTable) {
+            await attendanceDB.schema.createTable('labour_wage_history', (table) => {
+                table.increments('id').primary();
+                table.integer('org_id').notNullable().index();
+                table.integer('labour_id').notNullable().index();
+                table.date('effective_date').notNullable();
+                table.string('wage_type', 30).defaultTo('Daily Wage');
+                table.decimal('daily_wage', 10, 2).notNullable();
+                table.decimal('overtime_pay_per_hour', 10, 2).defaultTo(0.00);
+                table.string('notes', 255).nullable();
+                table.integer('created_by').nullable();
+                table.timestamp('created_at').defaultTo(attendanceDB.fn.now());
+                table.unique(['labour_id', 'effective_date']);
+            });
+
+            // Auto-migrate existing active workers from `labours`
+            const existingLabours = await attendanceDB('labours')
+                .select('labour_id', 'org_id', 'wage_type', 'monthly_salary', 'overtime_pay_per_hour', 'created_at');
+
+            if (existingLabours.length > 0) {
+                const seedRows = existingLabours
+                    .filter(l => Number(l.monthly_salary) > 0 || Number(l.overtime_pay_per_hour) > 0)
+                    .map(lab => {
+                        const effDate = formatDateSafe(lab.created_at) || '2020-01-01';
+                        return {
+                            org_id: lab.org_id,
+                            labour_id: lab.labour_id,
+                            effective_date: effDate,
+                            wage_type: lab.wage_type || 'Daily Wage',
+                            daily_wage: Number(lab.monthly_salary || 0),
+                            overtime_pay_per_hour: Number(lab.overtime_pay_per_hour || 0),
+                            notes: 'Initial Base Rate'
+                        };
+                    });
+                if (seedRows.length > 0) {
+                    await attendanceDB('labour_wage_history').insert(seedRows);
+                }
+            }
+        }
+        isWageHistoryTableEnsured = true;
+    } catch (err) {
+        console.error('Error ensuring labour_wage_history table:', err);
+    }
+};
+
+/**
+ * Builds an in-memory wage rate lookup function for a set of workers over a date range.
+ * For any given dateStr ('YYYY-MM-DD'), returns the exact rate in effect on that date.
+ */
+export const buildWageRateResolver = async (labourIds, orgId, maxDate = null) => {
+    await ensureWageHistoryTable();
+    if (!labourIds || labourIds.length === 0) {
+        return () => ({ daily_rate: 0, overtime_pay_per_hour: 0, wage_type: 'Daily Wage' });
+    }
+
+    // 1. Fetch baseline labours for fallback
+    const labours = await attendanceDB('labours')
+        .whereIn('labour_id', labourIds)
+        .andWhere('org_id', orgId)
+        .select('labour_id', 'wage_type', 'monthly_salary', 'overtime_pay_per_hour', 'created_at');
+
+    const fallbackMap = {};
+    labours.forEach(l => {
+        fallbackMap[l.labour_id] = {
+            daily_rate: Number(l.monthly_salary || 0),
+            overtime_pay_per_hour: Number(l.overtime_pay_per_hour || 0),
+            wage_type: l.wage_type || 'Daily Wage',
+            created_at: formatDateSafe(l.created_at) || '2020-01-01'
+        };
+    });
+
+    // 2. Fetch all wage history revisions up to maxDate
+    let query = attendanceDB('labour_wage_history')
+        .whereIn('labour_id', labourIds)
+        .andWhere('org_id', orgId);
+
+    if (maxDate) {
+        query = query.andWhere('effective_date', '<=', maxDate);
+    }
+
+    const revisions = await query
+        .select('labour_id', 'effective_date', 'wage_type', 'daily_wage', 'overtime_pay_per_hour', 'notes')
+        .orderBy('effective_date', 'asc');
+
+    // Group revisions by labour_id sorted asc by effective_date
+    const revisionsMap = {};
+    labourIds.forEach(id => {
+        revisionsMap[id] = [];
+    });
+    revisions.forEach(rev => {
+        if (!revisionsMap[rev.labour_id]) revisionsMap[rev.labour_id] = [];
+        revisionsMap[rev.labour_id].push({
+            effective_date: formatDateSafe(rev.effective_date),
+            daily_rate: Number(rev.daily_wage || 0),
+            overtime_pay_per_hour: Number(rev.overtime_pay_per_hour || 0),
+            wage_type: rev.wage_type || 'Daily Wage',
+            notes: rev.notes
+        });
+    });
+
+    // Resolver function for any dateStr ('YYYY-MM-DD')
+    return (labourId, dateStr) => {
+        const revList = revisionsMap[labourId];
+        if (revList && revList.length > 0) {
+            let activeRev = null;
+            for (let i = 0; i < revList.length; i++) {
+                if (revList[i].effective_date <= dateStr) {
+                    activeRev = revList[i];
+                } else {
+                    break;
+                }
+            }
+            if (activeRev) {
+                return {
+                    daily_rate: activeRev.daily_rate,
+                    overtime_pay_per_hour: activeRev.overtime_pay_per_hour,
+                    wage_type: activeRev.wage_type
+                };
+            }
+            // If date is before earliest revision, use the earliest revision
+            return {
+                daily_rate: revList[0].daily_rate,
+                overtime_pay_per_hour: revList[0].overtime_pay_per_hour,
+                wage_type: revList[0].wage_type
+            };
+        }
+
+        // Fallback to labours table baseline
+        const fb = fallbackMap[labourId] || { daily_rate: 0, overtime_pay_per_hour: 0, wage_type: 'Daily Wage' };
+        return {
+            daily_rate: fb.daily_rate,
+            overtime_pay_per_hour: fb.overtime_pay_per_hour,
+            wage_type: fb.wage_type
+        };
+    };
+};
+
+// ==========================================
 // 1. SITE CONTROLLERS
 // ==========================================
 
@@ -195,10 +341,10 @@ export const getAllLabours = catchAsync(async (req, res) => {
 
 export const createLabour = catchAsync(async (req, res) => {
     const { org_id } = req.user;
-    const { name, phone, sex, role, wage_type, monthly_salary, allowed_leaves, site_id, overtime_pay_per_hour } = req.body;
+    const { name, phone, sex, role, wage_type, monthly_salary, allowed_leaves, site_id, overtime_pay_per_hour, effective_date, notes } = req.body;
 
-    if (!name || !role || monthly_salary === undefined) {
-        throw new AppError('Name, role and monthly salary are required', 400);
+    if (!name || !role) {
+        throw new AppError('Name and role are required', 400);
     }
 
     if (phone) {
@@ -219,6 +365,9 @@ export const createLabour = catchAsync(async (req, res) => {
         }
     }
 
+    const wageVal = monthly_salary !== undefined && monthly_salary !== '' ? Number(monthly_salary) : 0;
+    const otVal = overtime_pay_per_hour !== undefined && overtime_pay_per_hour !== '' ? Number(overtime_pay_per_hour) : 0;
+
     const [labour_id] = await attendanceDB('labours').insert({
         org_id,
         name,
@@ -226,10 +375,10 @@ export const createLabour = catchAsync(async (req, res) => {
         sex,
         role,
         wage_type: 'Daily Wage',
-        monthly_salary: Number(monthly_salary),
+        monthly_salary: wageVal,
         allowed_leaves: Number(allowed_leaves) || 0,
         site_id: site_id ? Number(site_id) : null,
-        overtime_pay_per_hour: Number(overtime_pay_per_hour) || 0,
+        overtime_pay_per_hour: otVal,
         status: 'Active'
     });
 
@@ -241,6 +390,28 @@ export const createLabour = catchAsync(async (req, res) => {
         });
     }
 
+    // Seed initial wage revision if a wage was provided
+    if (wageVal > 0 || otVal > 0) {
+        await ensureWageHistoryTable();
+        const effDate = effective_date ? formatDateSafe(effective_date) : formatDateSafe(new Date());
+        await attendanceDB('labour_wage_history')
+            .insert({
+                org_id,
+                labour_id,
+                effective_date: effDate || formatDateSafe(new Date()),
+                wage_type: 'Daily Wage',
+                daily_wage: wageVal,
+                overtime_pay_per_hour: otVal,
+                notes: notes || 'Initial Base Rate',
+                created_by: req.user?.id || null
+            })
+            .onConflict(['labour_id', 'effective_date'])
+            .merge();
+    }
+
+    // Invalidate caches
+    await cacheService.delPattern(`labour:*:${org_id}:*`);
+
     res.status(201).json({
         success: true,
         message: 'Labour profile created successfully',
@@ -251,7 +422,22 @@ export const createLabour = catchAsync(async (req, res) => {
 export const updateLabour = catchAsync(async (req, res) => {
     const { org_id } = req.user;
     const { id } = req.params;
-    const { name, phone, sex, role, wage_type, monthly_salary, allowed_leaves, site_id, status, overtime_pay_per_hour } = req.body;
+    const {
+        name,
+        phone,
+        sex,
+        role,
+        wage_type,
+        monthly_salary,
+        allowed_leaves,
+        site_id,
+        status,
+        overtime_pay_per_hour,
+        new_daily_wage,
+        new_overtime_pay_per_hour,
+        effective_date,
+        notes
+    } = req.body;
 
     if (phone) {
         const existing = await attendanceDB('labours')
@@ -272,21 +458,104 @@ export const updateLabour = catchAsync(async (req, res) => {
         }
     }
 
+    await ensureWageHistoryTable();
+
+    // 1. Check if a wage revision was submitted (New Rate + Effective Date)
+    if (new_daily_wage !== undefined && new_daily_wage !== '' && effective_date) {
+        const effDate = formatDateSafe(effective_date);
+        const wageNum = Number(new_daily_wage);
+        const otNum = Number(new_overtime_pay_per_hour || 0);
+
+        if (isNaN(wageNum) || wageNum < 0) {
+            throw new AppError('Valid new daily wage is required', 400);
+        }
+        if (!effDate) {
+            throw new AppError('Valid effective date is required', 400);
+        }
+
+        await attendanceDB('labour_wage_history')
+            .insert({
+                org_id,
+                labour_id: id,
+                effective_date: effDate,
+                wage_type: 'Daily Wage',
+                daily_wage: wageNum,
+                overtime_pay_per_hour: otNum,
+                notes: notes || 'Wage Revision',
+                created_by: req.user?.id || null
+            })
+            .onConflict(['labour_id', 'effective_date'])
+            .merge({
+                daily_wage: wageNum,
+                overtime_pay_per_hour: otNum,
+                notes: notes || 'Wage Revision'
+            });
+
+        // Sync latest revision to labours table
+        const latestRev = await attendanceDB('labour_wage_history')
+            .where({ labour_id: id, org_id })
+            .orderBy('effective_date', 'desc')
+            .first();
+
+        if (latestRev) {
+            await attendanceDB('labours')
+                .where({ labour_id: id, org_id })
+                .update({
+                    monthly_salary: Number(latestRev.daily_wage),
+                    overtime_pay_per_hour: Number(latestRev.overtime_pay_per_hour),
+                    updated_at: attendanceDB.fn.now()
+                });
+        }
+    } else if (monthly_salary !== undefined && monthly_salary !== '') {
+        // 2. First-time initial wage setting (e.g. bulk-added worker receiving wage for the first time)
+        const wageNum = Number(monthly_salary);
+        const otNum = overtime_pay_per_hour !== undefined && overtime_pay_per_hour !== '' ? Number(overtime_pay_per_hour) : 0;
+
+        await attendanceDB('labours')
+            .where({ labour_id: id, org_id })
+            .update({
+                monthly_salary: wageNum,
+                overtime_pay_per_hour: otNum,
+                updated_at: attendanceDB.fn.now()
+            });
+
+        // Check if revision exists, otherwise create initial revision
+        const existingRevs = await attendanceDB('labour_wage_history')
+            .where({ labour_id: id, org_id })
+            .first();
+
+        if (!existingRevs) {
+            const worker = await attendanceDB('labours').where({ labour_id: id, org_id }).first();
+            const effDate = worker ? (formatDateSafe(worker.created_at) || '2020-01-01') : '2020-01-01';
+            await attendanceDB('labour_wage_history').insert({
+                org_id,
+                labour_id: id,
+                effective_date: effDate,
+                wage_type: 'Daily Wage',
+                daily_wage: wageNum,
+                overtime_pay_per_hour: otNum,
+                notes: 'Initial Base Rate',
+                created_by: req.user?.id || null
+            });
+        }
+    }
+
+    // Standard profile fields update
+    const updatePayload = {
+        name,
+        phone: phone || null,
+        sex,
+        role,
+        wage_type: 'Daily Wage',
+        allowed_leaves: allowed_leaves !== undefined ? Number(allowed_leaves) : undefined,
+        site_id: site_id ? Number(site_id) : null,
+        status,
+        updated_at: attendanceDB.fn.now()
+    };
+
     const affected = await attendanceDB('labours')
         .where({ labour_id: id, org_id })
-        .update({
-            name,
-            phone: phone || null,
-            sex,
-            role,
-            wage_type: 'Daily Wage',
-            monthly_salary: monthly_salary !== undefined ? Number(monthly_salary) : undefined,
-            allowed_leaves: allowed_leaves !== undefined ? Number(allowed_leaves) : undefined,
-            site_id: site_id ? Number(site_id) : null,
-            overtime_pay_per_hour: overtime_pay_per_hour !== undefined ? Number(overtime_pay_per_hour) : undefined,
-            status,
-            updated_at: attendanceDB.fn.now()
-        });
+        .update(updatePayload);
 
     if (affected === 0) {
         throw new AppError('Labour not found', 404);
@@ -305,9 +574,226 @@ export const updateLabour = catchAsync(async (req, res) => {
         }
     }
 
+    await cacheService.delPattern(`labour:*:${org_id}:*`);
+
     res.json({
         success: true,
         message: 'Labour updated successfully'
+    });
+});
+
+// ==========================================
+// WAGE HISTORY CRUD CONTROLLERS
+// ==========================================
+
+export const getLabourWageHistory = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
+    const { id } = req.params;
+
+    await ensureWageHistoryTable();
+
+    const worker = await attendanceDB('labours')
+        .where({ labour_id: id, org_id })
+        .select('labour_id', 'name', 'role', 'monthly_salary', 'overtime_pay_per_hour', 'created_at')
+        .first();
+
+    if (!worker) {
+        throw new AppError('Worker not found', 404);
+    }
+
+    const history = await attendanceDB('labour_wage_history')
+        .where({ labour_id: id, org_id })
+        .orderBy('effective_date', 'desc');
+
+    const formattedHistory = history.map(h => ({
+        id: h.id,
+        labour_id: h.labour_id,
+        effective_date: formatDateSafe(h.effective_date),
+        wage_type: h.wage_type,
+        daily_wage: Number(h.daily_wage),
+        overtime_pay_per_hour: Number(h.overtime_pay_per_hour || 0),
+        notes: h.notes,
+        created_at: h.created_at
+    }));
+
+    res.json({
+        success: true,
+        worker: {
+            labour_id: worker.labour_id,
+            name: worker.name,
+            role: worker.role,
+            current_daily_wage: Number(worker.monthly_salary || 0),
+            current_overtime_pay_per_hour: Number(worker.overtime_pay_per_hour || 0)
+        },
+        history: formattedHistory
+    });
+});
+
+export const addLabourWageRevision = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
+    const { id } = req.params;
+    const { effective_date, daily_wage, overtime_pay_per_hour, notes } = req.body;
+
+    if (!effective_date || daily_wage === undefined || isNaN(Number(daily_wage))) {
+        throw new AppError('Effective date and valid daily wage are required', 400);
+    }
+
+    await ensureWageHistoryTable();
+
+    const effDate = formatDateSafe(effective_date);
+    const wageNum = Number(daily_wage);
+    const otNum = Number(overtime_pay_per_hour || 0);
+
+    const worker = await attendanceDB('labours')
+        .where({ labour_id: id, org_id })
+        .first();
+
+    if (!worker) {
+        throw new AppError('Worker not found', 404);
+    }
+
+    await attendanceDB('labour_wage_history')
+        .insert({
+            org_id,
+            labour_id: id,
+            effective_date: effDate,
+            wage_type: 'Daily Wage',
+            daily_wage: wageNum,
+            overtime_pay_per_hour: otNum,
+            notes: notes || null,
+            created_by: req.user?.id || null
+        })
+        .onConflict(['labour_id', 'effective_date'])
+        .merge({
+            daily_wage: wageNum,
+            overtime_pay_per_hour: otNum,
+            notes: notes || null
+        });
+
+    // Update labours table with the latest revision
+    const latestRev = await attendanceDB('labour_wage_history')
+        .where({ labour_id: id, org_id })
+        .orderBy('effective_date', 'desc')
+        .first();
+
+    if (latestRev) {
+        await attendanceDB('labours')
+            .where({ labour_id: id, org_id })
+            .update({
+                monthly_salary: Number(latestRev.daily_wage),
+                overtime_pay_per_hour: Number(latestRev.overtime_pay_per_hour),
+                updated_at: attendanceDB.fn.now()
+            });
+    }
+
+    await cacheService.delPattern(`labour:*:${org_id}:*`);
+
+    res.status(201).json({
+        success: true,
+        message: 'Wage revision added successfully'
+    });
+});
+
+export const updateLabourWageRevision = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
+    const { revisionId } = req.params;
+    const { effective_date, daily_wage, overtime_pay_per_hour, notes } = req.body;
+
+    await ensureWageHistoryTable();
+
+    const existing = await attendanceDB('labour_wage_history')
+        .where({ id: revisionId, org_id })
+        .first();
+
+    if (!existing) {
+        throw new AppError('Wage revision record not found', 404);
+    }
+
+    const effDate = effective_date ? formatDateSafe(effective_date) : existing.effective_date;
+    const wageNum = daily_wage !== undefined ? Number(daily_wage) : existing.daily_wage;
+    const otNum = overtime_pay_per_hour !== undefined ? Number(overtime_pay_per_hour) : existing.overtime_pay_per_hour;
+
+    await attendanceDB('labour_wage_history')
+        .where({ id: revisionId, org_id })
+        .update({
+            effective_date: effDate,
+            daily_wage: wageNum,
+            overtime_pay_per_hour: otNum,
+            notes: notes !== undefined ? notes : existing.notes
+        });
+
+    // Sync latest revision with labours
+    const latestRev = await attendanceDB('labour_wage_history')
+        .where({ labour_id: existing.labour_id, org_id })
+        .orderBy('effective_date', 'desc')
+        .first();
+
+    if (latestRev) {
+        await attendanceDB('labours')
+            .where({ labour_id: existing.labour_id, org_id })
+            .update({
+                monthly_salary: Number(latestRev.daily_wage),
+                overtime_pay_per_hour: Number(latestRev.overtime_pay_per_hour),
+                updated_at: attendanceDB.fn.now()
+            });
+    }
+
+    await cacheService.delPattern(`labour:*:${org_id}:*`);
+
+    res.json({
+        success: true,
+        message: 'Wage revision updated successfully'
+    });
+});
+
+export const deleteLabourWageRevision = catchAsync(async (req, res) => {
+    const { org_id } = req.user;
+    const { revisionId } = req.params;
+
+    await ensureWageHistoryTable();
+
+    const existing = await attendanceDB('labour_wage_history')
+        .where({ id: revisionId, org_id })
+        .first();
+
+    if (!existing) {
+        throw new AppError('Wage revision record not found', 404);
+    }
+
+    const totalCount = await attendanceDB('labour_wage_history')
+        .where({ labour_id: existing.labour_id, org_id })
+        .count('id as count')
+        .first();
+
+    if (Number(totalCount?.count) <= 1) {
+        throw new AppError('Cannot delete the only wage revision for this worker. Edit it instead.', 400);
+    }
+
+    await attendanceDB('labour_wage_history')
+        .where({ id: revisionId, org_id })
+        .del();
+
+    // Sync latest remaining revision with labours
+    const latestRev = await attendanceDB('labour_wage_history')
+        .where({ labour_id: existing.labour_id, org_id })
+        .orderBy('effective_date', 'desc')
+        .first();
+
+    if (latestRev) {
+        await attendanceDB('labours')
+            .where({ labour_id: existing.labour_id, org_id })
+            .update({
+                monthly_salary: Number(latestRev.daily_wage),
+                overtime_pay_per_hour: Number(latestRev.overtime_pay_per_hour),
+                updated_at: attendanceDB.fn.now()
+            });
+    }
+
+    await cacheService.delPattern(`labour:*:${org_id}:*`);
+
+    res.json({
+        success: true,
+        message: 'Wage revision deleted successfully'
     });
 });
 
@@ -714,10 +1200,13 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         overtimePayMap[l.labour_id] = Number(l.overtime_pay_per_hour || 0);
     });
 
+    // 2. Fetch daily rate resolvers for all workers
+    const rateResolver = await buildWageRateResolver(labourIds, org_id, end);
+
     // Group attendance for THIS MONTH
     const attendanceMap = {};
     labourIds.forEach(id => {
-        attendanceMap[id] = { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0, overtimeCreditSum: 0 };
+        attendanceMap[id] = { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0, baseCreditSum: 0, overtimeCreditSum: 0 };
     });
 
     attendanceRecords.forEach(rec => {
@@ -741,9 +1230,10 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
                 }
                 counts.weightSum += w;
 
-                // Accumulate overtime pay
-                const otRate = overtimePayMap[rec.labour_id] || 0;
-                counts.overtimeCreditSum += Number(rec.overtime_hours || 0) * otRate;
+                // Resolve date-specific rates
+                const rates = rateResolver(rec.labour_id, dateStr);
+                counts.baseCreditSum += w * rates.daily_rate;
+                counts.overtimeCreditSum += Number(rec.overtime_hours || 0) * rates.overtime_pay_per_hour;
             }
         }
     });
@@ -780,7 +1270,7 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
 
     // 5. Compute dynamic monthly credits
     const summary = labours.map(lab => {
-        const counts = attendanceMap[lab.labour_id] || { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0, overtimeCreditSum: 0 };
+        const counts = attendanceMap[lab.labour_id] || { Present: 0, Absent: 0, HalfDay: 0, PaidLeave: 0, weightSum: 0, baseCreditSum: 0, overtimeCreditSum: 0 };
         const totalAdvances = advancesMap[lab.labour_id] || 0;
         const payout = payoutMap[lab.labour_id] || null;
         const totalPaid = (payout && payout.status === 'Paid') ? Number(payout.paid_amount) : 0;
@@ -790,7 +1280,7 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
             ? monthlySalary
             : (monthlySalary / totalDays);
 
-        const accruedCredit = Math.round(counts.weightSum * dailyRate + (counts.overtimeCreditSum || 0));
+        const accruedCredit = Math.round((counts.baseCreditSum || 0) + (counts.overtimeCreditSum || 0));
         const netEarned = Math.max(0, accruedCredit - totalPaid);
         const netPayable = accruedCredit - totalPaid - totalAdvances;
 
@@ -1019,6 +1509,9 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
     const dailyOtHours = Array(totalDays).fill(0);
     const dailyAdvances = Array(totalDays).fill(0);
 
+    // Build date-specific rate resolver for all workers in this month
+    const rateResolver = await buildWageRateResolver(labourIds, org_id, end);
+
     let grandPresentDays = 0;
     let grandOtHours = 0;
     let grandAdvances = 0;
@@ -1034,6 +1527,7 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
         const daysData = {};
         let workerPresentWeight = 0;
         let workerPresentDaysCount = 0;
+        let workerBaseCredit = 0;
         let workerOtHours = 0;
         let workerOtCredit = 0;
         let workerAdvances = 0;
@@ -1045,6 +1539,9 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
 
             const status = attRec ? attRec.status : '-';
             const ot = attRec ? Number(attRec.overtime_hours || 0) : 0;
+
+            // Resolve date-specific effective rates
+            const dayRates = rateResolver(lab.labour_id, dStr);
 
             // Split divisor
             const S = (scheduleCountMap[lab.labour_id] && scheduleCountMap[lab.labour_id][dStr]) || 1;
@@ -1061,6 +1558,8 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
                 status,
                 ot_hours: ot,
                 advance_amount: advAmount,
+                effective_daily_rate: dayRates.daily_rate,
+                effective_ot_rate: dayRates.overtime_pay_per_hour,
                 is_weekend: dayInfo.isWeekend,
                 is_future: dayInfo.isFuture
             };
@@ -1080,14 +1579,15 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
                 if (status === 'Present') workerPresentDaysCount += 1;
                 else if (status === 'Half Day') workerPresentDaysCount += 0.5;
 
+                workerBaseCredit += weight * dayRates.daily_rate;
                 workerOtHours += ot;
-                workerOtCredit += ot * otRate;
+                workerOtCredit += ot * dayRates.overtime_pay_per_hour;
                 workerAdvances += advAmount;
             }
         });
 
         const totalPaid = payoutMap[lab.labour_id] || 0;
-        const baseEarned = Math.round(workerPresentWeight * dailyRate);
+        const baseEarned = Math.round(workerBaseCredit);
         const grossEarned = baseEarned + Math.round(workerOtCredit);
         const netPayable = grossEarned - workerAdvances - totalPaid;
 
@@ -1588,11 +2088,13 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
     const existingPhones = new Set(existingLabours.map(l => l.phone).filter(Boolean));
     const phonesInBatch = new Set();
 
+    await ensureWageHistoryTable();
+
     const insertData = labours.map(lab => {
         const { name, phone, sex, role, wage_type, monthly_salary, allowed_leaves, site_id, site_name, overtime_pay_per_hour } = lab;
 
-        if (!name || !role || monthly_salary === undefined) {
-            throw new AppError('Name, role and monthly salary are required for all workers', 400);
+        if (!name || !role) {
+            throw new AppError('Name and role are required for all workers', 400);
         }
 
         const cleanPhone = phone ? String(phone).trim() : null;
@@ -1610,6 +2112,9 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
             resolvedSiteId = siteMap[cleanSiteName] || null;
         }
 
+        const wageNum = monthly_salary !== undefined && monthly_salary !== '' ? Number(monthly_salary) : 0;
+        const otNum = overtime_pay_per_hour !== undefined && overtime_pay_per_hour !== '' ? Number(overtime_pay_per_hour) : 0;
+
         return {
             org_id,
             name,
@@ -1617,10 +2122,10 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
             sex: sex || 'Male',
             role,
             wage_type: 'Daily Wage',
-            monthly_salary: Number(monthly_salary),
+            monthly_salary: isNaN(wageNum) ? 0 : wageNum,
             allowed_leaves: Number(allowed_leaves) || 0,
             site_id: resolvedSiteId,
-            overtime_pay_per_hour: Number(overtime_pay_per_hour) || 0,
+            overtime_pay_per_hour: isNaN(otNum) ? 0 : otNum,
             status: 'Active',
             created_at: attendanceDB.fn.now(),
             updated_at: attendanceDB.fn.now()
@@ -1628,6 +2133,7 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
     });
 
     await attendanceDB.transaction(async (trx) => {
+        const todayStr = formatDateSafe(new Date());
         for (const data of insertData) {
             const [labour_id] = await trx('labours').insert(data);
             if (data.site_id) {
@@ -1637,8 +2143,21 @@ export const bulkCreateLabours = catchAsync(async (req, res) => {
                     site_id: data.site_id
                 });
             }
+            if (data.monthly_salary > 0 || data.overtime_pay_per_hour > 0) {
+                await trx('labour_wage_history').insert({
+                    org_id,
+                    labour_id,
+                    effective_date: todayStr,
+                    wage_type: 'Daily Wage',
+                    daily_wage: data.monthly_salary,
+                    overtime_pay_per_hour: data.overtime_pay_per_hour,
+                    notes: 'Initial Bulk Upload Rate'
+                });
+            }
         }
     });
+
+    await cacheService.delPattern(`labour:*:${org_id}:*`);
 
     res.status(201).json({
         success: true,
