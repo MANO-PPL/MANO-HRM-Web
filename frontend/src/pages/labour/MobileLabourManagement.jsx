@@ -6,13 +6,14 @@ import { toast } from 'react-toastify';
 import {
     Building, Calendar, DollarSign, Clock, Plus, Search,
     UserPlus, Edit2, Trash2, Save, AlertTriangle, User, Phone, X,
-    CheckCircle, XCircle, Upload, ChevronRight, Loader2
+    CheckCircle, XCircle, Upload, ChevronRight, Loader2, History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MinimalSelect from '../../components/MinimalSelect';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import MonthPicker from '../../components/MonthPicker';
 import MonthlyDetailedMatrix from './components/MonthlyDetailedMatrix';
+import WageRevisionModal from './components/WageRevisionModal';
 
 const getStatusColor = (status) => {
     const s = status || '';
@@ -80,16 +81,26 @@ const MobileLabourManagement = () => {
     const [showSiteModal, setShowSiteModal] = useState(false);
     const [editingSite, setEditingSite] = useState(null);
     const [siteForm, setSiteForm] = useState({ site_name: '', location_details: '', status: 'Active' });
+    const [savingSite, setSavingSite] = useState(false);
 
     const [showLabourModal, setShowLabourModal] = useState(false);
     const [editingLabour, setEditingLabour] = useState(null);
+    const [selectedWageHistoryLabour, setSelectedWageHistoryLabour] = useState(null);
+    const [savingLabour, setSavingLabour] = useState(false);
     const [labourForm, setLabourForm] = useState({
         name: '', phone: '', sex: 'Male', role: '',
         wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '',
-        overtime_pay_per_hour: '0'
+        overtime_pay_per_hour: '0', status: 'Active',
+        new_daily_wage: '', new_overtime_pay_per_hour: '',
+        effective_date: (() => {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })(),
+        wage_notes: ''
     });
 
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+    const [savingAdvance, setSavingAdvance] = useState(false);
     const [advanceForm, setAdvanceForm] = useState({ labour_id: '', site_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
     const [advanceHistory, setAdvanceHistory] = useState([]);
     const [advancePayouts, setAdvancePayouts] = useState([]);
@@ -112,6 +123,7 @@ const MobileLabourManagement = () => {
     const [historyLoading, setHistoryLoading] = useState(false);
 
     const [showPayoutModal, setShowPayoutModal] = useState(false);
+    const [savingPayout, setSavingPayout] = useState(false);
     const [historyTab, setHistoryTab] = useState('sites'); // 'sites', 'payouts'
     const [labourPayoutHistory, setLabourPayoutHistory] = useState([]);
     const [payoutForm, setPayoutForm] = useState({
@@ -357,6 +369,8 @@ const MobileLabourManagement = () => {
 
     const handleSaveSite = async (e) => {
         e.preventDefault();
+        if (savingSite) return;
+        setSavingSite(true);
         try {
             if (editingSite) {
                 // If status is changed from Active to Completed or Inactive, check for active labours
@@ -387,6 +401,8 @@ const MobileLabourManagement = () => {
             fetchSites();
         } catch (err) {
             toast.error(err.message || 'Failed to save site');
+        } finally {
+            setSavingSite(false);
         }
     };
 
@@ -496,28 +512,44 @@ const MobileLabourManagement = () => {
     // LABOUR HANDLERS
     // ==========================================
 
+    const todayDateStr = (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+
     const handleSaveLabour = async (e) => {
         e.preventDefault();
-        try {
-            const cleanPhone = labourForm.phone ? labourForm.phone.trim().replace(/[\s\-()]/g, '') : '';
-            if (cleanPhone) {
-                const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
-                if (!phoneRegex.test(cleanPhone)) {
-                    toast.error('Please enter a valid 10-digit contact number (e.g. 9876543210)');
-                    return;
-                }
+        if (savingLabour) return;
+        const cleanPhone = labourForm.phone ? labourForm.phone.trim().replace(/[\s\-()]/g, '') : '';
+        if (cleanPhone) {
+            const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
+            if (!phoneRegex.test(cleanPhone)) {
+                toast.error('Please enter a valid 10-digit contact number (e.g. 9876543210)');
+                return;
             }
+        }
 
-            const payload = {
-                ...labourForm,
-                phone: cleanPhone || null,
-                wage_type: 'Daily Wage',
-                monthly_salary: Number(labourForm.monthly_salary),
-                allowed_leaves: 0,
-                site_id: labourForm.site_id ? Number(labourForm.site_id) : null,
-                overtime_pay_per_hour: Number(labourForm.overtime_pay_per_hour || 0)
-            };
+        const isRevising = editingLabour && Boolean(labourForm.new_daily_wage);
 
+        const payload = {
+            name: labourForm.name,
+            phone: cleanPhone || null,
+            sex: labourForm.sex,
+            role: labourForm.role,
+            wage_type: 'Daily Wage',
+            monthly_salary: labourForm.monthly_salary !== undefined && labourForm.monthly_salary !== '' ? Number(labourForm.monthly_salary) : 0,
+            allowed_leaves: 0,
+            site_id: labourForm.site_id ? Number(labourForm.site_id) : null,
+            overtime_pay_per_hour: Number(labourForm.overtime_pay_per_hour || 0),
+            status: labourForm.status || 'Active',
+            new_daily_wage: isRevising ? Number(labourForm.new_daily_wage) : undefined,
+            new_overtime_pay_per_hour: isRevising ? Number(labourForm.new_overtime_pay_per_hour || 0) : undefined,
+            effective_date: isRevising ? labourForm.effective_date : undefined,
+            notes: isRevising ? labourForm.wage_notes : undefined
+        };
+
+        setSavingLabour(true);
+        try {
             if (editingLabour) {
                 await labourService.updateLabour(editingLabour.labour_id, payload);
                 toast.success('Worker updated');
@@ -530,11 +562,16 @@ const MobileLabourManagement = () => {
             setLabourForm({
                 name: '', phone: '', sex: 'Male', role: '',
                 wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '',
-                overtime_pay_per_hour: '0'
+                overtime_pay_per_hour: '0', status: 'Active',
+                new_daily_wage: '', new_overtime_pay_per_hour: '',
+                effective_date: todayDateStr,
+                wage_notes: ''
             });
             fetchLabours();
         } catch (err) {
             toast.error(err.message || 'Failed to save labour worker');
+        } finally {
+            setSavingLabour(false);
         }
     };
 
@@ -546,10 +583,15 @@ const MobileLabourManagement = () => {
             sex: lab.sex || 'Male',
             role: lab.role,
             wage_type: 'Daily Wage',
-            monthly_salary: lab.monthly_salary,
+            monthly_salary: lab.monthly_salary !== null && lab.monthly_salary !== undefined ? String(lab.monthly_salary) : '',
             allowed_leaves: '0',
             site_id: lab.site_id?.toString() || '',
-            overtime_pay_per_hour: lab.overtime_pay_per_hour?.toString() || '0'
+            overtime_pay_per_hour: lab.overtime_pay_per_hour !== null && lab.overtime_pay_per_hour !== undefined ? String(lab.overtime_pay_per_hour) : '0',
+            status: lab.status || 'Active',
+            new_daily_wage: '',
+            new_overtime_pay_per_hour: '',
+            effective_date: todayDateStr,
+            wage_notes: ''
         });
         setShowLabourModal(true);
     };
@@ -713,6 +755,8 @@ const MobileLabourManagement = () => {
 
     const handleSaveAdvance = async (e) => {
         e.preventDefault();
+        if (savingAdvance) return;
+        setSavingAdvance(true);
         try {
             await labourService.logLabourAdvance({
                 labour_id: Number(advanceForm.labour_id),
@@ -731,6 +775,8 @@ const MobileLabourManagement = () => {
             }
         } catch (err) {
             toast.error(err.message || 'Failed to log advance payment');
+        } finally {
+            setSavingAdvance(false);
         }
     };
 
@@ -779,6 +825,8 @@ const MobileLabourManagement = () => {
 
     const handleSavePayout = async (e) => {
         e.preventDefault();
+        if (savingPayout) return;
+        setSavingPayout(true);
         try {
             await labourService.logLabourPayout({
                 payout_id: payoutForm.payout_id,
@@ -808,6 +856,8 @@ const MobileLabourManagement = () => {
             }
         } catch (err) {
             toast.error(err.message || 'Failed to log monthly payout');
+        } finally {
+            setSavingPayout(false);
         }
     };
 
@@ -1689,7 +1739,20 @@ const MobileLabourManagement = () => {
                                     )}
                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
                                         <button type="button" onClick={() => setShowSiteModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold">Save</button>
+                                        <button
+                                            type="submit"
+                                            disabled={savingSite}
+                                            className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold flex items-center justify-center gap-1.5"
+                                        >
+                                            {savingSite ? (
+                                                <>
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    <span>Saving...</span>
+                                                </>
+                                            ) : (
+                                                <span>Save</span>
+                                            )}
+                                        </button>
                                     </div>
                                 </form>
                                 </motion.div>
@@ -1776,22 +1839,99 @@ const MobileLabourManagement = () => {
                                         triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
                                     />
 
-                                    <input
-                                        type="number"
-                                        value={labourForm.monthly_salary}
-                                        onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        required
-                                        placeholder="Daily Wage (INR)"
-                                    />
-                                    <input
-                                        type="number"
-                                        value={labourForm.overtime_pay_per_hour}
-                                        onChange={(e) => setLabourForm({ ...labourForm, overtime_pay_per_hour: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
-                                        required
-                                        placeholder="Overtime Pay (per hour)"
-                                    />
+                                    {editingLabour && (Number(editingLabour.monthly_salary) > 0 || Number(editingLabour.overtime_pay_per_hour) > 0) ? (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-[10px] font-semibold text-slate-500 mb-1 flex justify-between">
+                                                        <span>Daily Wage</span>
+                                                        <span className="text-emerald-500 font-bold">Current</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={`₹${Number(labourForm.monthly_salary || 0).toLocaleString('en-IN')}`}
+                                                        readOnly
+                                                        disabled
+                                                        className="w-full px-3 py-2 bg-slate-100 dark:bg-[#161b22]/50 border border-slate-200 dark:border-github-dark-border text-slate-500 rounded-xl text-xs font-semibold cursor-not-allowed"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-semibold text-slate-500 mb-1 flex justify-between">
+                                                        <span>OT Pay / hr</span>
+                                                        <span className="text-emerald-500 font-bold">Current</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={`₹${Number(labourForm.overtime_pay_per_hour || 0).toLocaleString('en-IN')}/hr`}
+                                                        readOnly
+                                                        disabled
+                                                        className="w-full px-3 py-2 bg-slate-100 dark:bg-[#161b22]/50 border border-slate-200 dark:border-github-dark-border text-slate-500 rounded-xl text-xs font-semibold cursor-not-allowed"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Mobile 3-Field Revision Section */}
+                                            <div className="p-3 bg-slate-50 dark:bg-[#161b22]/70 border border-slate-200 dark:border-[#30363d] rounded-xl space-y-2.5">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-[#f0f6fc]">
+                                                        Update Wage / New Revision
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedWageHistoryLabour(editingLabour)}
+                                                        className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <History size={12} /> View History
+                                                    </button>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={labourForm.new_daily_wage}
+                                                        onChange={(e) => setLabourForm({ ...labourForm, new_daily_wage: e.target.value })}
+                                                        className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs"
+                                                        placeholder="New Daily (₹)"
+                                                        min="0"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        value={labourForm.new_overtime_pay_per_hour}
+                                                        onChange={(e) => setLabourForm({ ...labourForm, new_overtime_pay_per_hour: e.target.value })}
+                                                        className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs"
+                                                        placeholder="New OT (₹/h)"
+                                                        min="0"
+                                                    />
+                                                </div>
+
+                                                <MobileDatePicker
+                                                    value={labourForm.effective_date}
+                                                    onChange={(d) => setLabourForm({ ...labourForm, effective_date: d })}
+                                                    placeholder="Effective Date"
+                                                    className="w-full text-xs"
+                                                />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <input
+                                                type="number"
+                                                value={labourForm.monthly_salary}
+                                                onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
+                                                required
+                                                placeholder="Daily Wage (INR)"
+                                            />
+                                            <input
+                                                type="number"
+                                                value={labourForm.overtime_pay_per_hour}
+                                                onChange={(e) => setLabourForm({ ...labourForm, overtime_pay_per_hour: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-xl text-xs"
+                                                required
+                                                placeholder="Overtime Pay (per hour)"
+                                            />
+                                        </>
+                                    )}
                                     {editingLabour && (
                                         <MinimalSelect
                                             options={[
@@ -1807,7 +1947,20 @@ const MobileLabourManagement = () => {
                                     )}
                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
                                         <button type="button" onClick={() => setShowLabourModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold">Save</button>
+                                        <button
+                                            type="submit"
+                                            disabled={savingLabour}
+                                            className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold flex items-center justify-center gap-1.5"
+                                        >
+                                            {savingLabour ? (
+                                                <>
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    <span>Saving...</span>
+                                                </>
+                                            ) : (
+                                                <span>Save</span>
+                                            )}
+                                        </button>
                                     </div>
                                 </form>
                                 </motion.div>
@@ -1899,7 +2052,20 @@ const MobileLabourManagement = () => {
                                     />
                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
                                         <button type="button" onClick={() => setShowAdvanceModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all cursor-pointer">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition-all cursor-pointer">Record</button>
+                                        <button
+                                            type="submit"
+                                            disabled={savingAdvance}
+                                            className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                        >
+                                            {savingAdvance ? (
+                                                <>
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    <span>Recording...</span>
+                                                </>
+                                            ) : (
+                                                <span>Record</span>
+                                            )}
+                                        </button>
                                     </div>
 
                                     {/* ADVANCE HISTORY & SETTLEMENT CYCLE TIMELINE */}
@@ -2271,8 +2437,19 @@ const MobileLabourManagement = () => {
 
                                     <div className="flex gap-3 pt-3 border-t border-slate-100 dark:border-[#30363d] mt-2">
                                         <button type="button" onClick={() => setShowPayoutModal(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-505 dark:text-[#c9d1d9] rounded-xl text-xs font-bold uppercase tracking-wider transition-all border border-slate-200 dark:border-github-dark-border">Cancel</button>
-                                        <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm">
-                                            {payoutForm.payout_id ? 'Update' : 'Release'}
+                                        <button
+                                            type="submit"
+                                            disabled={payoutForm.net_payable < 0 || savingPayout}
+                                            className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-1.5"
+                                        >
+                                            {savingPayout ? (
+                                                <>
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    <span>Processing...</span>
+                                                </>
+                                            ) : (
+                                                <span>{payoutForm.payout_id ? 'Update' : 'Release'}</span>
+                                            )}
                                         </button>
                                     </div>
                                 </form>
@@ -2842,6 +3019,16 @@ const MobileLabourManagement = () => {
                         </AnimatePresence>,
                         document.body
                     )}
+
+                {/* MODAL: WAGE REVISION HISTORY */}
+                <WageRevisionModal
+                    isOpen={Boolean(selectedWageHistoryLabour)}
+                    labour={selectedWageHistoryLabour}
+                    onClose={() => setSelectedWageHistoryLabour(null)}
+                    onRevisionUpdated={() => {
+                        fetchLabours();
+                    }}
+                />
             </div>
         </MobileDashboardLayout>
     );
