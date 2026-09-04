@@ -665,10 +665,10 @@ const MobileEmployeesPage = () => {
                     email: u.email,
                     role: u.desg_name || u.user_type,
                     user_type: u.user_type,
-                    department: u.dept_name || '-',
+                    department: u.dept_name || 'N/A',
                     status: u.is_deleted ? 'Deleted' : (u.is_active ? 'Active' : 'Inactive'),
-                    phone: u.phone_no || '-',
-                    shift: u.shift_name || '-',
+                    phone: u.phone_no || 'N/A',
+                    shift: u.shift_name || 'N/A',
                     profile_image_url: u.profile_image_url,
                     is_active: u.is_active,
                     is_deleted: u.is_deleted
@@ -805,6 +805,7 @@ const MobileEmployeesPage = () => {
                 {/* Search & Tabs Header - Sticky */}
                 <div className="sticky top-16 -mx-4 px-4 py-3 bg-slate-50 dark:bg-github-dark-bg z-20 transition-all duration-300">
                     <div className="space-y-4">
+
                         {/* Search Bar */}
                         <div className="relative group">
                             <div className="absolute inset-0 bg-indigo-500/5 blur-xl group-focus-within:opacity-100 opacity-0 transition-opacity rounded-2xl" />

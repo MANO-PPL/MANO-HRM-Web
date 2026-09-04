@@ -238,12 +238,12 @@ const EmployeeList = () => {
                     // Keep raw user_type for logic checks, role for display
                     role: u.desg_name || u.user_type, 
                     user_type: u.user_type, // Ensure this field exists for logic checks
-                    department: u.dept_name || '-',
+                    department: u.dept_name || 'N/A',
                     status: u.is_deleted ? 'Deleted' : (u.is_active ? 'Active' : 'Inactive'),
-                    phone: u.phone_no || '-',
-                    shift: u.shift_name || '-',
+                    phone: u.phone_no || 'N/A',
+                    shift: u.shift_name || 'N/A',
                     workLocations: u.work_locations || [],
-                    joinDate: '-', // Not in API
+                    joinDate: 'N/A', // Not in API
                     profile_image_url: u.profile_image_url,
                     is_active: u.is_active,
                     is_deleted: u.is_deleted
@@ -469,6 +469,7 @@ const EmployeeList = () => {
                     </div>
 
                     <div className="flex items-center gap-3">
+
                         <button
                             onClick={() => setIsDeptDesgOpen(true)}
                             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 dark:text-github-dark-text bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors active:scale-95 shadow-sm"

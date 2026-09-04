@@ -424,7 +424,7 @@ const SeverityBadge = ({ severity }) => {
     low: 'bg-blue-100 text-blue-750 dark:bg-blue-900/40 dark:text-blue-400',
   };
   const cls = map[severity?.toLowerCase()] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400';
-  return <span className={`shrink-0 px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider ${cls}`}>{severity || '—'}</span>;
+  return <span className={`shrink-0 px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider ${cls}`}>{severity || 'N/A'}</span>;
 };
 
 const SkeletonRows = ({ count = 3 }) => (

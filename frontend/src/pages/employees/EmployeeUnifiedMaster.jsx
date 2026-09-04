@@ -27,7 +27,7 @@ const TOUR_STEPS = [
     {
         targetId: 'emp-unified-filters',
         title: 'Search & Filters',
-        description: 'Find any employee instantly by name, department, designation, or active/inactive status — useful before scrolling through a large directory.',
+        description: 'Find any employee instantly by name, department, designation, or active/inactive status - useful before scrolling through a large directory.',
     },
     {
         targetId: 'emp-unified-add-btn',
@@ -37,7 +37,7 @@ const TOUR_STEPS = [
     {
         targetId: 'emp-unified-table-row',
         title: 'Employee Profile',
-        description: "Click any row to open that employee's full 360° profile — documents, onboarding progress, geofence assignments, and performance reviews all live there.",
+        description: "Click any row to open that employee's full 360° profile - documents, onboarding progress, geofence assignments, and performance reviews all live there.",
     },
 ];
 
@@ -1248,13 +1248,13 @@ const EmployeeUnifiedMaster = () => {
         const dbEmp = employees?.find(e => e.id === empId);
         if (dbEmp) {
             if ('joining_date' in dbEmp) {
-                merged.joining_date = dbEmp.joining_date || '-';
+                merged.joining_date = dbEmp.joining_date || 'N/A';
             }
             if ('reporting_manager' in dbEmp) {
-                merged.reporting_manager = dbEmp.reporting_manager || '-';
+                merged.reporting_manager = dbEmp.reporting_manager || 'N/A';
             }
             if ('work_location' in dbEmp) {
-                merged.work_location = dbEmp.work_location || '-';
+                merged.work_location = dbEmp.work_location || 'N/A';
             }
             if ('onboarding_progress' in dbEmp) {
                 merged.onboarding_progress = dbEmp.onboarding_progress || 0;
@@ -1314,7 +1314,7 @@ const EmployeeUnifiedMaster = () => {
                     user_code: u.user_code || `EMP-${u.user_id}`,
                     name: u.user_name,
                     email: u.email,
-                    phone: u.phone_no || '-',
+                    phone: u.phone_no || 'N/A',
                     department: u.dept_name || 'General',
                     designation: u.desg_name || u.user_type,
                     status: u.is_deleted ? 'Deleted' : (u.is_active ? 'Active' : 'Inactive'),
@@ -2289,7 +2289,7 @@ const EmployeeUnifiedMaster = () => {
                                                 {/* 7. Joining Date */}
                                                 {visibleColumns.joiningDate && (
                                                     <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-mono font-medium">
-                                                        {profile.joining_date || emp.joiningDate || '-'}
+                                                        {profile.joining_date || emp.joiningDate || 'N/A'}
                                                     </td>
                                                 )}
 

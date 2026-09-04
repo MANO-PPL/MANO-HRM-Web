@@ -81,7 +81,7 @@ export default function MobileHomePage() {
                 </div>
             </Section>
 
-            {/* How It Works — Stepped Timeline */}
+            {/* How It Works - Stepped Timeline */}
             <Section id="workflow" title="How It Works" subtitle="From onboarding to payroll export in six seamless steps.">
                 <div className="relative pl-8">
                     {/* Vertical line */}
@@ -114,7 +114,7 @@ export default function MobileHomePage() {
                 </div>
             </Section>
 
-            {/* Impact Stats — Compact Grid */}
+            {/* Impact Stats - Compact Grid */}
             <Section id="impact" title="Real Results" subtitle="Measurable outcomes from teams already using MANO.">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {homeData.impactStats.map((stat, idx) => {
