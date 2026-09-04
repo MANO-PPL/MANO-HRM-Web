@@ -7,12 +7,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Hammer, Plus, Search, Building, Calendar, DollarSign, Clock,
     UserPlus, Edit2, Trash2, Save, AlertTriangle, CheckCircle,
-    XCircle, Info, HelpCircle, ChevronRight, User, Phone, Briefcase, X, Upload, Users, Loader2
+    XCircle, Info, HelpCircle, ChevronRight, User, Phone, Briefcase, X, Upload, Users, Loader2, History
 } from 'lucide-react';
 import MinimalSelect from '../../components/MinimalSelect';
 import DatePicker from '../../components/DatePicker';
 import MonthPicker from '../../components/MonthPicker';
 import MonthlyDetailedMatrix from './components/MonthlyDetailedMatrix';
+import WageRevisionModal from './components/WageRevisionModal';
 
 const getStatusColor = (status) => {
     const s = status || '';
@@ -81,16 +82,26 @@ const LabourManagement = () => {
     const [showSiteModal, setShowSiteModal] = useState(false);
     const [editingSite, setEditingSite] = useState(null);
     const [siteForm, setSiteForm] = useState({ site_name: '', location_details: '', status: 'Active' });
+    const [savingSite, setSavingSite] = useState(false);
 
     const [showLabourModal, setShowLabourModal] = useState(false);
     const [editingLabour, setEditingLabour] = useState(null);
+    const [selectedWageHistoryLabour, setSelectedWageHistoryLabour] = useState(null);
+    const [savingLabour, setSavingLabour] = useState(false);
     const [labourForm, setLabourForm] = useState({
         name: '', phone: '', sex: 'Male', role: '',
         wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '',
-        overtime_pay_per_hour: '0'
+        overtime_pay_per_hour: '0', status: 'Active',
+        new_daily_wage: '', new_overtime_pay_per_hour: '',
+        effective_date: (() => {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })(),
+        wage_notes: ''
     });
 
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+    const [savingAdvance, setSavingAdvance] = useState(false);
     const [advanceForm, setAdvanceForm] = useState({ labour_id: '', site_id: '', name: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
     const [advanceHistory, setAdvanceHistory] = useState([]);
     const [advancePayouts, setAdvancePayouts] = useState([]);
@@ -265,7 +276,8 @@ const LabourManagement = () => {
             }
         }
     }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, financeMonth, activeTab, selectedSite, subTab]);
-    // Bulk upload CSV/Excel handlers
+
+    // Bulk upload CSV/Excel handlers
     const handleCSVUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -329,6 +341,8 @@ const LabourManagement = () => {
 
     const handleSaveSite = async (e) => {
         e.preventDefault();
+        if (savingSite) return;
+        setSavingSite(true);
         try {
             if (editingSite) {
                 // If status is changed from Active to Completed or Inactive, check for active labours
@@ -359,6 +373,8 @@ const LabourManagement = () => {
             fetchSites();
         } catch (err) {
             toast.error(err.message || 'Failed to save site');
+        } finally {
+            setSavingSite(false);
         }
     };
 
@@ -468,28 +484,44 @@ const LabourManagement = () => {
     // LABOUR HANDLERS
     // ==========================================
 
+    const todayDateStr = (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+
     const handleSaveLabour = async (e) => {
         e.preventDefault();
-        try {
-            const cleanPhone = labourForm.phone ? labourForm.phone.trim().replace(/[\s\-()]/g, '') : '';
-            if (cleanPhone) {
-                const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
-                if (!phoneRegex.test(cleanPhone)) {
-                    toast.error('Please enter a valid 10-digit contact number (e.g. 9876543210)');
-                    return;
-                }
+        if (savingLabour) return;
+        const cleanPhone = labourForm.phone ? labourForm.phone.trim().replace(/[\s\-()]/g, '') : '';
+        if (cleanPhone) {
+            const phoneRegex = /^(?:\+91|91)?[6-9]\d{9}$/;
+            if (!phoneRegex.test(cleanPhone)) {
+                toast.error('Please enter a valid 10-digit contact number (e.g. 9876543210)');
+                return;
             }
+        }
 
-            const payload = {
-                ...labourForm,
-                phone: cleanPhone || null,
-                wage_type: 'Daily Wage',
-                monthly_salary: Number(labourForm.monthly_salary),
-                allowed_leaves: 0,
-                site_id: labourForm.site_id ? Number(labourForm.site_id) : null,
-                overtime_pay_per_hour: Number(labourForm.overtime_pay_per_hour || 0)
-            };
+        const isRevising = editingLabour && Boolean(labourForm.new_daily_wage);
 
+        const payload = {
+            name: labourForm.name,
+            phone: cleanPhone || null,
+            sex: labourForm.sex,
+            role: labourForm.role,
+            wage_type: 'Daily Wage',
+            monthly_salary: labourForm.monthly_salary !== undefined && labourForm.monthly_salary !== '' ? Number(labourForm.monthly_salary) : 0,
+            allowed_leaves: 0,
+            site_id: labourForm.site_id ? Number(labourForm.site_id) : null,
+            overtime_pay_per_hour: Number(labourForm.overtime_pay_per_hour || 0),
+            status: labourForm.status || 'Active',
+            new_daily_wage: isRevising ? Number(labourForm.new_daily_wage) : undefined,
+            new_overtime_pay_per_hour: isRevising ? Number(labourForm.new_overtime_pay_per_hour || 0) : undefined,
+            effective_date: isRevising ? labourForm.effective_date : undefined,
+            notes: isRevising ? labourForm.wage_notes : undefined
+        };
+
+        setSavingLabour(true);
+        try {
             if (editingLabour) {
                 await labourService.updateLabour(editingLabour.labour_id, payload);
                 toast.success('Labour profile updated successfully');
@@ -502,11 +534,16 @@ const LabourManagement = () => {
             setLabourForm({
                 name: '', phone: '', sex: 'Male', role: '',
                 wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '',
-                overtime_pay_per_hour: '0'
+                overtime_pay_per_hour: '0', status: 'Active',
+                new_daily_wage: '', new_overtime_pay_per_hour: '',
+                effective_date: todayDateStr,
+                wage_notes: ''
             });
             fetchLabours();
         } catch (err) {
             toast.error(err.message || 'Failed to save labour worker');
+        } finally {
+            setSavingLabour(false);
         }
     };
 
@@ -518,10 +555,15 @@ const LabourManagement = () => {
             sex: lab.sex || 'Male',
             role: lab.role,
             wage_type: 'Daily Wage',
-            monthly_salary: lab.monthly_salary,
+            monthly_salary: lab.monthly_salary !== null && lab.monthly_salary !== undefined ? String(lab.monthly_salary) : '',
             allowed_leaves: '0',
             site_id: lab.site_id?.toString() || '',
-            overtime_pay_per_hour: lab.overtime_pay_per_hour?.toString() || '0'
+            overtime_pay_per_hour: lab.overtime_pay_per_hour !== null && lab.overtime_pay_per_hour !== undefined ? String(lab.overtime_pay_per_hour) : '0',
+            status: lab.status || 'Active',
+            new_daily_wage: '',
+            new_overtime_pay_per_hour: '',
+            effective_date: todayDateStr,
+            wage_notes: ''
         });
         setShowLabourModal(true);
     };
@@ -711,6 +753,8 @@ const LabourManagement = () => {
 
     const handleSaveAdvance = async (e) => {
         e.preventDefault();
+        if (savingAdvance) return;
+        setSavingAdvance(true);
         try {
             await labourService.logLabourAdvance({
                 labour_id: Number(advanceForm.labour_id),
@@ -729,6 +773,8 @@ const LabourManagement = () => {
             }
         } catch (err) {
             toast.error(err.message || 'Failed to log advance payment');
+        } finally {
+            setSavingAdvance(false);
         }
     };
 
@@ -777,6 +823,8 @@ const LabourManagement = () => {
 
     const handleSavePayout = async (e) => {
         e.preventDefault();
+        if (savingPayout) return;
+        setSavingPayout(true);
         try {
             await labourService.logLabourPayout({
                 payout_id: payoutForm.payout_id,
@@ -806,6 +854,8 @@ const LabourManagement = () => {
             }
         } catch (err) {
             toast.error(err.message || 'Failed to log monthly payout');
+        } finally {
+            setSavingPayout(false);
         }
     };
 
@@ -1140,7 +1190,7 @@ const LabourManagement = () => {
                                                              }`}
                                                          >
                                                              <Calendar size={12} />
-                                                             <span>3-Row Daily Spreadsheet</span>
+                                                             <span>Daily Spreadsheet</span>
                                                          </button>
                                                          <button
                                                              type="button"
@@ -1704,19 +1754,21 @@ const LabourManagement = () => {
                                                                 <button
                                                                     onClick={() => handleOpenScheduleModal(lab)}
                                                                     title="Plan Daily Schedule"
-                                                                    className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-indigo-500 rounded border border-slate-200 dark:border-github-dark-border"
+                                                                    className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-indigo-500 rounded border border-slate-200 dark:border-github-dark-border cursor-pointer"
                                                                 >
                                                                     <Calendar size={12} />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleEditLabour(lab)}
-                                                                    className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-github-dark-border"
+                                                                    title="Edit Profile"
+                                                                    className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 rounded border border-slate-200 dark:border-github-dark-border cursor-pointer"
                                                                 >
                                                                     <Edit2 size={12} />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDeleteLabour(lab.labour_id)}
-                                                                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-955/20 text-red-500 rounded border border-slate-200 dark:border-github-dark-border/40 dark:border-github-dark-border"
+                                                                    title="Delete Worker"
+                                                                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-955/20 text-red-500 rounded border border-slate-200 dark:border-github-dark-border/40 dark:border-github-dark-border cursor-pointer"
                                                                 >
                                                                     <Trash2 size={12} />
                                                                 </button>
@@ -1812,9 +1864,17 @@ const LabourManagement = () => {
                                             </button>
                                             <button
                                                 type="submit"
-                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
+                                                disabled={savingSite}
+                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                                             >
-                                                Save
+                                                {savingSite ? (
+                                                    <>
+                                                        <Loader2 size={16} className="animate-spin" />
+                                                        <span>Saving...</span>
+                                                    </>
+                                                ) : (
+                                                    <span>Save</span>
+                                                )}
                                             </button>
                                         </div>
                                     </form>
@@ -2028,30 +2088,125 @@ const LabourManagement = () => {
                                                 variant="input"
                                             />
                                         </div>
-                                        <div>
-                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Daily Wage (INR)</label>
-                                            <input
-                                                type="number"
-                                                value={labourForm.monthly_salary}
-                                                onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
-                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
-                                                required
-                                                min="0"
-                                                placeholder="e.g., 600"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Overtime Pay (per hour)</label>
-                                            <input
-                                                type="number"
-                                                value={labourForm.overtime_pay_per_hour}
-                                                onChange={(e) => setLabourForm({ ...labourForm, overtime_pay_per_hour: e.target.value })}
-                                                className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
-                                                required
-                                                min="0"
-                                                placeholder="e.g., 100"
-                                            />
-                                        </div>
+                                        {editingLabour && (Number(editingLabour.monthly_salary) > 0 || Number(editingLabour.overtime_pay_per_hour) > 0) ? (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1 flex items-center justify-between">
+                                                            <span>Daily Wage</span>
+                                                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">Current</span>
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={`₹${Number(labourForm.monthly_salary || 0).toLocaleString('en-IN')}`}
+                                                            readOnly
+                                                            disabled
+                                                            className="w-full px-3 py-2 bg-slate-100 dark:bg-[#161b22]/50 border border-slate-200 dark:border-github-dark-border text-slate-500 dark:text-slate-400 rounded-lg cursor-not-allowed font-semibold"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1 flex items-center justify-between">
+                                                            <span>OT Pay / hr</span>
+                                                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">Current</span>
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={`₹${Number(labourForm.overtime_pay_per_hour || 0).toLocaleString('en-IN')}/hr`}
+                                                            readOnly
+                                                            disabled
+                                                            className="w-full px-3 py-2 bg-slate-100 dark:bg-[#161b22]/50 border border-slate-200 dark:border-github-dark-border text-slate-500 dark:text-slate-400 rounded-lg cursor-not-allowed font-semibold"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* 3-Field Revision Section */}
+                                                <div className="p-3.5 bg-slate-50 dark:bg-[#161b22]/70 border border-slate-200/80 dark:border-[#30363d] rounded-xl space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-[#f0f6fc] flex items-center gap-1.5">
+                                                            Update Wage / New Revision
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedWageHistoryLabour(editingLabour)}
+                                                            className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                                        >
+                                                            <History size={13} /> View History
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-2.5">
+                                                        <div>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                                                New Daily Wage (₹)
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                value={labourForm.new_daily_wage}
+                                                                onChange={(e) => setLabourForm({ ...labourForm, new_daily_wage: e.target.value })}
+                                                                className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
+                                                                min="0"
+                                                                placeholder="e.g., 800"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                                                New OT Pay (₹/hr)
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                value={labourForm.new_overtime_pay_per_hour}
+                                                                onChange={(e) => setLabourForm({ ...labourForm, new_overtime_pay_per_hour: e.target.value })}
+                                                                className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg text-xs focus:outline-none focus:border-indigo-500"
+                                                                min="0"
+                                                                placeholder="e.g., 100"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                                                            Effective Date
+                                                        </label>
+                                                        <DatePicker
+                                                            value={labourForm.effective_date}
+                                                            onChange={(d) => setLabourForm({ ...labourForm, effective_date: d })}
+                                                            placeholder="Effective Date"
+                                                            className="w-full text-xs"
+                                                        />
+                                                        <p className="text-[9px] text-slate-400 mt-1">
+                                                            Past attendance days will calculate wages with their historical rate
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div>
+                                                    <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Daily Wage (INR)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={labourForm.monthly_salary}
+                                                        onChange={(e) => setLabourForm({ ...labourForm, monthly_salary: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                        required
+                                                        min="0"
+                                                        placeholder="e.g., 600"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Overtime Pay (per hour)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={labourForm.overtime_pay_per_hour}
+                                                        onChange={(e) => setLabourForm({ ...labourForm, overtime_pay_per_hour: e.target.value })}
+                                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                        required
+                                                        min="0"
+                                                        placeholder="e.g., 100"
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
                                         {editingLabour && (
                                             <div>
                                                 <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Status</label>
@@ -2072,15 +2227,23 @@ const LabourManagement = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => setShowLabourModal(false)}
-                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-205 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
+                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-205 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all cursor-pointer"
                                             >
                                                 Cancel
                                             </button>
                                             <button
                                                 type="submit"
-                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
+                                                disabled={savingLabour}
+                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                                             >
-                                                Save
+                                                {savingLabour ? (
+                                                    <>
+                                                        <Loader2 size={16} className="animate-spin" />
+                                                        <span>Saving...</span>
+                                                    </>
+                                                ) : (
+                                                    <span>Save</span>
+                                                )}
                                             </button>
                                         </div>
                                     </form>
@@ -2194,9 +2357,17 @@ const LabourManagement = () => {
                                             </button>
                                             <button
                                                 type="submit"
-                                                className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-sm transition-all cursor-pointer"
+                                                disabled={savingAdvance}
+                                                className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                                             >
-                                                Record Payment
+                                                {savingAdvance ? (
+                                                    <>
+                                                        <Loader2 size={16} className="animate-spin" />
+                                                        <span>Recording...</span>
+                                                    </>
+                                                ) : (
+                                                    <span>Record Payment</span>
+                                                )}
                                             </button>
                                         </div>
 
@@ -2596,16 +2767,23 @@ const LabourManagement = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => setShowPayoutModal(false)}
-                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
+                                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all cursor-pointer"
                                             >
                                                 Cancel
                                             </button>
                                             <button
                                                 type="submit"
-                                                disabled={payoutForm.net_payable < 0}
-                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-sm transition-all"
+                                                disabled={payoutForm.net_payable < 0 || savingPayout}
+                                                className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
                                             >
-                                                {payoutForm.payout_id ? 'Update Payout' : 'Release Payment'}
+                                                {savingPayout ? (
+                                                    <>
+                                                        <Loader2 size={16} className="animate-spin" />
+                                                        <span>Processing...</span>
+                                                    </>
+                                                ) : (
+                                                    <span>{payoutForm.payout_id ? 'Update Payout' : 'Release Payment'}</span>
+                                                )}
                                             </button>
                                         </div>
                                     </form>
@@ -3544,6 +3722,16 @@ const LabourManagement = () => {
                     </AnimatePresence>,
                     document.body
                 )}
+
+                {/* MODAL: WAGE REVISION HISTORY */}
+                <WageRevisionModal
+                    isOpen={Boolean(selectedWageHistoryLabour)}
+                    labour={selectedWageHistoryLabour}
+                    onClose={() => setSelectedWageHistoryLabour(null)}
+                    onRevisionUpdated={() => {
+                        fetchLabours();
+                    }}
+                />
             </div>
         </DashboardLayout>
     );
