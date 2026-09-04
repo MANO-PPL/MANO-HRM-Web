@@ -3586,3 +3586,5 @@ const CustomHoursTooltip = ({ active, payload }) => {
 };
 
 export default AttendanceMonitoring;
+
+// Attendance Monitoring - Verified Geo-Punches & Biometric Audit Trail

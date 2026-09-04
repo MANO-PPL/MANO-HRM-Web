@@ -73,3 +73,5 @@ app.all(/(.*)/, (req, res, next) => {
 app.use(errorHandler);
 
 export default app;
+
+// Enterprise Express Application Configuration & Endpoint Pipeline

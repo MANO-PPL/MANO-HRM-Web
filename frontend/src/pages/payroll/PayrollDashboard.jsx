@@ -963,3 +963,5 @@ const PayrollDashboard = () => {
 };
 
 export default PayrollDashboard;
+
+// Payroll Dashboard - Real-time Ledger & Compensation Analytics
