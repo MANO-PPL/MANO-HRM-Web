@@ -316,16 +316,16 @@ const MonthlyDetailedMatrix = ({
                                                     {totals.present_days} d
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    ---
+                                                    N/A
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    ---
+                                                    N/A
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-slate-700 dark:text-slate-300">
                                                     ₹{totals.base_earned.toLocaleString()}
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    ---
+                                                    N/A
                                                 </td>
                                                 <td
                                                     rowSpan={3}
@@ -383,7 +383,7 @@ const MonthlyDetailedMatrix = ({
                                                                     {ot}h
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 font-mono">-</span>
+                                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 font-mono">N/A</span>
                                                             )}
                                                         </td>
                                                     );
@@ -391,19 +391,19 @@ const MonthlyDetailedMatrix = ({
 
                                                 {/* Right Summary Row 2: OT Stats */}
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-github-dark-border bg-slate-50/30 dark:bg-[#161b22]/30">
-                                                    ---
+                                                    N/A
                                                 </td>
                                                 <td className="p-2 text-right font-extrabold text-indigo-600 dark:text-indigo-400">
                                                     {totals.ot_hours} h
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    ---
+                                                    N/A
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-indigo-600 dark:text-indigo-400">
                                                     +₹{totals.ot_earned.toLocaleString()}
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    ---
+                                                    N/A
                                                 </td>
                                             </tr>
 
@@ -427,7 +427,7 @@ const MonthlyDetailedMatrix = ({
                                                                     ₹{adv >= 1000 ? `${adv / 1000}k` : adv}
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 font-mono">-</span>
+                                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 font-mono">N/A</span>
                                                             )}
                                                         </td>
                                                     );
@@ -435,10 +435,10 @@ const MonthlyDetailedMatrix = ({
 
                                                 {/* Right Summary Row 3: Advance & Net Calculation */}
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-github-dark-border bg-slate-50/30 dark:bg-[#161b22]/30">
-                                                    ---
+                                                    N/A
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    ---
+                                                    N/A
                                                 </td>
                                                 <td className={`p-2 text-right font-extrabold ${advanceAlert ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
                                                     -₹{totals.advances.toLocaleString()}
@@ -501,7 +501,7 @@ const MonthlyDetailedMatrix = ({
                                             {data.dailyTotals.otHours[idx] ? `${data.dailyTotals.otHours[idx]}h` : '-'}
                                         </td>
                                     ))}
-                                    <td className="p-2 text-right font-semibold text-slate-400">---</td>
+                                    <td className="p-2 text-right font-semibold text-slate-400">N/A</td>
                                     <td className="p-2 text-right font-black text-indigo-600 dark:text-indigo-400">
                                         {data.grandTotals.totalOtHours} hrs
                                     </td>
@@ -531,8 +531,8 @@ const MonthlyDetailedMatrix = ({
                                             </td>
                                         );
                                     })}
-                                    <td className="p-2 text-right font-semibold text-slate-400">---</td>
-                                    <td className="p-2 text-right font-semibold text-slate-400">---</td>
+                                    <td className="p-2 text-right font-semibold text-slate-400">N/A</td>
+                                    <td className="p-2 text-right font-semibold text-slate-400">N/A</td>
                                     <td className="p-2 text-right font-black text-amber-700 dark:text-amber-400">
                                         ₹{data.grandTotals.totalAdvances.toLocaleString()}
                                     </td>

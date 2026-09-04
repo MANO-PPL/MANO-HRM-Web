@@ -929,7 +929,7 @@ const MobileLabourManagement = () => {
                                                     </div>
                                                     <p className="text-[10px] text-slate-500 dark:text-github-dark-muted mt-1">{site.location_details || 'No details.'}</p>
                                                     <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 mt-1 block">
-                                                        👥 {labours.filter(l => l.site_id === site.site_id).length} Assigned Workers
+                                                        {labours.filter(l => l.site_id === site.site_id).length} Assigned Workers
                                                     </span>
                                                 </div>
                                                 <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-github-dark-border/40">
@@ -973,7 +973,7 @@ const MobileLabourManagement = () => {
                                          <div className="space-y-3 animate-in fade-in duration-100">
                                              {selectedSite?.status === 'Completed' && selectedSite.end_date && (
                                                  <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-3 rounded-xl text-amber-700 dark:text-amber-400 font-semibold text-[10px] flex items-start gap-1.5 shadow-sm">
-                                                     <span>⚠️</span>
+                                                     <AlertTriangle size={13} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
                                                      <span>
                                                          This site was marked completed on <strong>{new Date(selectedSite.end_date).toLocaleDateString()}</strong>. Attendance is restricted to dates strictly before completion.
                                                      </span>
@@ -1071,8 +1071,9 @@ const MobileLabourManagement = () => {
                                                                              )}
                                                                          </div>
                                                                          {item.already_marked_at && (
-                                                                             <p className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5">
-                                                                                 ⚠️ Marked {item.already_marked_at.status} at {item.already_marked_at.site_name}
+                                                                             <p className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5">
+                                                                                 <AlertTriangle size={10} className="shrink-0" />
+                                                                                 <span>Marked {item.already_marked_at.status} at {item.already_marked_at.site_name}</span>
                                                                              </p>
                                                                          )}
                                                                          <div className="flex items-center gap-1.5 mt-1 text-[9px] text-slate-400 dark:text-github-dark-muted font-mono uppercase">
@@ -1266,24 +1267,26 @@ const MobileLabourManagement = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => setLedgerViewMode('matrix')}
-                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center ${
+                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
                                                         ledgerViewMode === 'matrix'
                                                             ? 'bg-indigo-600 text-white shadow-xs'
                                                             : 'text-slate-500 dark:text-slate-400'
                                                     }`}
                                                 >
-                                                    📊 3-Row Daily Matrix
+                                                    <Calendar size={12} />
+                                                    <span>3-Row Daily Matrix</span>
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setLedgerViewMode('summary')}
-                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center ${
+                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
                                                         ledgerViewMode === 'summary'
                                                             ? 'bg-indigo-600 text-white shadow-xs'
                                                             : 'text-slate-500 dark:text-slate-400'
                                                     }`}
                                                 >
-                                                    📋 Summary Cards
+                                                    <DollarSign size={12} />
+                                                    <span>Summary Cards</span>
                                                 </button>
                                             </div>
 
@@ -1884,7 +1887,7 @@ const MobileLabourManagement = () => {
                                     />
                                     {advanceForm.amount && Number(advanceForm.amount) > Number(advanceForm.net_payable || 0) && (
                                         <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-2.5 rounded-xl text-rose-700 dark:text-rose-455 font-bold text-[10px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm">
-                                            <span>⚠️</span>
+                                            <AlertTriangle size={12} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
                                             <span>
                                                 Warning: Advance exceeds net payable balance (₹{Number(advanceForm.net_payable || 0).toLocaleString()}).
                                             </span>
@@ -2038,7 +2041,7 @@ const MobileLabourManagement = () => {
                                                                                     <div>
                                                                                         <div className="flex items-center gap-1.5">
                                                                                             <span className="font-extrabold text-xs text-emerald-700 dark:text-emerald-400">
-                                                                                                💰 Salary Settled: ₹{evt.amount.toLocaleString()} Paid
+                                                                                                Salary Settled: ₹{evt.amount.toLocaleString()} Paid
                                                                                             </span>
                                                                                             <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[7px] font-extrabold uppercase">
                                                                                                 Settled
@@ -2049,14 +2052,14 @@ const MobileLabourManagement = () => {
                                                                                         </div>
                                                                                         {evt.site_name && (
                                                                                             <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white/80 dark:bg-[#161b22] text-slate-600 dark:text-slate-300 text-[8px] font-bold border border-emerald-200/50 dark:border-emerald-900/40">
-                                                                                                📍 {evt.site_name}
+                                                                                                {evt.site_name}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
                                                                                 </div>
                                                                                 {evt.notes && (
                                                                                     <p className="mt-1.5 text-[9px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
-                                                                                        📝 {evt.notes}
+                                                                                        {evt.notes}
                                                                                     </p>
                                                                                 )}
                                                                             </div>
@@ -2093,7 +2096,7 @@ const MobileLabourManagement = () => {
                                                                                         </div>
                                                                                         {evt.site_name && (
                                                                                             <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-[8px] font-bold">
-                                                                                                📍 {evt.site_name}
+                                                                                                {evt.site_name}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
@@ -2110,7 +2113,7 @@ const MobileLabourManagement = () => {
                                                                                 </div>
                                                                                 {evt.notes && (
                                                                                     <p className="mt-1.5 text-[10px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-slate-100 dark:border-[#30363d]/50 font-normal">
-                                                                                        💬 {evt.notes}
+                                                                                        {evt.notes}
                                                                                     </p>
                                                                                 )}
                                                                             </div>
@@ -2203,7 +2206,7 @@ const MobileLabourManagement = () => {
                                         />
                                     </div>
 
-                                    {/* Amount to Release — Editable Input */}
+                                    {/* Amount to Release - Editable Input */}
                                     <div className="rounded-xl border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-[#161b22] p-3.5 space-y-3">
                                         <div className="flex justify-between items-center text-[10px]">
                                             <div>

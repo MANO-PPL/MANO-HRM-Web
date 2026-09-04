@@ -1,18 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import { labourService } from '../../services/labourService';
 import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
+import * as XLSX from 'xlsx';
 import {
     Hammer, Plus, Search, Building, Calendar, DollarSign, Clock,
     UserPlus, Edit2, Trash2, Save, AlertTriangle, CheckCircle,
-    XCircle, Info, HelpCircle, ChevronRight, User, Phone, Briefcase, X, Upload, Users, Loader2
+    XCircle, Info, HelpCircle, ChevronRight, User, Phone, Briefcase, X, Upload, Users, Loader2, FileSpreadsheet,
+    CheckSquare, Square, RotateCcw, Check
 } from 'lucide-react';
 import MinimalSelect from '../../components/MinimalSelect';
 import DatePicker from '../../components/DatePicker';
 import MonthPicker from '../../components/MonthPicker';
 import MonthlyDetailedMatrix from './components/MonthlyDetailedMatrix';
+
+const DEFAULT_PREVIEW_WORKERS = [
+    {
+        id: 'sample-1',
+        name: 'Ramesh Kumar',
+        role: 'Mason',
+        monthly_salary: 750,
+        wage_type: 'Daily Wage',
+        phone: '9876543210',
+        sex: 'Male',
+        site_name: 'Main Site',
+        isValid: true,
+        selected: true
+    },
+    {
+        id: 'sample-2',
+        name: 'Suresh Patel',
+        role: 'Helper',
+        monthly_salary: 500,
+        wage_type: 'Daily Wage',
+        phone: '9876543211',
+        sex: 'Male',
+        site_name: 'Main Site',
+        isValid: true,
+        selected: true
+    },
+    {
+        id: 'sample-3',
+        name: 'Amit Sharma',
+        role: 'Carpenter',
+        monthly_salary: 800,
+        wage_type: 'Daily Wage',
+        phone: '9876543212',
+        sex: 'Male',
+        site_name: 'Main Site',
+        isValid: true,
+        selected: true
+    }
+];
 
 const getStatusColor = (status) => {
     const s = status || '';
@@ -69,6 +110,10 @@ const LabourManagement = () => {
     const [attendanceRoster, setAttendanceRoster] = useState([]);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
     const [savingRoster, setSavingRoster] = useState(false);
+    const [selectedRosterIds, setSelectedRosterIds] = useState([]);
+    const [rosterSearch, setRosterSearch] = useState('');
+    const [rosterStatusFilter, setRosterStatusFilter] = useState('all');
+    const [hasUnsavedRosterChanges, setHasUnsavedRosterChanges] = useState(false);
 
     // Monthly Grid States
     const [gridSiteId, setGridSiteId] = useState('');
@@ -145,9 +190,10 @@ const LabourManagement = () => {
 
     // Bulk upload states
     const [showBulkLabourModal, setShowBulkLabourModal] = useState(false);
-    const [parsedLabours, setParsedLabours] = useState([]);
+    const [parsedLabours, setParsedLabours] = useState(DEFAULT_PREVIEW_WORKERS);
     const [csvPreviewError, setCsvPreviewError] = useState('');
     const [isUploadingBulk, setIsUploadingBulk] = useState(false);
+    const bulkFileInputRef = useRef(null);
 
     // Custom Confirmation Dialog State
     const [confirmDialog, setConfirmDialog] = useState({
@@ -210,9 +256,13 @@ const LabourManagement = () => {
         try {
             const res = await labourService.getSiteAttendance(attendanceSiteId, attendanceDate);
             setAttendanceRoster(res.roster || []);
+            setSelectedRosterIds([]);
+            setHasUnsavedRosterChanges(false);
         } catch (err) {
             toast.error(err.message || 'Failed to fetch attendance roster');
             setAttendanceRoster([]);
+            setSelectedRosterIds([]);
+            setHasUnsavedRosterChanges(false);
         }
         setAttendanceLoading(false);
     };
@@ -265,33 +315,117 @@ const LabourManagement = () => {
             }
         }
     }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, financeMonth, activeTab, selectedSite, subTab]);
-    // Bulk upload CSV/Excel handlers
-    const handleCSVUpload = async (e) => {
-        const file = e.target.files[0];
+    // Instant Client-Side / Backend Bulk upload CSV & Excel handlers
+    const handleInstantFileParse = async (e) => {
+        const file = e.target.files?.[0];
         if (!file) return;
 
-        const formData = new FormData();
-        formData.append('file', file);
         setIsUploadingBulk(true);
         try {
-            const parsed = await labourService.parseBulkLabours(formData);
-            if (parsed.length === 0) {
-                toast.error("The file seems to be empty or invalid.");
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+            if (!rawRows || rawRows.length === 0) {
+                toast.error("The selected file contains no data rows.");
+                setIsUploadingBulk(false);
                 return;
             }
+
+            const siteMap = {};
+            sites.forEach(s => {
+                siteMap[s.site_name.trim().toLowerCase()] = s.site_id;
+            });
+
+            const parsed = rawRows.map((row, idx) => {
+                const getVal = (...keys) => {
+                    for (const k of Object.keys(row)) {
+                        const cleanKey = k.trim().toLowerCase();
+                        if (keys.some(expected => expected.toLowerCase() === cleanKey)) {
+                            return String(row[k] || '').trim();
+                        }
+                    }
+                    return '';
+                };
+
+                const name = getVal('name', 'worker name', 'worker_name', 'full name');
+                const role = getVal('role', 'designation', 'job', 'job_type', 'job title');
+                const salaryStr = getVal('daily wage', 'daily_wage', 'dailywage', 'salary', 'monthly salary', 'wage', 'pay');
+                const monthly_salary = salaryStr ? Number(salaryStr.replace(/[^0-9.]/g, '')) : NaN;
+                const phone = getVal('phone', 'mobile', 'phone number', 'contact');
+                const sex = getVal('sex', 'gender') || 'Male';
+                const site_name = getVal('site', 'site name', 'site_name', 'project site');
+                const otPayVal = getVal('overtime pay per hour', 'overtime_pay_per_hour', 'overtime pay', 'ot rate');
+                const overtime_pay_per_hour = otPayVal ? Number(otPayVal.replace(/[^0-9.]/g, '')) : 0;
+
+                const errors = [];
+                if (!name) errors.push('Missing Name');
+                if (!role) errors.push('Missing Role');
+                if (isNaN(monthly_salary) || monthly_salary <= 0) errors.push('Invalid Daily Wage');
+
+                const matchedSiteId = site_name && siteMap[site_name.toLowerCase()] ? siteMap[site_name.toLowerCase()] : null;
+
+                return {
+                    id: `uploaded-${idx}-${Date.now()}`,
+                    name: name || 'Unnamed Worker',
+                    role: role || '',
+                    monthly_salary: isNaN(monthly_salary) ? 0 : monthly_salary,
+                    wage_type: 'Daily Wage',
+                    sex: sex.toLowerCase().startsWith('f') ? 'Female' : 'Male',
+                    phone,
+                    overtime_pay_per_hour: isNaN(overtime_pay_per_hour) ? 0 : overtime_pay_per_hour,
+                    site_name: site_name || (selectedSite ? selectedSite.site_name : ''),
+                    site_id: matchedSiteId || (selectedSite ? selectedSite.site_id : null),
+                    isValid: errors.length === 0,
+                    error: errors.join(', '),
+                    selected: errors.length === 0
+                };
+            });
+
             setParsedLabours(parsed);
             setCsvPreviewError('');
+            toast.success(`Instantly loaded preview for ${parsed.length} workers!`);
         } catch (err) {
-            toast.error(err.message || "Failed to parse file. Please check template format.");
-            setCsvPreviewError(err.message);
+            console.error("Instant file parse error:", err);
+            // Fallback to backend parser
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const backendParsed = await labourService.parseBulkLabours(formData);
+                setParsedLabours(backendParsed.map((p, i) => ({
+                    ...p,
+                    id: `backend-${i}-${Date.now()}`,
+                    selected: p.isValid
+                })));
+                toast.success(`Loaded preview for ${backendParsed.length} workers!`);
+            } catch (backendErr) {
+                toast.error(backendErr.message || "Failed to parse file. Please verify format.");
+                setCsvPreviewError(backendErr.message);
+            }
+        } finally {
+            setIsUploadingBulk(false);
+            if (e.target) e.target.value = '';
         }
-        setIsUploadingBulk(false);
     };
 
     const handleSaveBulkLabours = async () => {
-        const validLabours = parsedLabours.filter(l => l.isValid);
+        const validLabours = parsedLabours
+            .filter(l => l.selected !== false && l.isValid)
+            .map(l => ({
+                name: l.name,
+                role: l.role,
+                monthly_salary: l.monthly_salary,
+                wage_type: l.wage_type || 'Daily Wage',
+                sex: l.sex || 'Male',
+                phone: l.phone || '',
+                overtime_pay_per_hour: l.overtime_pay_per_hour || 0,
+                site_id: l.site_id || (selectedSite ? selectedSite.site_id : null)
+            }));
+
         if (validLabours.length === 0) {
-            toast.error("No valid labour rows to import.");
+            toast.error("No valid labour rows selected to import.");
             return;
         }
         setIsUploadingBulk(true);
@@ -299,13 +433,13 @@ const LabourManagement = () => {
             await labourService.bulkCreateLabours(validLabours);
             toast.success(`Successfully imported ${validLabours.length} workers.`);
             setShowBulkLabourModal(false);
-            setParsedLabours([]);
-            // Refresh local labours list
+            setParsedLabours(DEFAULT_PREVIEW_WORKERS);
             await fetchLabours();
         } catch (err) {
             toast.error(err.message || "Failed to bulk create labours.");
+        } finally {
+            setIsUploadingBulk(false);
         }
-        setIsUploadingBulk(false);
     };
 
     const downloadCSVTemplate = async () => {
@@ -595,8 +729,43 @@ const LabourManagement = () => {
     };
 
     // ==========================================
-    // ATTENDANCE HANDLERS
+    // ATTENDANCE HANDLERS & BULK ACTIONS
     // ==========================================
+
+    const rosterStats = React.useMemo(() => {
+        const total = attendanceRoster.length;
+        const present = attendanceRoster.filter(r => r.status === 'Present').length;
+        const halfDay = attendanceRoster.filter(r => r.status === 'Half Day').length;
+        const absent = attendanceRoster.filter(r => r.status === 'Absent').length;
+        const paidLeave = attendanceRoster.filter(r => r.status === 'Paid Leave').length;
+        const unmarked = attendanceRoster.filter(r => !r.status).length;
+        return { total, present, halfDay, absent, paidLeave, unmarked };
+    }, [attendanceRoster]);
+
+    const filteredRoster = React.useMemo(() => {
+        return attendanceRoster.filter(r => {
+            // Role filter from upper bar
+            if (attendanceRoleFilter && (r.role || '').toLowerCase() !== attendanceRoleFilter.toLowerCase()) {
+                return false;
+            }
+            // In-card Search query
+            if (rosterSearch.trim()) {
+                const query = rosterSearch.toLowerCase();
+                const matchesName = (r.name || '').toLowerCase().includes(query);
+                const matchesRole = (r.role || '').toLowerCase().includes(query);
+                if (!matchesName && !matchesRole) return false;
+            }
+            // Status filter pill
+            if (rosterStatusFilter !== 'all') {
+                if (rosterStatusFilter === 'Unmarked') {
+                    if (r.status) return false;
+                } else if (r.status !== rosterStatusFilter) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }, [attendanceRoster, attendanceRoleFilter, rosterSearch, rosterStatusFilter]);
 
     const handleStatusChange = (labourId, newStatus) => {
         setAttendanceRoster(prev =>
@@ -610,12 +779,14 @@ const LabourManagement = () => {
                 };
             })
         );
+        setHasUnsavedRosterChanges(true);
     };
 
     const handleOvertimeChange = (labourId, otHours) => {
         setAttendanceRoster(prev =>
             prev.map(item => item.labour_id === labourId ? { ...item, overtime_hours: otHours } : item)
         );
+        setHasUnsavedRosterChanges(true);
     };
 
     const handleSaveAttendance = async () => {
@@ -624,12 +795,145 @@ const LabourManagement = () => {
         try {
             await labourService.saveSiteAttendance(attendanceSiteId, attendanceDate, attendanceRoster);
             toast.success('Daily attendance checklist saved successfully!');
+            setHasUnsavedRosterChanges(false);
         } catch (err) {
             toast.error(err.message || 'Failed to save attendance roster');
         } finally {
             setSavingRoster(false);
         }
     };
+
+    // Bulk Attendance Fast Actions
+    const handleMarkAllVisible = (targetStatus) => {
+        const visibleIds = new Set(filteredRoster.map(r => r.labour_id));
+        let count = 0;
+        setAttendanceRoster(prev =>
+            prev.map(item => {
+                if (!visibleIds.has(item.labour_id)) return item;
+                // Check if worker is locked on another site
+                if ((targetStatus === 'Present' || targetStatus === 'Half Day' || targetStatus === 'Paid Leave') &&
+                    item.already_marked_at && !item.is_scheduled_multi_site) {
+                    return item;
+                }
+                count++;
+                return {
+                    ...item,
+                    status: targetStatus,
+                    overtime_hours: targetStatus === 'Present' ? (item.overtime_hours || 0) : 0
+                };
+            })
+        );
+        setHasUnsavedRosterChanges(true);
+        toast.success(`Marked all ${count} visible workers as ${targetStatus}`);
+    };
+
+    const handleMarkUnmarkedVisible = (targetStatus) => {
+        const visibleIds = new Set(filteredRoster.filter(r => !r.status).map(r => r.labour_id));
+        let count = 0;
+        setAttendanceRoster(prev =>
+            prev.map(item => {
+                if (!visibleIds.has(item.labour_id)) return item;
+                if ((targetStatus === 'Present' || targetStatus === 'Half Day' || targetStatus === 'Paid Leave') &&
+                    item.already_marked_at && !item.is_scheduled_multi_site) {
+                    return item;
+                }
+                count++;
+                return {
+                    ...item,
+                    status: targetStatus,
+                    overtime_hours: targetStatus === 'Present' ? (item.overtime_hours || 0) : 0
+                };
+            })
+        );
+        setHasUnsavedRosterChanges(true);
+        toast.success(`Marked ${count} previously unmarked workers as ${targetStatus}`);
+    };
+
+    const handleResetAllVisible = () => {
+        const visibleIds = new Set(filteredRoster.map(r => r.labour_id));
+        setAttendanceRoster(prev =>
+            prev.map(item => {
+                if (!visibleIds.has(item.labour_id)) return item;
+                return {
+                    ...item,
+                    status: '',
+                    overtime_hours: 0
+                };
+            })
+        );
+        setHasUnsavedRosterChanges(true);
+        toast.info('Reset attendance marks for visible workers');
+    };
+
+    const handleBatchSetStatus = (targetStatus) => {
+        if (selectedRosterIds.length === 0) return;
+        const selectedSet = new Set(selectedRosterIds);
+        let count = 0;
+        setAttendanceRoster(prev =>
+            prev.map(item => {
+                if (!selectedSet.has(item.labour_id)) return item;
+                if ((targetStatus === 'Present' || targetStatus === 'Half Day' || targetStatus === 'Paid Leave') &&
+                    item.already_marked_at && !item.is_scheduled_multi_site) {
+                    return item;
+                }
+                count++;
+                return {
+                    ...item,
+                    status: targetStatus,
+                    overtime_hours: targetStatus === 'Present' ? (item.overtime_hours || 0) : 0
+                };
+            })
+        );
+        setHasUnsavedRosterChanges(true);
+        toast.success(`Set ${count} selected workers to ${targetStatus}`);
+    };
+
+    const handleBatchSetOvertime = (hours) => {
+        if (selectedRosterIds.length === 0) return;
+        const selectedSet = new Set(selectedRosterIds);
+        setAttendanceRoster(prev =>
+            prev.map(item => {
+                if (!selectedSet.has(item.labour_id)) return item;
+                return {
+                    ...item,
+                    status: item.status === 'Present' ? 'Present' : (item.status || 'Present'),
+                    overtime_hours: hours
+                };
+            })
+        );
+        setHasUnsavedRosterChanges(true);
+        toast.success(`Set ${hours} hrs overtime for ${selectedRosterIds.length} workers`);
+    };
+
+    const handleToggleSelectRoster = (labourId) => {
+        setSelectedRosterIds(prev =>
+            prev.includes(labourId) ? prev.filter(id => id !== labourId) : [...prev, labourId]
+        );
+    };
+
+    const handleSelectAllVisibleToggle = (visibleItems) => {
+        const visibleIds = visibleItems.map(item => item.labour_id);
+        const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedRosterIds.includes(id));
+        if (allSelected) {
+            setSelectedRosterIds(prev => prev.filter(id => !visibleIds.includes(id)));
+        } else {
+            setSelectedRosterIds(prev => [...new Set([...prev, ...visibleIds])]);
+        }
+    };
+
+    // Keyboard shortcut (Ctrl+S / Cmd+S) to quickly save attendance roster
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                if (activeTab === 'sites' && selectedSite && subTab === 'attendance' && attendanceRoster.length > 0) {
+                    e.preventDefault();
+                    handleSaveAttendance();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [activeTab, selectedSite, subTab, attendanceRoster, attendanceSiteId, attendanceDate, savingRoster]);
 
     const getDaysInMonthArray = () => {
         if (!gridMonth) return [];
@@ -861,32 +1165,90 @@ const LabourManagement = () => {
             <div className="space-y-3">
 
                 {/* Upper tab switcher row */}
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
-                    <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-xl border border-[#d0d7de] dark:border-[#30363d] w-fit select-none">
-                        {[
-                            { id: 'sites', label: 'Sites Overview', icon: <Building size={14} /> },
-                            { id: 'directory', label: 'Labour Force Directory', icon: <User size={14} /> }
-                        ].map((tab) => {
-                            const isSelected = activeTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isSelected
-                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                        }`}
-                                >
-                                    {tab.icon}
-                                    <span>{tab.label}</span>
-                                </button>
-                            );
-                        })}
+                <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-3 select-none">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                        <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-xl border border-[#d0d7de] dark:border-[#30363d] w-fit select-none shrink-0">
+                            {[
+                                { id: 'sites', label: 'Sites Overview', icon: <Building size={14} /> },
+                                { id: 'directory', label: 'Labour Force Directory', icon: <User size={14} /> }
+                            ].map((tab) => {
+                                const isSelected = activeTab === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => {
+                                            setActiveTab(tab.id);
+                                        }}
+                                        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isSelected
+                                            ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                            }`}
+                                    >
+                                        {tab.icon}
+                                        <span>{tab.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Breadcrumb inline next to tab bar */}
+                        {activeTab === 'sites' && selectedSite !== null && (
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 select-none bg-[#f6f8fa] dark:bg-[#161b22] px-3 py-1.5 rounded-xl border border-[#d0d7de] dark:border-[#30363d]">
+                                <span className="hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => setSelectedSite(null)}>Sites Overview</span>
+                                <ChevronRight size={12} className="text-slate-400 dark:text-slate-600" />
+                                <span className="text-slate-800 dark:text-github-dark-text font-bold">{selectedSite.site_name}</span>
+                                <span className={`ml-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full uppercase ${
+                                    selectedSite.status === 'Active'
+                                        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                        : 'bg-slate-100 text-slate-500'
+                                }`}>
+                                    {selectedSite.status}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Action buttons aligned in the same row as the tab bar */}
+                    {/* Single Row on Right: Search, Filters, and Action Buttons */}
                     {activeTab === 'directory' && (
-                        <div className="flex gap-2">
+                        <div className="flex items-center gap-2 flex-wrap ml-auto">
+                            {/* Search Bar */}
+                            <div className="relative w-44 sm:w-52">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                                <input
+                                    type="text"
+                                    placeholder="Search by name..."
+                                    value={labourSearch}
+                                    onChange={(e) => setLabourSearch(e.target.value)}
+                                    className="pl-8 pr-2.5 py-1.5 w-full bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-lg text-xs text-slate-700 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 shadow-2xs h-[32px]"
+                                />
+                            </div>
+
+                            {/* Filters */}
+                            <MinimalSelect
+                                value={labourRoleFilter}
+                                onChange={(val) => setLabourRoleFilter(val)}
+                                options={[
+                                    { value: '', label: 'All Roles' },
+                                    ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                ]}
+                                size="sm"
+                                triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-[#30363d] text-slate-700 dark:text-github-dark-text cursor-pointer rounded-lg h-[32px] text-xs shadow-2xs min-w-[110px]"
+                                variant="input"
+                            />
+                            <MinimalSelect
+                                value={labourSiteFilter}
+                                onChange={(val) => setLabourSiteFilter(val)}
+                                options={[
+                                    { value: 'All', label: 'All Sites' },
+                                    { value: 'Unassigned', label: 'Unassigned' },
+                                    ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
+                                ]}
+                                size="sm"
+                                triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-[#30363d] text-slate-700 dark:text-github-dark-text cursor-pointer rounded-lg h-[32px] text-xs shadow-2xs min-w-[110px]"
+                                variant="input"
+                            />
+
+                            {/* Action Buttons */}
                             <button
                                 onClick={() => {
                                     setSelectedLabourIds([]);
@@ -895,50 +1257,174 @@ const LabourManagement = () => {
                                     setBulkRoleFilter('All');
                                     setShowBulkTransferModal(true);
                                 }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all border border-[#d0d7de] dark:border-[#30363d] cursor-pointer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-2xs transition-all border border-[#d0d7de] dark:border-[#30363d] cursor-pointer h-[32px] shrink-0"
                             >
-                                <Building size={14} />
+                                <Building size={13} />
                                 <span>Bulk Transfer</span>
                             </button>
                             <button
                                 onClick={() => {
-                                    setParsedLabours([]);
+                                    if (!parsedLabours || parsedLabours.length === 0) {
+                                        setParsedLabours(DEFAULT_PREVIEW_WORKERS);
+                                    }
                                     setCsvPreviewError('');
                                     setShowBulkLabourModal(true);
                                 }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer h-[32px] shrink-0"
                             >
-                                <Upload size={14} />
+                                <Upload size={13} />
                                 <span>Bulk Add Labours</span>
                             </button>
                             <button
                                 onClick={() => { setEditingLabour(null); setLabourForm({ name: '', phone: '', sex: 'Male', role: '', wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '' }); setShowLabourModal(true); }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer h-[32px] shrink-0"
                             >
-                                <UserPlus size={14} />
+                                <UserPlus size={13} />
                                 <span>Add Labour Worker</span>
                             </button>
                         </div>
                     )}
 
                     {activeTab === 'sites' && selectedSite === null && (
-                        <button
-                            onClick={() => { setEditingSite(null); setSiteForm({ site_name: '', location_details: '', status: 'Active' }); setShowSiteModal(true); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer"
-                        >
-                            <Plus size={14} />
-                            <span>Create Site</span>
-                        </button>
+                        <div className="flex items-center gap-2 ml-auto">
+                            <div className="relative w-44 sm:w-56">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                                <input
+                                    type="text"
+                                    placeholder="Search sites..."
+                                    value={siteSearch}
+                                    onChange={(e) => setSiteSearch(e.target.value)}
+                                    className="pl-8 pr-2.5 py-1.5 w-full bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-lg text-xs text-slate-700 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 shadow-2xs h-[32px]"
+                                />
+                            </div>
+                            <button
+                                onClick={() => { setEditingSite(null); setSiteForm({ site_name: '', location_details: '', status: 'Active' }); setShowSiteModal(true); }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer h-[32px] shrink-0"
+                            >
+                                <Plus size={13} />
+                                <span>Create Site</span>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* In line with the tab bar: Filters & View Buttons when a site is selected */}
+                    {activeTab === 'sites' && selectedSite !== null && (
+                        <div className="flex items-center gap-2 flex-wrap ml-auto">
+                            {/* Context-sensitive filters */}
+                            {subTab === 'attendance' && (
+                                <>
+                                    <MinimalSelect
+                                        value={attendanceRoleFilter}
+                                        onChange={(val) => setAttendanceRoleFilter(val)}
+                                        options={[
+                                            { value: '', label: 'All Roles' },
+                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                        ]}
+                                        size="sm"
+                                        triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-[#30363d] text-slate-700 dark:text-github-dark-text cursor-pointer h-[32px] text-xs shadow-2xs min-w-[110px]"
+                                        variant="input"
+                                    />
+                                    <DatePicker
+                                        value={attendanceDate}
+                                        onChange={(val) => setAttendanceDate(val)}
+                                        maxDate={getMaxAttendanceDate()}
+                                        compact={true}
+                                    />
+                                </>
+                            )}
+                            {subTab === 'grid' && (
+                                <>
+                                    <MinimalSelect
+                                        value={gridRoleFilter}
+                                        onChange={(val) => setGridRoleFilter(val)}
+                                        options={[
+                                            { value: '', label: 'All Roles' },
+                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                        ]}
+                                        size="sm"
+                                        triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-[#30363d] text-slate-700 dark:text-github-dark-text cursor-pointer h-[32px] text-xs shadow-2xs min-w-[110px]"
+                                        variant="input"
+                                    />
+                                    <MonthPicker
+                                        value={gridMonth}
+                                        onChange={(val) => setGridMonth(val)}
+                                        compact={true}
+                                    />
+                                </>
+                            )}
+                            {subTab === 'finances' && (
+                                <>
+                                    <MinimalSelect
+                                        value={financeRoleFilter}
+                                        onChange={(val) => setFinanceRoleFilter(val)}
+                                        options={[
+                                            { value: '', label: 'All Roles' },
+                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
+                                        ]}
+                                        size="sm"
+                                        triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-[#30363d] text-slate-700 dark:text-github-dark-text cursor-pointer h-[32px] text-xs shadow-2xs min-w-[110px]"
+                                        variant="input"
+                                    />
+                                    <MonthPicker
+                                        value={financeMonth}
+                                        onChange={(val) => setFinanceMonth(val)}
+                                        compact={true}
+                                    />
+                                    <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-xl border border-[#d0d7de] dark:border-[#30363d] select-none shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setLedgerViewMode('matrix')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                                                ledgerViewMode === 'matrix'
+                                                    ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                            }`}
+                                        >
+                                            <Calendar size={12} />
+                                            <span>3-Row Daily Spreadsheet</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLedgerViewMode('summary')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                                                ledgerViewMode === 'summary'
+                                                    ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                            }`}
+                                        >
+                                            <DollarSign size={12} />
+                                            <span>Summary Table</span>
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* View Switcher Buttons */}
+                            <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-1 rounded-xl border border-[#d0d7de] dark:border-[#30363d] select-none shrink-0">
+                                {[
+                                    { id: 'attendance', label: 'Daily Roll Call', icon: <Calendar size={12} /> },
+                                    { id: 'grid', label: 'Monthly Matrix', icon: <Calendar size={12} /> },
+                                    { id: 'finances', label: 'Salary Ledger', icon: <DollarSign size={12} /> }
+                                ].map((tab) => {
+                                    const isSelected = subTab === tab.id;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setSubTab(tab.id)}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isSelected
+                                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
+                                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                            }`}
+                                        >
+                                            {tab.icon}
+                                            <span>{tab.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     )}
                 </div>
-
-                {activeTab === 'sites' && selectedSite !== null && (
-                    <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-450 dark:text-slate-500 select-none animate-in fade-in duration-200">
-                        <span className="hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => setSelectedSite(null)}>Sites Overview</span>
-                        <ChevronRight size={12} className="text-slate-350 dark:text-slate-700" />
-                        <span className="text-slate-700 dark:text-github-dark-text font-bold">{selectedSite.site_name}</span>
-                    </div>
-                )}
 
                 {/* Main Content Pane */}
                 {loading ? (
@@ -954,13 +1440,6 @@ const LabourManagement = () => {
                         {activeTab === 'sites' && (
                             selectedSite === null ? (
                                 <div className="space-y-3 animate-in fade-in duration-200">
-                                    <div className="flex justify-between items-center bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
-                                        <div>
-                                            <h3 className="font-bold text-sm text-slate-800 dark:text-github-dark-text">Project Construction Sites</h3>
-                                            <p className="text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted text-[11px] mt-0.5">Manage building sites and click a site to access its daily attendance roll call, matrix grid, and salary ledger.</p>
-                                        </div>
-                                    </div>
-
                                     {/* Sites Table */}
                                     <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
                                         {sites.length === 0 ? (
@@ -982,7 +1461,9 @@ const LabourManagement = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {sites.map(site => {
+                                                    {sites
+                                                        .filter(site => !siteSearch || site.site_name.toLowerCase().includes(siteSearch.toLowerCase()) || (site.location_details && site.location_details.toLowerCase().includes(siteSearch.toLowerCase())))
+                                                        .map(site => {
                                                         const assignedCount = labours.filter(l =>
                                                             (l.site_ids && Array.isArray(l.site_ids) && l.site_ids.includes(site.site_id)) ||
                                                             l.site_id === site.site_id
@@ -1054,145 +1535,12 @@ const LabourManagement = () => {
                             ) : (
                                 /* Click-to-drill-down site details dashboard */
                                 <div className="space-y-3 animate-in fade-in duration-200">
-                                    <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border px-4 py-3 rounded-xl shadow-sm flex items-center justify-between gap-3 flex-wrap">
-                                        {/* Left: site name + status */}
-                                        <div className="flex items-center gap-2.5 shrink-0">
-                                            <h3 className="font-extrabold text-sm text-slate-800 dark:text-github-dark-text">{selectedSite.site_name}</h3>
-                                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full uppercase ${selectedSite.status === 'Active'
-                                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                : 'bg-slate-100 text-slate-500'
-                                                }`}>
-                                                {selectedSite.status}
-                                            </span>
-                                        </div>
-
-                                        {/* Right: filters + tab switcher in one aligned row */}
-                                        <div className="flex items-center gap-2 flex-wrap ml-auto">
-                                            {/* Context-sensitive filters — same height as tabs (py-1.5) */}
-                                            {subTab === 'attendance' && (
-                                                <>
-                                                    <MinimalSelect
-                                                        value={attendanceRoleFilter}
-                                                        onChange={(val) => setAttendanceRoleFilter(val)}
-                                                        options={[
-                                                            { value: '', label: 'All Roles' },
-                                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
-                                                        ]}
-                                                        size="sm"
-                                                        triggerClassName="bg-[#f6f8fa] dark:bg-[#161b22] border-[#d0d7de]/70 dark:border-[#30363d]/60 text-slate-700 dark:text-github-dark-text cursor-pointer h-[30px] text-[11px]"
-                                                        variant="input"
-                                                    />
-                                                    <DatePicker
-                                                        value={attendanceDate}
-                                                        onChange={(val) => setAttendanceDate(val)}
-                                                        maxDate={getMaxAttendanceDate()}
-                                                        compact={true}
-                                                    />
-                                                </>
-                                            )}
-                                            {subTab === 'grid' && (
-                                                <>
-                                                    <MinimalSelect
-                                                        value={gridRoleFilter}
-                                                        onChange={(val) => setGridRoleFilter(val)}
-                                                        options={[
-                                                            { value: '', label: 'All Roles' },
-                                                            ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
-                                                        ]}
-                                                        size="sm"
-                                                        triggerClassName="bg-[#f6f8fa] dark:bg-[#161b22] border-[#d0d7de]/70 dark:border-[#30363d]/60 text-slate-700 dark:text-github-dark-text cursor-pointer h-[30px] text-[11px]"
-                                                        variant="input"
-                                                    />
-                                                    <MonthPicker
-                                                        value={gridMonth}
-                                                        onChange={(val) => setGridMonth(val)}
-                                                        compact={true}
-                                                    />
-                                                </>
-                                            )}
-
-                                            {subTab === 'finances' && (
-                                                 <>
-                                                     <MinimalSelect
-                                                         value={financeRoleFilter}
-                                                         onChange={(val) => setFinanceRoleFilter(val)}
-                                                         options={[
-                                                             { value: '', label: 'All Roles' },
-                                                             ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
-                                                         ]}
-                                                         size="sm"
-                                                         triggerClassName="bg-[#f6f8fa] dark:bg-[#161b22] border-[#d0d7de]/70 dark:border-[#30363d]/60 text-slate-700 dark:text-github-dark-text cursor-pointer h-[30px] text-[11px]"
-                                                         variant="input"
-                                                     />
-                                                     <MonthPicker
-                                                         value={financeMonth}
-                                                         onChange={(val) => setFinanceMonth(val)}
-                                                         compact={true}
-                                                     />
-                                                     <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-0.5 rounded-lg border border-[#d0d7de]/70 dark:border-[#30363d]/60 select-none shrink-0 shadow-inner">
-                                                         <button
-                                                             type="button"
-                                                             onClick={() => setLedgerViewMode('matrix')}
-                                                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-200 cursor-pointer ${
-                                                                 ledgerViewMode === 'matrix'
-                                                                     ? 'bg-white dark:bg-slate-800 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                                                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                                             }`}
-                                                         >
-                                                             <Calendar size={12} />
-                                                             <span>3-Row Daily Spreadsheet</span>
-                                                         </button>
-                                                         <button
-                                                             type="button"
-                                                             onClick={() => setLedgerViewMode('summary')}
-                                                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-200 cursor-pointer ${
-                                                                 ledgerViewMode === 'summary'
-                                                                     ? 'bg-white dark:bg-slate-800 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                                                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                                             }`}
-                                                         >
-                                                             <DollarSign size={12} />
-                                                             <span>Summary Table</span>
-                                                         </button>
-                                                     </div>
-                                                 </>
-                                             )}
-
-                                            {/* Divider between filters and tabs */}
-                                            <div className="h-5 w-px bg-slate-200 dark:bg-[#30363d] shrink-0" />
-
-                                            {/* Tab switcher */}
-                                            <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-0.5 rounded-lg border border-[#d0d7de]/70 dark:border-[#30363d]/60 select-none shrink-0 shadow-inner">
-                                                {[
-                                                    { id: 'attendance', label: 'Daily Roll Call', icon: <Calendar size={12} /> },
-                                                    { id: 'grid', label: 'Monthly Matrix', icon: <Calendar size={12} /> },
-                                                    { id: 'finances', label: 'Salary Ledger', icon: <DollarSign size={12} /> }
-                                                ].map((tab) => {
-                                                    const isSelected = subTab === tab.id;
-                                                    return (
-                                                        <button
-                                                            key={tab.id}
-                                                            onClick={() => setSubTab(tab.id)}
-                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-200 cursor-pointer ${isSelected
-                                                                ? 'bg-white dark:bg-slate-800 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                                                                }`}
-                                                        >
-                                                            {tab.icon}
-                                                            <span>{tab.label}</span>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    </div>
-
                                     {/* Component Renders (filtered for this site) */}
                                     {subTab === 'attendance' && (
                                         <div className="space-y-4 animate-in fade-in duration-150">
                                             {selectedSite?.status === 'Completed' && selectedSite.end_date && (
                                                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-3.5 rounded-xl text-amber-700 dark:text-amber-400 font-semibold text-xs flex items-center gap-2 shadow-sm">
-                                                    <span>⚠️</span>
+                                                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
                                                     <span>
                                                         This site was marked completed on <strong>{new Date(selectedSite.end_date).toLocaleDateString()}</strong>. Attendance is restricted to dates strictly before completion.
                                                     </span>
@@ -1205,12 +1553,119 @@ const LabourManagement = () => {
                                                 </div>
                                             ) : (
                                                 <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
-                                                    <div className="p-4 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-center bg-slate-50/50 dark:bg-github-dark-border/10">
-                                                        <div>
+                                                    {/* Card Header: Title + Live Status Counter Pills + Search + Action Buttons */}
+                                                    <div className="p-4 border-b border-slate-200 dark:border-github-dark-border flex flex-col lg:flex-row justify-between lg:items-center gap-3 bg-slate-50/50 dark:bg-github-dark-border/10">
+                                                        <div className="flex items-center gap-2.5 flex-wrap">
                                                             <span className="font-bold text-xs text-slate-800 dark:text-github-dark-text">Daily Roll Call Checklist</span>
-                                                            <span className="ml-2 text-[10px] text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted font-mono">{attendanceRoster.length} workers registered</span>
+                                                            <div className="h-4 w-px bg-slate-200 dark:bg-github-dark-border hidden sm:block" />
+                                                            {/* Interactive Live Status Filter Pills */}
+                                                            <div className="flex items-center gap-1.5 flex-wrap select-none">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setRosterStatusFilter('all')}
+                                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer border ${
+                                                                        rosterStatusFilter === 'all'
+                                                                            ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200 shadow-2xs'
+                                                                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                                                                    }`}
+                                                                    title="Show all workers"
+                                                                >
+                                                                    All: {rosterStats.total}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setRosterStatusFilter(rosterStatusFilter === 'Present' ? 'all' : 'Present')}
+                                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                                                                        rosterStatusFilter === 'Present'
+                                                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                                                            : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-100'
+                                                                    }`}
+                                                                    title="Filter by Present workers"
+                                                                >
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                                    Present: {rosterStats.present}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setRosterStatusFilter(rosterStatusFilter === 'Half Day' ? 'all' : 'Half Day')}
+                                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                                                                        rosterStatusFilter === 'Half Day'
+                                                                            ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                                                                            : 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100'
+                                                                    }`}
+                                                                    title="Filter by Half Day workers"
+                                                                >
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                                                    Half Day: {rosterStats.halfDay}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setRosterStatusFilter(rosterStatusFilter === 'Absent' ? 'all' : 'Absent')}
+                                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                                                                        rosterStatusFilter === 'Absent'
+                                                                            ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                                                                            : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/50 hover:bg-rose-100'
+                                                                    }`}
+                                                                    title="Filter by Absent workers"
+                                                                >
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                                                    Absent: {rosterStats.absent}
+                                                                </button>
+                                                                {rosterStats.paidLeave > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setRosterStatusFilter(rosterStatusFilter === 'Paid Leave' ? 'all' : 'Paid Leave')}
+                                                                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                                                                            rosterStatusFilter === 'Paid Leave'
+                                                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                                                                : 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/50 hover:bg-indigo-100'
+                                                                        }`}
+                                                                        title="Filter by Paid Leave workers"
+                                                                    >
+                                                                        Paid Leave: {rosterStats.paidLeave}
+                                                                    </button>
+                                                                )}
+                                                                {rosterStats.unmarked > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setRosterStatusFilter(rosterStatusFilter === 'Unmarked' ? 'all' : 'Unmarked')}
+                                                                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                                                                            rosterStatusFilter === 'Unmarked'
+                                                                                ? 'bg-slate-700 text-white border-slate-700 shadow-2xs'
+                                                                                : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800/50 hover:bg-amber-500/20'
+                                                                        }`}
+                                                                        title="Filter by workers not yet marked"
+                                                                    >
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                                                        Unmarked: {rosterStats.unmarked}
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                        <div className="flex gap-2">
+
+                                                        {/* Right Controls: In-Roster Search, Import, Add Worker, Save */}
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            {/* Worker search filter */}
+                                                            <div className="relative w-36 sm:w-44">
+                                                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={12} />
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Search worker..."
+                                                                    value={rosterSearch}
+                                                                    onChange={(e) => setRosterSearch(e.target.value)}
+                                                                    className="pl-7 pr-6 py-1 w-full bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-lg text-xs text-slate-700 dark:text-github-dark-text focus:outline-none focus:border-indigo-500 shadow-2xs h-[30px]"
+                                                                />
+                                                                {rosterSearch && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setRosterSearch('')}
+                                                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                                    >
+                                                                        <X size={11} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+
                                                             <button
                                                                 onClick={() => {
                                                                     setSelectedLabourIds([]);
@@ -1219,35 +1674,158 @@ const LabourManagement = () => {
                                                                     setBulkRoleFilter('All');
                                                                     setShowBulkTransferModal(true);
                                                                 }}
-                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer border border-[#d0d7de] dark:border-[#30363d]"
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer border border-[#d0d7de] dark:border-[#30363d] h-[30px]"
                                                             >
-                                                                <Building size={14} />
+                                                                <Building size={13} />
                                                                 <span>Bulk Import</span>
                                                             </button>
+
                                                             <button
                                                                 onClick={() => setShowBorrowModal(true)}
-                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer border border-[#d0d7de] dark:border-[#30363d]"
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer border border-[#d0d7de] dark:border-[#30363d] h-[30px]"
                                                             >
-                                                                <Plus size={14} />
+                                                                <Plus size={13} />
                                                                 <span>Add Worker</span>
                                                             </button>
+
                                                             <button
                                                                 onClick={handleSaveAttendance}
                                                                 disabled={attendanceRoster.length === 0 || savingRoster}
-                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer min-w-[105px] justify-center"
+                                                                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer min-w-[115px] justify-center h-[30px] ${
+                                                                    hasUnsavedRosterChanges
+                                                                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white ring-2 ring-indigo-400/40'
+                                                                        : 'bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white'
+                                                                }`}
+                                                                title="Save attendance roster (Shortcut: Ctrl+S)"
                                                             >
                                                                 {savingRoster ? (
                                                                     <>
-                                                                        <Loader2 size={14} className="animate-spin" />
+                                                                        <Loader2 size={13} className="animate-spin" />
                                                                         <span>Saving...</span>
                                                                     </>
                                                                 ) : (
                                                                     <>
-                                                                        <Save size={14} />
+                                                                        <Save size={13} />
                                                                         <span>Save Roster</span>
+                                                                        {hasUnsavedRosterChanges && (
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-300" title="Unsaved changes pending" />
+                                                                        )}
                                                                     </>
                                                                 )}
                                                             </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Fast Roll Call Bar / Multi-Select Batch Action Bar */}
+                                                    <div className="px-4 py-2 bg-slate-50/80 dark:bg-github-dark-border/20 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between gap-3 flex-wrap select-none">
+                                                        {selectedRosterIds.length === 0 ? (
+                                                            <div className="flex items-center gap-2 flex-wrap text-xs">
+                                                                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">
+                                                                    Quick Fill:
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleMarkAllVisible('Present')}
+                                                                    className="px-2.5 py-1 bg-white hover:bg-emerald-50 dark:bg-[#161b22] dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-bold rounded-lg border border-emerald-300 dark:border-emerald-800/60 transition-all flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                                                                    title="Mark all currently visible workers as Present (Full Day)"
+                                                                >
+                                                                    <CheckCircle size={12} className="text-emerald-600 dark:text-emerald-400" />
+                                                                    <span>Mark All Present</span>
+                                                                </button>
+                                                                {rosterStats.unmarked > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleMarkUnmarkedVisible('Present')}
+                                                                        className="px-2.5 py-1 bg-white hover:bg-indigo-50 dark:bg-[#161b22] dark:hover:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 font-bold rounded-lg border border-indigo-300 dark:border-indigo-800/60 transition-all flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                                                                        title="Mark only unmarked workers as Present"
+                                                                    >
+                                                                        <Check size={12} className="text-indigo-600 dark:text-indigo-400" />
+                                                                        <span>Mark Unmarked as Present ({rosterStats.unmarked})</span>
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleMarkAllVisible('Absent')}
+                                                                    className="px-2.5 py-1 bg-white hover:bg-rose-50 dark:bg-[#161b22] dark:hover:bg-rose-950/30 text-rose-700 dark:text-rose-300 font-bold rounded-lg border border-rose-300 dark:border-rose-800/60 transition-all flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                                                                    title="Mark all currently visible workers as Absent"
+                                                                >
+                                                                    <XCircle size={12} className="text-rose-600 dark:text-rose-400" />
+                                                                    <span>Mark All Absent</span>
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleResetAllVisible}
+                                                                    className="px-2 py-1 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-all flex items-center gap-1 cursor-pointer text-[11px]"
+                                                                    title="Clear attendance marks for visible workers"
+                                                                >
+                                                                    <RotateCcw size={11} />
+                                                                    <span>Reset</span>
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2 flex-wrap text-xs w-full sm:w-auto">
+                                                                <div className="flex items-center gap-1.5 font-extrabold text-indigo-700 dark:text-indigo-300 text-xs mr-1">
+                                                                    <CheckSquare size={13} className="text-indigo-600" />
+                                                                    <span>{selectedRosterIds.length} Selected</span>
+                                                                </div>
+
+                                                                <div className="h-4 w-px bg-slate-300 dark:bg-[#30363d] shrink-0" />
+
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleBatchSetStatus('Present')}
+                                                                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                                                                    >
+                                                                        <CheckCircle size={12} />
+                                                                        <span>Set Present</span>
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleBatchSetStatus('Half Day')}
+                                                                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg transition-all cursor-pointer shadow-2xs text-[11px]"
+                                                                    >
+                                                                        <span>Set Half Day</span>
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleBatchSetStatus('Absent')}
+                                                                        className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                                                                    >
+                                                                        <XCircle size={12} />
+                                                                        <span>Set Absent</span>
+                                                                    </button>
+                                                                </div>
+
+                                                                <div className="h-4 w-px bg-slate-300 dark:bg-[#30363d] shrink-0" />
+
+                                                                <div className="flex items-center gap-1 text-[11px]">
+                                                                    <span className="font-semibold text-slate-500 dark:text-slate-400">OT:</span>
+                                                                    {[0, 1, 2, 3, 4].map(hrs => (
+                                                                        <button
+                                                                            key={hrs}
+                                                                            type="button"
+                                                                            onClick={() => handleBatchSetOvertime(hrs)}
+                                                                            className="px-1.5 py-0.5 bg-white dark:bg-[#161b22] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-[#30363d] text-slate-700 dark:text-slate-200 rounded font-semibold transition-all cursor-pointer shadow-2xs text-[10px]"
+                                                                            title={`Assign ${hrs} hrs overtime to selected workers`}
+                                                                        >
+                                                                            {hrs}h
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSelectedRosterIds([])}
+                                                                    className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 underline cursor-pointer ml-auto sm:ml-2"
+                                                                >
+                                                                    Deselect
+                                                                </button>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium ml-auto hidden md:block">
+                                                            Shortcut: <span className="font-mono font-bold bg-slate-200/70 dark:bg-slate-800 px-1 py-0.5 rounded text-slate-600 dark:text-slate-300">Ctrl + S</span> to save
                                                         </div>
                                                     </div>
 
@@ -1260,7 +1838,23 @@ const LabourManagement = () => {
                                                     >
                                                         <table className="w-full text-left border-collapse text-xs">
                                                             <thead>
-                                                                <tr className="bg-slate-50/50 dark:bg-github-dark-border/20 text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
+                                                                <tr className="bg-slate-50/50 dark:bg-github-dark-border/20 text-slate-500 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border select-none">
+                                                                    <th className="p-3 w-10 text-center">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={filteredRoster.length > 0 && filteredRoster.every(r => selectedRosterIds.includes(r.labour_id))}
+                                                                            ref={el => {
+                                                                                if (el) {
+                                                                                    const someSelected = filteredRoster.some(r => selectedRosterIds.includes(r.labour_id));
+                                                                                    const allSelected = filteredRoster.length > 0 && filteredRoster.every(r => selectedRosterIds.includes(r.labour_id));
+                                                                                    el.indeterminate = someSelected && !allSelected;
+                                                                                }
+                                                                            }}
+                                                                            onChange={() => handleSelectAllVisibleToggle(filteredRoster)}
+                                                                            className="w-3.5 h-3.5 rounded border-slate-300 dark:border-[#30363d] text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                                            title="Select / Deselect all visible workers"
+                                                                        />
+                                                                    </th>
                                                                     <th className="p-3">Worker Name</th>
                                                                     <th className="p-3">Role</th>
                                                                     <th className="p-3">Wage Model</th>
@@ -1269,15 +1863,47 @@ const LabourManagement = () => {
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                {attendanceRoster.filter(r => !attendanceRoleFilter || r.role.toLowerCase() === attendanceRoleFilter.toLowerCase()).length === 0 ? (
+                                                                {filteredRoster.length === 0 ? (
                                                                     <tr>
-                                                                        <td colSpan="5" className="p-10 text-center text-slate-400 italic">No labours assigned to this site or matching the role filter.</td>
+                                                                        <td colSpan="6" className="p-10 text-center text-slate-400 italic">
+                                                                            <div>No labours matching the current filter or search.</div>
+                                                                            {(rosterSearch || rosterStatusFilter !== 'all') && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => { setRosterSearch(''); setRosterStatusFilter('all'); }}
+                                                                                    className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                                                                                >
+                                                                                    Clear Filters
+                                                                                </button>
+                                                                            )}
+                                                                        </td>
                                                                     </tr>
                                                                 ) : (
-                                                                    attendanceRoster
-                                                                        .filter(r => !attendanceRoleFilter || r.role.toLowerCase() === attendanceRoleFilter.toLowerCase())
-                                                                        .map(item => (
-                                                                            <tr key={item.labour_id} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/20 dark:hover:bg-slate-800/10 relative">
+                                                                    filteredRoster.map(item => {
+                                                                        const isRowSelected = selectedRosterIds.includes(item.labour_id);
+                                                                        return (
+                                                                            <tr
+                                                                                key={item.labour_id}
+                                                                                className={`border-b border-slate-100 dark:border-github-dark-border/50 transition-colors relative ${
+                                                                                    isRowSelected
+                                                                                        ? 'bg-indigo-50/60 dark:bg-indigo-950/30'
+                                                                                        : item.status === 'Present'
+                                                                                            ? 'hover:bg-emerald-50/20 dark:hover:bg-emerald-950/10'
+                                                                                            : item.status === 'Half Day'
+                                                                                                ? 'hover:bg-amber-50/20 dark:hover:bg-amber-950/10'
+                                                                                                : item.status === 'Absent'
+                                                                                                    ? 'hover:bg-rose-50/20 dark:hover:bg-rose-950/10'
+                                                                                                    : 'hover:bg-slate-50/40 dark:hover:bg-slate-800/20'
+                                                                                }`}
+                                                                            >
+                                                                                <td className="p-3 w-10 text-center">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={isRowSelected}
+                                                                                        onChange={() => handleToggleSelectRoster(item.labour_id)}
+                                                                                        className="w-3.5 h-3.5 rounded border-slate-300 dark:border-[#30363d] text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                                                    />
+                                                                                </td>
                                                                                 <td className="p-3 font-semibold text-slate-800 dark:text-github-dark-text">
                                                                                     <div>
                                                                                         <div className="flex items-center gap-2">
@@ -1285,10 +1911,14 @@ const LabourManagement = () => {
                                                                                             {item.is_borrowed && (
                                                                                                 <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-extrabold text-[8px] uppercase tracking-wider">Added</span>
                                                                                             )}
+                                                                                            {!item.status && (
+                                                                                                <span className="px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-[8px] font-bold uppercase">Unmarked</span>
+                                                                                            )}
                                                                                         </div>
                                                                                         {item.already_marked_at && (
-                                                                                            <span className="block text-[9px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5">
-                                                                                                ⚠️ Marked {item.already_marked_at.status} at {item.already_marked_at.site_name}
+                                                                                            <span className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5">
+                                                                                                <AlertTriangle size={11} className="shrink-0" />
+                                                                                                <span>Marked {item.already_marked_at.status} at {item.already_marked_at.site_name}</span>
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
@@ -1322,9 +1952,10 @@ const LabourManagement = () => {
                                                                                                         isButtonDisabled
                                                                                                             ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-850/40 dark:text-slate-600 border border-slate-200/50 dark:border-[#30363d]/50'
                                                                                                             : isSelected
-                                                                                                                ? statusOpt.activeColor + ' shadow-sm cursor-pointer'
+                                                                                                                ? statusOpt.activeColor + ' shadow-sm cursor-pointer ring-2 ring-offset-1 ring-indigo-500/20'
                                                                                                                 : statusOpt.inactiveColor + ' cursor-pointer'
                                                                                                     }`}
+                                                                                                    title={`Mark as ${statusOpt.label}`}
                                                                                                 >
                                                                                                     {statusOpt.label}
                                                                                                 </button>
@@ -1348,7 +1979,8 @@ const LabourManagement = () => {
                                                                                     )}
                                                                                 </td>
                                                                             </tr>
-                                                                        ))
+                                                                        );
+                                                                    })
                                                                 )}
                                                             </tbody>
                                                         </table>
@@ -1583,48 +2215,6 @@ const LabourManagement = () => {
                             ========================================== */}
                         {activeTab === 'directory' && (
                             <div className="space-y-3 animate-in fade-in duration-200">
-                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-sm">
-                                    <div>
-                                        <h3 className="font-bold text-sm text-slate-800 dark:text-github-dark-text">Labour Force Directory</h3>
-                                        <p className="text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted text-[11px] mt-0.5">Manage details, site assignments, monthly payouts, and logs for construction workers.</p>
-                                    </div>
-                                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                                        <div className="relative w-full sm:w-52">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                            <input
-                                                type="text"
-                                                placeholder="Search by name..."
-                                                value={labourSearch}
-                                                onChange={(e) => setLabourSearch(e.target.value)}
-                                                className="pl-9 pr-4 py-1.5 w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-700 dark:text-github-dark-text focus:outline-none"
-                                            />
-                                        </div>
-                                        <MinimalSelect
-                                            value={labourRoleFilter}
-                                            onChange={(val) => setLabourRoleFilter(val)}
-                                            options={[
-                                                { value: '', label: 'All Roles' },
-                                                ...((() => { const seen = new Map(); labours.forEach(l => { const r = (l.role || '').trim(); if (r) { const key = r.toLowerCase(); if (!seen.has(key)) seen.set(key, r); } }); return [...seen.values()].sort(); })().map(r => ({ value: r, label: r })))
-                                            ]}
-                                            size="sm"
-                                            triggerClassName="bg-slate-50 dark:bg-github-dark-subtle/50 border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-github-dark-text cursor-pointer"
-                                            variant="input"
-                                        />
-                                        <MinimalSelect
-                                            value={labourSiteFilter}
-                                            onChange={(val) => setLabourSiteFilter(val)}
-                                            options={[
-                                                { value: 'All', label: 'All Sites' },
-                                                { value: 'Unassigned', label: 'Unassigned' },
-                                                ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
-                                            ]}
-                                            size="sm"
-                                            triggerClassName="bg-slate-50 dark:bg-github-dark-subtle/50 border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-github-dark-text cursor-pointer"
-                                            variant="input"
-                                        />
-                                    </div>
-                                </div>
-
                                 <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
                                     <table className="w-full text-left border-collapse text-xs">
                                         <thead>
@@ -1892,12 +2482,13 @@ const LabourManagement = () => {
                                                                 }`}
                                                             >
                                                                 <div className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={isChecked}
-                                                                        onChange={() => {}} // handled by div onClick
-                                                                        className="rounded text-indigo-650 focus:ring-indigo-500 pointer-events-none"
-                                                                    />
+                                                                    <div className={`theme-checkbox pointer-events-none ${isChecked ? 'checked' : ''}`}>
+                                                                        {isChecked && (
+                                                                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                                                                <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                                            </svg>
+                                                                        )}
+                                                                    </div>
                                                                     <span className="text-xs">{site.site_name}</span>
                                                                 </div>
                                                                 {isPrimary && (
@@ -2157,7 +2748,7 @@ const LabourManagement = () => {
                                             <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Advance Amount (INR)</label>
                                             {advanceForm.amount && Number(advanceForm.amount) > Number(advanceForm.net_payable || 0) && (
                                                 <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-3 rounded-lg text-rose-700 dark:text-rose-400 font-bold text-[11px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm mb-2">
-                                                    <span>⚠️</span>
+                                                    <AlertTriangle size={14} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
                                                     <span>
                                                         Warning: Advance amount (₹{Number(advanceForm.amount).toLocaleString()}) exceeds the worker's net payable balance (₹{Number(advanceForm.net_payable || 0).toLocaleString()}).
                                                     </span>
@@ -2336,7 +2927,7 @@ const LabourManagement = () => {
                                                                                         <div>
                                                                                             <div className="flex items-center gap-1.5">
                                                                                                 <span className="font-extrabold text-xs text-emerald-700 dark:text-emerald-400">
-                                                                                                    💰 Salary Settled: ₹{evt.amount.toLocaleString()} Paid
+                                                                                                    Salary Settled: ₹{evt.amount.toLocaleString()} Paid
                                                                                                 </span>
                                                                                                 <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[8px] font-extrabold uppercase">
                                                                                                     Settled
@@ -2347,14 +2938,14 @@ const LabourManagement = () => {
                                                                                             </div>
                                                                                             {evt.site_name && (
                                                                                                 <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white/80 dark:bg-[#161b22] text-slate-600 dark:text-slate-300 text-[9px] font-bold border border-emerald-200/50 dark:border-emerald-900/40">
-                                                                                                    📍 {evt.site_name}
+                                                                                                    {evt.site_name}
                                                                                                 </span>
                                                                                             )}
                                                                                         </div>
                                                                                     </div>
                                                                                     {evt.notes && (
                                                                                         <p className="mt-1.5 text-[10px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
-                                                                                            📝 {evt.notes}
+                                                                                            {evt.notes}
                                                                                         </p>
                                                                                     )}
                                                                                 </div>
@@ -2391,7 +2982,7 @@ const LabourManagement = () => {
                                                                                             </div>
                                                                                             {evt.site_name && (
                                                                                                 <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-[9px] font-bold">
-                                                                                                    📍 {evt.site_name}
+                                                                                                    {evt.site_name}
                                                                                                 </span>
                                                                                             )}
                                                                                         </div>
@@ -2408,7 +2999,7 @@ const LabourManagement = () => {
                                                                                     </div>
                                                                                     {evt.notes && (
                                                                                         <p className="mt-1.5 text-[11px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-slate-100 dark:border-[#30363d]/50 font-normal">
-                                                                                            💬 {evt.notes}
+                                                                                            {evt.notes}
                                                                                         </p>
                                                                                     )}
                                                                                 </div>
@@ -2515,7 +3106,7 @@ const LabourManagement = () => {
                                             </div>
                                         </div>
 
-                                        {/* Amount to Release — Editable Input */}
+                                        {/* Amount to Release - Editable Input */}
                                         <div className="rounded-xl border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] p-4 space-y-3">
                                             <div className="flex justify-between items-center">
                                                 <div>
@@ -2655,7 +3246,7 @@ const LabourManagement = () => {
                                         {/* ── Site Selector Cards ── */}
                                         <div className="p-5 space-y-3">
                                             <div className="grid grid-cols-2 gap-3">
-                                                {/* From Site — dynamic dropdown, excludes current site */}
+                                                {/* From Site - dynamic dropdown, excludes current site */}
                                                 <div className="rounded-xl border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] p-3 space-y-1.5">
                                                     <div className="flex items-center gap-1.5">
                                                         <div className="w-4 h-4 rounded-full bg-slate-400/20 dark:bg-slate-600/40 flex items-center justify-center">
@@ -2680,7 +3271,7 @@ const LabourManagement = () => {
                                                         variant="input"
                                                     />
                                                 </div>
-                                                {/* Move To — locked to current site if on site view, otherwise free dropdown */}
+                                                {/* Move To - locked to current site if on site view, otherwise free dropdown */}
                                                 <div className="rounded-xl border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/10 p-3 space-y-1.5">
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-1.5">
@@ -2846,19 +3437,27 @@ const LabourManagement = () => {
                                                                     {/* Role group header */}
                                                                     <div className={`flex items-center justify-between px-3 py-2 bg-gradient-to-r ${clr.header} bg-slate-50 dark:bg-[#161b22] border-b border-slate-100 dark:border-[#21262d]`}>
                                                                         <label className="flex items-center gap-2.5 cursor-pointer">
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                checked={allRoleSelected}
-                                                                                ref={el => { if (el) el.indeterminate = !allRoleSelected && someRoleSelected; }}
-                                                                                onChange={() => {
+                                                                            <div
+                                                                                onClick={(e) => {
+                                                                                    e.preventDefault();
+                                                                                    e.stopPropagation();
                                                                                     if (allRoleSelected) {
                                                                                         setSelectedLabourIds(prev => prev.filter(id => !workers.map(w => w.labour_id).includes(id)));
                                                                                     } else {
                                                                                         setSelectedLabourIds(prev => [...new Set([...prev, ...workers.map(w => w.labour_id)])]);
                                                                                     }
                                                                                 }}
-                                                                                className="w-3.5 h-3.5 rounded text-indigo-600 cursor-pointer"
-                                                                            />
+                                                                                className={`theme-checkbox ${allRoleSelected ? 'checked' : someRoleSelected ? 'indeterminate' : ''}`}
+                                                                            >
+                                                                                {allRoleSelected && (
+                                                                                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                                                                        <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                                                    </svg>
+                                                                                )}
+                                                                                {!allRoleSelected && someRoleSelected && (
+                                                                                    <div className="w-2 h-0.5 bg-white rounded-full" />
+                                                                                )}
+                                                                            </div>
                                                                             <div className="flex items-center gap-1.5">
                                                                                 <div className={`w-1.5 h-1.5 rounded-full ${clr.dot}`} />
                                                                                 <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{role}</span>
@@ -2884,11 +3483,8 @@ const LabourManagement = () => {
                                                                                             : 'hover:bg-slate-50 dark:hover:bg-[#161b22]/60'
                                                                                         }`}
                                                                                 >
-                                                                                    {/* Custom checkbox */}
-                                                                                    <div className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 border transition-all ${isChecked
-                                                                                            ? 'bg-indigo-600 border-indigo-600 shadow-sm shadow-indigo-500/30'
-                                                                                            : 'border-slate-300 dark:border-[#30363d] bg-white dark:bg-[#161b22]'
-                                                                                        }`}>
+                                                                                    {/* Theme Checkbox */}
+                                                                                    <div className={`theme-checkbox ${isChecked ? 'checked' : ''}`}>
                                                                                         <input
                                                                                             type="checkbox"
                                                                                             checked={isChecked}
@@ -2902,8 +3498,8 @@ const LabourManagement = () => {
                                                                                             className="sr-only"
                                                                                         />
                                                                                         {isChecked && (
-                                                                                            <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                                                                                                <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                                                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                                                                                <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                                                                             </svg>
                                                                                         )}
                                                                                     </div>
@@ -3340,7 +3936,7 @@ const LabourManagement = () => {
                     document.body
                 )}
 
-                {/* DRAWERS: BULK LABOUR UPLOAD */}
+                {/* DRAWERS: BULK LABOUR UPLOAD (INSTANT PREVIEW IN SIDEBAR) */}
                 {createPortal(
                     <AnimatePresence>
                         {showBulkLabourModal && (
@@ -3359,129 +3955,255 @@ const LabourManagement = () => {
                                     transition={{ type: 'spring', damping: 25, stiffness: 220 }}
                                     className="relative w-full max-w-2xl h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
                                 >
-                                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
-                                        <div className="flex items-center gap-1.5">
-                                            <Upload size={16} className="text-indigo-500" />
-                                            <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Bulk Add Labours</h4>
+                                    {/* ── Header ── */}
+                                    <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-slate-100 dark:border-[#21262d] bg-slate-50/50 dark:bg-[#161b22]">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                                                <Upload size={16} />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc]">Bulk Add Labours</h4>
+                                                <p className="text-[11px] text-slate-400 dark:text-slate-500">Live preview & import worker profiles</p>
+                                            </div>
                                         </div>
-                                        <button onClick={() => setShowBulkLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
+                                        <button
+                                            onClick={() => setShowBulkLabourModal(false)}
+                                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all cursor-pointer"
+                                        >
+                                            <X size={16} />
+                                        </button>
                                     </div>
 
-                                    <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs custom-scrollbar">
-                                        {parsedLabours.length === 0 ? (
-                                            <div className="space-y-4">
-                                                <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 dark:border-indigo-900/40 p-4 rounded-xl text-slate-600 dark:text-slate-500 dark:text-github-dark-muted space-y-2">
-                                                    <h5 className="font-bold text-slate-850 dark:text-white">Instructions & Template</h5>
-                                                    <p>Upload a CSV or Excel file containing your labour profiles. The columns must include:</p>
-                                                    <ul className="list-disc pl-4 space-y-1 font-mono text-[10px]">
-                                                        <li><strong>Name</strong> (Required)</li>
-                                                        <li><strong>Role</strong> (Required, e.g. Mason, Carpenter)</li>
-                                                        <li><strong>Daily Wage</strong> (Required, e.g. 600)</li>
-                                                        <li><strong>Phone</strong> (Optional, 10 digit number)</li>
-                                                        <li><strong>Sex</strong> (Optional, Male/Female, defaults to Male)</li>
-                                                        <li><strong>Site Name</strong> (Optional, matches existing construction site name)</li>
-                                                    </ul>
-                                                    <div className="pt-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={downloadCSVTemplate}
-                                                            className="px-3 py-1.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors"
-                                                        >
-                                                            Download Excel Template
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                    {/* ── Action Toolbar ── */}
+                                    <div className="flex-shrink-0 p-3 bg-slate-50 dark:bg-[#161b22]/50 border-b border-slate-100 dark:border-[#21262d] flex flex-wrap items-center justify-between gap-2">
+                                        <input
+                                            type="file"
+                                            ref={bulkFileInputRef}
+                                            accept=".csv,.xlsx,.xls"
+                                            onChange={handleInstantFileParse}
+                                            className="hidden"
+                                        />
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <button
+                                                type="button"
+                                                onClick={() => bulkFileInputRef.current?.click()}
+                                                disabled={isUploadingBulk}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                                            >
+                                                <Upload size={13} />
+                                                <span>{isUploadingBulk ? 'Parsing File...' : 'Upload File (Excel/CSV)'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={downloadCSVTemplate}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#21262d] hover:bg-slate-100 dark:hover:bg-[#30363d] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#30363d] rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                                            >
+                                                <FileSpreadsheet size={13} className="text-emerald-500" />
+                                                <span>Template</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const newRow = {
+                                                        id: `manual-${Date.now()}`,
+                                                        name: 'New Worker',
+                                                        role: 'Helper',
+                                                        monthly_salary: 500,
+                                                        wage_type: 'Daily Wage',
+                                                        phone: '',
+                                                        sex: 'Male',
+                                                        site_name: selectedSite ? selectedSite.site_name : '',
+                                                        site_id: selectedSite ? selectedSite.site_id : null,
+                                                        isValid: true,
+                                                        selected: true
+                                                    };
+                                                    setParsedLabours(prev => [newRow, ...prev]);
+                                                }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#21262d] hover:bg-slate-100 dark:hover:bg-[#30363d] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#30363d] rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                                            >
+                                                <Plus size={13} className="text-indigo-500" />
+                                                <span>Add Row</span>
+                                            </button>
+                                        </div>
 
-                                                <div className="border-2 border-dashed border-slate-300 dark:border-github-dark-border rounded-xl p-8 text-center bg-slate-50 dark:bg-[#161b22]/30 flex flex-col items-center justify-center gap-3">
-                                                    <Upload className="text-slate-400" size={32} />
-                                                    <div>
-                                                        <label className="cursor-pointer text-indigo-600 dark:text-indigo-400 dark:text-indigo-400 hover:underline font-bold">
-                                                            Upload Excel or CSV File
-                                                            <input
-                                                                type="file"
-                                                                accept=".csv,.xlsx"
-                                                                onChange={handleCSVUpload}
-                                                                className="hidden"
-                                                            />
-                                                        </label>
-                                                        <p className="text-[10px] text-slate-400 mt-1">Accepts .xlsx or .csv format up to 5MB</p>
-                                                    </div>
-                                                </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setParsedLabours(DEFAULT_PREVIEW_WORKERS)}
+                                                className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+                                            >
+                                                Reset to Sample
+                                            </button>
+                                            <span className="text-slate-300 dark:text-slate-700">|</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setParsedLabours([])}
+                                                className="text-[11px] text-rose-500 hover:underline font-semibold cursor-pointer"
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* ── Live Preview Table Container ── */}
+                                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-3">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-slate-800 dark:text-[#f0f6fc]">Instant Preview</span>
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900/50">
+                                                    {parsedLabours.length} rows
+                                                </span>
+                                            </div>
+                                            <span className="text-[11px] text-slate-400">
+                                                {parsedLabours.filter(l => l.isValid && l.selected !== false).length} valid selected
+                                            </span>
+                                        </div>
+
+                                        {parsedLabours.length === 0 ? (
+                                            <div className="border border-dashed border-slate-200 dark:border-[#30363d] rounded-xl p-10 text-center">
+                                                <Upload className="mx-auto text-slate-400 mb-2" size={28} />
+                                                <h5 className="font-bold text-xs text-slate-700 dark:text-slate-300">No workers in preview</h5>
+                                                <p className="text-[11px] text-slate-400 mt-1">Upload a file or click "Reset to Sample" to preview rows.</p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setParsedLabours(DEFAULT_PREVIEW_WORKERS)}
+                                                    className="mt-3 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-bold border border-indigo-200 dark:border-indigo-900/40 hover:bg-indigo-100 cursor-pointer"
+                                                >
+                                                    Load Sample Preview
+                                                </button>
                                             </div>
                                         ) : (
-                                            <div className="space-y-4">
-                                                <div className="flex justify-between items-center bg-slate-50 dark:bg-[#161b22] p-3 rounded-lg border border-slate-200 dark:border-github-dark-border">
-                                                    <div>
-                                                        <span className="font-bold text-slate-800 dark:text-github-dark-text dark:text-white">Parsed Workers Preview</span>
-                                                        <p className="text-[10px] text-slate-500 dark:text-github-dark-muted dark:text-slate-400 mt-0.5">
-                                                            Found {parsedLabours.length} rows. {parsedLabours.filter(l => l.isValid).length} are valid and ready to import.
-                                                        </p>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setParsedLabours([])}
-                                                        className="text-slate-500 hover:text-red-500 hover:underline font-bold"
-                                                    >
-                                                        Clear & Upload New
-                                                    </button>
-                                                </div>
-
-                                                <div className="border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm">
-                                                    <div className="overflow-x-auto max-h-96 custom-scrollbar">
-                                                        <table className="w-full text-left border-collapse text-[11px]">
-                                                            <thead>
-                                                                <tr className="bg-slate-50 dark:bg-github-dark-border/40 text-slate-500 dark:text-github-dark-muted dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-github-dark-border">
-                                                                    <th className="p-2.5">Status</th>
-                                                                    <th className="p-2.5">Name</th>
-                                                                    <th className="p-2.5">Role</th>
-                                                                    <th className="p-2.5">Salary (INR)</th>
-                                                                    <th className="p-2.5">Wage Type</th>
-                                                                    <th className="p-2.5">Site Name</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {parsedLabours.map((row, idx) => (
-                                                                    <tr key={idx} className="border-b border-slate-100 dark:border-github-dark-border/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/10">
+                                            <div className="border border-slate-200 dark:border-[#30363d] rounded-xl overflow-hidden shadow-2xs">
+                                                <div className="overflow-x-auto max-h-[50vh] custom-scrollbar">
+                                                    <table className="w-full text-left border-collapse text-[11px]">
+                                                        <thead>
+                                                            <tr className="bg-slate-50 dark:bg-[#161b22] text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-[#30363d]">
+                                                                <th className="p-2.5 w-10 text-center">
+                                                                    {/* Theme Checkbox for Select All */}
+                                                                    <div
+                                                                        onClick={() => {
+                                                                            const allSelected = parsedLabours.every(l => l.selected !== false);
+                                                                            setParsedLabours(prev => prev.map(l => ({ ...l, selected: !allSelected })));
+                                                                        }}
+                                                                        className={`theme-checkbox ${parsedLabours.every(l => l.selected !== false) ? 'checked' : parsedLabours.some(l => l.selected !== false) ? 'indeterminate' : ''}`}
+                                                                    >
+                                                                        {parsedLabours.every(l => l.selected !== false) && (
+                                                                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                                                                <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                                            </svg>
+                                                                        )}
+                                                                        {!parsedLabours.every(l => l.selected !== false) && parsedLabours.some(l => l.selected !== false) && (
+                                                                            <div className="w-2 h-0.5 bg-white rounded-full" />
+                                                                        )}
+                                                                    </div>
+                                                                </th>
+                                                                <th className="p-2.5">Status</th>
+                                                                <th className="p-2.5">Name</th>
+                                                                <th className="p-2.5">Role</th>
+                                                                <th className="p-2.5">Daily Wage</th>
+                                                                <th className="p-2.5">Phone</th>
+                                                                <th className="p-2.5">Site</th>
+                                                                <th className="p-2.5 text-right">Action</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100 dark:divide-[#21262d] bg-white dark:bg-[#0d1117]">
+                                                            {parsedLabours.map((row, idx) => {
+                                                                const isSelected = row.selected !== false;
+                                                                return (
+                                                                    <tr
+                                                                        key={row.id || idx}
+                                                                        className={`hover:bg-slate-50/60 dark:hover:bg-[#161b22]/50 transition-colors ${!isSelected ? 'opacity-50' : ''}`}
+                                                                    >
+                                                                        <td className="p-2.5 text-center">
+                                                                            {/* Theme Checkbox for row */}
+                                                                            <div
+                                                                                onClick={() => {
+                                                                                    setParsedLabours(prev => prev.map((item, i) => i === idx ? { ...item, selected: !isSelected } : item));
+                                                                                }}
+                                                                                className={`theme-checkbox ${isSelected ? 'checked' : ''}`}
+                                                                            >
+                                                                                {isSelected && (
+                                                                                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                                                                        <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                                                    </svg>
+                                                                                )}
+                                                                            </div>
+                                                                        </td>
                                                                         <td className="p-2.5">
                                                                             {row.isValid ? (
-                                                                                <CheckCircle size={14} className="text-emerald-500" />
+                                                                                <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold text-[10px]">
+                                                                                    <CheckCircle size={12} /> Ready
+                                                                                </span>
                                                                             ) : (
-                                                                                <AlertTriangle size={14} className="text-rose-500" title="Missing required fields" />
+                                                                                <span className="inline-flex items-center gap-1 text-rose-500 font-semibold text-[10px]" title={row.error}>
+                                                                                    <AlertTriangle size={12} /> Error
+                                                                                </span>
                                                                             )}
                                                                         </td>
-                                                                        <td className={`p-2.5 font-bold ${row.isValid ? 'text-slate-800 dark:text-github-dark-text' : 'text-slate-400 line-through'}`}>{row.name || 'Unnamed'}</td>
-                                                                        <td className="p-2.5 text-slate-600 dark:text-slate-400">{row.role || <span className="text-rose-500">Missing</span>}</td>
-                                                                        <td className="p-2.5 text-slate-600 dark:text-slate-400">
-                                                                            {isNaN(row.monthly_salary) ? <span className="text-rose-500">Missing</span> : `₹${row.monthly_salary}`}
+                                                                        <td className="p-2.5 font-bold text-slate-800 dark:text-[#f0f6fc]">
+                                                                            {row.name}
                                                                         </td>
-                                                                        <td className="p-2.5 text-slate-500">{row.wage_type}</td>
-                                                                        <td className="p-2.5 text-slate-500">{row.site_name || <span className="italic text-slate-400">Unassigned</span>}</td>
+                                                                        <td className="p-2.5">
+                                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/40 dark:border-indigo-900/40">
+                                                                                {row.role || 'Unspecified'}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="p-2.5 font-mono text-slate-700 dark:text-[#c9d1d9]">
+                                                                            ₹{row.monthly_salary}
+                                                                        </td>
+                                                                        <td className="p-2.5 text-slate-500 font-mono text-[10px]">
+                                                                            {row.phone || '-'}
+                                                                        </td>
+                                                                        <td className="p-2.5 text-slate-500 text-[10px] truncate max-w-[100px]">
+                                                                            {row.site_name || <span className="italic text-slate-400">Unassigned</span>}
+                                                                        </td>
+                                                                        <td className="p-2.5 text-right">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setParsedLabours(prev => prev.filter((_, i) => i !== idx))}
+                                                                                className="p-1 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                                                                                title="Remove Row"
+                                                                            >
+                                                                                <Trash2 size={13} />
+                                                                            </button>
+                                                                        </td>
                                                                     </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex gap-3 pt-4">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setParsedLabours([])}
-                                                        className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleSaveBulkLabours}
-                                                        disabled={isUploadingBulk || parsedLabours.filter(l => l.isValid).length === 0}
-                                                        className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-sm transition-all"
-                                                    >
-                                                        {isUploadingBulk ? 'Importing...' : `Import ${parsedLabours.filter(l => l.isValid).length} Workers`}
-                                                    </button>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
                                                 </div>
                                             </div>
                                         )}
+                                    </div>
+
+                                    {/* ── Sticky Action Bar ── */}
+                                    <div className="flex-shrink-0 p-4 border-t border-slate-100 dark:border-[#21262d] bg-white/95 dark:bg-[#0d1117]/95 backdrop-blur-sm flex items-center justify-between gap-3">
+                                        <div className="text-xs">
+                                            <span className="text-slate-400">Total Selected: </span>
+                                            <strong className="text-indigo-600 dark:text-indigo-400">
+                                                {parsedLabours.filter(l => l.isValid && l.selected !== false).length}
+                                            </strong>
+                                            <span className="text-slate-400"> / {parsedLabours.length}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowBulkLabourModal(false)}
+                                                className="px-4 py-2 rounded-lg border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-[#30363d] transition-all cursor-pointer"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveBulkLabours}
+                                                disabled={isUploadingBulk || parsedLabours.filter(l => l.isValid && l.selected !== false).length === 0}
+                                                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center gap-2 cursor-pointer"
+                                            >
+                                                {isUploadingBulk ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                                                <span>Import {parsedLabours.filter(l => l.isValid && l.selected !== false).length} Workers</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </motion.div>
                             </div>

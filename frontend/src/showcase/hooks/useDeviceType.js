@@ -6,9 +6,9 @@ import { useState, useEffect } from "react";
  * isPortrait: boolean
  *
  * Breakpoints:
- *   mobile  — width ≤ 767
- *   tablet  — 768 ≤ width ≤ 1199
- *   desktop — width ≥ 1200
+ *   mobile - width ≤ 767
+ *   tablet - 768 ≤ width ≤ 1199
+ *   desktop - width ≥ 1200
  */
 function getDevice(w) {
     if (w < 768) return "mobile";
