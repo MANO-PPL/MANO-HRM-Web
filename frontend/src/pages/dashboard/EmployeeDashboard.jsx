@@ -121,7 +121,7 @@ const EmployeeDashboard = () => {
             {
                 targetId: 'emp-dashboard-holiday-btn',
                 title: 'Holiday List',
-                description: 'View all upcoming public holidays your organization has scheduled. No action needed — these are automatic days off.',
+                description: 'View all upcoming public holidays your organization has scheduled. No action needed - these are automatic days off.',
             },
             {
                 targetId: 'emp-dashboard-apply-leave-btn',
@@ -527,30 +527,28 @@ const EmployeeDashboard = () => {
                                 {
                                     label: 'Checked In',
                                     value: formatDashboardTime(todayStatus?.first_in || todayStatus?.time_in),
-                                    badge: todayStatus?.status === 'LATE' || todayStatus?.late_minutes > 0 ? 'LATE' : (todayStatus?.first_in ? 'PRESENT' : '--'),
+                                    badge: todayStatus?.status === 'LATE' || todayStatus?.late_minutes > 0 ? 'LATE' : (todayStatus?.first_in ? 'PRESENT' : null),
                                     badgeColor: todayStatus?.status === 'LATE' || todayStatus?.late_minutes > 0 
                                         ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' 
-                                        : (todayStatus?.first_in ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-400 dark:bg-slate-800/20 dark:text-slate-500')
+                                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
                                 },
                                 {
                                     label: 'Checked Out',
                                     value: formatDashboardTime(todayStatus?.last_out || todayStatus?.time_out),
-                                    badge: todayStatus?.last_out ? 'COMPLETED' : '--',
-                                    badgeColor: todayStatus?.last_out 
-                                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400' 
-                                        : 'bg-slate-100 text-slate-400 dark:bg-slate-800/20 dark:text-slate-500'
+                                    badge: todayStatus?.last_out ? 'COMPLETED' : null,
+                                    badgeColor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400'
                                 },
                                 {
                                     label: 'Total Work Hours',
                                     value: formatDuration(todayStatus?.total_hours),
-                                    badge: '--',
-                                    badgeColor: 'bg-slate-100 text-slate-400 dark:bg-slate-800/20 dark:text-slate-500'
+                                    badge: null,
+                                    badgeColor: ''
                                 },
                                 {
                                     label: 'Status',
                                     value: getStatusLabel(todayStatus?.status),
-                                    badge: '--',
-                                    badgeColor: 'bg-slate-100 text-slate-400 dark:bg-slate-800/20 dark:text-slate-500'
+                                    badge: null,
+                                    badgeColor: ''
                                 }
                             ].map((row, index) => (
                                 <div key={index} className="flex items-center gap-3.5 p-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-xl transition-colors border border-slate-100/50 dark:border-transparent">
@@ -561,9 +559,11 @@ const EmployeeDashboard = () => {
                                         <p className="text-sm font-bold text-slate-800 dark:text-github-dark-text">{row.label}</p>
                                         <p className="text-sm font-semibold text-slate-500 dark:text-github-dark-muted font-mono">{row.value}</p>
                                     </div>
-                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${row.badgeColor}`}>
-                                        {row.badge}
-                                    </span>
+                                    {row.badge && (
+                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${row.badgeColor}`}>
+                                            {row.badge}
+                                        </span>
+                                    )}
                                 </div>
                             ))}
                         </div>

@@ -37,7 +37,7 @@ const Profile = () => {
         return saved === null ? true : saved === 'true';
     });
     // Initialize directly from authUser (already fetched from /auth/me which now includes tour_dismissed)
-    // so the toggle reflects the DB value on first render — no flash, no stale state.
+    // so the toggle reflects the DB value on first render - no flash, no stale state.
     const [tourDismissed, setTourDismissed] = useState(() => !!(authUser?.tour_dismissed));
 
     const toggleChatbot = () => {

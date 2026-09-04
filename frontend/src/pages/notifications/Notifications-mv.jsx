@@ -115,7 +115,7 @@ const Notifications = () => {
             </header>
             {/* Main Content Area */}
             <main className="pt-16">
-                {/* Tab Bar — Pill Style — Standardized */}
+                {/* Tab Bar - Pill Style - Standardized */}
                 <div className="py-3 bg-white dark:bg-black px-4 sticky top-16 z-30 transition-all duration-300 border-b border-slate-100 dark:border-slate-800">
                     <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1.5 flex rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm">
                         <button

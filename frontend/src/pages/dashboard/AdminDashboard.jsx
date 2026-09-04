@@ -48,7 +48,7 @@ const TOUR_STEPS = [
     {
         targetId: 'admin-dashboard-quick-actions',
         title: 'Quick Actions',
-        description: 'Fast access to your most common administrative tasks—adding employees, generating reports, and managing shifts.',
+        description: 'Fast access to your most common administrative tasks - adding employees, generating reports, and managing shifts.',
     },
     {
         targetId: 'admin-dashboard-metrics',
