@@ -467,7 +467,7 @@ const MobileChatPage = () => {
         };
     }, [socket, selectedRoom, currentUserId]);
 
-    // Auto Scroll thread — instant on initial load, smooth for new messages & typing
+    // Auto Scroll thread - instant on initial load, smooth for new messages & typing
     useEffect(() => {
         if (!messagesEndRef.current) return;
         if (isInitialLoadRef.current) {
@@ -943,7 +943,7 @@ const MobileChatPage = () => {
                     </div>
                 </div>
 
-                {/* 2. Main Active Chat Conversation Panel — Full screen overlay when open */}
+                {/* 2. Main Active Chat Conversation Panel - Full screen overlay when open */}
                 <AnimatePresence>
                 {showMobileChatWindow && (
                 <motion.div
