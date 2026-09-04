@@ -259,7 +259,7 @@ const EmployeeCard = ({ row, columns }) => {
                                 {m.label}
                             </span>
                             <span className="text-xs font-semibold text-slate-700 dark:text-github-dark-text block truncate" title={m.value}>
-                                {m.value || '-'}
+                                {m.value || 'N/A'}
                             </span>
                         </div>
                     ))}
@@ -340,13 +340,13 @@ const EmployeeCard = ({ row, columns }) => {
                                                 <div>
                                                     <span className="text-slate-400 font-medium block">In / Out:</span>
                                                     <span className="font-semibold text-slate-700 dark:text-github-dark-text block">
-                                                        {info['In Time']} - {info['Out Time'] || '-'}
+                                                        {info['In Time']} → {info['Out Time'] || 'In Progress'}
                                                     </span>
                                                 </div>
                                                 <div>
                                                     <span className="text-slate-400 font-medium block">Worked / Req:</span>
                                                     <span className="font-semibold text-slate-700 dark:text-github-dark-text block">
-                                                        {info['Work Hrs'] || '-'} / {info['Req Hrs'] || '-'} hrs
+                                                        {info['Work Hrs'] || '0'} / {info['Req Hrs'] || '0'} hrs
                                                     </span>
                                                 </div>
                                                 {info['Late Mins'] && info['Late Mins'] !== '0' && (
@@ -360,7 +360,7 @@ const EmployeeCard = ({ row, columns }) => {
                                                     <div className="col-span-2 text-slate-500 dark:text-github-dark-muted flex items-start gap-1">
                                                         <MapPin size={10} className="shrink-0 mt-0.5 text-slate-400" />
                                                         <span className="truncate">
-                                                            {info['In Location'] || '-'} (In) / {info['Out Location'] || '-'} (Out)
+                                                            {info['In Location'] || 'N/A'} (In) / {info['Out Location'] || 'N/A'} (Out)
                                                         </span>
                                                     </div>
                                                 )}
@@ -2117,7 +2117,7 @@ const MobileReports = () => {
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => { if (isClickable) { setSelectedRecord(record); setIsDetailSidebarOpen(true); } }}
-                                                                    title={record ? `${status} — ${record.date}` : 'No data'}
+                                                                    title={record ? `${status} - ${record.date}` : 'No data'}
                                                                     className={`w-8 h-8 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${mvGetStatusColor(status)} ${isClickable ? 'cursor-pointer active:scale-90' : 'cursor-default'}`}
                                                                 >
                                                                     {mvGetStatusLabel(status)}
@@ -2402,7 +2402,7 @@ const MobileReports = () => {
                                     {/* Scrollable Body */}
                                     <div className="flex-1 overflow-y-auto p-5 space-y-4 no-scrollbar">
 
-                                        {/* Profile Card — Avatar + Name + Date + Status */}
+                                        {/* Profile Card - Avatar + Name + Date + Status */}
                                         <div className="flex items-center gap-4">
                                             <div className="relative shrink-0">
                                                 <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-15 rounded-full" />
@@ -2440,8 +2440,8 @@ const MobileReports = () => {
                                                 {/* Punch In / Out */}
                                                 <div className="grid grid-cols-2 gap-3">
                                                     {[
-                                                        { label: 'Punch In', value: selectedRecord.time_in || '—', color: 'emerald' },
-                                                        { label: 'Punch Out', value: selectedRecord.time_out || '—', color: 'rose' },
+                                                        { label: 'Punch In', value: selectedRecord.time_in || 'N/A', color: 'emerald' },
+                                                        { label: 'Punch Out', value: selectedRecord.time_out || (selectedRecord.is_active ? 'In Progress' : 'N/A'), color: 'rose' },
                                                     ].map((item, i) => (
                                                         <div key={i} className="bg-slate-50/60 dark:bg-[#161b22]/70 p-3.5 rounded-2xl border border-slate-100 dark:border-[#30363d]/70">
                                                             <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 opacity-70">{item.label}</span>
@@ -2455,9 +2455,9 @@ const MobileReports = () => {
                                                     <div className="bg-slate-50/60 dark:bg-[#161b22]/70 p-3.5 rounded-2xl border border-slate-100 dark:border-[#30363d]/70">
                                                         <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 opacity-70">Work / Req Hrs</span>
                                                         <span className="text-sm font-bold text-slate-800 dark:text-white">
-                                                            {selectedRecord.worked_hours != null ? selectedRecord.worked_hours.toFixed(2) : '—'}
+                                                            {selectedRecord.worked_hours != null ? selectedRecord.worked_hours.toFixed(2) : '0.00'}
                                                             <span className="text-slate-400 font-medium mx-1">/</span>
-                                                            {selectedRecord.required_hours != null ? selectedRecord.required_hours.toFixed(2) : '—'}<span className="text-xs text-slate-400 ml-0.5">h</span>
+                                                            {selectedRecord.required_hours != null ? selectedRecord.required_hours.toFixed(2) : '0.00'}<span className="text-xs text-slate-400 ml-0.5">h</span>
                                                         </span>
                                                         {selectedRecord.worked_hours != null && selectedRecord.required_hours > 0 && (
                                                             <div className="mt-2 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -2471,7 +2471,7 @@ const MobileReports = () => {
                                                     <div className={`p-3.5 rounded-2xl border ${selectedRecord.late_minutes > 0 ? 'bg-amber-50/60 dark:bg-amber-950/15 border-amber-200/50 dark:border-amber-800/20' : 'bg-slate-50/60 dark:bg-[#161b22]/70 border-slate-100 dark:border-[#30363d]/70'}`}>
                                                         <span className="block text-[8px] font-black uppercase tracking-widest mb-1 opacity-70 text-slate-400">Late Mins</span>
                                                         <span className={`text-sm font-bold ${selectedRecord.late_minutes > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>
-                                                            {selectedRecord.late_minutes != null ? `${selectedRecord.late_minutes} min` : '—'}
+                                                            {selectedRecord.late_minutes != null ? `${selectedRecord.late_minutes} min` : '0 min'}
                                                         </span>
                                                         {selectedRecord.late_minutes > 0 && (
                                                             <>

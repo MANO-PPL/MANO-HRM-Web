@@ -1535,7 +1535,7 @@ const OrganizationList = () => {
                                                                         </div>
                                                                     </td>
                                                                     <td className="px-4 py-2 text-slate-550 dark:text-github-dark-muted font-normal">{admin.email}</td>
-                                                                    <td className="px-4 py-2 font-mono text-[10px] text-slate-550 dark:text-github-dark-muted">{admin.phone_no || '-'}</td>
+                                                                    <td className="px-4 py-2 font-mono text-[10px] text-slate-550 dark:text-github-dark-muted">{admin.phone_no || 'N/A'}</td>
                                                                     <td className="px-4 py-2">
                                                                         <span className={`inline-flex px-1.5 py-0.5 rounded text-[8px] uppercase font-bold tracking-wider ${admin.is_active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-450' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                                                                             {admin.is_active ? 'Active' : 'Disabled'}
@@ -1869,7 +1869,7 @@ const OrganizationList = () => {
                                                         {visibleColumns.dates && (
                                                             <td className="px-6 py-3.5 text-slate-700 dark:text-github-dark-text text-[11px] font-semibold">
                                                                 <div>
-                                                                    <span>Start: {org.created_at ? new Date(org.created_at).toLocaleDateString() : '-'}</span>
+                                                                    <span>Start: {org.created_at ? new Date(org.created_at).toLocaleDateString() : 'N/A'}</span>
                                                                     <span className="block mt-0.5 text-slate-500 dark:text-github-dark-muted font-normal">End: {org.subscription_expiry ? new Date(org.subscription_expiry).toLocaleDateString() : 'No expiry'}</span>
                                                                 </div>
                                                             </td>
