@@ -1,3 +1,6 @@
+process.env.VIPS_WARNING = process.env.VIPS_WARNING || '0';
+process.env.G_MESSAGES_DEBUG = process.env.G_MESSAGES_DEBUG || 'none';
+
 import { createServer } from 'http';
 import { Server as SocketIO } from 'socket.io';
 import jwt from 'jsonwebtoken';
@@ -265,3 +268,18 @@ server.listen(activePort, '0.0.0.0', () => {
   // Initialize PM2 logs monitoring tailer
   startLogTailing(io);
 });
+
+// Graceful shutdown handlers to ensure exit code 0 and no console errors
+const gracefulShutdown = () => {
+  if (server?.listening) {
+    server.close(() => {
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+  setTimeout(() => process.exit(0), 1000).unref();
+};
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+

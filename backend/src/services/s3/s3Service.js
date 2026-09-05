@@ -140,8 +140,13 @@ export async function uploadCompressedImage({
       contentType: "image/webp"
     });
   } catch (error) {
-    console.error("Compression Upload Error:", error);
-    throw error;
+    console.warn("Compression Upload Error, falling back to raw upload:", error.message);
+    return await uploadFile({
+      fileBuffer,
+      key: `${key.replace(/\.[^/.]+$/, "")}.jpg`,
+      directory,
+      contentType: "image/jpeg"
+    });
   }
 }
 

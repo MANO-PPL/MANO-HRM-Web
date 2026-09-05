@@ -31,18 +31,21 @@ export async function processAttendanceJob(jobData) {
 
     console.log(`👷 [AttendanceWorker] Processing check-${isTimeIn ? 'in' : 'out'} job #${attendance_id} for User ${user_id}...`);
 
-    // 1. Fetch Geocoded Address from Google Maps (Slow API call)
-    let address = 'Unknown Location';
-    try {
-        if (!isNaN(latitude) && !isNaN(longitude)) {
-            const addrRes = await MapsService.coordsToAddress(latitude, longitude);
-            if (addrRes && addrRes.address) {
-                address = addrRes.address;
+    // 1. Resolve Address: prefer client-provided address, otherwise use Maps geocoding
+    let address = (jobData.address && jobData.address !== 'Locating...' && jobData.address !== 'Pending...') ? jobData.address : null;
+    if (!address) {
+        try {
+            if (!isNaN(latitude) && !isNaN(longitude)) {
+                const addrRes = await MapsService.coordsToAddress(latitude, longitude);
+                if (addrRes && addrRes.address) {
+                    address = addrRes.address;
+                }
             }
+        } catch (e) {
+            console.error(`Maps Geocoding API error for job #${attendance_id}:`, e);
         }
-    } catch (e) {
-        console.error(`Maps Geocoding API error for job #${attendance_id}:`, e);
     }
+    if (!address) address = 'Unknown Location';
 
     // Update attn_punches (new schema)
     try {
@@ -71,11 +74,18 @@ export async function processAttendanceJob(jobData) {
 
     // 2. Compress Selfie Image and Upload to AWS S3 (Slow CPU & S3 Upload task)
     let imageKey = null;
-    if (tempFilePath) {
+    let fileBuffer = jobData.fileBuffer || null;
+    if (!fileBuffer && tempFilePath) {
         try {
-            // Read temp file from disk
-            const fileBuffer = await fs.readFile(tempFilePath);
-            console.log(`[AttendanceWorker] Read temp file (${fileBuffer.length} bytes) for S3 upload.`);
+            fileBuffer = await fs.readFile(tempFilePath);
+        } catch (readErr) {
+            console.error(`[AttendanceWorker] Failed to read temp file ${tempFilePath}:`, readErr);
+        }
+    }
+
+    if (fileBuffer) {
+        try {
+            console.log(`[AttendanceWorker] Compressing and uploading selfie (${fileBuffer.length} bytes) to S3...`);
 
             const uploadResult = await S3Service.uploadCompressedImage({
                 fileBuffer,
@@ -113,12 +123,12 @@ export async function processAttendanceJob(jobData) {
         } catch (err) {
             console.error(`❌ [AttendanceWorker] Failed S3 compression/upload for job #${attendance_id}:`, err);
         } finally {
-            // Clean up the temp file from disk
-            try {
-                await fs.unlink(tempFilePath);
-                console.log(`🧹 [AttendanceWorker] Cleaned up temp file: ${tempFilePath}`);
-            } catch (unlinkErr) {
-                console.error(`Failed to delete temp file ${tempFilePath}:`, unlinkErr);
+            // Clean up the temp file from disk if created
+            if (tempFilePath) {
+                try {
+                    await fs.unlink(tempFilePath);
+                    console.log(`🧹 [AttendanceWorker] Cleaned up temp file: ${tempFilePath}`);
+                } catch (_) {}
             }
         }
     }
