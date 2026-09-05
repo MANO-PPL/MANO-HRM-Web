@@ -6,8 +6,25 @@ import { motion } from "framer-motion";
 import { Mail, Lock, Loader2, Eye, EyeOff, Shield, Activity, Sun, Moon, ArrowRight } from "lucide-react";
 import ReCAPTCHA from "react-google-recaptcha";
 
+// Helper to detect local hostnames or private network IPs (e.g. 192.168.x.x, 10.x.x.x, localhost)
+// Google reCAPTCHA v2 explicitly rejects raw IP addresses with "Invalid domain for site key"
+const isPrivateOrLocalHost = (hostname) => {
+    if (!hostname) return false;
+    const cleanHost = hostname.split(':')[0].toLowerCase();
+    if (cleanHost === 'localhost' || cleanHost === '127.0.0.1' || cleanHost === '::1') return true;
+    if (/^192\.168\./.test(cleanHost)) return true;
+    if (/^10\./.test(cleanHost)) return true;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(cleanHost)) return true;
+    if (/^169\.254\./.test(cleanHost)) return true;
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(cleanHost)) return true;
+    return false;
+};
+
 const MobileLoginPage = () => {
-    const isCaptchaEnabled = String(import.meta.env.VITE_ENABLE_CAPTCHA).toLowerCase().trim() !== 'false';
+    const isHostLocalOrLAN = typeof window !== 'undefined' && isPrivateOrLocalHost(window.location.hostname);
+    const isCaptchaConfigured = String(import.meta.env.VITE_ENABLE_CAPTCHA).toLowerCase().trim() !== 'false';
+    const isCaptchaEnabled = isCaptchaConfigured && !isHostLocalOrLAN;
+
     const { login } = useAuth();
     const navigate = useNavigate();
     const recaptchaRef = useRef(null);
@@ -16,6 +33,7 @@ const MobileLoginPage = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
     const [captchaToken, setCaptchaToken] = useState(null);
+    const [captchaError, setCaptchaError] = useState(false);
     const [isDark, setIsDark] = useState(() => {
         if (typeof window !== 'undefined') {
             const savedTheme = localStorage.getItem('theme');
@@ -43,15 +61,20 @@ const MobileLoginPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        // Skip captcha check if not set in env (for dev convenience) OR if captcha is disabled via env
-        if (isCaptchaEnabled && !captchaToken && import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
+        // Skip captcha check if not configured, running on local/LAN network IP, or if reCAPTCHA encountered an error
+        if (isCaptchaEnabled && !captchaError && !captchaToken && import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
             toast.error("Please complete the security check.");
             return;
         }
 
         setLoading(true);
         try {
-            await login(formData.identifier, formData.password, isCaptchaEnabled ? captchaToken : undefined, rememberMe);
+            await login(
+                formData.identifier,
+                formData.password,
+                (isCaptchaEnabled && !captchaError) ? captchaToken : undefined,
+                rememberMe
+            );
             toast.success("Identity Verified. Access Granted.");
             navigate("/dashboard");
         } catch (err) {
@@ -228,12 +251,16 @@ const MobileLoginPage = () => {
                             </label>
                         </div>
 
-                        {isCaptchaEnabled && import.meta.env.VITE_RECAPTCHA_SITE_KEY && (
+                        {isCaptchaEnabled && !captchaError && import.meta.env.VITE_RECAPTCHA_SITE_KEY && (
                             <div className="flex justify-center scale-[0.8] -my-2 transform transition-all opacity-90">
                                 <ReCAPTCHA
                                     ref={recaptchaRef}
                                     sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
                                     onChange={setCaptchaToken}
+                                    onErrored={() => {
+                                        console.warn("[reCAPTCHA] Domain mismatch or loading failed. Automatically bypassing captcha requirement.");
+                                        setCaptchaError(true);
+                                    }}
                                     theme={isDark ? "dark" : "light"}
                                 />
                             </div>

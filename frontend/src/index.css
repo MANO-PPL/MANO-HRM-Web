@@ -229,6 +229,63 @@ body,
     .dark .table-scrollbar {
         scrollbar-color: #484f58 #161b22;
     }
+
+    /* Dedicated 24hr Timeline Scrollbar (Themed for Light/White & Dark/Black mode) */
+    .timeline-scrollbar::-webkit-scrollbar {
+        height: 8px;
+        width: 8px;
+    }
+
+    .timeline-scrollbar::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 9999px;
+        margin: 0 16px;
+    }
+
+    .dark .timeline-scrollbar::-webkit-scrollbar-track {
+        background: #161b22;
+        border-radius: 9999px;
+        margin: 0 16px;
+    }
+
+    .timeline-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 9999px;
+        border: 2px solid #f1f5f9;
+        transition: background-color 0.2s ease;
+    }
+
+    .dark .timeline-scrollbar::-webkit-scrollbar-thumb {
+        background: #384252;
+        border-radius: 9999px;
+        border: 2px solid #161b22;
+        transition: background-color 0.2s ease;
+    }
+
+    .timeline-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+
+    .dark .timeline-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #4f5b6e;
+    }
+
+    .timeline-scrollbar::-webkit-scrollbar-thumb:active {
+        background: #64748b;
+    }
+
+    .dark .timeline-scrollbar::-webkit-scrollbar-thumb:active {
+        background: #6366f1;
+    }
+
+    .timeline-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 #f1f5f9;
+    }
+
+    .dark .timeline-scrollbar {
+        scrollbar-color: #384252 #161b22;
+    }
 }
 
 /* Mobile safe-area helpers */
