@@ -279,7 +279,10 @@ const EmployeeDashboard = () => {
         >
             <div className="space-y-8 animate-fade-in-up">
                 {/* Welcome Section */}
-                <div className="pt-8 pb-8 px-8 bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-900 dark:from-indigo-900/40 dark:via-indigo-950/40 dark:to-black rounded-2xl shadow-xl relative overflow-hidden">
+                <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-2xl p-6 sm:p-8 border border-indigo-500/20 shadow-2xl">
+                    {/* Subtle Ambient Glows */}
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 blur-[90px] pointer-events-none" />
+                    <div className="absolute -bottom-10 -left-10 w-72 h-72 bg-purple-500/10 blur-[80px] pointer-events-none" />
                     {/* Animated Background Blobs */}
                     <motion.div 
                         animate={{ 
@@ -287,7 +290,7 @@ const EmployeeDashboard = () => {
                             rotate: [0, 90, 0],
                         }}
                         transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                        className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/20 blur-3xl rounded-full pointer-events-none"
+                        className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/15 blur-3xl rounded-full pointer-events-none"
                     />
                     <motion.div 
                         animate={{ 
@@ -295,7 +298,7 @@ const EmployeeDashboard = () => {
                             x: [0, 50, 0],
                         }}
                         transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                        className="absolute -bottom-24 -left-24 w-[30rem] h-[30rem] bg-sky-500/10 blur-3xl rounded-full pointer-events-none"
+                        className="absolute -bottom-24 -left-24 w-[30rem] h-[30rem] bg-purple-500/10 blur-3xl rounded-full pointer-events-none"
                     />
 
                     <div className="relative z-10 w-full mx-auto flex flex-col gap-6">
@@ -304,7 +307,7 @@ const EmployeeDashboard = () => {
                             <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-2">
                                 {getGreeting()}, {user?.user_name || user?.name || 'Employee'}!
                             </h1>
-                            <p className="text-indigo-100/70 text-base font-medium mt-2">
+                            <p className="text-indigo-200/80 text-base font-medium mt-2">
                                 {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                             </p>
                         </div>
@@ -312,7 +315,7 @@ const EmployeeDashboard = () => {
                             <button
                                 onClick={() => navigate('/attendance')}
                                 data-tour-id="emp-dashboard-attendance-btn"
-                                className="px-6 py-2.5 bg-white text-indigo-600 font-bold rounded-xl shadow-md hover:bg-indigo-50 transition-all transform hover:-translate-y-1 active:scale-95 flex items-center gap-2 border border-transparent"
+                                className="px-6 py-2.5 bg-white text-indigo-600 font-bold rounded-xl shadow-md hover:bg-indigo-50 transition-all transform hover:-translate-y-1 active:scale-95 flex items-center gap-2 border border-transparent cursor-pointer"
                             >
                                 <Clock size={18} className="text-indigo-600" />
                                 My Attendance
@@ -320,7 +323,7 @@ const EmployeeDashboard = () => {
                             <button
                                 onClick={() => navigate('/holidays')}
                                 data-tour-id="emp-dashboard-holiday-btn"
-                                className="px-6 py-2.5 bg-indigo-555/40 border border-indigo-300/30 text-white font-semibold rounded-xl hover:bg-indigo-500/60 transition-all flex items-center gap-2 backdrop-blur-sm"
+                                className="px-6 py-2.5 bg-white/10 border border-white/15 text-white font-semibold rounded-xl hover:bg-white/15 transition-all flex items-center gap-2 backdrop-blur-md cursor-pointer"
                             >
                                 <Calendar size={18} />
                                 Holiday List
@@ -328,7 +331,7 @@ const EmployeeDashboard = () => {
                             <button
                                 onClick={() => navigate('/holidays?tab=leaves&apply=true')}
                                 data-tour-id="emp-dashboard-apply-leave-btn"
-                                className="px-6 py-2.5 bg-indigo-555/40 border border-indigo-300/30 text-white font-semibold rounded-xl hover:bg-indigo-500/60 transition-all flex items-center gap-2 backdrop-blur-sm cursor-pointer"
+                                className="px-6 py-2.5 bg-white/10 border border-white/15 text-white font-semibold rounded-xl hover:bg-white/15 transition-all flex items-center gap-2 backdrop-blur-md cursor-pointer"
                             >
                                 <Coffee size={18} />
                                 Apply Leave
@@ -338,10 +341,10 @@ const EmployeeDashboard = () => {
                         {/* Today's Status & Shift Details Side-by-Side Glass Cards */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-2">
                             {/* Today's Status Card */}
-                            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 flex flex-col justify-center shadow-xl text-white">
+                            <div className="bg-white/10 dark:bg-black/30 backdrop-blur-md rounded-2xl p-6 border border-white/10 hover:border-white/20 transition-all flex flex-col justify-center shadow-xl text-white">
                                 <div className="flex items-center gap-4 w-full">
-                                    <div className="w-14 h-14 bg-white/20 backdrop-blur-lg rounded-xl flex items-center justify-center shadow-inner shrink-0">
-                                        <Clock size={32} strokeWidth={2.5} className="text-white" />
+                                    <div className="w-14 h-14 bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 rounded-xl flex items-center justify-center shadow-inner shrink-0">
+                                        <Clock size={32} strokeWidth={2.2} />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <span className="block text-[10px] font-black text-indigo-200 tracking-[0.2em] mb-3 opacity-90 uppercase">Today's Status</span>
@@ -383,7 +386,7 @@ const EmployeeDashboard = () => {
                             </div>
 
                             {/* Shift Details Card */}
-                            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 flex flex-col justify-center shadow-xl text-white">
+                            <div className="bg-white/10 dark:bg-black/30 backdrop-blur-md rounded-2xl p-6 border border-white/10 hover:border-white/20 transition-all flex flex-col justify-center shadow-xl text-white">
                                 <div className="w-full">
                                     <div className="flex items-center gap-2 text-indigo-300 font-bold uppercase tracking-wider text-xs mb-3">
                                         <Calendar size={14} className="text-indigo-300" />
