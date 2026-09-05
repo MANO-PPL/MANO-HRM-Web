@@ -11,7 +11,9 @@ import {
     AlertTriangle,
     RefreshCw,
     Info,
-    ChevronRight
+    ChevronRight,
+    Download,
+    Loader2
 } from 'lucide-react';
 import { labourService } from '../../../services/labourService';
 import MinimalSelect from '../../../components/MinimalSelect';
@@ -25,11 +27,25 @@ const MonthlyDetailedMatrix = ({
     onOpenPayout
 }) => {
     const [loading, setLoading] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const [data, setData] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState('');
 
     const activeMonth = month || new Date().toISOString().slice(0, 7);
+
+    const handleExportExcel = async () => {
+        if (exporting) return;
+        setExporting(true);
+        try {
+            await labourService.exportMonthlyWageExcel(siteId, activeMonth);
+            toast.success('Excel ledger downloaded successfully!');
+        } catch (err) {
+            toast.error(err.message || 'Failed to export Excel ledger');
+        } finally {
+            setExporting(false);
+        }
+    };
 
     const loadMatrixData = async () => {
         if (!siteId) return;
@@ -130,6 +146,26 @@ const MonthlyDetailedMatrix = ({
                             title="Refresh Data"
                         >
                             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleExportExcel}
+                            disabled={exporting || loading}
+                            className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                            title="Export Detailed Excel Ledger"
+                        >
+                            {exporting ? (
+                                <>
+                                    <Loader2 size={13} className="animate-spin" />
+                                    <span>Exporting...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Download size={13} />
+                                    <span>Export Excel</span>
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>

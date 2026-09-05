@@ -11,6 +11,7 @@ import {
     getLabourWageHistory, addLabourWageRevision, updateLabourWageRevision, deleteLabourWageRevision
 } from '../../controllers/labour/labourController.js';
 import { getLabourSchedule, saveLabourSchedule } from '../../controllers/labour/dailyScheduleController.js';
+import { exportDetailedMonthlyLedgerExcel } from '../../controllers/labour/labourExportController.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -65,6 +66,7 @@ router.route('/schedule')
 // Financial/Salary Credit Tracker Routes
 router.get('/finances/summary', getFinancesSummary);
 router.get('/finances/detailed-ledger', getDetailedMonthlyLedger);
+router.get('/finances/export-excel', exportDetailedMonthlyLedgerExcel);
 router.post('/finances/advance', logLabourAdvance);
 router.get('/finances/advances', getLabourAdvances);
 router.delete('/finances/advance/:id', deleteLabourAdvance);

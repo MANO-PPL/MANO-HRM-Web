@@ -200,6 +200,38 @@ export const labourService = {
         }
     },
 
+    async exportMonthlyWageExcel(siteId, month = null) {
+        try {
+            let url = `/labour/finances/export-excel?site_id=${siteId || 'All'}`;
+            if (month) url += `&month=${month}`;
+            const res = await api.get(url, { responseType: 'blob' });
+            
+            // Extract filename from Content-Disposition header if available
+            let filename = `Labour_Wage_Ledger_${siteId || 'All'}_${month || 'current'}.xlsx`;
+            const disposition = res.headers['content-disposition'];
+            if (disposition && disposition.indexOf('filename=') !== -1) {
+                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+                if (matches != null && matches[1]) {
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+
+            const blob = new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(link.href);
+            return true;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to export monthly wage excel');
+        }
+    },
+
     async logLabourAdvance(advanceData) {
         try {
             const res = await api.post('/labour/finances/advance', advanceData);
