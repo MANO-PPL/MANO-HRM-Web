@@ -24,9 +24,10 @@ function getNextCronSlotMinutes(totalMinutes) {
  * matching the processing window in their timezone.
  */
 export async function processHourlyAttendance() {
-    console.log('⏰ Attendance Check Started...');
+    try {
+        console.log('⏰ Attendance Check Started...');
 
-    const users = await attendanceDB('core_users')
+        const users = await attendanceDB('core_users')
         .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
         .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
         .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
@@ -171,6 +172,13 @@ export async function processHourlyAttendance() {
     await escalateExpiredMissedPunches();
 
     console.log('✅ Attendance Check Completed.');
+    } catch (err) {
+        if (err?.code === 'ECONNRESET' || err?.message?.includes('ECONNRESET')) {
+            console.warn('⚠️ [AttendanceProcessor] Database connection reset during hourly attendance check. Will retry next cycle.');
+            return;
+        }
+        console.error('Failed to complete processHourlyAttendance:', err);
+    }
 }
 
 /**
@@ -479,22 +487,25 @@ async function escalateExpiredMissedPunches() {
  * Check if users need a time-in or time-out reminder (10 minutes before shift start/end)
  */
 export async function checkAndSendShiftReminders() {
-    const users = await attendanceDB('core_users')
-        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
-        .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
-        .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
-        .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
-        .whereNotNull('core_users.shift_id')
-        .where('core_users.is_deleted', 0)
-        .where('core_users.is_active', 1)
-        .select(
-            'core_users.user_id',
-            'core_users.shift_id',
-            'org_shifts.*',
-            'core_users.org_id',
-            'org_work_locations.timezone',
-            'core_organizations.timezone as org_timezone'
-        );
+    try {
+        const users = await attendanceDB('core_users')
+            .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+            .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
+            .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
+            .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
+            .whereNotNull('core_users.shift_id')
+            .where('core_users.is_deleted', 0)
+            .where('core_users.is_active', 1)
+            .select(
+                'core_users.user_id',
+                'core_users.shift_id',
+                'org_shifts.*',
+                'core_users.org_id',
+                'org_work_locations.timezone',
+                'core_organizations.timezone as org_timezone'
+            );
+
+        if (!users || users.length === 0) return;
 
     for (const user of users) {
         if (!user.shift_id) continue;
@@ -575,6 +586,13 @@ export async function checkAndSendShiftReminders() {
         } catch (err) {
             console.error(`Failed to process reminders for user ${user.user_id}:`, err);
         }
+    }
+    } catch (err) {
+        if (err?.code === 'ECONNRESET' || err?.message?.includes('ECONNRESET')) {
+            console.warn('⚠️ [AttendanceProcessor] Database connection reset during shift reminders check. Will retry next minute.');
+            return;
+        }
+        console.error('Failed to run checkAndSendShiftReminders:', err);
     }
 }
 

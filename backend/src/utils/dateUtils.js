@@ -22,7 +22,7 @@ export function toMySQLDateTime(dateOrStr) {
     try {
         let d;
         if (dateOrStr instanceof Date) {
-            d = dateOrStr;
+            return dateOrStr.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
         } else if (typeof dateOrStr === 'string') {
             // Handle ISO strings with 'T' and optional 'Z' or offset
             const cleaned = dateOrStr.trim();
@@ -78,8 +78,11 @@ export function toMySQLDate(dateOrStr) {
             }
         }
 
-        const d = dateOrStr instanceof Date ? dateOrStr : new Date(dateOrStr);
-        if (isNaN(d.getTime())) return null;
+        if (dateOrStr instanceof Date) {
+            return dateOrStr.toISOString().split('T')[0];
+        }
+
+        const d = new Date(dateOrStr);
 
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -115,7 +118,11 @@ export function toMySQLTime(dateOrStr) {
     }
 
     try {
-        const d = dateOrStr instanceof Date ? dateOrStr : new Date(dateOrStr);
+        if (dateOrStr instanceof Date) {
+            return dateOrStr.toISOString().split('T')[1]?.split('.')[0] || null;
+        }
+
+        const d = new Date(dateOrStr);
         if (isNaN(d.getTime())) return null;
 
         const hh = String(d.getHours()).padStart(2, '0');

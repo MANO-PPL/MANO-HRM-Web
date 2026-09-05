@@ -2,6 +2,13 @@ import cron from 'node-cron';
 import { attendanceDB } from '../config/database.js';
 import { deleteFile } from '../services/s3/s3Service.js';
 import { permanentlyDeleteUser } from '../services/users/userService.js';
+import * as MapsService from '../services/google_api_services/maps.js';
+
+function safeParseJSON(val) {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    try { return JSON.parse(val); } catch { return {}; }
+}
 
 /**
  * Cleanup Old Refresh Tokens
@@ -237,6 +244,58 @@ export async function deactivateExpiredOrganizations() {
 }
 
 /**
+ * Geocode Repair Job
+ * Finds attn_punches with stale addresses ('Locating...' / 'Pending...') and resolves them via Google Maps.
+ * Runs on a short interval to quickly fix recently-created punches.
+ */
+async function repairStalePunchAddresses() {
+    try {
+        // Find up to 20 stale in/out punches created in the last 24 hours
+        const cutoff = new Date();
+        cutoff.setHours(cutoff.getHours() - 24);
+
+        const stalePunches = await attendanceDB('attn_punches')
+            .whereNull('deleted_at')
+            .where('created_at', '>=', cutoff)
+            .whereRaw("JSON_EXTRACT(location, '$.address') IN ('Locating...', 'Pending...')")
+            .select('id', 'location', 'punch_type', 'user_id')
+            .limit(20);
+
+        if (stalePunches.length === 0) return;
+
+        console.log(`🔧 [GeoRepair] Found ${stalePunches.length} stale punch(es) to geocode.`);
+
+        for (const punch of stalePunches) {
+            try {
+                const loc = safeParseJSON(punch.location);
+                if (!loc.lat || !loc.lng || isNaN(loc.lat) || isNaN(loc.lng)) continue;
+
+                const geoRes = await MapsService.coordsToAddress(loc.lat, loc.lng);
+                const resolvedAddress = (geoRes && geoRes.address) ? geoRes.address : 'Unknown Location';
+
+                loc.address = resolvedAddress;
+                await attendanceDB('attn_punches').where({ id: punch.id }).update({
+                    location: JSON.stringify(loc)
+                });
+
+                // Also update legacy attn_records
+                const field = punch.punch_type === 'in' ? 'time_in_address' : 'time_out_address';
+                await attendanceDB('attn_records').where({ attendance_id: punch.id }).update({
+                    [field]: resolvedAddress,
+                    updated_at: attendanceDB.fn.now()
+                }).catch(() => {});
+
+                console.log(`✅ [GeoRepair] Resolved address for punch #${punch.id}: ${resolvedAddress}`);
+            } catch (punchErr) {
+                console.warn(`⚠️ [GeoRepair] Failed to geocode punch #${punch.id}:`, punchErr.message);
+            }
+        }
+    } catch (error) {
+        console.error('❌ [GeoRepair] Error in geocoding repair job:', error);
+    }
+}
+
+/**
  * Run all cleanup tasks.
  */
 export async function runCleanup() {
@@ -255,8 +314,26 @@ export async function runCleanup() {
  */
 export function initCleanupScheduler() {
     cron.schedule('0 2 * * *', async () => {
-        await runCleanup();
+        try {
+            await runCleanup();
+        } catch (err) {
+            console.error('Error during scheduled cleanup:', err);
+        }
     });
 
-    console.log('📅 Cleanup scheduler initialized: Daily at 2:00 AM');
+    // Repair stale geocoding entries every 15 minutes
+    cron.schedule('*/15 * * * *', async () => {
+        try {
+            await repairStalePunchAddresses();
+        } catch (err) {
+            console.warn('Notice during geocoding repair job:', err?.message || err);
+        }
+    });
+
+    // Run repair once immediately on startup to fix any existing stale addresses
+    setImmediate(() => repairStalePunchAddresses().catch(err => console.warn('Notice during initial geocoding repair:', err?.message || err)));
+
+    console.log('📅 Cleanup scheduler initialized: Daily at 2:00 AM | Geocoding repair: Every 15 minutes');
 }
+
+export { repairStalePunchAddresses };

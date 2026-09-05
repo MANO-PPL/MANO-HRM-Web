@@ -199,9 +199,16 @@ export const verifyCaptcha = async (req, res, next) => {
 
     const { captchaToken, captchaId, captchaText } = req.body;
 
-    // In development mode, bypass if no captcha is provided to avoid blocking local testing
-    if (process.env.NODE_ENV === 'development' && !captchaToken && !captchaId && !captchaText) {
-        console.log('🔓 Development mode: No CAPTCHA provided. Bypassing...');
+    const origin = req.headers.origin || req.headers.referer || '';
+    const host = req.headers.host || '';
+    const clientIp = req.ip || req.socket?.remoteAddress || '';
+    const isLAN = /localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\./.test(origin)
+               || /localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\./.test(host)
+               || /127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\./.test(clientIp);
+
+    // In development mode or local/LAN network access, bypass if no captcha is provided
+    if ((process.env.NODE_ENV === 'development' || isLAN) && !captchaToken && !captchaId && !captchaText) {
+        console.log('🔓 Development / LAN network: No CAPTCHA provided. Bypassing...');
         return next();
     }
 
@@ -213,6 +220,10 @@ export const verifyCaptcha = async (req, res, next) => {
             const isValid = await verifyGoogleRecaptcha(captchaToken);
 
             if (!isValid) {
+                if (process.env.NODE_ENV === 'development' || isLAN) {
+                    console.warn('⚠️ Development / LAN network: Google reCAPTCHA verification failed, bypassing for local testing.');
+                    return next();
+                }
                 return next(new AppError('Google reCAPTCHA verification failed. Please try again.', 400));
             }
 
