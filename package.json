@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\" \"cd backend/services/ai_summary && python -m uvicorn main:app --port 8001 --reload\"",
-    "server": "cd backend && npm run dev",
-    "client": "cd frontend && npm run dev",
+    "start": "concurrently -k -s all --prefix-colors \"blue,green,magenta\" -n \"server,client,ai\" \"node backend/dev.js\" \"node frontend/dev.js\" \"cd backend/services/ai_summary && python run.py\"",
+    "server": "node backend/dev.js",
+    "client": "node frontend/dev.js",
+    "ai": "cd backend/services/ai_summary && python run.py",
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
