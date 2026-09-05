@@ -331,8 +331,11 @@ const MonthlyDetailedMatrix = ({
                                                                     P
                                                                 </span>
                                                             ) : status === 'Half Day' ? (
-                                                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[8px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                                                                    HD
+                                                                <span 
+                                                                    className="inline-flex items-center justify-center px-1 h-5 rounded-md text-[8px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+                                                                    title={dayData?.working_hours && Number(dayData.working_hours) !== 4 ? `Half Day (${dayData.working_hours} hrs)` : 'Half Day (4 hrs)'}
+                                                                >
+                                                                    {dayData?.working_hours && Number(dayData.working_hours) !== 4 ? `HD (${dayData.working_hours}h)` : 'HD'}
                                                                 </span>
                                                             ) : status === 'Absent' ? (
                                                                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-bold bg-rose-500/10 text-rose-500 dark:text-rose-400">
@@ -349,7 +352,7 @@ const MonthlyDetailedMatrix = ({
 
                                                 {/* Right Summary Row 1: Total Present Days */}
                                                 <td className="p-2 text-right font-extrabold text-emerald-600 dark:text-emerald-400 border-l border-slate-200 dark:border-github-dark-border bg-slate-50/30 dark:bg-[#161b22]/30">
-                                                    {totals.present_days} d
+                                                    {typeof totals.present_days === 'number' ? Number(totals.present_days.toFixed(2)).toString() : totals.present_days} d
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
                                                     ---

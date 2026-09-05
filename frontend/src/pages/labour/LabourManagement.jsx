@@ -645,12 +645,27 @@ const LabourManagement = () => {
             prev.map(item => {
                 if (item.labour_id !== labourId) return item;
                 const updatedStatus = item.status === newStatus ? '' : newStatus;
+                let wh = 8;
+                if (updatedStatus === 'Half Day') {
+                    wh = (item.working_hours >= 1 && item.working_hours <= 7) ? item.working_hours : 4;
+                } else if (updatedStatus === 'Present' || updatedStatus === 'Paid Leave') {
+                    wh = 8;
+                } else {
+                    wh = 0;
+                }
                 return {
                     ...item,
                     status: updatedStatus,
-                    overtime_hours: updatedStatus === 'Present' ? (item.overtime_hours || 0) : 0
+                    overtime_hours: updatedStatus === 'Present' ? (item.overtime_hours || 0) : 0,
+                    working_hours: wh
                 };
             })
+        );
+    };
+
+    const handleWorkingHoursChange = (labourId, hours) => {
+        setAttendanceRoster(prev =>
+            prev.map(item => item.labour_id === labourId ? { ...item, working_hours: hours } : item)
         );
     };
 
@@ -1315,7 +1330,7 @@ const LabourManagement = () => {
                                                                     <th className="p-3">Role</th>
                                                                     <th className="p-3">Wage Model</th>
                                                                     <th className="p-3 text-center">Status Assignment</th>
-                                                                    <th className="p-3 text-center w-[120px]">Overtime</th>
+                                                                    <th className="p-3 text-center w-[130px]">Duration / Overtime</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
@@ -1387,10 +1402,26 @@ const LabourManagement = () => {
                                                                                         <select
                                                                                             value={item.overtime_hours || 0}
                                                                                             onChange={(e) => handleOvertimeChange(item.labour_id, Number(e.target.value))}
-                                                                                            className="bg-slate-50 hover:bg-slate-100 dark:bg-[#161b22] dark:hover:bg-[#21262d] border border-slate-200 dark:border-[#30363d] text-slate-800 dark:text-[#c9d1d9] rounded-lg px-2 py-1 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer shadow-sm min-w-[85px] text-center"
+                                                                                            className="bg-slate-50 hover:bg-slate-100 dark:bg-[#161b22] dark:hover:bg-[#21262d] border border-slate-200 dark:border-[#30363d] text-slate-800 dark:text-[#c9d1d9] rounded-lg px-2 py-1 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer shadow-sm min-w-[95px] text-center"
+                                                                                            title="Overtime Hours"
                                                                                         >
                                                                                             {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(hrs => (
-                                                                                                <option key={hrs} value={hrs}>{hrs} hr{hrs !== 1 ? 's' : ''}</option>
+                                                                                                <option key={hrs} value={hrs}>
+                                                                                                    {hrs} hr{hrs !== 1 ? 's' : ''}
+                                                                                                </option>
+                                                                                            ))}
+                                                                                        </select>
+                                                                                    ) : item.status === 'Half Day' ? (
+                                                                                        <select
+                                                                                            value={Number(item.working_hours) >= 1 && Number(item.working_hours) <= 7 ? Number(item.working_hours) : 4}
+                                                                                            onChange={(e) => handleWorkingHoursChange(item.labour_id, Number(e.target.value))}
+                                                                                            className="bg-slate-50 hover:bg-slate-100 dark:bg-[#161b22] dark:hover:bg-[#21262d] border border-slate-200 dark:border-[#30363d] text-slate-800 dark:text-[#c9d1d9] rounded-lg px-2 py-1 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer shadow-sm min-w-[95px] text-center"
+                                                                                            title="Half Day Shift Duration"
+                                                                                        >
+                                                                                            {[1, 2, 3, 4, 5, 6, 7].map(hrs => (
+                                                                                                <option key={hrs} value={hrs}>
+                                                                                                    {hrs === 4 ? '4 hrs (Default)' : `${hrs} hr${hrs !== 1 ? 's' : ''}`}
+                                                                                                </option>
                                                                                             ))}
                                                                                         </select>
                                                                                     ) : (

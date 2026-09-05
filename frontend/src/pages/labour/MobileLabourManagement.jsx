@@ -673,12 +673,27 @@ const MobileLabourManagement = () => {
             prev.map(item => {
                 if (item.labour_id !== labourId) return item;
                 const updatedStatus = item.status === newStatus ? '' : newStatus;
+                let wh = 8;
+                if (updatedStatus === 'Half Day') {
+                    wh = (item.working_hours >= 1 && item.working_hours <= 7) ? item.working_hours : 4;
+                } else if (updatedStatus === 'Present' || updatedStatus === 'Paid Leave') {
+                    wh = 8;
+                } else {
+                    wh = 0;
+                }
                 return {
                     ...item,
                     status: updatedStatus,
-                    overtime_hours: updatedStatus === 'Present' ? (item.overtime_hours || 0) : 0
+                    overtime_hours: updatedStatus === 'Present' ? (item.overtime_hours || 0) : 0,
+                    working_hours: wh
                 };
             })
+        );
+    };
+
+    const handleWorkingHoursChange = (labourId, hours) => {
+        setAttendanceRoster(prev =>
+            prev.map(item => item.labour_id === labourId ? { ...item, working_hours: hours } : item)
         );
     };
 
@@ -1178,6 +1193,36 @@ const MobileLabourManagement = () => {
                                                                                   type="button"
                                                                                   disabled={(item.overtime_hours || 0) >= 12}
                                                                                   onClick={() => handleOvertimeChange(item.labour_id, Math.min(12, (item.overtime_hours || 0) + 1))}
+                                                                                  className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-bold cursor-pointer"
+                                                                              >
+                                                                                  +
+                                                                              </button>
+                                                                          </div>
+                                                                      </div>
+                                                                  )}
+
+                                                                  {item.status === 'Half Day' && (
+                                                                      <div className="flex items-center justify-between mt-1 bg-slate-100/50 dark:bg-[#161b22]/40 rounded-xl p-2 px-3 border border-slate-200/30 dark:border-github-dark-border/20">
+                                                                          <div>
+                                                                              <span className="text-[10px] text-slate-500 dark:text-github-dark-muted font-bold uppercase block">Shift Hours:</span>
+                                                                              <span className="text-[8px] text-slate-400 dark:text-slate-500 font-medium">Default: 4 hrs</span>
+                                                                          </div>
+                                                                          <div className="flex items-center gap-1.5">
+                                                                              <button
+                                                                                  type="button"
+                                                                                  disabled={(Number(item.working_hours) >= 1 && Number(item.working_hours) <= 7 ? Number(item.working_hours) : 4) <= 1}
+                                                                                  onClick={() => handleWorkingHoursChange(item.labour_id, Math.max(1, (Number(item.working_hours) >= 1 && Number(item.working_hours) <= 7 ? Number(item.working_hours) : 4) - 1))}
+                                                                                  className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-bold cursor-pointer"
+                                                                              >
+                                                                                  -
+                                                                              </button>
+                                                                              <span className="w-12 text-center text-xs font-extrabold text-slate-800 dark:text-white font-mono">
+                                                                                  {(Number(item.working_hours) >= 1 && Number(item.working_hours) <= 7 ? Number(item.working_hours) : 4)} hrs
+                                                                              </span>
+                                                                              <button
+                                                                                  type="button"
+                                                                                  disabled={(Number(item.working_hours) >= 1 && Number(item.working_hours) <= 7 ? Number(item.working_hours) : 4) >= 7}
+                                                                                  onClick={() => handleWorkingHoursChange(item.labour_id, Math.min(7, (Number(item.working_hours) >= 1 && Number(item.working_hours) <= 7 ? Number(item.working_hours) : 4) + 1))}
                                                                                   className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-bold cursor-pointer"
                                                                               >
                                                                                   +

@@ -906,15 +906,17 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
                 .andOn('s.org_id', '=', attendanceDB.raw('?', [org_id]));
         })
         .where({ 'a.org_id': org_id, 'a.date': date })
-        .select('a.labour_id', 'a.status', 'a.attendance_id', 'a.site_id', 's.site_name', 'a.overtime_hours');
+        .select('a.labour_id', 'a.status', 'a.attendance_id', 'a.site_id', 's.site_name', 'a.overtime_hours', 'a.working_hours');
 
     // Filter attendance records to find extra (borrowed/marked) labours on this date at this specific site
     const currentSiteAttendance = attendanceRecords.filter(rec => Number(rec.site_id) === Number(site_id));
     const attendanceMap = {};
     const attendanceOvertimeMap = {};
+    const attendanceWorkingHoursMap = {};
     currentSiteAttendance.forEach(rec => {
         attendanceMap[rec.labour_id] = rec.status;
         attendanceOvertimeMap[rec.labour_id] = rec.overtime_hours;
+        attendanceWorkingHoursMap[rec.labour_id] = rec.working_hours;
     });
 
     // Create maps of attendance at other sites for this organization
@@ -967,7 +969,10 @@ export const getSiteAttendance = catchAsync(async (req, res) => {
         already_marked_at: otherSitesAttendanceMap[lab.labour_id] || null,
         is_scheduled_multi_site: (scheduleCountMap[lab.labour_id] || 0) >= 2,
         overtime_pay_per_hour: Number(lab.overtime_pay_per_hour || 0),
-        overtime_hours: Number(attendanceOvertimeMap[lab.labour_id] || 0)
+        overtime_hours: Number(attendanceOvertimeMap[lab.labour_id] || 0),
+        working_hours: attendanceWorkingHoursMap[lab.labour_id] !== undefined && attendanceWorkingHoursMap[lab.labour_id] !== null
+            ? Number(attendanceWorkingHoursMap[lab.labour_id])
+            : (attendanceMap[lab.labour_id] === 'Half Day' ? 4 : 8)
     }));
 
     // Cache roster in Redis for 5 minutes (300s)
@@ -1051,6 +1056,17 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                     continue;
                 }
 
+                let workingHours = 8.0;
+                if (r.status === 'Half Day') {
+                    workingHours = (r.working_hours !== undefined && r.working_hours !== null && !isNaN(Number(r.working_hours)))
+                        ? Number(r.working_hours)
+                        : 4.0;
+                } else if (r.status === 'Absent') {
+                    workingHours = 0.0;
+                } else if (r.status === 'Present' || r.status === 'Paid Leave') {
+                    workingHours = 8.0;
+                }
+
                 insertData.push({
                     org_id,
                     labour_id: r.labour_id,
@@ -1058,6 +1074,7 @@ export const saveSiteAttendance = catchAsync(async (req, res) => {
                     date,
                     status: r.status.trim(),
                     overtime_hours: Number(r.overtime_hours || 0),
+                    working_hours: workingHours,
                     marked_by
                 });
             }
@@ -1173,7 +1190,7 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
         .where('date', '>=', start)
         .where('date', '<=', end)
         .whereIn('labour_id', labourIds)
-        .select('labour_id', 'status', 'date', 'site_id', 'overtime_hours');
+        .select('labour_id', 'status', 'date', 'site_id', 'overtime_hours', 'working_hours');
 
     // Fetch daily schedules for these labours in THIS MONTH to calculate divisors
     const dailySchedules = await attendanceDB('labour_daily_schedule')
@@ -1226,7 +1243,8 @@ export const getFinancesSummary = catchAsync(async (req, res) => {
                 if (rec.status === 'Present' || rec.status === 'Paid Leave') {
                     w = 1 / S;
                 } else if (rec.status === 'Half Day') {
-                    w = 0.5 / S;
+                    const hrs = Number(rec.working_hours || 4);
+                    w = (hrs / 8.0) / S;
                 }
                 counts.weightSum += w;
 
@@ -1432,7 +1450,7 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
         .where('date', '>=', start)
         .where('date', '<=', end)
         .whereIn('labour_id', labourIds)
-        .select('labour_id', 'status', 'date', 'site_id', 'overtime_hours');
+        .select('labour_id', 'status', 'date', 'site_id', 'overtime_hours', 'working_hours');
 
     if (!isAllSites) {
         attendanceQuery.where('site_id', Number(site_id));
@@ -1539,6 +1557,7 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
 
             const status = attRec ? attRec.status : '-';
             const ot = attRec ? Number(attRec.overtime_hours || 0) : 0;
+            const workingHours = attRec ? Number(attRec.working_hours || (status === 'Half Day' ? 4 : 8)) : 8;
 
             // Resolve date-specific effective rates
             const dayRates = rateResolver(lab.labour_id, dStr);
@@ -1546,16 +1565,27 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
             // Split divisor
             const S = (scheduleCountMap[lab.labour_id] && scheduleCountMap[lab.labour_id][dStr]) || 1;
             let weight = 0;
+            let dayPresentVal = 0;
+            let displayStatus = status;
+
             if (status === 'Present') {
-                weight = 1 / S;
+                weight = 1.0 / S;
+                dayPresentVal = 1.0;
+                displayStatus = 'P';
             } else if (status === 'Half Day') {
-                weight = 0.5 / S;
+                weight = (workingHours / 8.0) / S;
+                dayPresentVal = workingHours / 8.0;
+                displayStatus = workingHours === 4 ? 'HD' : `HD (${workingHours}h)`;
+            } else if (status === 'Absent') {
+                displayStatus = 'A';
             }
 
             daysData[dStr] = {
                 day: dayInfo.day,
                 date: dStr,
                 status,
+                display_status: displayStatus,
+                working_hours: workingHours,
                 ot_hours: ot,
                 advance_amount: advAmount,
                 effective_daily_rate: dayRates.daily_rate,
@@ -1568,7 +1598,7 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
             if (status === 'Present') {
                 dailyPresentCount[idx] += 1;
             } else if (status === 'Half Day') {
-                dailyPresentCount[idx] += 0.5;
+                dailyPresentCount[idx] += dayPresentVal;
             }
             dailyOtHours[idx] += ot;
             dailyAdvances[idx] += advAmount;
@@ -1576,8 +1606,7 @@ export const getDetailedMonthlyLedger = catchAsync(async (req, res) => {
             // Worker financial accumulations
             if (!dayInfo.isFuture) {
                 workerPresentWeight += weight;
-                if (status === 'Present') workerPresentDaysCount += 1;
-                else if (status === 'Half Day') workerPresentDaysCount += 0.5;
+                workerPresentDaysCount += dayPresentVal;
 
                 workerBaseCredit += weight * dayRates.daily_rate;
                 workerOtHours += ot;
