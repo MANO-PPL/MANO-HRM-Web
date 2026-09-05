@@ -1,5 +1,7 @@
+import sys
 import os
 import json
+import asyncio
 from enum import Enum
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
@@ -7,6 +9,31 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
 from groq import Groq
+
+# Gracefully suppress multiprocessing / asyncio KeyboardInterrupt tracebacks on Windows termination
+try:
+    import uvicorn.server
+    _orig_server_run = uvicorn.server.Server.run
+    def _safe_server_run(self, *args, **kwargs):
+        try:
+            return _orig_server_run(self, *args, **kwargs)
+        except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
+            return None
+    uvicorn.server.Server.run = _safe_server_run
+except Exception:
+    pass
+
+try:
+    import uvicorn._subprocess as uvicorn_subp
+    _orig_subp = uvicorn_subp.subprocess_started
+    def _safe_subp(*args, **kwargs):
+        try:
+            return _orig_subp(*args, **kwargs)
+        except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
+            return None
+    uvicorn_subp.subprocess_started = _safe_subp
+except Exception:
+    pass
 
 # Load environment variables from the backend root
 env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
@@ -209,4 +236,7 @@ async def summarize_attendance(payload: AttendanceSummaryInput):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    try:
+        uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    except (KeyboardInterrupt, SystemExit):
+        pass
