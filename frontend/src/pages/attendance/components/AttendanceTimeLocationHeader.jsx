@@ -9,7 +9,8 @@ const AttendanceTimeLocationHeader = ({
     onRefreshLocation,
     myShift,
     globalActiveSession,
-    onOpenCheckpointModal
+    onOpenCheckpointModal,
+    isCheckpointAllowed = true
 }) => {
     const hours = currentTime.getHours();
     const greeting = hours < 12 ? 'Morning' : hours < 17 ? 'Afternoon' : 'Evening';
@@ -93,7 +94,7 @@ const AttendanceTimeLocationHeader = ({
                             </div>
                         </div>
 
-                        {onOpenCheckpointModal && (
+                        {onOpenCheckpointModal && isCheckpointAllowed && (
                             <button
                                 type="button"
                                 onClick={onOpenCheckpointModal}
@@ -113,18 +114,27 @@ const AttendanceTimeLocationHeader = ({
                                 <MapPin size={22} strokeWidth={2.2} />
                             </div>
                             <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="block text-[10px] font-bold text-indigo-200 tracking-wider uppercase opacity-80">
                                         Your Location
                                     </span>
-                                    {location.lat && location.lng && !location.error && (
+                                    {location.lat && location.lng && !location.error ? (
                                         <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                                             {location.accuracy ? `±${Math.round(location.accuracy)}m` : 'Live GPS'}
                                         </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => onRefreshLocation && onRefreshLocation(true)}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all cursor-pointer"
+                                            title="Click to request browser location permission"
+                                        >
+                                            <RefreshCw size={9} /> Enable Location
+                                        </button>
                                     )}
                                 </div>
                                 <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight truncate mt-0.5" title={location.fullAddress || location.address}>
-                                    {isLoadingLoc ? 'Acquiring GPS...' : location.address}
+                                    {isLoadingLoc ? 'Acquiring GPS...' : (location.error || location.address === 'Location Access Denied' ? 'Location Access Blocked' : location.address)}
                                 </h4>
                                 {location.lat && location.lng && (
                                     <p className="text-[10px] text-indigo-200/70 font-mono">
