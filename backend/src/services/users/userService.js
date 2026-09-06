@@ -108,13 +108,19 @@ export const createUser = async (userData, authInfo, profileImageBuffer = null) 
         if (!org) throw new AppError("Organization not found", 404);
 
         const currentUsersResult = await trx("core_users")
-            .where({ org_id: authInfo.orgId, is_deleted: false })
+            .where({ org_id: authInfo.orgId })
+            .where(function () {
+                this.where('is_active', 1).orWhere('is_active', true);
+            })
+            .where(function () {
+                this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+            })
             .count('user_id as count')
             .first();
         const currentCount = parseInt(currentUsersResult.count || 0, 10);
 
         if (currentCount >= org.max_users) {
-            throw new AppError(`Organization has reached its user limit (${org.max_users}). Please upgrade your plan or delete users to add more.`, 403);
+            throw new AppError(`Organization has reached its active user limit (${org.max_users}). Please upgrade your plan or deactivate unused users to add more.`, 403);
         }
 
         const nextNumber = org.last_user_number + 1;
@@ -394,7 +400,7 @@ export const restoreUser = async (userId, authInfo) => {
 };
 
 export const toggleUserStatus = async (userId, isActive, authInfo) => {
-    const targetUser = await attendanceDB('core_users').where({ user_id: userId, org_id: authInfo.orgId }).select('user_type', 'user_name').first();
+    const targetUser = await attendanceDB('core_users').where({ user_id: userId, org_id: authInfo.orgId }).select('user_type', 'user_name', 'is_active').first();
     if (!targetUser) throw new AppError("User not found", 404);
 
     if (authInfo.initiatorRole === 'hr' && (targetUser.user_type === 'admin' || targetUser.user_type === 'hr')) {
@@ -405,7 +411,45 @@ export const toggleUserStatus = async (userId, isActive, authInfo) => {
         throw new AppError("Cannot deactivate Admin users", 403);
     }
 
+    // If activating a currently inactive user, ensure organization does not exceed active user limit
+    if (isActive && !targetUser.is_active) {
+        const org = await attendanceDB("core_organizations").where({ org_id: authInfo.orgId }).first();
+        if (org && org.max_users) {
+            const currentUsersResult = await attendanceDB("core_users")
+                .where({ org_id: authInfo.orgId })
+                .where(function () {
+                    this.where('is_active', 1).orWhere('is_active', true);
+                })
+                .where(function () {
+                    this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+                })
+                .count('user_id as count')
+                .first();
+            const currentCount = parseInt(currentUsersResult.count || 0, 10);
+
+            if (currentCount >= org.max_users) {
+                throw new AppError(`Organization has reached its active user limit (${org.max_users}). Please upgrade your plan or deactivate other users first.`, 403);
+            }
+        }
+    }
+
     await attendanceDB('core_users').where('user_id', userId).where('org_id', authInfo.orgId).update({ is_active: isActive });
+
+    try {
+        EventBus.emitActivityLog({
+            user_id: authInfo.initiatorId,
+            org_id: authInfo.orgId,
+            event_type: "UPDATE",
+            event_source: "API",
+            object_type: "USER",
+            object_id: userId,
+            description: `${isActive ? 'Activated' : 'Deactivated'} user ${targetUser.user_name}`,
+            request_ip: authInfo.clientIp,
+            user_agent: authInfo.userAgent
+        });
+    } catch (err) {
+        console.error("Failed to log activity:", err);
+    }
 
     return true;
 };
@@ -591,7 +635,13 @@ export const bulkCreateUsers = async (file, authInfo) => {
         let nextUserNumber = org.last_user_number;
 
         const currentUsersResult = await trx("core_users")
-            .where({ org_id: authInfo.orgId, is_deleted: false })
+            .where({ org_id: authInfo.orgId })
+            .where(function () {
+                this.where('is_active', 1).orWhere('is_active', true);
+            })
+            .where(function () {
+                this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+            })
             .count('user_id as count')
             .first();
         let currentCount = parseInt(currentUsersResult.count || 0, 10);
@@ -714,11 +764,19 @@ export const deleteDepartment = async (deptId, orgId) => {
 
     const userInDept = await attendanceDB('core_users')
         .where({ dept_id: deptId, org_id: orgId })
+        .where(function () {
+            this.where('is_active', 1).orWhere('is_active', true);
+        })
         .where(builder => builder.where('is_deleted', false).orWhereNull('is_deleted'))
         .first();
     if (userInDept) {
-        throw new AppError("Cannot delete department because it is currently assigned to employee(s)", 400);
+        throw new AppError("Cannot delete department because it is currently assigned to active employee(s)", 400);
     }
+
+    // Unassign department from any inactive/deleted users before deletion
+    await attendanceDB('core_users')
+        .where({ dept_id: deptId, org_id: orgId })
+        .update({ dept_id: null });
 
     await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).del();
     return { success: true };
@@ -760,11 +818,19 @@ export const deleteDesignation = async (desgId, orgId) => {
 
     const userInDesg = await attendanceDB('core_users')
         .where({ desg_id: desgId, org_id: orgId })
+        .where(function () {
+            this.where('is_active', 1).orWhere('is_active', true);
+        })
         .where(builder => builder.where('is_deleted', false).orWhereNull('is_deleted'))
         .first();
     if (userInDesg) {
-        throw new AppError("Cannot delete designation because it is currently assigned to employee(s)", 400);
+        throw new AppError("Cannot delete designation because it is currently assigned to active employee(s)", 400);
     }
+
+    // Unassign designation from any inactive/deleted users before deletion
+    await attendanceDB('core_users')
+        .where({ desg_id: desgId, org_id: orgId })
+        .update({ desg_id: null });
 
     await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).del();
     return { success: true };
@@ -883,12 +949,27 @@ export const updateShift = async (shiftId, shiftData, orgId) => {
 };
 
 export const deleteShift = async (shiftId, orgId) => {
-    const usersCount = await attendanceDB('core_users').where({ shift_id: shiftId }).count('user_id as count').first();
-    if (usersCount.count > 0) {
-        throw new AppError(`Cannot delete shift. It is assigned to ${usersCount.count} users.`, 400);
+    const usersCount = await attendanceDB('core_users')
+        .where({ shift_id: shiftId })
+        .where(function () {
+            this.where('is_active', 1).orWhere('is_active', true);
+        })
+        .where(function () {
+            this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+        })
+        .count('user_id as count')
+        .first();
+
+    if (usersCount && usersCount.count > 0) {
+        throw new AppError(`Cannot delete shift. It is assigned to ${usersCount.count} active users.`, 400);
     }
 
-    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id }).del();
+    // Unassign shift from any inactive/deleted users before deletion
+    await attendanceDB('core_users')
+        .where({ shift_id: shiftId, org_id: orgId })
+        .update({ shift_id: null });
+
+    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id: orgId }).del();
     if (affected === 0) throw new AppError("Shift not found", 404);
     return true;
 };
@@ -957,7 +1038,13 @@ export const bulkCreateUsersFromJson = async (users, authInfo) => {
         if (!org) throw new AppError("Organization not found", 404);
 
         const currentUsersResult = await trx("core_users")
-            .where({ org_id: orgId, is_deleted: false })
+            .where({ org_id: orgId })
+            .where(function () {
+                this.where('is_active', 1).orWhere('is_active', true);
+            })
+            .where(function () {
+                this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+            })
             .count('user_id as count')
             .first();
         let currentCount = parseInt(currentUsersResult.count || 0, 10);

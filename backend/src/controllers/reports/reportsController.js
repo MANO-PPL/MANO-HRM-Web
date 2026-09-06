@@ -437,12 +437,39 @@ export const previewReport = catchAsync(async (req, res) => {
     res.json({ ok: true, data });
 });
 
+export const getReportEmployees = catchAsync(async (req, res) => {
+    const org_id = req.user.org_id;
+    const { month, date, startDate: queryStart, endDate: queryEnd, type = "matrix_monthly", dept_id, desg_id, shift_id } = req.query;
+    const { startDate, endDate } = reportsService.resolveDateRange({ type, month, date, startDate: queryStart, endDate: queryEnd });
+
+    const users = await reportsService.getUsers({
+        org_id,
+        dept_id,
+        desg_id,
+        shift_id,
+        startDate,
+        endDate,
+        include_inactive: type === "employee_master"
+    });
+
+    res.json({ ok: true, users });
+});
+
 export const compileReportBuffer = async ({ org_id, targetUserId, month, date, type, format, startDate: queryStart, endDate: queryEnd, columns, dept_id, desg_id, shift_id }) => {
     const colsObj = typeof columns === 'string' ? JSON.parse(columns) : (columns || {});
     const { startDate, endDate } = reportsService.resolveDateRange({ type, month, date, startDate: queryStart, endDate: queryEnd });
     const todayStr = await reportsService.getTodayStr(org_id);
 
-    const users = await reportsService.getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id });
+    const users = await reportsService.getUsers({
+        org_id,
+        targetUserId,
+        dept_id,
+        desg_id,
+        shift_id,
+        startDate,
+        endDate,
+        include_inactive: type === "employee_master"
+    });
     let records = [];
     if (type !== "employee_master") {
         records = await reportsService.getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
@@ -612,18 +639,19 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
             const start = new Date(startDate);
             const end = new Date(endDate);
-            const dateHeaders = [];
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                dateHeaders.push(new Date(d));
-            }
+            const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+            const dateHeaders = dateStrings.map(dateStr => {
+                const [y, m, d] = dateStr.split('-').map(Number);
+                return new Date(y, m - 1, d);
+            });
             pdfRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
                 let totalWorkedHrs = 0;
                 let totalLateMins = 0;
                 let presentDays = 0;
-                dateHeaders.forEach(d => {
-                    const dateStr = d.toISOString().split('T')[0];
-                    const dayRecs = userRecs.filter(r => new Date(r.time_in).toISOString().split('T')[0] === dateStr);
+                dateHeaders.forEach((d, dIdx) => {
+                    const dateStr = dateStrings[dIdx];
+                    const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
                     const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                     if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
                         presentDays++;
@@ -633,12 +661,14 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         }
                     }
                 });
-                const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateHeaders);
+                const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings);
                 
                 let calculatedAbsentDays = 0;
-                dateHeaders.forEach(d => {
-                    const dateStr = d.toISOString().split('T')[0];
-                    const dayRecs = userRecs.filter(r => new Date(r.time_in).toISOString().split('T')[0] === dateStr);
+                dateHeaders.forEach((d, dIdx) => {
+                    const dateStr = dateStrings[dIdx];
+                    const userStartDate = reportsService.getUserStartDate(u);
+                    if (userStartDate && dateStr < userStartDate) return;
+                    const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
                     const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                     const rules = reportsService.getShiftRules(u);
                     const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
@@ -667,8 +697,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             });
 
         } else if (type === "employee_master") {
-            pdfCols = ["Name", "Email", "Phone", "Dept", "Designation", "Role"];
-            pdfRows = users.map(u => [u.user_name, u.email || "-", u.phone_no || "-", u.dept_name || "-", u.desg_name || "-", u.user_type || "-"]);
+            pdfCols = ["Name", "Email", "Phone", "Dept", "Designation", "Role", "Status"];
+            pdfRows = users.map(u => [u.user_name, u.email || "-", u.phone_no || "-", u.dept_name || "-", u.desg_name || "-", u.user_type || "-", u.is_deleted ? "Deleted" : (u.is_active ? "Active" : "Inactive")]);
         } else {
             pdfCols = ["Name", "Dept", "Total Days"];
             const pdfColIndices = [];
@@ -701,12 +731,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const totalDaysInMonth = new Date(year, monthNum, 0).getDate();
 
             // Generate calendar day dates for this month timezone-independently
-            const dateStrings = [];
-            const startD = new Date(startDate + 'T00:00:00Z');
-            const endD = new Date(endDate + 'T00:00:00Z');
-            for (let d = new Date(startD); d <= endD; d.setUTCDate(d.getUTCDate() + 1)) {
-                dateStrings.push(d.toISOString().split('T')[0]);
-            }
+            const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
 
             const baseRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
@@ -721,10 +746,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 let totalHrs = 0;
 
                 dateStrings.forEach(dateStr => {
-                    const dayRecs = userRecs.filter(r => {
-                        const rDate = new Date(r.time_in).toISOString().split('T')[0];
-                        return rDate === dateStr;
-                    });
+                    const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
 
                     if (dayRecs.length > 0) {
                         const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
@@ -758,7 +780,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     } else {
                         const rules = reportsService.getShiftRules(u);
                         const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
-                        if (dateStr <= todayStr && dayType !== 'week_off') {
+                        const userStartDate = reportsService.getUserStartDate(u);
+                        if (dateStr <= todayStr && dayType !== 'week_off' && (!userStartDate || dateStr >= userStartDate)) {
                             absentDays++;
                         }
                     }
@@ -949,17 +972,16 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const key = col.key;
             if (["req_hrs", "worked_hrs", "late_hrs", "late_count", "present_days", "absent_days"].includes(key)) {
                 const letter = getColLetter(idx + 1);
-                totalsRowData[key] = { formula: `SUM(${letter}2:${letter}${lastRow})` };
+                        totalsRowData[key] = { formula: `SUM(${letter}2:${letter}${lastRow})` };
             }
         });
         worksheet.addRow(totalsRowData);
     } else if (type === "attendance_matrix_weekly" || type === "attendance_matrix_monthly") {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const dateHeaders = [];
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            dateHeaders.push(new Date(d));
-        }
+        const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+        const dateHeaders = dateStrings.map(dateStr => {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        });
 
         const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
         if (colsObj.shift !== false) {
@@ -975,14 +997,15 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 summaryChecks.push(check);
             }
         };
-        pushSummary("Required Hrs", "requiredHours");
+        pushSummary("Req Hrs", "requiredHours");
         pushSummary("Worked Hrs", "workedHours");
         pushSummary("Late Hours", "late");
         pushSummary("Late Count", "late");
         pushSummary("Present Days", "attendanceDays");
         pushSummary("Absent Days", "attendanceDays");
 
-        worksheet.addRow([...baseHeaders, ...gridHeaders, ...summaryCols]);
+        const allHeaders = [...baseHeaders, ...gridHeaders, ...summaryCols];
+        worksheet.addRow(allHeaders);
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true };
         headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
@@ -1005,13 +1028,13 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let presentDays = 0;
 
             const dateCells = [];
-            dateHeaders.forEach(d => {
-                const dateStr = d.toISOString().split('T')[0];
-                const dayRecs = userRecs.filter(r => new Date(r.time_in).toISOString().split('T')[0] === dateStr);
+            dateHeaders.forEach((d, dIdx) => {
+                const dateStr = dateStrings[dIdx];
+                const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
                 const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                 const rules = reportsService.getShiftRules(u);
                 const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
-                const dayOfWeek = d.getUTCDay();
+                const dayOfWeek = d.getDay();
 
                 if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
                     dateCells.push("1.0");
@@ -1035,15 +1058,15 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 }
             });
 
-            const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateHeaders);
+            const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings);
             const workedHrs = totalWorkedHrs;
             const lateHrs = totalLateMins / 60;
             const lateCount = userRecs.filter(r => r.late_minutes > 0).length;
 
             let calculatedAbsentDays = 0;
-            dateHeaders.forEach(d => {
-                const dateStr = d.toISOString().split('T')[0];
-                const dayRecs = userRecs.filter(r => new Date(r.time_in).toISOString().split('T')[0] === dateStr);
+            dateHeaders.forEach((d, dIdx) => {
+                const dateStr = dateStrings[dIdx];
+                const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
                 const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                 const rules = reportsService.getShiftRules(u);
                 const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
@@ -1182,12 +1205,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         const [year, monthNum] = month.split("-").map(Number);
         const totalDaysInMonth = new Date(year, monthNum, 0).getDate();
         // Generate calendar day dates for this month timezone-independently
-        const dateStrings = [];
-        const startD = new Date(startDate + 'T00:00:00Z');
-        const endD = new Date(endDate + 'T00:00:00Z');
-        for (let d = new Date(startD); d <= endD; d.setUTCDate(d.getUTCDate() + 1)) {
-            dateStrings.push(d.toISOString().split('T')[0]);
-        }
+        const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
 
         users.forEach(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
@@ -1202,10 +1220,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let totalHrs = 0;
 
             dateStrings.forEach(dateStr => {
-                const dayRecs = userRecs.filter(r => {
-                    const rDate = new Date(r.time_in).toISOString().split('T')[0];
-                    return rDate === dateStr;
-                });
+                const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
 
                 if (dayRecs.length > 0) {
                     const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
@@ -1297,7 +1312,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             { header: "Phone", key: "phone", width: 15 },
             { header: "Department", key: "dept", width: 20 },
             { header: "Designation", key: "desg", width: 20 },
-            { header: "Role", key: "user_type", width: 15 }
+            { header: "Role", key: "user_type", width: 15 },
+            { header: "Status", key: "status", width: 15 }
         ];
         users.forEach(u => {
             worksheet.addRow({
@@ -1306,17 +1322,17 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 phone: u.phone_no || "-",
                 dept: u.dept_name || "-",
                 desg: u.desg_name || "-",
-                user_type: u.user_type
+                user_type: u.user_type,
+                status: u.is_deleted ? "Deleted" : (u.is_active ? "Active" : "Inactive")
             });
         });
     } else {
         // Multi-day Matrix
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const dateHeaders = [];
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            dateHeaders.push(new Date(d));
-        }
+        const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+        const dateHeaders = dateStrings.map(dateStr => {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        });
 
         const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
         
@@ -1425,9 +1441,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let lateCount = 0;
             let lateMins = 0;
 
-            dateHeaders.forEach(d => {
-                const dateStr = d.toISOString().split('T')[0];
-                const dayRecs = userRecs.filter(r => new Date(r.time_in).toISOString().split('T')[0] === dateStr);
+            dateHeaders.forEach((d, dIdx) => {
+                const dateStr = dateStrings[dIdx];
+                const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
                 const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                 const rules = reportsService.getShiftRules(u);
                 const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
@@ -1561,7 +1577,7 @@ import { reportQueue } from '../../config/queues.js';
 import crypto from 'crypto';
 
 export const downloadReport = catchAsync(async (req, res) => {
-    const { month, date, type, format = "xlsx", startDate, endDate, columns, dept_id, desg_id } = req.query;
+    const { month, date, type, format = "xlsx", startDate, endDate, columns, dept_id, desg_id, shift_id } = req.query;
     
     // TEMPORARY DEBUG LOGGING
     try {
@@ -1619,7 +1635,8 @@ export const downloadReport = catchAsync(async (req, res) => {
         endDate,
         columns: typeof columns === 'string' ? columns : JSON.stringify(columns),
         dept_id,
-        desg_id
+        desg_id,
+        shift_id
     }, {
         attempts: 3,
         backoff: 5000

@@ -1165,7 +1165,7 @@ export async function getAllActivitiesAdmin({ org_id, date, startDate, endDate }
         .select(
             'da.activity_id',
             'da.activity_id as id',
-            'da.org_id',
+            'u.org_id',
             'da.user_id',
             attendanceDB.raw("DATE_FORMAT(da.activity_date, '%Y-%m-%d') as activity_date"),
             attendanceDB.raw("TIME_FORMAT(da.start_time, '%H:%i:%s') as start_time"),

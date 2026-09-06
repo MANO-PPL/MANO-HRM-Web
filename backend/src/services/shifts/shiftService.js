@@ -156,15 +156,26 @@ export async function updateShift({ shift_id, org_id, shift_name, is_active, pol
  * Delete a shift
  */
 export async function deleteShift({ shift_id, org_id }) {
-    // Check if shift is assigned to any user
+    // Check if shift is assigned to any active user
     const usersCount = await attendanceDB('core_users')
         .where({ shift_id })
+        .where(function () {
+            this.where('is_active', 1).orWhere('is_active', true);
+        })
+        .where(function () {
+            this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+        })
         .count('user_id as count')
         .first();
 
-    if (usersCount.count > 0) {
-        throw new Error(`Cannot delete shift. It is assigned to ${usersCount.count} users.`);
+    if (usersCount && usersCount.count > 0) {
+        throw new Error(`Cannot delete shift. It is assigned to ${usersCount.count} active users.`);
     }
+
+    // Unassign shift from any inactive/deleted users before deletion
+    await attendanceDB('core_users')
+        .where({ shift_id, org_id })
+        .update({ shift_id: null });
 
     const affected = await attendanceDB('org_shifts')
         .where({ shift_id, org_id })
@@ -183,6 +194,12 @@ export async function getUsersWithShifts(org_id) {
     const users = await attendanceDB('core_users')
         .leftJoin('org_designations', 'core_users.desg_id', 'org_designations.desg_id')
         .where('core_users.org_id', org_id)
+        .where(function () {
+            this.where('core_users.is_active', 1).orWhere('core_users.is_active', true);
+        })
+        .where(function () {
+            this.where('core_users.is_deleted', 0).orWhere('core_users.is_deleted', false).orWhereNull('core_users.is_deleted');
+        })
         .select(
             'core_users.user_id',
             'core_users.user_name',

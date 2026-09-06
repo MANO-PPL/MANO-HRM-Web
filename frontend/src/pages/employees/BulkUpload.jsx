@@ -103,7 +103,7 @@ const BulkUpload = () => {
             // 1. Check existing users to calculate available slots based on subscription limit
             const usersData = await adminService.getAllUsers();
             const currentUsers = usersData.users || [];
-            const currentCount = currentUsers.length;
+            const currentCount = currentUsers.filter(u => u.is_active && !u.is_deleted).length;
             const maxUsersLimit = currentUser?.org_max_users || Infinity; // Fallback to Infinity if not yet in state
             const availableSlots = Math.max(0, maxUsersLimit - currentCount);
 

@@ -466,7 +466,8 @@ const Reports = () => {
     const [hoveredRecord, setHoveredRecord] = useState(null);
     const [hoveredPosition, setHoveredPosition] = useState({ top: 0, left: 0 });
 
-    const [employees, setEmployees] = useState([]);
+    const [attendanceEmployees, setAttendanceEmployees] = useState([]);
+    const [tableEmployees, setTableEmployees] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
     const [shifts, setShifts] = useState([]);
@@ -575,22 +576,24 @@ const Reports = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const attendanceSelectedEmployeeName = employees.find(emp => emp.user_id === attendanceEmployeeId)?.user_name || 'All Employees';
-    const attendanceFilteredEmployees = employees.filter(emp => {
-        const matchesDept = !attendanceDeptId || String(emp.dept_id) === String(attendanceDeptId);
-        const matchesDesg = !attendanceDesgId || String(emp.desg_id) === String(attendanceDesgId);
-        const matchesShift = !attendanceShiftId || (attendanceShiftId === 'open_shift' ? !emp.shift_id : String(emp.shift_id) === String(attendanceShiftId));
+    const attendanceSelectedEmp = attendanceEmployees.find(emp => emp.user_id === attendanceEmployeeId);
+    const attendanceSelectedEmployeeName = attendanceSelectedEmp
+        ? `${attendanceSelectedEmp.user_name}${attendanceSelectedEmp.is_deleted ? ' (Deleted)' : !attendanceSelectedEmp.is_active ? ' (Inactive)' : ''}`
+        : 'All Employees';
+
+    const attendanceFilteredEmployees = attendanceEmployees.filter(emp => {
         const matchesQuery = emp.user_name.toLowerCase().includes(attendanceEmpSearchQuery.toLowerCase());
-        return matchesDept && matchesDesg && matchesShift && matchesQuery;
+        return matchesQuery;
     });
 
-    const tableSelectedEmployeeName = employees.find(emp => emp.user_id === tableEmployeeId)?.user_name || 'All Employees';
-    const tableFilteredEmployees = employees.filter(emp => {
-        const matchesDept = !tableDeptId || String(emp.dept_id) === String(tableDeptId);
-        const matchesDesg = !tableDesgId || String(emp.desg_id) === String(tableDesgId);
-        const matchesShift = !tableShiftId || (tableShiftId === 'open_shift' ? !emp.shift_id : String(emp.shift_id) === String(tableShiftId));
+    const tableSelectedEmp = tableEmployees.find(emp => emp.user_id === tableEmployeeId);
+    const tableSelectedEmployeeName = tableSelectedEmp
+        ? `${tableSelectedEmp.user_name}${tableSelectedEmp.is_deleted ? ' (Deleted)' : !tableSelectedEmp.is_active ? ' (Inactive)' : ''}`
+        : 'All Employees';
+
+    const tableFilteredEmployees = tableEmployees.filter(emp => {
         const matchesQuery = emp.user_name.toLowerCase().includes(tableEmpSearchQuery.toLowerCase());
-        return matchesDept && matchesDesg && matchesShift && matchesQuery;
+        return matchesQuery;
     });
 
     const attendanceWeeks = React.useMemo(() => getWeeksOfMonth(attendanceMonth), [attendanceMonth]);
@@ -610,45 +613,30 @@ const Reports = () => {
 
     useEffect(() => {
         if (attendanceEmployeeId) {
-            const emp = employees.find(e => e.user_id === attendanceEmployeeId);
-            if (emp) {
-                const deptMismatch = attendanceDeptId && String(emp.dept_id) !== String(attendanceDeptId);
-                const desgMismatch = attendanceDesgId && String(emp.desg_id) !== String(attendanceDesgId);
-                const shiftMismatch = attendanceShiftId && (attendanceShiftId === 'open_shift' ? emp.shift_id !== null : String(emp.shift_id) !== String(attendanceShiftId));
-                if (deptMismatch || desgMismatch || shiftMismatch) {
-                    setAttendanceEmployeeId('');
-                }
+            const emp = attendanceEmployees.find(e => e.user_id === attendanceEmployeeId);
+            if (!emp) {
+                setAttendanceEmployeeId('');
             }
         }
-    }, [attendanceDeptId, attendanceDesgId, attendanceShiftId, employees, attendanceEmployeeId]);
+    }, [attendanceEmployees, attendanceEmployeeId]);
 
     useEffect(() => {
         if (tableEmployeeId) {
-            const emp = employees.find(e => e.user_id === tableEmployeeId);
-            if (emp) {
-                const deptMismatch = tableDeptId && String(emp.dept_id) !== String(tableDeptId);
-                const desgMismatch = tableDesgId && String(emp.desg_id) !== String(tableDesgId);
-                const shiftMismatch = tableShiftId && (tableShiftId === 'open_shift' ? emp.shift_id !== null : String(emp.shift_id) !== String(tableShiftId));
-                if (deptMismatch || desgMismatch || shiftMismatch) {
-                    setTableEmployeeId('');
-                }
+            const emp = tableEmployees.find(e => e.user_id === tableEmployeeId);
+            if (!emp) {
+                setTableEmployeeId('');
             }
         }
-    }, [tableDeptId, tableDesgId, tableShiftId, employees, tableEmployeeId]);
+    }, [tableEmployees, tableEmployeeId]);
 
     useEffect(() => {
-        const fetchEmployeesAndDepts = async () => {
+        const fetchDeptsAndMeta = async () => {
             try {
-                const [empRes, deptRes, desgRes, shiftRes] = await Promise.all([
-                    adminService.getAllUsers(),
+                const [deptRes, desgRes, shiftRes] = await Promise.all([
                     adminService.getDepartments(),
                     adminService.getDesignations(),
                     adminService.getShifts()
                 ]);
-                if (empRes.success && empRes.users) {
-                    const sorted = [...empRes.users].sort((a, b) => a.user_name.localeCompare(b.user_name));
-                    setEmployees(sorted);
-                }
                 if (deptRes && deptRes.departments) {
                     const sortedDepts = [...deptRes.departments].sort((a, b) => a.dept_name.localeCompare(b.dept_name));
                     setDepartments(sortedDepts);
@@ -665,8 +653,66 @@ const Reports = () => {
                 console.error("Failed to load filter metadata", err);
             }
         };
-        fetchEmployeesAndDepts();
+        fetchDeptsAndMeta();
     }, []);
+
+    // Dynamically fetch employees for Card View based on active period & filters
+    useEffect(() => {
+        let isCancelled = false;
+        const fetchCardEmployees = async () => {
+            try {
+                const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(attendanceReportType);
+                const dateToUse = isWeekly ? attendanceWeek : attendanceDate;
+                const res = await adminService.getReportEmployees(
+                    attendanceMonth,
+                    attendanceReportType,
+                    dateToUse,
+                    '',
+                    '',
+                    attendanceDeptId,
+                    attendanceDesgId,
+                    attendanceShiftId
+                );
+                if (!isCancelled && res.ok && res.users) {
+                    setAttendanceEmployees(res.users);
+                }
+            } catch (err) {
+                console.error("Failed to fetch dynamic card employees", err);
+            }
+        };
+        fetchCardEmployees();
+        return () => { isCancelled = true; };
+    }, [attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceDeptId, attendanceDesgId, attendanceShiftId]);
+
+    // Dynamically fetch employees for Table View based on active period & filters
+    useEffect(() => {
+        let isCancelled = false;
+        const fetchTableEmployees = async () => {
+            try {
+                const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType);
+                const dateToUse = (isWeekly && !tableUseCustomRange) ? tableWeek : tableDate;
+                const qStart = tableUseCustomRange ? tableCustomStartDate : '';
+                const qEnd = tableUseCustomRange ? tableCustomEndDate : '';
+                const res = await adminService.getReportEmployees(
+                    tableMonth,
+                    tableReportType,
+                    dateToUse,
+                    qStart,
+                    qEnd,
+                    tableDeptId,
+                    tableDesgId,
+                    tableShiftId
+                );
+                if (!isCancelled && res.ok && res.users) {
+                    setTableEmployees(res.users);
+                }
+            } catch (err) {
+                console.error("Failed to fetch dynamic table employees", err);
+            }
+        };
+        fetchTableEmployees();
+        return () => { isCancelled = true; };
+    }, [tableReportType, tableMonth, tableDate, tableWeek, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableDeptId, tableDesgId, tableShiftId]);
 
 
 
@@ -693,6 +739,7 @@ const Reports = () => {
     const [loadingPreview, setLoadingPreview] = useState(false);
     const [cacheHit, setCacheHit] = useState(false); // true when currently showing cached data
     const bgRefreshTimerRef = useRef(null);
+    const activeReqIdRef = useRef(0);
 
     // Compute activeFilters based on previewMode (card vs table)
     const activeFilters = React.useMemo(() => {
@@ -703,7 +750,12 @@ const Reports = () => {
         const selectedMonth = isCard ? attendanceMonth : tableMonth;
         const selectedDate = isCard ? attendanceDate : tableDate;
         const selectedWeek = isCard ? attendanceWeek : tableWeek;
-        const selectedEmployeeId = isCard ? attendanceEmployeeId : tableEmployeeId;
+
+        // Ensure we never query an employee who is not eligible in the active period/filters
+        const effectiveAttendanceEmpId = (attendanceEmployeeId && attendanceEmployees.some(e => e.user_id === attendanceEmployeeId)) ? attendanceEmployeeId : '';
+        const effectiveTableEmpId = (tableEmployeeId && tableEmployees.some(e => e.user_id === tableEmployeeId)) ? tableEmployeeId : '';
+        const selectedEmployeeId = isCard ? effectiveAttendanceEmpId : effectiveTableEmpId;
+
         const selectedDeptId = isCard ? attendanceDeptId : tableDeptId;
         const selectedDesgId = isCard ? attendanceDesgId : tableDesgId;
         const selectedShiftId = isCard ? attendanceShiftId : tableShiftId;
@@ -745,8 +797,8 @@ const Reports = () => {
         };
     }, [
         previewMode,
-        attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId, attendanceDeptId, attendanceDesgId, attendanceShiftId,
-        tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableDeptId, tableDesgId, tableShiftId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
+        attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId, attendanceEmployees, attendanceDeptId, attendanceDesgId, attendanceShiftId,
+        tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableEmployees, tableDeptId, tableDesgId, tableShiftId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
     ]);
 
     // Build a stable cache key from activeFilters
@@ -766,7 +818,7 @@ const Reports = () => {
         });
     }, [activeFilters]);
 
-    const fetchAndCachePreview = React.useCallback(async ({ key, cancelled, showLoadingIfNoCache }) => {
+    const fetchAndCachePreview = React.useCallback(async ({ key, reqId, showLoadingIfNoCache }) => {
         // Show loading spinner only if there's no cached data to display
         if (showLoadingIfNoCache) setLoadingPreview(true);
 
@@ -783,18 +835,19 @@ const Reports = () => {
                 activeFilters.selectedDesgId,
                 activeFilters.selectedShiftId
             );
-            if (!cancelled && res.ok) {
+            // Ignore out-of-order responses from superseded requests
+            if (reqId === activeReqIdRef.current && res.ok) {
                 attendanceViewCache.set(key, { data: res.data, fetchedAt: Date.now() });
                 setPreviewData(res.data);
                 setCacheHit(false);
             }
         } catch (error) {
-            if (!cancelled) {
+            if (reqId === activeReqIdRef.current) {
                 console.error('fetchPreview failed:', error);
                 toast.error('Failed to load preview data');
             }
         } finally {
-            if (!cancelled) setLoadingPreview(false);
+            if (reqId === activeReqIdRef.current) setLoadingPreview(false);
         }
     }, [activeFilters]);
 
@@ -832,8 +885,7 @@ const Reports = () => {
     }, [loadingPreview]);
 
     React.useEffect(() => {
-        let cancelled = false;
-
+        const reqId = ++activeReqIdRef.current;
         const cached = attendanceViewCache.get(cacheKey);
         const now = Date.now();
         const isStale = !cached || (now - cached.fetchedAt) >= CACHE_TTL_MS;
@@ -847,10 +899,8 @@ const Reports = () => {
 
         if (isStale) {
             // Fetch fresh data in background (no spinner if cache was served)
-            fetchAndCachePreview({ key: cacheKey, cancelled, showLoadingIfNoCache: !cached });
+            fetchAndCachePreview({ key: cacheKey, reqId, showLoadingIfNoCache: !cached });
         }
-
-        return () => { cancelled = true; };
     }, [cacheKey, fetchAndCachePreview]);
 
     // ── Background refresh every 15 minutes ──────────────────────────────────
@@ -1605,12 +1655,21 @@ const Reports = () => {
                                                             setAttendanceEmployeeId(emp.user_id);
                                                             setAttendanceIsEmpDropdownOpen(false);
                                                         }}
-                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${attendanceEmployeeId === emp.user_id
+                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors flex items-center justify-between ${attendanceEmployeeId === emp.user_id
                                                                 ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
                                                                 : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
                                                             }`}
                                                     >
-                                                        {emp.user_name}
+                                                        <span className="truncate">{emp.user_name}</span>
+                                                        {emp.is_deleted ? (
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500 border border-rose-500/20 ml-2 shrink-0">
+                                                                Deleted
+                                                            </span>
+                                                        ) : !emp.is_active ? (
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 ml-2 shrink-0">
+                                                                Inactive
+                                                            </span>
+                                                        ) : null}
                                                     </button>
                                                 ))
                                             ) : (
@@ -1943,12 +2002,21 @@ const Reports = () => {
                                                             setTableEmployeeId(emp.user_id);
                                                             setTableIsEmpDropdownOpen(false);
                                                         }}
-                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${tableEmployeeId === emp.user_id
+                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors flex items-center justify-between ${tableEmployeeId === emp.user_id
                                                                 ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
                                                                 : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
                                                             }`}
                                                     >
-                                                        {emp.user_name}
+                                                        <span className="truncate">{emp.user_name}</span>
+                                                        {emp.is_deleted ? (
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500 border border-rose-500/20 ml-2 shrink-0">
+                                                                Deleted
+                                                            </span>
+                                                        ) : !emp.is_active ? (
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 ml-2 shrink-0">
+                                                                Inactive
+                                                            </span>
+                                                        ) : null}
                                                     </button>
                                                 ))
                                             ) : (

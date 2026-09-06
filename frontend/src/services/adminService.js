@@ -406,6 +406,15 @@ export const adminService = {
             throw new Error(error.response?.data?.message || "Failed to fetch report preview");
         }
     },
+    async getReportEmployees(month, type = "matrix_monthly", date = "", startDate = "", endDate = "", deptId = "", desgId = "", shiftId = "") {
+        try {
+            const res = await api.get(`${ADMIN_API_URL}/reports/employees?month=${month || ""}&type=${type || ""}&date=${date || ""}${startDate ? `&startDate=${startDate}` : ""}${endDate ? `&endDate=${endDate}` : ""}${deptId ? `&dept_id=${deptId}` : ""}${desgId ? `&desg_id=${desgId}` : ""}${shiftId ? `&shift_id=${shiftId}` : ""}&_t=${Date.now()}`);
+            return res.data;
+        } catch (error) {
+            console.error("Failed to fetch report employees", error);
+            return { ok: false, users: [] };
+        }
+    },
     async downloadReport(month, type, format = "xlsx", userId = "", date = "", startDate = "", endDate = "", deptId = "", desgId = "", shiftId = "") {
         try {
             const url = `${ADMIN_API_URL}/reports/download?month=${month}&type=${type}&format=${format}${userId ? `&user_id=${userId}` : ""}${date ? `&date=${date}` : ""}${startDate ? `&startDate=${startDate}` : ""}${endDate ? `&endDate=${endDate}` : ""}${deptId ? `&dept_id=${deptId}` : ""}${desgId ? `&desg_id=${desgId}` : ""}${shiftId ? `&shift_id=${shiftId}` : ""}&_t=${Date.now()}`;

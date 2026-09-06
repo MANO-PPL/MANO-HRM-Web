@@ -454,7 +454,8 @@ const MobileReports = () => {
     const [selectedRecord, setSelectedRecord] = useState(null);
     const [isDetailSidebarOpen, setIsDetailSidebarOpen] = useState(false);
 
-    const [employees, setEmployees] = useState([]);
+    const [attendanceEmployees, setAttendanceEmployees] = useState([]);
+    const [tableEmployees, setTableEmployees] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
     const [shifts, setShifts] = useState([]);
@@ -543,22 +544,22 @@ const MobileReports = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const attendanceSelectedEmployeeName = employees.find(emp => emp.user_id === attendanceEmployeeId)?.user_name || 'All Employees';
-    const attendanceFilteredEmployees = employees.filter(emp => {
-        const matchesDept = !attendanceDeptId || String(emp.dept_id) === String(attendanceDeptId);
-        const matchesDesg = !attendanceDesgId || String(emp.desg_id) === String(attendanceDesgId);
-        const matchesShift = !attendanceShiftId || (attendanceShiftId === 'open_shift' ? !emp.shift_id : String(emp.shift_id) === String(attendanceShiftId));
+    const attendanceSelectedEmp = attendanceEmployees.find(emp => emp.user_id === attendanceEmployeeId);
+    const attendanceSelectedEmployeeName = attendanceSelectedEmp
+        ? `${attendanceSelectedEmp.user_name}${attendanceSelectedEmp.is_deleted ? ' (Deleted)' : !attendanceSelectedEmp.is_active ? ' (Inactive)' : ''}`
+        : 'All Employees';
+    const attendanceFilteredEmployees = attendanceEmployees.filter(emp => {
         const matchesQuery = emp.user_name.toLowerCase().includes(attendanceEmpSearchQuery.toLowerCase());
-        return matchesDept && matchesDesg && matchesShift && matchesQuery;
+        return matchesQuery;
     });
 
-    const tableSelectedEmployeeName = employees.find(emp => emp.user_id === tableEmployeeId)?.user_name || 'All Employees';
-    const tableFilteredEmployees = employees.filter(emp => {
-        const matchesDept = !tableDeptId || String(emp.dept_id) === String(tableDeptId);
-        const matchesDesg = !tableDesgId || String(emp.desg_id) === String(tableDesgId);
-        const matchesShift = !tableShiftId || (tableShiftId === 'open_shift' ? !emp.shift_id : String(emp.shift_id) === String(tableShiftId));
+    const tableSelectedEmp = tableEmployees.find(emp => emp.user_id === tableEmployeeId);
+    const tableSelectedEmployeeName = tableSelectedEmp
+        ? `${tableSelectedEmp.user_name}${tableSelectedEmp.is_deleted ? ' (Deleted)' : !tableSelectedEmp.is_active ? ' (Inactive)' : ''}`
+        : 'All Employees';
+    const tableFilteredEmployees = tableEmployees.filter(emp => {
         const matchesQuery = emp.user_name.toLowerCase().includes(tableEmpSearchQuery.toLowerCase());
-        return matchesDept && matchesDesg && matchesShift && matchesQuery;
+        return matchesQuery;
     });
 
     const attendanceWeeks = React.useMemo(() => getWeeksOfMonth(attendanceMonth), [attendanceMonth]);
@@ -578,45 +579,30 @@ const MobileReports = () => {
 
     useEffect(() => {
         if (attendanceEmployeeId) {
-            const emp = employees.find(e => e.user_id === attendanceEmployeeId);
-            if (emp) {
-                const deptMismatch = attendanceDeptId && String(emp.dept_id) !== String(attendanceDeptId);
-                const desgMismatch = attendanceDesgId && String(emp.desg_id) !== String(attendanceDesgId);
-                const shiftMismatch = attendanceShiftId && (attendanceShiftId === 'open_shift' ? emp.shift_id !== null : String(emp.shift_id) !== String(attendanceShiftId));
-                if (deptMismatch || desgMismatch || shiftMismatch) {
-                    setAttendanceEmployeeId('');
-                }
+            const emp = attendanceEmployees.find(e => e.user_id === attendanceEmployeeId);
+            if (!emp) {
+                setAttendanceEmployeeId('');
             }
         }
-    }, [attendanceDeptId, attendanceDesgId, attendanceShiftId, employees, attendanceEmployeeId]);
+    }, [attendanceEmployees, attendanceEmployeeId]);
 
     useEffect(() => {
         if (tableEmployeeId) {
-            const emp = employees.find(e => e.user_id === tableEmployeeId);
-            if (emp) {
-                const deptMismatch = tableDeptId && String(emp.dept_id) !== String(tableDeptId);
-                const desgMismatch = tableDesgId && String(emp.desg_id) !== String(tableDesgId);
-                const shiftMismatch = tableShiftId && (tableShiftId === 'open_shift' ? emp.shift_id !== null : String(emp.shift_id) !== String(tableShiftId));
-                if (deptMismatch || desgMismatch || shiftMismatch) {
-                    setTableEmployeeId('');
-                }
+            const emp = tableEmployees.find(e => e.user_id === tableEmployeeId);
+            if (!emp) {
+                setTableEmployeeId('');
             }
         }
-    }, [tableDeptId, tableDesgId, tableShiftId, employees, tableEmployeeId]);
+    }, [tableEmployees, tableEmployeeId]);
 
     useEffect(() => {
-        const fetchEmployeesAndDepts = async () => {
+        const fetchDeptsAndMeta = async () => {
             try {
-                const [empRes, deptRes, desgRes, shiftRes] = await Promise.all([
-                    adminService.getAllUsers(),
+                const [deptRes, desgRes, shiftRes] = await Promise.all([
                     adminService.getDepartments(),
                     adminService.getDesignations(),
                     adminService.getShifts()
                 ]);
-                if (empRes.success && empRes.users) {
-                    const sorted = [...empRes.users].sort((a, b) => a.user_name.localeCompare(b.user_name));
-                    setEmployees(sorted);
-                }
                 if (deptRes && deptRes.departments) {
                     const sortedDepts = [...deptRes.departments].sort((a, b) => a.dept_name.localeCompare(b.dept_name));
                     setDepartments(sortedDepts);
@@ -633,8 +619,66 @@ const MobileReports = () => {
                 console.error("Failed to load filter metadata (mobile)", err);
             }
         };
-        fetchEmployeesAndDepts();
+        fetchDeptsAndMeta();
     }, []);
+
+    // Dynamically fetch employees for Card View based on active period & filters
+    useEffect(() => {
+        let isCancelled = false;
+        const fetchCardEmployees = async () => {
+            try {
+                const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(attendanceReportType);
+                const dateToUse = isWeekly ? attendanceWeek : attendanceDate;
+                const res = await adminService.getReportEmployees(
+                    attendanceMonth,
+                    attendanceReportType,
+                    dateToUse,
+                    '',
+                    '',
+                    attendanceDeptId,
+                    attendanceDesgId,
+                    attendanceShiftId
+                );
+                if (!isCancelled && res.ok && res.users) {
+                    setAttendanceEmployees(res.users);
+                }
+            } catch (err) {
+                console.error("Failed to fetch dynamic card employees (mobile)", err);
+            }
+        };
+        fetchCardEmployees();
+        return () => { isCancelled = true; };
+    }, [attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceDeptId, attendanceDesgId, attendanceShiftId]);
+
+    // Dynamically fetch employees for Table View based on active period & filters
+    useEffect(() => {
+        let isCancelled = false;
+        const fetchTableEmployees = async () => {
+            try {
+                const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType);
+                const dateToUse = (isWeekly && !tableUseCustomRange) ? tableWeek : tableDate;
+                const qStart = tableUseCustomRange ? tableCustomStartDate : '';
+                const qEnd = tableUseCustomRange ? tableCustomEndDate : '';
+                const res = await adminService.getReportEmployees(
+                    tableMonth,
+                    tableReportType,
+                    dateToUse,
+                    qStart,
+                    qEnd,
+                    tableDeptId,
+                    tableDesgId,
+                    tableShiftId
+                );
+                if (!isCancelled && res.ok && res.users) {
+                    setTableEmployees(res.users);
+                }
+            } catch (err) {
+                console.error("Failed to fetch dynamic table employees (mobile)", err);
+            }
+        };
+        fetchTableEmployees();
+        return () => { isCancelled = true; };
+    }, [tableReportType, tableMonth, tableDate, tableWeek, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableDeptId, tableDesgId, tableShiftId]);
 
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('mano-active-tab', {
@@ -674,6 +718,7 @@ const MobileReports = () => {
     // Preview Data State
     const [previewData, setPreviewData] = useState({ columns: [], rows: [] });
     const [loadingPreview, setLoadingPreview] = useState(false);
+    const activeReqIdRef = React.useRef(0);
 
     // Compute activeFilters based on previewMode (card vs table)
     const activeFilters = React.useMemo(() => {
@@ -684,7 +729,12 @@ const MobileReports = () => {
         const selectedMonth = isCard ? attendanceMonth : tableMonth;
         const selectedDate = isCard ? attendanceDate : tableDate;
         const selectedWeek = isCard ? attendanceWeek : tableWeek;
-        const selectedEmployeeId = isCard ? attendanceEmployeeId : tableEmployeeId;
+
+        // Ensure we never query an employee who is not eligible in the active period/filters
+        const effectiveAttendanceEmpId = (attendanceEmployeeId && attendanceEmployees.some(e => e.user_id === attendanceEmployeeId)) ? attendanceEmployeeId : '';
+        const effectiveTableEmpId = (tableEmployeeId && tableEmployees.some(e => e.user_id === tableEmployeeId)) ? tableEmployeeId : '';
+        const selectedEmployeeId = isCard ? effectiveAttendanceEmpId : effectiveTableEmpId;
+
         const selectedDeptId = isCard ? attendanceDeptId : tableDeptId;
         const selectedDesgId = isCard ? attendanceDesgId : tableDesgId;
         const selectedShiftId = isCard ? attendanceShiftId : tableShiftId;
@@ -727,13 +777,13 @@ const MobileReports = () => {
         };
     }, [
         previewMode,
-        attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId, attendanceDeptId, attendanceDesgId, attendanceShiftId,
-        tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableDeptId, tableDesgId, tableShiftId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
+        attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId, attendanceEmployees, attendanceDeptId, attendanceDesgId, attendanceShiftId,
+        tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableEmployees, tableDeptId, tableDesgId, tableShiftId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
     ]);
 
     // Fetch Preview
     useEffect(() => {
-        let cancelled = false;
+        const reqId = ++activeReqIdRef.current;
         const fetchPreview = async () => {
             setLoadingPreview(true);
             try {
@@ -749,20 +799,19 @@ const MobileReports = () => {
                     activeFilters.selectedDesgId,
                     activeFilters.selectedShiftId
                 );
-                if (!cancelled && res.ok) {
+                if (reqId === activeReqIdRef.current && res.ok) {
                     setPreviewData(res.data);
                 }
             } catch (error) {
-                if (!cancelled) {
+                if (reqId === activeReqIdRef.current) {
                     console.error("fetchPreview failed (mobile):", error);
                     toast.error("Failed to load preview data");
                 }
             } finally {
-                if (!cancelled) setLoadingPreview(false);
+                if (reqId === activeReqIdRef.current) setLoadingPreview(false);
             }
         };
         fetchPreview();
-        return () => { cancelled = true; };
     }, [activeFilters]);
 
     // Reset selection states when active filter settings or view modes change
@@ -1458,12 +1507,21 @@ const MobileReports = () => {
                                                             setTableEmployeeId(emp.user_id);
                                                             setTableIsEmpDropdownOpen(false);
                                                         }}
-                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableEmployeeId === emp.user_id
+                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors flex items-center justify-between ${tableEmployeeId === emp.user_id
                                                                 ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
                                                                 : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
                                                             }`}
                                                     >
-                                                        {emp.user_name}
+                                                        <span>{emp.user_name}</span>
+                                                        {emp.is_deleted ? (
+                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-bold uppercase tracking-wider">
+                                                                Deleted
+                                                            </span>
+                                                        ) : !emp.is_active ? (
+                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
+                                                                Inactive
+                                                            </span>
+                                                        ) : null}
                                                     </button>
                                                 ))
                                             ) : (
@@ -1961,12 +2019,21 @@ const MobileReports = () => {
                                                                 setAttendanceEmployeeId(emp.user_id);
                                                                 setAttendanceIsEmpDropdownOpen(false);
                                                             }}
-                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceEmployeeId === emp.user_id
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors flex items-center justify-between ${attendanceEmployeeId === emp.user_id
                                                                     ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
                                                                     : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
                                                                 }`}
                                                         >
-                                                            {emp.user_name}
+                                                            <span>{emp.user_name}</span>
+                                                            {emp.is_deleted ? (
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-bold uppercase tracking-wider">
+                                                                    Deleted
+                                                                </span>
+                                                            ) : !emp.is_active ? (
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
+                                                                    Inactive
+                                                                </span>
+                                                            ) : null}
                                                         </button>
                                                     ))
                                                 ) : (

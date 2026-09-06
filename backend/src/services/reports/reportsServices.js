@@ -115,6 +115,42 @@ export const formatLocalDateStr = (dateVal) => {
     return `${month}/${day}/${year}`;
 };
 
+// Safe record date string extractor (guaranteed YYYY-MM-DD, zero UTC drift)
+export const getRecordDateStr = (r) => {
+    if (!r) return "";
+    if (r.record_date) return String(r.record_date).trim();
+    const val = r.time_in;
+    if (!val) return "";
+    if (typeof val === 'string') {
+        const match = val.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (match) return match[1];
+    }
+    if (val instanceof Date && !isNaN(val.getTime())) {
+        const y = val.getFullYear();
+        const m = String(val.getMonth() + 1).padStart(2, '0');
+        const d = String(val.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    return "";
+};
+
+// Generate calendar dates array ['YYYY-MM-DD', ...] timezone-independently
+export const getDateRangeArray = (startDate, endDate) => {
+    const dates = [];
+    const [sY, sM, sD] = startDate.split('-').map(Number);
+    const [eY, eM, eD] = endDate.split('-').map(Number);
+    let cur = new Date(sY, sM - 1, sD);
+    const end = new Date(eY, eM - 1, eD);
+    while (cur <= end) {
+        const y = cur.getFullYear();
+        const m = String(cur.getMonth() + 1).padStart(2, '0');
+        const d = String(cur.getDate()).padStart(2, '0');
+        dates.push(`${y}-${m}-${d}`);
+        cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+};
+
 export const calculateOvertime = (totalHours, rules) => {
     const timing = rules?.shift_timing || {};
     const [sH, sM] = (timing.start_time || '09:00:00').split(':').map(Number);
@@ -253,7 +289,7 @@ export const getRequiredHoursForPeriod = (user, dateHeaders) => {
     let total = 0;
     const rules = getShiftRules(user);
     dateHeaders.forEach(d => {
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = typeof d === 'string' ? d : (d.toISOString ? d.toISOString().split('T')[0] : String(d));
         total += getExpectedHours(dateStr, rules.week_off_policy, rules);
     });
     return total;
@@ -269,36 +305,90 @@ export const resolveDateRange = ({ type, month, date, startDate: customStart, en
 
     if (type === "employee_master") {
         startDate = "2000-01-01";
-        endDate = new Date().toISOString().split("T")[0];
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        endDate = `${yyyy}-${mm}-${dd}`;
     } else if (["matrix_daily", "attendance_matrix_daily"].includes(type)) {
         startDate = date;
         endDate = date;
     } else if (["matrix_weekly", "attendance_matrix_weekly"].includes(type)) {
-        const start = new Date(date);
-        startDate = start.toISOString().split("T")[0];
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
-        endDate = end.toISOString().split("T")[0];
+        startDate = date;
+        const [y, m, d] = date.split('-').map(Number);
+        const endDt = new Date(y, m - 1, d + 6);
+        const ey = endDt.getFullYear();
+        const em = String(endDt.getMonth() + 1).padStart(2, '0');
+        const ed = String(endDt.getDate()).padStart(2, '0');
+        endDate = `${ey}-${em}-${ed}`;
     } else if (["matrix_monthly", "attendance_matrix_monthly", "attendance_summary", "attendance_detailed"].includes(type) || month) {
-        const [year, monthNum] = month.split("-");
+        const [year, monthNum] = month.split("-").map(Number);
         startDate = `${month}-01`;
-        endDate = new Date(Date.UTC(year, monthNum, 0)).toISOString().split("T")[0];
+        const lastDay = new Date(year, monthNum, 0).getDate();
+        endDate = `${year}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     }
 
     return { startDate, endDate };
 };
 
-export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id }) {
+export const getUserStartDate = (u) => {
+    if (!u) return null;
+    const val = u.joining_date || u.created_at;
+    if (!val) return null;
+    if (typeof val === 'string') return val.slice(0, 10);
+    if (val instanceof Date && !isNaN(val.getTime())) {
+        const y = val.getFullYear();
+        const m = String(val.getMonth() + 1).padStart(2, '0');
+        const d = String(val.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    return null;
+};
+
+export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate, include_inactive }) {
     return attendanceDB("core_users as u")
         .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
         .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
         .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
-        .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type", "s.policy_rules", "s.shift_name")
+        .select("u.user_id", "u.user_name", "u.is_active", "u.is_deleted", "u.dept_id", "u.desg_id", "u.shift_id", "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type", "s.policy_rules", "s.shift_name", "u.created_at", "u.joining_date")
         .where("u.org_id", org_id)
         .modify(qb => {
             if (targetUserId) {
                 qb.where("u.user_id", targetUserId);
             }
+            if (include_inactive) {
+                // For employee directory / master: active and inactive non-deleted users
+                qb.where(function () {
+                    this.whereNull("u.is_deleted").orWhere("u.is_deleted", 0).orWhere("u.is_deleted", false);
+                });
+            } else if (startDate && endDate) {
+                // User must have joined on/before the period's endDate (no new people on old months),
+                // OR must have at least 1 attendance punch in that period (even if inactive/deleted/joined later).
+                qb.where(function () {
+                    this.where(function () {
+                        this.where(function () {
+                            this.where("u.is_active", 1).orWhere("u.is_active", true);
+                        }).andWhere(function () {
+                            this.whereNull("u.is_deleted").orWhere("u.is_deleted", 0).orWhere("u.is_deleted", false);
+                        }).andWhere(function () {
+                            this.whereRaw("COALESCE(DATE(u.joining_date), DATE(u.created_at)) <= ?", [endDate]);
+                        });
+                    }).orWhereExists(function () {
+                        this.select(1)
+                            .from("attn_records as ar")
+                            .whereRaw("ar.user_id = u.user_id")
+                            .whereRaw("DATE(ar.time_in) >= ?", [startDate])
+                            .whereRaw("DATE(ar.time_in) <= ?", [endDate]);
+                    });
+                });
+            } else {
+                qb.where(function () {
+                    this.where("u.is_active", 1).orWhere("u.is_active", true);
+                }).andWhere(function () {
+                    this.whereNull("u.is_deleted").orWhere("u.is_deleted", 0).orWhere("u.is_deleted", false);
+                });
+            }
+
             if (isValidDeptId(dept_id)) {
                 qb.where("u.dept_id", dept_id);
             }
@@ -317,8 +407,12 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
 export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
     return attendanceDB("attn_records as ar")
         .join("core_users as u", "ar.user_id", "u.user_id")
-        .select("ar.*")
+        .select("ar.*", attendanceDB.raw("DATE_FORMAT(ar.time_in, '%Y-%m-%d') as record_date"))
+        .where("u.org_id", org_id)
         .modify(qb => {
+            if (targetUserId) {
+                qb.where("ar.user_id", targetUserId);
+            }
             if (isValidDeptId(dept_id)) {
                 qb.where("u.dept_id", dept_id);
             }
@@ -331,10 +425,8 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
                 qb.where("u.shift_id", shift_id);
             }
         })
-        .where("u.org_id", org_id)
         .whereRaw("DATE(ar.time_in) >= ?", [startDate])
-        .whereRaw("DATE(ar.time_in) <= ?", [endDate])
-        .modify(qb => { if (targetUserId) qb.where("ar.user_id", targetUserId); });
+        .whereRaw("DATE(ar.time_in) <= ?", [endDate]);
 }
 
 export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
@@ -342,7 +434,7 @@ export async function getDetailedRecords({ org_id, startDate, endDate, targetUse
         .join("core_users as u", "ar.user_id", "u.user_id")
         .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
         .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
-        .select("ar.time_in", "u.user_id", "u.user_name", "d.dept_name", "s.shift_name", "ar.time_out", "ar.status", "ar.time_in_address", "ar.time_out_address", "ar.late_minutes", "ar.overtime_hours")
+        .select("ar.time_in", "u.user_id", "u.user_name", "d.dept_name", "s.shift_name", "ar.time_out", "ar.status", "ar.time_in_address", "ar.time_out_address", "ar.late_minutes", "ar.overtime_hours", attendanceDB.raw("DATE_FORMAT(ar.time_in, '%Y-%m-%d') as record_date"))
         .where("u.org_id", org_id)
         .whereRaw("DATE(ar.time_in) >= ?", [startDate])
         .whereRaw("DATE(ar.time_in) <= ?", [endDate])
@@ -365,19 +457,11 @@ export async function getDetailedRecords({ org_id, startDate, endDate, targetUse
         .orderBy("ar.time_in", "asc");
 }
 
-
-
 export async function getCardRecords({ org_id, targetUserId, startDate, endDate, dept_id, desg_id, shift_id }) {
-    const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id });
+    const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate });
     const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 
-    const start = new Date(startDate + 'T00:00:00Z');
-    const end = new Date(endDate + 'T00:00:00Z');
-    const dateHeaders = [];
-    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-        dateHeaders.push(d.toISOString().split('T')[0]);
-    }
-
+    const dateHeaders = getDateRangeArray(startDate, endDate);
     const todayStr = await getTodayStr(org_id);
 
     const list = [];
@@ -385,13 +469,11 @@ export async function getCardRecords({ org_id, targetUserId, startDate, endDate,
         const userRecs = records.filter(r => r.user_id === u.user_id);
 
         for (const dateStr of dateHeaders) {
-            const dayRecs = userRecs.filter(r => {
-                const rDate = new Date(r.time_in).toISOString().split('T')[0];
-                return rDate === dateStr;
-            });
+            const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
 
             const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
-            const formattedDate = new Date(dateStr + 'T00:00:00Z').toLocaleDateString('en-US', {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const formattedDate = new Date(y, m - 1, d).toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'short',
                 day: 'numeric'
@@ -422,7 +504,7 @@ export async function getCardRecords({ org_id, targetUserId, startDate, endDate,
                 }
             }
 
-            const dayOfWeekNum = new Date(dateStr + 'T00:00:00Z').getUTCDay();
+            const dayOfWeekNum = new Date(y, m - 1, d).getDay();
             let status = aggregated.status;
 
             const rules = getShiftRules(u);
@@ -479,30 +561,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
     const todayStr = await getTodayStr(org_id);
 
     if (type.startsWith("matrix_") || type.startsWith("attendance_matrix_")) {
-        const users = await attendanceDB("core_users as u")
-            .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
-            .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
-            .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
-            .select("u.user_id", "u.user_name", "d.dept_name", "dg.desg_name", "s.policy_rules", "s.shift_name")
-            .where("u.org_id", org_id)
-            .modify(qb => {
-                if (targetUserId) {
-                    qb.where("u.user_id", targetUserId);
-                }
-                if (isValidDeptId(dept_id)) {
-                    qb.where("u.dept_id", dept_id);
-                }
-                if (isValidDesgId(desg_id)) {
-                    qb.where("u.desg_id", desg_id);
-                }
-                if (shift_id === 'open_shift') {
-                    qb.whereNull("u.shift_id");
-                } else if (isValidShiftId(shift_id)) {
-                    qb.where("u.shift_id", shift_id);
-                }
-            })
-            .orderBy("u.user_name", "asc");
-
+        const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate });
         const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 
         if (type === "matrix_daily") {
@@ -645,12 +704,11 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             });
             data.rows.push(totalsRow);
         } else if (type === "attendance_matrix_weekly" || type === "attendance_matrix_monthly") {
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const dateHeaders = [];
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                dateHeaders.push(new Date(d));
-            }
+            const dateStrings = getDateRangeArray(startDate, endDate);
+            const dateHeaders = dateStrings.map(dateStr => {
+                const [y, m, d] = dateStr.split('-').map(Number);
+                return new Date(y, m - 1, d);
+            });
 
             const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
             if (colsObj.shift !== false) {
@@ -694,12 +752,13 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 let presentDays = 0;
 
                 const dateCells = [];
-                dateHeaders.forEach(d => {
-                    const dateStr = d.toISOString().split('T')[0];
-                    const dayRecs = userRecs.filter(r => new Date(r.time_in).toISOString().split('T')[0] === dateStr);
+                dateHeaders.forEach((d, dIdx) => {
+                    const dateStr = dateStrings[dIdx];
+                    const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
                     const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
                     const rules = getShiftRules(u);
                     const dayType = getDayType(dateStr, rules.week_off_policy);
+                    const userStartDate = getUserStartDate(u);
                     if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
                         dateCells.push("1.0");
                         presentDays++;
@@ -707,6 +766,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                         if (aggregated.late_minutes > 0) {
                             totalLateMins += aggregated.late_minutes;
                         }
+                    } else if (userStartDate && dateStr < userStartDate) {
+                        dateCells.push("-");
                     } else if (dateStr > todayStr) {
                         if (dayType === 'week_off') {
                             const day = d.getDay();
@@ -724,15 +785,17 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     }
                 });
 
-                const reqHrs = getRequiredHoursForPeriod(u, dateHeaders);
+                const reqHrs = getRequiredHoursForPeriod(u, dateStrings);
                 const workedHrs = totalWorkedHrs;
                 const lateHrs = totalLateMins / 60;
                 const lateCount = userRecs.filter(r => r.late_minutes > 0).length;
 
                 let calculatedAbsentDays = 0;
-                dateHeaders.forEach(d => {
-                    const dateStr = d.toISOString().split('T')[0];
-                    const dayRecs = userRecs.filter(r => new Date(r.time_in).toISOString().split('T')[0] === dateStr);
+                dateHeaders.forEach((d, dIdx) => {
+                    const dateStr = dateStrings[dIdx];
+                    const userStartDate = getUserStartDate(u);
+                    if (userStartDate && dateStr < userStartDate) return;
+                    const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
                     const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
                     const rules = getShiftRules(u);
                     const dayType = getDayType(dateStr, rules.week_off_policy);
@@ -780,12 +843,11 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             data.rows.push(totalsRow);
         } else {
             // Multi-day Matrix Preview (Weekly or Monthly) - Original matrix_weekly, matrix_monthly
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const dateHeaders = [];
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                dateHeaders.push(new Date(d));
-            }
+            const dateStrings = getDateRangeArray(startDate, endDate);
+            const dateHeaders = dateStrings.map(dateStr => {
+                const [y, m, d] = dateStr.split('-').map(Number);
+                return new Date(y, m - 1, d);
+            });
 
             const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
             if (colsObj.shift !== false) {
@@ -896,9 +958,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 let lateCount = 0;
                 let lateMins = 0;
 
-                dateHeaders.forEach(d => {
-                    const dateStr = d.toISOString().split('T')[0];
-                    const dayRecs = userRecs.filter(r => new Date(r.time_in).toISOString().split('T')[0] === dateStr);
+                dateHeaders.forEach((d, dIdx) => {
+                    const dateStr = dateStrings[dIdx];
+                    const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
                     const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
                     const rules = getShiftRules(u);
                     const dayType = getDayType(dateStr, rules.week_off_policy);
@@ -924,8 +986,11 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                         }
                     } else {
                         const day = d.getDay();
+                        const userStartDate = getUserStartDate(u);
                         let statusStr = "Absent";
-                        if (dateStr > todayStr) {
+                        if (userStartDate && dateStr < userStartDate) {
+                            statusStr = "-";
+                        } else if (dateStr > todayStr) {
                             if (dayType === 'week_off') {
                                 statusStr = day === 0 ? "Sun" : day === 6 ? "Sat" : "WEEK_OFF";
                             } else {
@@ -940,7 +1005,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                         subCols.forEach((sc, scIdx) => {
                             if (sc.label === "Status") userRow.push(statusStr);
                             else if (sc.label === "Req Hrs") {
-                                const req = getExpectedHours(dateStr, rules.week_off_policy, rules);
+                                const req = (userStartDate && dateStr < userStartDate) ? 0 : getExpectedHours(dateStr, rules.week_off_policy, rules);
                                 userRow.push(req.toFixed(2));
                             }
                             else userRow.push("-");
@@ -1000,29 +1065,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         const [year, monthNum] = month.split("-").map(Number);
         const totalDaysInMonth = new Date(year, monthNum, 0).getDate();
 
-        const users = await attendanceDB("core_users as u")
-            .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
-            .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
-            .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
-            .select("u.user_id", "u.user_name", "d.dept_name", "s.policy_rules", "s.shift_name")
-            .where("u.org_id", org_id)
-            .modify(qb => {
-                if (targetUserId) {
-                    qb.where("u.user_id", targetUserId);
-                }
-                if (isValidDeptId(dept_id)) {
-                    qb.where("u.dept_id", dept_id);
-                }
-                if (isValidDesgId(desg_id)) {
-                    qb.where("u.desg_id", desg_id);
-                }
-                if (shift_id === 'open_shift') {
-                    qb.whereNull("u.shift_id");
-                } else if (isValidShiftId(shift_id)) {
-                    qb.where("u.shift_id", shift_id);
-                }
-            });
-
+        const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate });
         const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 
         const cols = ["Name", "Dept", "Total Days"];
@@ -1055,12 +1098,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         data.columns = cols;
 
         // Generate calendar day dates for this month timezone-independently
-        const dateStrings = [];
-        const startD = new Date(startDate + 'T00:00:00Z');
-        const endD = new Date(endDate + 'T00:00:00Z');
-        for (let d = new Date(startD); d <= endD; d.setUTCDate(d.getUTCDate() + 1)) {
-            dateStrings.push(d.toISOString().split('T')[0]);
-        }
+        const dateStrings = getDateRangeArray(startDate, endDate);
 
         const baseRows = users.map(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
@@ -1075,10 +1113,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             let totalHrs = 0;
 
             dateStrings.forEach(dateStr => {
-                const dayRecs = userRecs.filter(r => {
-                    const rDate = new Date(r.time_in).toISOString().split('T')[0];
-                    return rDate === dateStr;
-                });
+                const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
 
                 if (dayRecs.length > 0) {
                     const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
@@ -1112,7 +1147,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 } else {
                     const rules = getShiftRules(u);
                     const dayType = getDayType(dateStr, rules.week_off_policy);
-                    if (dateStr <= todayStr && dayType !== 'week_off') {
+                    const userStartDate = getUserStartDate(u);
+                    if (dateStr <= todayStr && dayType !== 'week_off' && (!userStartDate || dateStr >= userStartDate)) {
                         absentDays++;
                     }
                 }
@@ -1172,26 +1208,14 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         data.rows = [...baseRows, totalsRow];
 
     } else if (type === "employee_master") {
-        const users = await attendanceDB("core_users as u")
-            .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
-            .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
-            .select("u.user_id", "u.user_name", "u.email", "u.phone_no", "d.dept_name", "dg.desg_name", "u.user_type")
-            .where("u.org_id", org_id)
-            .modify(qb => {
-                if (isValidDeptId(dept_id)) {
-                    qb.where("u.dept_id", dept_id);
-                }
-                if (isValidDesgId(desg_id)) {
-                    qb.where("u.desg_id", desg_id);
-                }
-            });
+        const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate, include_inactive: true });
 
-        data.columns = ["Name", "Email", "Phone", "Dept", "Designation", "Role"];
-        data.rows = users.map(u => [u.user_name, u.email, u.phone_no, u.dept_name || "-", u.desg_name || "-", u.user_type]);
+        data.columns = ["Name", "Email", "Phone", "Dept", "Designation", "Role", "Status"];
+        data.rows = users.map(u => [u.user_name, u.email || "-", u.phone_no || "-", u.dept_name || "-", u.desg_name || "-", u.user_type || "-", u.is_deleted ? "Deleted" : (u.is_active ? "Active" : "Inactive")]);
     }
 
     if (type !== "employee_master") {
-        data.cardRecords = await getCardRecords({ org_id, targetUserId, startDate, endDate, dept_id, desg_id });
+        data.cardRecords = await getCardRecords({ org_id, targetUserId, startDate, endDate, dept_id, desg_id, shift_id });
     } else {
         data.cardRecords = [];
     }
