@@ -49,7 +49,10 @@ import {
     Navigation,
     Locate,
     Target,
-    ShieldCheck
+    ShieldCheck,
+    MessageSquare,
+    CheckCheck,
+    Send
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { useAuth } from '../../context/AuthContext';
@@ -76,9 +79,11 @@ import MonthPicker from '../../components/MonthPicker';
 import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
 import TimePicker from '../../components/TimePicker';
 import { getStatusStyle, ATTENDANCE_STATUS } from '../../utils/attendanceStatus';
+import { getLocalDateString, formatLocalTimeString } from '../../utils/dateUtils';
 
 // Modular Components & Tabs
 import AttendanceTimeLocationHeader from './components/AttendanceTimeLocationHeader';
+import AttendancePermissionsBanner from './components/AttendancePermissionsBanner';
 import CheckpointModal from './components/CheckpointModal';
 import AttendanceCameraModal from './components/AttendanceCameraModal';
 import MarkAttendanceTab from './tabs/MarkAttendanceTab';
@@ -186,7 +191,7 @@ const getWeeksOfMonth = (monthStr) => {
         }
 
         const weekLabel = `Week ${weeks.length + 1} (${currentStart.toLocaleDateString('en-US', { day: '2-digit', month: 'short' })} - ${currentEnd.toLocaleDateString('en-US', { day: '2-digit', month: 'short' })})`;
-        const startVal = currentStart.toISOString().slice(0, 10);
+        const startVal = getLocalDateString(currentStart);
         weeks.push({ label: weekLabel, value: startVal });
 
         currentStart = new Date(currentEnd);
@@ -348,6 +353,9 @@ const Attendance = () => {
                 (fallbackErr) => {
                     setLocation(prev => ({ ...prev, error: fallbackErr.message, address: 'Location Access Denied' }));
                     setIsLoadingLoc(false);
+                    if (isManualRefresh && (fallbackErr.code === 1 || err.code === 1)) {
+                        toast.error("Location permission is blocked. Click the lock icon (🔒) beside the URL in your address bar to allow location.");
+                    }
                 },
                 { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
             );
@@ -387,9 +395,9 @@ const Attendance = () => {
         };
     }, [fetchUserLocation]);
 
-    // Current date for Mark Attendance
+    // Current date for Mark Attendance (using local date, avoiding UTC day-shift)
     const today = new Date();
-    const formattedToday = today.toISOString().split('T')[0];
+    const formattedToday = getLocalDateString(today);
     const [selectedDate, setSelectedDate] = useState(formattedToday);
 
     // Month for Reports/History/Analytics
@@ -407,7 +415,7 @@ const Attendance = () => {
         const year = today.getFullYear();
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const startDate = `${year}-${month}-01`;
-        const endDate = new Date(year, today.getMonth() + 1, 0).toISOString().split('T')[0];
+        const endDate = getLocalDateString(new Date(year, today.getMonth() + 1, 0));
         const cacheKey = `${startDate}_${endDate}`;
         const cached = attendanceCacheData.records[cacheKey];
         return cached ? (cached.data || cached) : [];
@@ -427,16 +435,27 @@ const Attendance = () => {
     const [analyticsSelectedMonth, setAnalyticsSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [analyticsStartDate, setAnalyticsStartDate] = useState(() => {
         const d = new Date();
-        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+        return getLocalDateString(new Date(d.getFullYear(), d.getMonth(), 1));
     });
     const [analyticsEndDate, setAnalyticsEndDate] = useState(() => {
         const d = new Date();
-        return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+        return getLocalDateString(new Date(d.getFullYear(), d.getMonth() + 1, 0));
     });
     const [analyticsSessions, setAnalyticsSessions] = useState([]);
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
 
+
+    const refreshMyShiftPolicy = useCallback(async (force = true) => {
+        try {
+            const data = await attendanceService.getMyShiftPolicy(force);
+            if (data?.success || data?.ok || data?.shift) {
+                setMyShift(data.shift || data);
+            }
+        } catch (err) {
+            console.error("Failed to refresh shift policy:", err);
+        }
+    }, []);
 
     // Fetch Holidays and Shift Policy
     useEffect(() => {
@@ -444,12 +463,35 @@ const Attendance = () => {
             .then(data => setHolidays(data.holidays || []))
             .catch(console.error);
 
-        attendanceService.getMyShiftPolicy()
-            .then(data => {
-                if (data.success || data.ok || data.shift) setMyShift(data.shift);
-            })
-            .catch(console.error);
-    }, []);
+        refreshMyShiftPolicy(true);
+
+        const handleShiftUpdate = () => {
+            refreshMyShiftPolicy(true);
+        };
+
+        window.addEventListener('shift_policy_updated', handleShiftUpdate);
+        window.addEventListener('focus', handleShiftUpdate);
+
+        let bc;
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                bc = new BroadcastChannel('mano_shifts_channel');
+                bc.onmessage = (event) => {
+                    if (event?.data?.type === 'shift_policy_updated' || event?.data === 'shift_policy_updated') {
+                        handleShiftUpdate();
+                    }
+                };
+            } catch (e) {}
+        }
+
+        return () => {
+            window.removeEventListener('shift_policy_updated', handleShiftUpdate);
+            window.removeEventListener('focus', handleShiftUpdate);
+            if (bc) {
+                try { bc.close(); } catch (e) {}
+            }
+        };
+    }, [refreshMyShiftPolicy]);
 
     // Navigation State
     const [activeTab, setActiveTab] = useState(() => {
@@ -556,14 +598,14 @@ const Attendance = () => {
 
     // Reports Self-Service States
     const [reportsSelectedMonth, setReportsSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-    const [reportsSelectedDate, setReportsSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+    const [reportsSelectedDate, setReportsSelectedDate] = useState(() => getLocalDateString());
     const [reportsReportType, setReportsReportType] = useState('attendance_detailed');
     const [reportsFileFormat, setReportsFileFormat] = useState('xlsx');
     const [reportsIsGenerating, setReportsIsGenerating] = useState(false);
     const [reportsActiveTab, setReportsActiveTab] = useState('preview'); // 'preview' | 'history'
     const [reportsUseCustomRange, setReportsUseCustomRange] = useState(false);
-    const [reportsCustomStartDate, setReportsCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
-    const [reportsCustomEndDate, setReportsCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
+    const [reportsCustomStartDate, setReportsCustomStartDate] = useState(() => getLocalDateString());
+    const [reportsCustomEndDate, setReportsCustomEndDate] = useState(() => getLocalDateString());
     const [reportsSelectedWeek, setReportsSelectedWeek] = useState('');
     const [reportsExportColumns, setReportsExportColumns] = useState({
         shift: true,
@@ -937,13 +979,9 @@ const Attendance = () => {
     const [correctionHistory, setCorrectionHistory] = useState([]);
 
     // Default corrDate to today
-    const [corrDate, setCorrDate] = useState(() => {
-        const d = new Date();
-        const yOffset = d.getTimezoneOffset() * 60000;
-        return new Date(d.getTime() - yOffset).toISOString().split('T')[0];
-    });
+    const [corrDate, setCorrDate] = useState(() => getLocalDateString());
 
-    const [corrType, setCorrType] = useState('Missed Clock-Out'); // 'Missed Clock-Out' | 'Missed Clock-In' | 'Missed Entire Day' | 'Wrong Timestamp' | 'On-Duty' | 'Other'
+    const [corrType, setCorrType] = useState('Missed Punch'); // 'Missed Punch' | 'Missed Day' | 'Other'
     const [corrOtherType, setCorrOtherType] = useState(''); // Custom type input
     const [corrMethod, setCorrMethod] = useState('add_session'); // 'add_session' | 'reset'
 
@@ -951,10 +989,10 @@ const Attendance = () => {
     const [corrIn, setCorrIn] = useState('');
     const [corrOut, setCorrOut] = useState('');
 
-    // Inputs for sessions
-    const [corrSessions, setCorrSessions] = useState([{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }]);
-    const [drawerTab, setDrawerTab] = useState('editor'); // 'editor' | 'timeline'
+    // Inputs for sessions - starts empty so user can construct with their own mindset
+    const [corrSessions, setCorrSessions] = useState([]);
     const [isDraggingFile, setIsDraggingFile] = useState(false);
+    const corrFileInputRef = useRef(null);
 
     const [corrReason, setCorrReason] = useState('');
     const [corrAttachment, setCorrAttachment] = useState(null);
@@ -1042,14 +1080,11 @@ const Attendance = () => {
     const minAllowedCorrectionDate = useMemo(() => {
         const d = new Date();
         d.setDate(d.getDate() - correctionDeadlineDays);
-        const yOffset = d.getTimezoneOffset() * 60000;
-        return new Date(d.getTime() - yOffset).toISOString().split('T')[0];
+        return getLocalDateString(d);
     }, [correctionDeadlineDays]);
 
     const maxAllowedCorrectionDate = useMemo(() => {
-        const d = new Date();
-        const yOffset = d.getTimezoneOffset() * 60000;
-        return new Date(d.getTime() - yOffset).toISOString().split('T')[0];
+        return getLocalDateString();
     }, []);
 
     // Session duration calculation helper
@@ -1127,7 +1162,7 @@ const Attendance = () => {
             })));
             toast.info("Reset to originally recorded punches");
         } else {
-            setCorrSessions([{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }]);
+            setCorrSessions([]);
             toast.info("Cleared sessions (no original punches recorded for this date)");
         }
     };
@@ -1161,6 +1196,7 @@ const Attendance = () => {
     const [showCheckpointModal, setShowCheckpointModal] = useState(false);
     const [isMarkingCheckpoint, setIsMarkingCheckpoint] = useState(false);
     const [checkpointNote, setCheckpointNote] = useState('');
+    const [checkpointImgSrc, setCheckpointImgSrc] = useState(null);
     const [checkpointLocation, setCheckpointLocation] = useState({
         lat: null,
         lng: null,
@@ -1173,16 +1209,19 @@ const Attendance = () => {
     // 1. Fetch Daily Records (for "Mark Attendance" tab)
     const fetchDailyRecords = useCallback(async (force = false) => {
         if (!force && activeTab !== 'mark_attendance') return;
+        if (force) {
+            refreshMyShiftPolicy(true);
+        }
         setLoading(true);
         try {
-            const res = await attendanceService.getMyRecords(selectedDate, selectedDate);
+            const res = await attendanceService.getMyRecords(selectedDate, selectedDate, force);
             if (res.ok) setDailySessions(res.data);
 
             // Fetch recent records to detect missed punches and today's active session
-            const recentRes = await attendanceService.getMyRecords();
+            const recentRes = await attendanceService.getMyRecords(undefined, undefined, force);
             if (recentRes && recentRes.data && recentRes.data.length > 0) {
                 const today = new Date();
-                const todayDateStr = today.toISOString().split('T')[0];
+                const todayDateStr = getLocalDateString(today);
 
                 // Create a midnight copy for day calculation
                 const todayMidnight = new Date(today);
@@ -1205,12 +1244,16 @@ const Attendance = () => {
 
                 for (const session of recentRes.data) {
                     if (!session.time_out) {
-                        const sessionDate = new Date(session.time_in);
-                        const sessionDateStr = sessionDate.toISOString().split('T')[0];
+                        const sessionTimeIn = new Date(session.time_in);
+                        const sessionDateStr = getLocalDateString(sessionTimeIn);
+                        const hoursSinceIn = (Date.now() - sessionTimeIn.getTime()) / (1000 * 60 * 60);
 
-                        if (sessionDateStr < todayDateStr) {
+                        // If unclosed session started within the last 24 hours and not absent/rejected, it is ACTIVE
+                        if (hoursSinceIn < 24 && !['ABSENT', 'REJECTED'].includes(session.status)) {
+                            hasTodayActiveSession = true;
+                        } else if (sessionDateStr < todayDateStr && hoursSinceIn >= 24) {
                             // PAST DATE missed checkout
-                            const diffTime = todayMidnight - new Date(sessionDate).setHours(0, 0, 0, 0);
+                            const diffTime = todayMidnight - new Date(sessionTimeIn).setHours(0, 0, 0, 0);
                             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
                             // Show banner if not already escalated to ABSENT/REJECTED and within deadline
@@ -1218,24 +1261,27 @@ const Attendance = () => {
 
                             // Hide warning if a pending or approved correction request exists
                             const hasActiveCorrection = activeCorrections.some(c => {
-                                const reqDateStr = c.request_date ? new Date(c.request_date).toISOString().split('T')[0] : '';
+                                const reqDateStr = c.request_date ? getLocalDateString(c.request_date) : '';
                                 return reqDateStr === sessionDateStr && ['pending', 'approved'].includes(c.status);
                             });
 
                             if (isNotProcessed && diffDays <= deadlineDays && !hasActiveCorrection) {
                                 missedDates.push(sessionDateStr);
                             }
-                        } else if (sessionDateStr === todayDateStr) {
-                            // TODAY'S active session
-                            hasTodayActiveSession = true;
                         }
                     }
+                }
+
+                // Also check if dailySessions for selected date has an open session
+                if (!hasTodayActiveSession && Array.isArray(res?.data) && res.data.some(s => !s.time_out)) {
+                    hasTodayActiveSession = true;
                 }
 
                 setGlobalActiveSession(hasTodayActiveSession);
                 setMissedPunchWarning(missedDates.length > 0 ? { dates: [...new Set(missedDates)] } : null);
             } else {
-                setGlobalActiveSession(false);
+                const hasOpenInDaily = Array.isArray(res?.data) && res.data.some(s => !s.time_out);
+                setGlobalActiveSession(Boolean(hasOpenInDaily));
                 setMissedPunchWarning(null);
             }
         } catch (error) {
@@ -1253,7 +1299,7 @@ const Attendance = () => {
         const year = reportMonth.split('-')[0];
         const month = reportMonth.split('-')[1];
         const startDate = `${year}-${month}-01`;
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        const endDate = getLocalDateString(new Date(year, month, 0));
         const cacheKey = `${startDate}_${endDate}`;
 
         if (!force && attendanceCacheData.records[cacheKey]) {
@@ -1263,7 +1309,7 @@ const Attendance = () => {
 
         setLoading(true);
         try {
-            const res = await attendanceService.getMyRecords(startDate, endDate);
+            const res = await attendanceService.getMyRecords(startDate, endDate, force);
             if (res.ok) setMonthlySessions(res.data);
         } catch (error) {
             console.error(error);
@@ -1284,18 +1330,18 @@ const Attendance = () => {
         if (analyticsFilterType === 'this_month') {
             const y = today.getFullYear();
             const m = today.getMonth();
-            start = new Date(y, m, 1).toISOString().split('T')[0];
-            end = new Date(y, m + 1, 0).toISOString().split('T')[0];
+            start = getLocalDateString(new Date(y, m, 1));
+            end = getLocalDateString(new Date(y, m + 1, 0));
         } else if (analyticsFilterType === 'last_month') {
             const y = today.getFullYear();
             const m = today.getMonth() - 1;
-            start = new Date(y, m, 1).toISOString().split('T')[0];
-            end = new Date(y, m + 1, 0).toISOString().split('T')[0];
+            start = getLocalDateString(new Date(y, m, 1));
+            end = getLocalDateString(new Date(y, m + 1, 0));
         } else if (analyticsFilterType === 'select_month') {
             if (analyticsSelectedMonth) {
                 const [y, m] = analyticsSelectedMonth.split('-').map(Number);
-                start = new Date(y, m - 1, 1).toISOString().split('T')[0];
-                end = new Date(y, m, 0).toISOString().split('T')[0];
+                start = getLocalDateString(new Date(y, m - 1, 1));
+                end = getLocalDateString(new Date(y, m, 0));
             }
         } else if (analyticsFilterType === 'custom') {
             start = analyticsStartDate;
@@ -1499,29 +1545,22 @@ const Attendance = () => {
                 // Save a frozen snapshot for original_data - never modified by form edits
                 setOriginalSessions(loadedSessions.map(s => ({ time_in: s.time_in, time_out: s.time_out })));
 
-                // Pre-fill form with existing sessions (user can edit and complete missing punch)
-                setCorrSessions(loadedSessions);
+                // Proposed sessions start empty so user can construct timeline with their own mindset
+                setCorrSessions([]);
+                setCorrIn('');
+                setCorrOut('');
 
-                // Smart default for corrType
-                if (loadedSessions.some(s => s.time_in && !s.time_out)) {
-                    setCorrType('Missed Clock-Out');
-                } else if (loadedSessions.some(s => !s.time_in && s.time_out)) {
-                    setCorrType('Missed Clock-In');
-                } else if (loadedSessions.length === 0) {
-                    setCorrType('Missed Entire Day');
+                // Smart default for corrType: Missed Punch vs Missed Day
+                if (loadedSessions.length === 0) {
+                    setCorrType('Missed Day');
                 } else {
-                    setCorrType('Wrong Timestamp');
-                }
-
-                if (loadedSessions[0]) {
-                    setCorrIn(loadedSessions[0].time_in || '');
-                    setCorrOut(loadedSessions[0].time_out || '');
+                    setCorrType('Missed Punch');
                 }
             } else {
                 setExistingRecord(null);
                 setOriginalSessions([]);
-                setCorrSessions([{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }]);
-                setCorrType('Missed Entire Day');
+                setCorrSessions([]);
+                setCorrType('Missed Day');
                 setCorrIn('');
                 setCorrOut('');
             }
@@ -1529,7 +1568,7 @@ const Attendance = () => {
             console.error("Failed to fetch existing record", error);
             setExistingRecord(null);
             setOriginalSessions([]);
-            setCorrSessions([{ id: Date.now(), time_in: '', time_out: '' }]);
+            setCorrSessions([]);
             setCorrIn('');
             setCorrOut('');
             setPendingRequestId(null);
@@ -1566,6 +1605,9 @@ const Attendance = () => {
         setShowCamera(true);
     };
 
+    const isCheckpointAllowed = myShift?.rules?.checkpoint_requirements?.enabled !== false;
+    const isCheckpointSelfieRequired = Boolean(myShift?.rules?.checkpoint_requirements?.selfie);
+
     const handlePunchClick = async (mode) => {
         const isSelfieRequired = mode === 'IN'
             ? (myShift?.rules?.entry_requirements?.selfie ?? false)
@@ -1579,12 +1621,18 @@ const Attendance = () => {
     };
 
     const handleOpenCheckpointModal = () => {
-        if (!globalActiveSession) {
+        if (!isCheckpointAllowed) {
+            toast.error("Checkpoints are disabled by your assigned shift policy.");
+            return;
+        }
+        const isSessionActive = globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !s.time_out));
+        if (!isSessionActive) {
             toast.warning("You must Clock IN before marking a checkpoint.");
             return;
         }
         setShowCheckpointModal(true);
         setCheckpointNote('');
+        setCheckpointImgSrc(null);
         setCheckpointLocation({ lat: null, lng: null, accuracy: null, address: '', error: null, loading: true });
 
         if (!navigator.geolocation) {
@@ -1633,28 +1681,54 @@ const Attendance = () => {
         acquireLocation(true);
     };
 
-    const handleConfirmCheckpoint = async () => {
+    const handleConfirmCheckpoint = async (capturedPhoto) => {
         if (!checkpointLocation.lat || !checkpointLocation.lng) {
             toast.error("Valid GPS coordinates are required to mark a checkpoint.");
             return;
         }
 
+        if (isCheckpointSelfieRequired && !capturedPhoto && !checkpointImgSrc) {
+            toast.error("Selfie is required to mark a checkpoint.");
+            return;
+        }
+
         setIsMarkingCheckpoint(true);
         try {
+            // Only attach selfie photo if selfie is enabled by shift policy
+            const photoSrc = isCheckpointSelfieRequired ? (capturedPhoto || checkpointImgSrc) : null;
+            let imageBlob = null;
+            if (photoSrc) {
+                try {
+                    imageBlob = dataURLtoBlob(photoSrc);
+                } catch (bErr) {
+                    console.warn("Failed to convert checkpoint selfie to blob:", bErr);
+                }
+            }
+
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const localTimeStr = `${getLocalDateString(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
             const payload = {
                 latitude: checkpointLocation.lat,
                 longitude: checkpointLocation.lng,
                 accuracy: checkpointLocation.accuracy,
                 address: checkpointLocation.address,
                 note: checkpointNote.trim() || undefined,
-                is_geofence_violation: false
+                imageFile: imageBlob,
+                image: photoSrc,
+                is_geofence_violation: false,
+                localTime: localTimeStr
             };
 
             const res = await attendanceService.markCheckpoint(payload);
             toast.success(res.message || "Checkpoint marked successfully!");
             setShowCheckpointModal(false);
             setCheckpointNote('');
+            setCheckpointImgSrc(null);
             fetchDailyRecords(true);
+            setTimeout(() => fetchDailyRecords(true), 2500);
+            setTimeout(() => fetchDailyRecords(true), 6000);
         } catch (err) {
             console.error("Checkpoint error:", err);
             toast.error(err.message || "Failed to record checkpoint");
@@ -1673,7 +1747,12 @@ const Attendance = () => {
 
         const submitDirectData = async (latitude, longitude, accuracy) => {
             try {
-                let payload = { latitude, longitude, accuracy };
+                let payload = {
+                    latitude,
+                    longitude,
+                    accuracy,
+                    address: location.fullAddress || location.address
+                };
 
                 let res;
                 if (mode === 'IN') {
@@ -1685,7 +1764,10 @@ const Attendance = () => {
                 }
 
                 setCameraMode(null);
-                fetchDailyRecords();
+                fetchDailyRecords(true);
+                // Delayed re-fetches to pick up async geocoded address and S3 image URL
+                setTimeout(() => fetchDailyRecords(true), 2500);
+                setTimeout(() => fetchDailyRecords(true), 6000);
             } catch (error) {
                 console.error(error);
                 const errorMsg = error.message || "Attendance failed";
@@ -1805,7 +1887,12 @@ const Attendance = () => {
 
         const submitData = async (latitude, longitude, accuracy) => {
             try {
-                let payload = { latitude, longitude, accuracy };
+                let payload = {
+                    latitude,
+                    longitude,
+                    accuracy,
+                    address: location.fullAddress || location.address
+                };
                 if (imgSrc) {
                     const imageBlob = dataURLtoBlob(imgSrc);
                     payload.imageFile = imageBlob;
@@ -1819,13 +1906,18 @@ const Attendance = () => {
                 if (cameraMode === 'IN') {
                     res = await attendanceService.timeIn(payload);
                     toast.success("Checked In Successfully!");
+                    setGlobalActiveSession(true);
                 } else {
                     res = await attendanceService.timeOut(payload);
                     toast.success("Checked Out Successfully!");
+                    setGlobalActiveSession(false);
                 }
 
                 closeCamera();
-                fetchDailyRecords();
+                fetchDailyRecords(true);
+                // Delayed re-fetches to pick up async geocoded address and S3 image URL
+                setTimeout(() => fetchDailyRecords(true), 2500);
+                setTimeout(() => fetchDailyRecords(true), 6000);
             } catch (error) {
                 console.error(error);
 
@@ -1965,12 +2057,8 @@ const Attendance = () => {
             return;
         }
 
-        // Validation for sessions
-        const validSessions = corrSessions.filter(s => s.time_in || s.time_out);
-        if (validSessions.length === 0 && !corrIn && !corrOut) {
-            toast.error("Please provide at least one punch time (In or Out).");
-            return;
-        }
+        // Validation for sessions (optional: only checked if user customized punches on timeline)
+        let validSessions = corrSessions.filter(s => s.time_in || s.time_out);
 
         for (let i = 0; i < validSessions.length; i++) {
             const sessionA = validSessions[i];
@@ -1995,7 +2083,7 @@ const Attendance = () => {
         setSubmitLoading(true);
         try {
             const original_data = originalSessions;
-            const validSessions = corrSessions.filter(s => s.time_in || s.time_out);
+            let validSessions = corrSessions.filter(s => s.time_in || s.time_out);
             let proposed_data = [];
 
             if (validSessions.length > 0) {
@@ -2008,14 +2096,9 @@ const Attendance = () => {
                         is_overnight: isOvernight
                     };
                 });
-            } else if (corrIn || corrOut) {
-                const isOvernight = Boolean(corrIn && corrOut && corrIn >= corrOut);
-                proposed_data = [{
-                    ...(corrIn ? { time_in: corrIn } : {}),
-                    ...(corrOut ? { time_out: corrOut } : {}),
-                    punch_type: 'regular',
-                    is_overnight: isOvernight
-                }];
+            } else {
+                // Advanced custom punch timeline was not used - submit with remarks only
+                proposed_data = [];
             }
 
             const formData = new FormData();
@@ -2048,9 +2131,7 @@ const Attendance = () => {
             setIsCorrectionDrawerOpen(false);
 
             // Reset Form State
-            const d = new Date();
-            const yOffset = d.getTimezoneOffset() * 60000;
-            const todayLocal = new Date(d.getTime() - yOffset).toISOString().split('T')[0];
+            const todayLocal = getLocalDateString();
 
             setCorrDate(todayLocal);
             setCorrIn('');
@@ -2060,10 +2141,11 @@ const Attendance = () => {
             setCorrAttachmentPreview(null);
             setExistingAttachmentUrl(null);
             setPendingRequestId(null);
-            setCorrType('Missed Clock-Out');
+            setCorrType('Missed Punch');
             setCorrOtherType('');
+            setShowAdvancedOptions(false);
             setCorrMethod('add_session');
-            setCorrSessions([{ id: Date.now(), time_in: '', time_out: '', punch_type: 'regular' }]);
+            setCorrSessions([]);
             setExistingRecord(null);
 
             fetchCorrectionHistory();
@@ -2266,8 +2348,8 @@ const Attendance = () => {
             setIsSavingCorrection(true);
             const reqId = selectedRequest.acr_id || selectedRequest.id;
             const validSessions = editCorrectionSessions.filter(s => s.time_in || s.time_out);
-            if (validSessions.length === 0) {
-                toast.error("Please enter at least one session with a time");
+            if (!editCorrectionReason.trim() && validSessions.length === 0) {
+                toast.error("Please enter updated remarks or at least one session with a time");
                 return;
             }
             const formData = new FormData();
@@ -2334,35 +2416,28 @@ const Attendance = () => {
     };
 
     const formatDateDisplay = (dateString) => {
+        if (!dateString) return '';
+        const parts = String(dateString).split('T')[0].split('-');
+        if (parts.length === 3) {
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+        }
         return new Date(dateString).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
     };
 
     const formatTime = (timeVal, sessionRecord = null, isOut = false) => {
         if (!timeVal) return null;
-        try {
-            const str = String(timeVal).trim();
-            const parts = str.split(/[- :T.]/);
-            if (parts.length >= 5) {
-                let hour = parseInt(parts[3], 10);
-                const minute = String(parts[4]).padStart(2, '0');
-                const ampm = hour >= 12 ? 'PM' : 'AM';
-                hour = hour % 12;
-                if (hour === 0) hour = 12;
-                const pad = (n) => String(n).padStart(2, '0');
-                return `${pad(hour)}:${minute} ${ampm}`;
-            }
-
-            const d = new Date(str);
-            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-        } catch (e) {
-            return String(timeVal);
-        }
+        return formatLocalTimeString(timeVal) || null;
     };
 
     const calculateDuration = (timeIn, timeOut) => {
         if (!timeIn || !timeOut) return null;
-        const start = new Date(timeIn);
-        const end = new Date(timeOut);
+        const parseIso = (v) => {
+            const s = String(v).trim().replace(' ', 'T').replace('Z', '');
+            return new Date(s);
+        };
+        const start = parseIso(timeIn);
+        const end = parseIso(timeOut);
 
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
 
@@ -2380,15 +2455,17 @@ const Attendance = () => {
     };
 
     const handlePrevDay = () => {
-        const date = new Date(selectedDate);
+        const parts = selectedDate.split('-');
+        const date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
         date.setDate(date.getDate() - 1);
-        setSelectedDate(date.toISOString().split('T')[0]);
+        setSelectedDate(getLocalDateString(date));
     };
 
     const handleNextDay = () => {
-        const date = new Date(selectedDate);
+        const parts = selectedDate.split('-');
+        const date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
         date.setDate(date.getDate() + 1);
-        setSelectedDate(date.toISOString().split('T')[0]);
+        setSelectedDate(getLocalDateString(date));
     };
 
     const handlePrevMonth = () => {
@@ -2496,7 +2573,7 @@ const Attendance = () => {
     // Mark past weekdays (not Sat/Sun) as absent if no record exists
     const daysInReportMonth = new Date(reportYear, reportMonthIdx + 1, 0).getDate();
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = getLocalDateString(now);
 
     const hasRecord = (dateStr) => {
         return monthlySessions.some(s =>
@@ -2507,7 +2584,7 @@ const Attendance = () => {
 
     for (let d = 1; d <= daysInReportMonth; d++) {
         const date = new Date(reportYear, reportMonthIdx, d);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = getLocalDateString(date);
 
         if (dateStr > todayStr) break; // Don't mark future
 
@@ -2523,7 +2600,7 @@ const Attendance = () => {
 
     // --- NON-WORKING DAY CHECK ---
     const isWorkingDayToday = useMemo(() => {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateString();
 
         // 1. Is it a holiday?
         if (holidays.some(h => h.holiday_date === todayStr)) return false;
@@ -2565,7 +2642,7 @@ const Attendance = () => {
             daysMap[dateKey].sessions.push(session);
         });
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateString();
 
         const processedDays = Object.values(daysMap).map(day => {
             // Sort sessions ascending by time_in
@@ -2640,6 +2717,17 @@ const Attendance = () => {
     return (
         <DashboardLayout title="Attendance" tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
             <div className="pb-10 overflow-x-hidden" style={{ zoom: 0.8 }}>
+                {/* Browser Permissions Alert & Prompt Banner */}
+                <div className="mb-4">
+                    <AttendancePermissionsBanner
+                        onPermissionsUpdated={(permStatus) => {
+                            if (permStatus.location === 'granted' && (location.error || location.address === 'Location Access Denied')) {
+                                fetchUserLocation();
+                            }
+                        }}
+                    />
+                </div>
+
                 {/* Header & Command Center */}
                 <AttendanceTimeLocationHeader
                     currentTime={currentTime}
@@ -2648,8 +2736,9 @@ const Attendance = () => {
                     isLoadingLoc={isLoadingLoc}
                     onRefreshLocation={fetchUserLocation}
                     myShift={myShift}
-                    globalActiveSession={globalActiveSession}
-                    onOpenCheckpointModal={handleOpenCheckpointModal}
+                    globalActiveSession={Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !s.time_out)))}
+                    isCheckpointAllowed={isCheckpointAllowed}
+                    onOpenCheckpointModal={isCheckpointAllowed ? handleOpenCheckpointModal : undefined}
                 />
 
                 {/* Tab Switcher - Floating Style */}
@@ -2688,13 +2777,14 @@ const Attendance = () => {
                     {/* 1. MARK ATTENDANCE TAB */}
                     {activeTab === 'mark_attendance' && (
                         <MarkAttendanceTab
-                            globalActiveSession={globalActiveSession}
+                            globalActiveSession={Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !s.time_out)))}
                             isSubmitting={isSubmitting}
                             isMarkingCheckpoint={isMarkingCheckpoint}
                             cameraMode={cameraMode}
                             showCamera={showCamera}
                             handlePunchClick={handlePunchClick}
                             handleOpenCheckpointModal={handleOpenCheckpointModal}
+                            isCheckpointAllowed={isCheckpointAllowed}
                             dailySessions={dailySessions}
                             isWorkingDayToday={isWorkingDayToday}
                             missedPunchWarning={missedPunchWarning}
@@ -2810,6 +2900,8 @@ const Attendance = () => {
                                     setPreviewImage={setPreviewImage}
                                     myShift={myShift}
                                     setIsCorrectionDrawerOpen={setIsCorrectionDrawerOpen}
+                                    setCorrDate={setCorrDate}
+                                    loadCorrectionDataForDate={loadCorrectionDataForDate}
                                     handleOpenCheckpointModal={handleOpenCheckpointModal}
                                     setSubTab={setSubTab}
                                 />
@@ -2851,6 +2943,9 @@ const Attendance = () => {
                                     isAdminOrHr={isAdminOrHr}
                                     normalizeCorrectionSessions={normalizeCorrectionSessions}
                                     setPreviewImage={setPreviewImage}
+                                    setIsCorrectionDrawerOpen={setIsCorrectionDrawerOpen}
+                                    setCorrDate={setCorrDate}
+                                    loadCorrectionDataForDate={loadCorrectionDataForDate}
                                 />
                             )}
                             {/* SUB-TAB: REPORTS (Self-Service) */}
@@ -2909,7 +3004,7 @@ const Attendance = () => {
                                                 <FileClock size={22} />
                                             </div>
                                             <div>
-                                                <h3 className="text-base font-semibold text-slate-800 dark:text-github-dark-text tracking-tight">Review & Submit Adjustment</h3>
+                                                <h3 className="text-base font-semibold text-slate-800 dark:text-github-dark-text tracking-tight">Review Correction Request</h3>
                                                 <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">
                                                     {pendingRequestId ? `Updating Request #${pendingRequestId}` : 'New Request Submission'}
                                                 </p>
@@ -2964,7 +3059,14 @@ const Attendance = () => {
                                                         );
                                                     })
                                                 ) : (
-                                                    <p className="text-xs text-slate-400 font-normal">No punches entered</p>
+                                                    <div className="py-2 text-center sm:text-left">
+                                                        <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                                                            No custom timeline punches specified.
+                                                        </p>
+                                                        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                                            Request will be processed based on your stated remarks & attached proof document.
+                                                        </p>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
@@ -3000,7 +3102,7 @@ const Attendance = () => {
                                             disabled={submitLoading}
                                             className="flex-1 py-3 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-600/20 hover:shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
                                         >
-                                            {submitLoading ? <RefreshCw className="animate-spin" size={16} /> : "Confirm & Send"}
+                                            {submitLoading ? <RefreshCw className="animate-spin" size={16} /> : "Submit Correction Request"}
                                         </button>
                                     </div>
                                 </div>
@@ -3056,14 +3158,21 @@ const Attendance = () => {
 
                     {/* --- CHECKPOINT MARKING MODAL --- */}
                     <CheckpointModal
+                        isOpen={showCheckpointModal}
                         showCheckpointModal={showCheckpointModal}
+                        onClose={() => !isMarkingCheckpoint && setShowCheckpointModal(false)}
                         setShowCheckpointModal={setShowCheckpointModal}
                         isMarkingCheckpoint={isMarkingCheckpoint}
                         checkpointLocation={checkpointLocation}
+                        onRetryLocation={handleOpenCheckpointModal}
                         handleOpenCheckpointModal={handleOpenCheckpointModal}
                         checkpointNote={checkpointNote}
                         setCheckpointNote={setCheckpointNote}
+                        onConfirm={handleConfirmCheckpoint}
                         handleConfirmCheckpoint={handleConfirmCheckpoint}
+                        checkpointImgSrc={checkpointImgSrc}
+                        setCheckpointImgSrc={setCheckpointImgSrc}
+                        isSelfieRequired={isCheckpointSelfieRequired}
                     />
 
                     {/* --- CAMERA MODAL --- */}
@@ -3117,8 +3226,8 @@ const Attendance = () => {
                                                             Editing #{pendingRequestId}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-xs font-normal bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2.5 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/40">
-                                                            Adjustment
+                                                        <span className="text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2.5 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/40">
+                                                            Request Correction
                                                         </span>
                                                     )}
                                                 </div>
@@ -3195,11 +3304,8 @@ const Attendance = () => {
                                                         value={corrType}
                                                         onChange={(val) => setCorrType(val)}
                                                         options={[
-                                                            { label: 'Missed Clock-Out', value: 'Missed Clock-Out' },
-                                                            { label: 'Missed Clock-In', value: 'Missed Clock-In' },
-                                                            { label: 'Missed Entire Day', value: 'Missed Entire Day' },
-                                                            { label: 'Wrong Timestamp / Glitch', value: 'Wrong Timestamp' },
-                                                            { label: 'On-Duty / Field Visit', value: 'On-Duty' },
+                                                            { label: 'Missed Punch', value: 'Missed Punch' },
+                                                            { label: 'Missed Day', value: 'Missed Day' },
                                                             { label: 'Other Reason', value: 'Other' }
                                                         ]}
                                                     />
@@ -3226,12 +3332,12 @@ const Attendance = () => {
                                                 </motion.div>
                                             )}
 
-                                            {/* Original Attendance Context Card */}
-                                            <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3">
+                                            {/* Original Attendance Context Card with Visual Timeline & Session Text */}
+                                            <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3.5">
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2">
                                                         <History size={15} className="text-slate-400" />
-                                                        <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
                                                             Originally Logged on {formatCorrectionDate(corrDate)}
                                                         </span>
                                                     </div>
@@ -3250,26 +3356,42 @@ const Attendance = () => {
                                                     )}
                                                 </div>
 
+                                                {/* Visual Timeline of Original Sessions (Read-Only 24hr Reference) */}
+                                                <VisualCorrectionTimeline
+                                                    requestData={{
+                                                        original_data: originalSessions,
+                                                        proposed_data: [],
+                                                        correction_type: corrType,
+                                                        status: 'draft'
+                                                    }}
+                                                    showOriginalOnly={true}
+                                                    shift={myShift}
+                                                />
+
+                                                {/* Text Stating Each Session */}
                                                 {originalSessions.length > 0 ? (
                                                     <div className="space-y-2 pt-0.5">
                                                         {originalSessions.map((s, idx) => (
                                                             <div key={idx} className="flex items-center justify-between text-xs bg-white dark:bg-github-dark-subtle/80 p-2.5 rounded-xl border border-slate-200/70 dark:border-github-dark-border/60">
-                                                                <span className="font-medium text-slate-500 dark:text-slate-400">Session #{idx + 1}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                                                                    <span className="font-medium text-slate-700 dark:text-slate-300">Session #{idx + 1}</span>
+                                                                </div>
                                                                 <div className="flex items-center gap-2 font-mono font-normal">
-                                                                    <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}>
+                                                                    <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400"}>
                                                                         {s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}
                                                                     </span>
                                                                     <span className="text-slate-400">→</span>
-                                                                    <span className={s.time_out ? "text-rose-600 dark:text-rose-400" : "text-amber-500 dark:text-amber-400 italic"}>
+                                                                    <span className={s.time_out ? "text-rose-600 dark:text-rose-400 font-medium" : "text-amber-500 dark:text-amber-400 italic"}>
                                                                         {s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Not Clocked Out'}
                                                                     </span>
                                                                 </div>
                                                                 {s.time_in && s.time_out ? (
-                                                                    <span className="text-xs font-normal text-slate-500">
+                                                                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md">
                                                                         {calculateSessionDurationHours(s.time_in, s.time_out).toFixed(1)} hrs
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="text-xs font-normal text-amber-500">
+                                                                    <span className="text-xs font-normal text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200/60 dark:border-amber-800/40">
                                                                         Incomplete
                                                                     </span>
                                                                 )}
@@ -3312,154 +3434,18 @@ const Attendance = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Proposed Sessions Section with Tab Selector */}
-                                            <div className="space-y-3.5">
+                                            {/* Remarks & WhatsApp-Style Chat Composer */}
+                                            <div className="space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
-                                                            Proposed Work Sessions
+                                                    <div className="flex items-center gap-2">
+                                                        <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                            Reason & Remarks
                                                         </label>
-                                                        <p className="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">
-                                                            Total Proposed: <span className="font-medium text-emerald-600 dark:text-emerald-400 font-mono">{totalProposedHours.toFixed(2)} hrs</span>
-                                                        </p>
+                                                        <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
+                                                            Manager Review
+                                                        </span>
                                                     </div>
-
-                                                    {/* View Mode Switcher */}
-                                                    <div className="flex items-center p-0.5 bg-slate-100 dark:bg-github-dark-bg rounded-xl border border-slate-200 dark:border-github-dark-border">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setDrawerTab('editor')}
-                                                            className={`px-3 py-1.5 rounded-lg text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer ${drawerTab === 'editor'
-                                                                    ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 font-medium shadow-xs'
-                                                                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                                                                }`}
-                                                        >
-                                                            <Edit3 size={13} /> Form Editor
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setDrawerTab('timeline')}
-                                                            className={`px-3 py-1.5 rounded-lg text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer ${drawerTab === 'timeline'
-                                                                    ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 font-medium shadow-xs'
-                                                                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                                                                }`}
-                                                        >
-                                                            <Clock size={13} /> Visual Timeline
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                {/* TAB 1: DIRECT PUNCH FORM EDITOR */}
-                                                {drawerTab === 'editor' && (
-                                                    <div className="space-y-3">
-                                                        {corrSessions.map((session, idx) => {
-                                                            const duration = calculateSessionDurationHours(session.time_in, session.time_out);
-                                                            const isOvernight = Boolean(session.time_in && session.time_out && session.time_in >= session.time_out);
-                                                            return (
-                                                                <div
-                                                                    key={session.id || idx}
-                                                                    className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3 relative group"
-                                                                >
-                                                                    <div className="flex items-center justify-between">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
-                                                                                Session #{idx + 1}
-                                                                            </span>
-                                                                            {duration > 0 && (
-                                                                                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 font-mono">
-                                                                                    {duration.toFixed(2)} hrs
-                                                                                </span>
-                                                                            )}
-                                                                            {isOvernight && (
-                                                                                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40">
-                                                                                    Overnight (+1 Day)
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-
-                                                                        {corrSessions.length > 1 && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleRemoveCorrectionSession(idx)}
-                                                                                className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors cursor-pointer"
-                                                                                title="Remove session"
-                                                                            >
-                                                                                <Trash2 size={15} />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-
-                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                                        <div className="space-y-1.5">
-                                                                            <span className="block text-xs font-medium text-slate-600 dark:text-slate-300">
-                                                                                Punch In Time
-                                                                            </span>
-                                                                            <TimePicker
-                                                                                value={session.time_in || ''}
-                                                                                onChange={(val) => handleSessionChange(idx, 'time_in', val)}
-                                                                                icon={<Clock size={15} className="text-emerald-500" />}
-                                                                                placeholder="Set clock in time"
-                                                                                className="w-full"
-                                                                            />
-                                                                        </div>
-
-                                                                        <div className="space-y-1.5">
-                                                                            <span className="block text-xs font-medium text-slate-600 dark:text-slate-300">
-                                                                                Punch Out Time
-                                                                            </span>
-                                                                            <TimePicker
-                                                                                value={session.time_out || ''}
-                                                                                onChange={(val) => handleSessionChange(idx, 'time_out', val)}
-                                                                                icon={<Clock size={15} className="text-rose-500" />}
-                                                                                placeholder="Set clock out time"
-                                                                                className="w-full"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-
-                                                        {/* Add Session Button */}
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleAddCorrectionSession}
-                                                            className="w-full h-11 border border-dashed border-slate-300 dark:border-github-dark-border hover:border-indigo-400 dark:hover:border-indigo-500 rounded-xl text-xs font-normal text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                                                        >
-                                                            <Plus size={15} /> Add Another Session (Split Shift / Break)
-                                                        </button>
-                                                    </div>
-                                                )}
-
-                                                {/* TAB 2: INTERACTIVE VISUAL TIMELINE */}
-                                                {drawerTab === 'timeline' && (
-                                                    <VisualCorrectionTimeline
-                                                        requestData={{
-                                                            original_data: originalSessions,
-                                                            proposed_data: corrSessions.filter(s => s.time_in || s.time_out),
-                                                            correction_type: corrType,
-                                                            status: 'draft'
-                                                        }}
-                                                        editable={true}
-                                                        onSessionsChange={(updated) => {
-                                                            setCorrSessions(updated.map((s, idx) => ({
-                                                                id: `session-${idx}-${s.time_in || s.time_out}`,
-                                                                time_in: s.time_in || '',
-                                                                time_out: s.time_out || '',
-                                                                punch_type: s.punch_type || 'regular'
-                                                            })));
-                                                        }}
-                                                    />
-                                                )}
-                                            </div>
-
-                                            {/* Reason Section & Quick Reason Chips */}
-                                            <div className="space-y-2.5">
-                                                <div className="flex items-center justify-between">
-                                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
-                                                        Reason for Adjustment
-                                                    </label>
-                                                    <span className="text-xs font-normal text-slate-400">Required</span>
+                                                    <span className="text-xs font-normal text-rose-500">Required</span>
                                                 </div>
 
                                                 {/* Quick reason presets */}
@@ -3474,116 +3460,54 @@ const Attendance = () => {
                                                         <button
                                                             key={i}
                                                             type="button"
-                                                            onClick={() => setCorrReason(r)}
-                                                            className="text-xs font-normal px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 dark:bg-github-dark-bg dark:hover:bg-indigo-950/40 text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-github-dark-border transition-colors cursor-pointer"
+                                                            onClick={() => setCorrReason(prev => prev ? `${prev}. ${r}` : r)}
+                                                            className="text-xs font-normal px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-github-dark-bg dark:hover:bg-emerald-950/30 text-slate-600 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 border border-slate-200/80 dark:border-github-dark-border transition-colors cursor-pointer"
                                                         >
                                                             {r}
                                                         </button>
                                                     ))}
                                                 </div>
 
-                                                <textarea
-                                                    data-tour-id="att-correction-reason"
-                                                    value={corrReason}
-                                                    onChange={(e) => setCorrReason(e.target.value)}
-                                                    placeholder="Please provide details for the correction request..."
-                                                    className="w-full px-4 py-3 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 font-normal text-sm h-24 resize-none shadow-2xs placeholder:text-slate-400"
-                                                    required
-                                                />
-                                            </div>
+                                                {/* Text Box Directly Aligned with Attach Icon */}
+                                                <div
+                                                    onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+                                                    onDragLeave={() => setIsDraggingFile(false)}
+                                                    onDrop={(e) => {
+                                                        e.preventDefault();
+                                                        setIsDraggingFile(false);
+                                                        const file = e.dataTransfer.files?.[0];
+                                                        if (file) {
+                                                            setCorrAttachment(file);
+                                                            if (file.type.startsWith('image/')) {
+                                                                setCorrAttachmentPreview(URL.createObjectURL(file));
+                                                            } else {
+                                                                setCorrAttachmentPreview(null);
+                                                            }
+                                                        }
+                                                    }}
+                                                    className={`relative flex items-center gap-2.5 bg-white dark:bg-dark-card border rounded-xl px-3 py-2 min-h-[44px] shadow-2xs transition-all ${
+                                                        isDraggingFile
+                                                            ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/30'
+                                                            : 'border-slate-200 dark:border-github-dark-border focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500'
+                                                    }`}
+                                                >
+                                                    {/* Attach Button */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => corrFileInputRef.current?.click()}
+                                                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+                                                        title="Attach document, doctor's slip, or proof file"
+                                                    >
+                                                        <Paperclip size={18} />
+                                                    </button>
 
-                                            {/* Supporting Attachment Section */}
-                                            <div className="space-y-2.5">
-                                                <div className="flex items-center justify-between">
-                                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
-                                                        Supporting Proof / Attachment
-                                                    </label>
-                                                    <span className="text-xs font-normal text-slate-400">Optional</span>
-                                                </div>
-
-                                                {corrAttachment ? (
-                                                    <div className="flex items-center justify-between p-3.5 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-xl">
-                                                        <div className="flex items-center gap-3 min-w-0">
-                                                            {corrAttachmentPreview ? (
-                                                                <div
-                                                                    onClick={() => setPreviewImage(corrAttachmentPreview)}
-                                                                    className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-700 cursor-pointer hover:opacity-80 transition-opacity"
-                                                                    title="Click to zoom preview"
-                                                                >
-                                                                    <img src={corrAttachmentPreview} alt="Preview" className="w-full h-full object-cover" />
-                                                                </div>
-                                                            ) : (
-                                                                <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                                                                    <FileText size={20} />
-                                                                </div>
-                                                            )}
-                                                            <div className="min-w-0">
-                                                                <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                                                                    {corrAttachment.name}
-                                                                </p>
-                                                                <p className="text-xs font-normal text-slate-400 font-mono">
-                                                                    {(corrAttachment.size / 1024).toFixed(1)} KB • Click to preview
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5">
-                                                            {corrAttachmentPreview && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setPreviewImage(corrAttachmentPreview)}
-                                                                    className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-github-dark-bg rounded-lg transition-colors cursor-pointer"
-                                                                    title="Zoom preview"
-                                                                >
-                                                                    <Eye size={16} />
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setCorrAttachment(null);
-                                                                    setCorrAttachmentPreview(null);
-                                                                }}
-                                                                className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer"
-                                                                title="Remove attachment"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ) : existingAttachmentUrl ? (
-                                                    <div className="flex items-center justify-between p-3.5 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-xl">
-                                                        <div className="flex items-center gap-2.5 min-w-0">
-                                                            <Paperclip size={16} className="text-indigo-500 shrink-0" />
-                                                            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                                                                Existing document attached to pending request
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setPreviewImage(existingAttachmentUrl)}
-                                                                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
-                                                            >
-                                                                <Eye size={13} /> View
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setExistingAttachmentUrl(null)}
-                                                                className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer"
-                                                                title="Remove attachment"
-                                                            >
-                                                                <Trash2 size={15} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div
-                                                        onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
-                                                        onDragLeave={() => setIsDraggingFile(false)}
-                                                        onDrop={(e) => {
-                                                            e.preventDefault();
-                                                            setIsDraggingFile(false);
-                                                            const file = e.dataTransfer.files?.[0];
+                                                    <input
+                                                        ref={corrFileInputRef}
+                                                        type="file"
+                                                        className="hidden"
+                                                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
                                                             if (file) {
                                                                 setCorrAttachment(file);
                                                                 if (file.type.startsWith('image/')) {
@@ -3593,38 +3517,207 @@ const Attendance = () => {
                                                                 }
                                                             }
                                                         }}
-                                                        className={`flex flex-col items-center justify-center p-5 border-2 border-dashed rounded-xl cursor-pointer transition-all group ${isDraggingFile
-                                                                ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-950/40'
-                                                                : 'border-slate-200 dark:border-github-dark-border hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-github-dark-bg/30 hover:bg-indigo-50/10'
-                                                            }`}
-                                                    >
-                                                        <label className="w-full flex flex-col items-center justify-center cursor-pointer">
-                                                            <UploadCloud size={24} className="text-slate-400 group-hover:text-indigo-500 transition-colors mb-1.5" />
-                                                            <span className="text-xs font-medium text-slate-700 dark:text-slate-200 text-center">
-                                                                Drag & drop receipt, doctor slip, or proof file here
-                                                            </span>
-                                                            <span className="text-[11px] font-normal text-slate-400 dark:text-slate-400 mt-0.5">
-                                                                Images (JPG, PNG), PDF, Documents (up to 5MB)
-                                                            </span>
-                                                            <input
-                                                                type="file"
-                                                                className="hidden"
-                                                                accept="image/*,.pdf,.doc,.docx"
-                                                                onChange={(e) => {
-                                                                    const file = e.target.files?.[0];
-                                                                    if (file) {
-                                                                        setCorrAttachment(file);
-                                                                        if (file.type.startsWith('image/')) {
-                                                                            setCorrAttachmentPreview(URL.createObjectURL(file));
-                                                                        } else {
+                                                    />
+
+                                                    {/* Textarea */}
+                                                    <textarea
+                                                        data-tour-id="att-correction-reason"
+                                                        value={corrReason}
+                                                        onChange={(e) => setCorrReason(e.target.value)}
+                                                        onInput={(e) => {
+                                                            e.target.style.height = 'auto';
+                                                            e.target.style.height = `${e.target.scrollHeight}px`;
+                                                        }}
+                                                        placeholder="Write your message or reason for adjustment..."
+                                                        rows={1}
+                                                        className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none resize-none min-h-[22px] max-h-32 py-0 px-0 leading-5"
+                                                        required
+                                                    />
+                                                </div>
+
+                                                {/* Attached File Preview Chip / Existing Attachment */}
+                                                {(corrAttachment || existingAttachmentUrl) && (
+                                                    <div className="space-y-2">
+                                                        {corrAttachment && (
+                                                            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border text-xs">
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    {corrAttachmentPreview ? (
+                                                                        <img
+                                                                            src={corrAttachmentPreview}
+                                                                            alt="Attachment Preview"
+                                                                            className="w-9 h-9 object-cover rounded-lg border border-slate-200 dark:border-github-dark-border cursor-pointer hover:opacity-80 transition-opacity"
+                                                                            onClick={() => setPreviewImage(corrAttachmentPreview)}
+                                                                            title="Click to view full image"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                                            <FileText size={18} />
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px] sm:max-w-[300px]">
+                                                                            {corrAttachment.name}
+                                                                        </p>
+                                                                        <p className="text-[10px] text-slate-400 font-mono">
+                                                                            {(corrAttachment.size / 1024).toFixed(1)} KB • Document
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                                    {corrAttachmentPreview && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setPreviewImage(corrAttachmentPreview)}
+                                                                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-github-dark-border text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                                                                            title="Preview file"
+                                                                        >
+                                                                            <Eye size={14} />
+                                                                        </button>
+                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setCorrAttachment(null);
                                                                             setCorrAttachmentPreview(null);
-                                                                        }
-                                                                    }
-                                                                }}
-                                                            />
-                                                        </label>
+                                                                        }}
+                                                                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 transition-colors cursor-pointer"
+                                                                        title="Remove file"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {existingAttachmentUrl && !corrAttachment && (
+                                                            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border text-xs">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <Paperclip size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                                                    <span className="truncate font-medium text-slate-700 dark:text-slate-300">Existing attached proof</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setPreviewImage(existingAttachmentUrl)}
+                                                                        className="text-xs font-semibold underline text-indigo-600 dark:text-indigo-400 hover:opacity-80 flex items-center gap-1 cursor-pointer"
+                                                                    >
+                                                                        <Eye size={12} /> View
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setExistingAttachmentUrl(null)}
+                                                                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                                                                        title="Remove existing file"
+                                                                    >
+                                                                        <Trash2 size={13} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
+                                            </div>
+
+                                            {/* Advanced: Custom Punch Timeline (Collapsible Accordion) */}
+                                            <div className="border border-slate-200 dark:border-github-dark-border rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-github-dark-bg/30 transition-all">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAdvancedOptions(prev => !prev)}
+                                                    className="w-full px-5 py-3.5 flex items-center justify-between text-left hover:bg-slate-100/60 dark:hover:bg-github-dark-bg/60 transition-colors cursor-pointer"
+                                                >
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                            <Clock size={15} />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                                                    Advanced: Custom Punch Timeline
+                                                                </span>
+                                                                <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-200 dark:bg-github-dark-border text-slate-600 dark:text-slate-300">
+                                                                    Optional
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-0.5">
+                                                                Expand to drag and customize punch sessions visually
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
+                                                            <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-200/60 dark:border-emerald-800/40">
+                                                                {totalProposedHours.toFixed(2)} hrs
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-github-dark-border/60">
+                                                                Not Set (Optional)
+                                                            </span>
+                                                        )}
+                                                        <div className={`transition-transform duration-200 ${showAdvancedOptions ? 'rotate-180' : 'rotate-0'}`}>
+                                                            <ChevronDown size={18} className="text-slate-400" />
+                                                        </div>
+                                                    </div>
+                                                </button>
+
+                                                <AnimatePresence>
+                                                    {showAdvancedOptions && (
+                                                        <motion.div
+                                                            initial={{ height: 0, opacity: 0 }}
+                                                            animate={{ height: 'auto', opacity: 1 }}
+                                                            exit={{ height: 0, opacity: 0 }}
+                                                            className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-4 sm:p-5 space-y-4 bg-white dark:bg-github-dark-subtle/50"
+                                                        >
+                                                            {/* Preset actions inside advanced */}
+                                                            <div className="flex flex-wrap items-center gap-2 pb-1 border-b border-slate-100 dark:border-github-dark-border/60">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handlePresetFullShift}
+                                                                    className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 border border-indigo-200/60 dark:border-indigo-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                                >
+                                                                    <Clock size={13} /> Full Shift Preset ({myShift?.start_time ? myShift.start_time.slice(0, 5) : '09:00'} to {myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00'})
+                                                                </button>
+                                                                {originalSessions.some(s => s.time_in && !s.time_out) && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleAutoFillMissingOut}
+                                                                        className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                                    >
+                                                                        <Sparkles size={13} /> Auto-fill Missing Out
+                                                                    </button>
+                                                                )}
+                                                                {originalSessions.length > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleResetCorrectionToOriginal}
+                                                                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                                    >
+                                                                        <RotateCcw size={13} /> Reset to Logged
+                                                                    </button>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Interactive Visual Timeline Only */}
+                                                            <VisualCorrectionTimeline
+                                                                requestData={{
+                                                                    original_data: originalSessions,
+                                                                    proposed_data: corrSessions.filter(s => s.time_in || s.time_out),
+                                                                    correction_type: corrType,
+                                                                    status: 'draft'
+                                                                }}
+                                                                editable={true}
+                                                                shift={myShift}
+                                                                onSessionsChange={(updated) => {
+                                                                    setCorrSessions(updated.map((s, idx) => ({
+                                                                        id: `session-${idx}-${s.time_in || s.time_out}`,
+                                                                        time_in: s.time_in || '',
+                                                                        time_out: s.time_out || '',
+                                                                        punch_type: s.punch_type || 'regular'
+                                                                    })));
+                                                                }}
+                                                            />
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
                                             </div>
                                         </form>
                                     </div>
@@ -3635,9 +3728,15 @@ const Attendance = () => {
                                             <span className="text-slate-500 dark:text-slate-400 font-normal">
                                                 Adjusted Work Time:
                                             </span>
-                                            <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400 text-sm">
-                                                {totalProposedHours.toFixed(2)} hrs ({corrSessions.filter(s => s.time_in || s.time_out).length} session{corrSessions.filter(s => s.time_in || s.time_out).length !== 1 ? 's' : ''})
-                                            </span>
+                                            {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
+                                                <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400 text-sm">
+                                                    {totalProposedHours.toFixed(2)} hrs ({corrSessions.filter(s => s.time_in || s.time_out).length} session{corrSessions.filter(s => s.time_in || s.time_out).length !== 1 ? 's' : ''})
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
+                                                    Optional (Per Remarks)
+                                                </span>
+                                            )}
                                         </div>
                                         <button
                                             type="submit"
@@ -3645,8 +3744,8 @@ const Attendance = () => {
                                             data-tour-id="att-correction-submit-btn"
                                             className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-xl shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
                                         >
-                                            <FileClock size={18} />
-                                            {pendingRequestId ? `Review & Update Request (#${pendingRequestId})` : 'Review & Submit Adjustment'}
+                                            <Plus size={18} strokeWidth={2.5} />
+                                            {pendingRequestId ? `Review & Update Request (#${pendingRequestId})` : 'Request Correction'}
                                         </button>
                                         <p className="text-xs text-center text-slate-400 dark:text-slate-500 font-normal">
                                             {pendingRequestId ? 'Updates will immediately reflect in manager review queue' : 'Requires Manager / HR Approval'}

@@ -6,30 +6,73 @@ import * as ShiftService from "./shiftManagementService.js";
 import * as StatusService from "./statusEvaluationService.js";
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 import { toMySQLDateTime, toMySQLDate, toMySQLTime } from "../../utils/dateUtils.js";
+import * as MapsService from "../google_api_services/maps.js";
 
 /**
  * Fetch User Shift
  */
 export async function getUserShift(user_id) {
-  const user = await attendanceDB("core_users")
+  let userShift = await attendanceDB("core_users")
     .join("org_shifts", "core_users.shift_id", "org_shifts.shift_id")
     .where("core_users.user_id", user_id)
     .select("org_shifts.*")
     .first();
-  return user;
+
+  if (!userShift) {
+    // If user has no explicit shift assigned, find the user's organization active shift
+    const userRecord = await attendanceDB("core_users")
+      .where("user_id", user_id)
+      .select("org_id")
+      .first();
+
+    if (userRecord?.org_id) {
+      userShift = await attendanceDB("org_shifts")
+        .where({ org_id: userRecord.org_id, is_active: 1 })
+        .orderBy("shift_id", "asc")
+        .first();
+
+      if (!userShift) {
+        userShift = await attendanceDB("org_shifts")
+          .where({ org_id: userRecord.org_id })
+          .orderBy("shift_id", "asc")
+          .first();
+      }
+    }
+  }
+
+  return userShift;
 }
 
 /**
  * Format timestamp to MySQL datetime string (YYYY-MM-DD HH:MM:SS)
  */
+export function formatLocalDate(val) {
+  if (!val) return null;
+  if (val instanceof Date) {
+    return val.toISOString().split('T')[0];
+  }
+  return String(val).split('T')[0].split(' ')[0];
+}
+
+export function formatLocalDatetime(val) {
+  if (!val) return null;
+  if (val instanceof Date) {
+    return val.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
+  }
+  return String(val).replace('T', ' ').replace('Z', '').split('.')[0];
+}
+
 export function toSqlDatetime(val) {
-  if (!val) return new Date();
+  if (!val) {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
   if (typeof val === 'string') {
     return val.replace('T', ' ').replace('Z', '').split('.')[0];
   }
   if (val instanceof Date) {
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${val.getUTCFullYear()}-${pad(val.getUTCMonth() + 1)}-${pad(val.getUTCDate())} ${pad(val.getUTCHours())}:${pad(val.getUTCMinutes())}:${pad(val.getUTCSeconds())}`;
+    return val.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
   }
   return String(val);
 }
@@ -39,10 +82,13 @@ export function toSqlDatetime(val) {
  */
 export function getTimeStr(d) {
   if (!d) return null;
-  const dateObj = new Date(d);
-  if (isNaN(dateObj.getTime())) return null;
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}:${pad(dateObj.getSeconds())}`;
+  if (d instanceof Date) {
+    return d.toISOString().split('T')[1].split('.')[0];
+  }
+  const str = String(d).trim().replace('Z', '');
+  if (str.includes('T')) return str.split('T')[1].split('.')[0];
+  if (str.includes(' ')) return str.split(' ')[1].split('.')[0];
+  return str.split('.')[0];
 }
 
 /**
@@ -62,7 +108,7 @@ export function pairPunchesForDate(punches, dateStr) {
   let i = 0;
   while (i < punches.length) {
     const p = punches[i];
-    const punchDate = new Date(p.punch_time).toISOString().split('T')[0];
+    const punchDate = formatLocalDate(p.punch_time);
 
     if (p.punch_type === 'in' && punchDate === dateStr) {
       const inPunch = p;
@@ -153,7 +199,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     // Calculate next date for overnight out-punch matching
     const nextDate = new Date(sanitizedDate + 'T12:00:00');
     nextDate.setDate(nextDate.getDate() + 1);
-    const nextDateStr = nextDate.toISOString().split('T')[0];
+    const nextDateStr = formatLocalDate(nextDate);
 
     // 1. Fetch punches: all in/out on target date + out punches on next day (overnight)
     const punches = await attendanceDB("attn_punches")
@@ -209,7 +255,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     if (sessions.length > 0) {
       const firstIn = sessions[0].in_punch;
       const lateCheck = StatusService.calculateLateArrival(
-        new Date(firstIn.punch_time).toISOString(), rules
+        formatLocalDatetime(firstIn.punch_time), rules
       );
       lateMinutes = lateCheck.minutesLate;
 
@@ -225,7 +271,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     if (overrides.status) {
       finalStatus = overrides.status;
     } else if (sessions.some(s => !s.out_punch)) {
-      const todayDateStr = new Date().toISOString().split('T')[0];
+      const todayDateStr = formatLocalDate(new Date());
       const isPastDate = sanitizedDate < todayDateStr;
       finalStatus = isPastDate ? "MISSED_PUNCH" : "PRESENT";
     } else if (sessionCount === 0) {
@@ -343,11 +389,12 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
     .join("core_users as u", "ap.user_id", "u.user_id")
     .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
     .whereNull("ap.deleted_at")
-    .whereIn("ap.punch_type", ["in", "out"]);
+    .whereIn("ap.punch_type", ["in", "out", "normal_punch"]);
 
   if (user_id) query = query.where("ap.user_id", user_id);
   if (org_id) query = query.where("u.org_id", org_id);
-  if (date_from) query = query.whereRaw("DATE(ap.punch_time) >= DATE(?)", [date_from]);
+  // Expand search window slightly so midnight cross-over checkpoints are fetched
+  if (date_from) query = query.whereRaw("DATE(ap.punch_time) >= DATE_SUB(DATE(?), INTERVAL 1 DAY)", [date_from]);
   if (date_to) query = query.whereRaw("DATE(ap.punch_time) <= DATE_ADD(DATE(?), INTERVAL 1 DAY)", [date_to]);
 
   query = query.select(
@@ -369,17 +416,47 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
   const allSessions = [];
   for (const uid of Object.keys(byUser)) {
     const userPunches = byUser[uid];
+    // Sort punches within the same session/day window by ID to preserve strict chronological insertion order
+    userPunches.sort((a, b) => {
+      const timeA = new Date(a.punch_time).getTime();
+      const timeB = new Date(b.punch_time).getTime();
+      if (Math.abs(timeA - timeB) > 12 * 60 * 60 * 1000) {
+        return timeA - timeB;
+      }
+      return a.id - b.id;
+    });
+
     let i = 0;
     while (i < userPunches.length) {
       const inP = userPunches[i];
       if (inP.punch_type === "in") {
         let outP = null;
-        if (i + 1 < userPunches.length && userPunches[i + 1].punch_type === "out") {
-          outP = userPunches[i + 1];
-          i += 2;
-        } else {
-          i += 1;
+        let checkpoints = [];
+        let j = i + 1;
+        while (j < userPunches.length && userPunches[j].punch_type !== "in") {
+          if (userPunches[j].punch_type === "normal_punch") {
+            const chk = userPunches[j];
+            const chkLoc = safeParseJSON(chk.location);
+            const chkMeta = safeParseJSON(chk.metadata);
+            checkpoints.push({
+              id: chk.id,
+              punch_time: formatLocalDatetime(chk.punch_time),
+              lat: chkLoc.lat || null,
+              lng: chkLoc.lng || null,
+              accuracy: chkLoc.accuracy || chkMeta.accuracy || null,
+              address: (chkLoc.address && chkLoc.address !== 'Locating...') ? chkLoc.address : null,
+              note: chkMeta.note || null,
+              image_key: chkMeta.image_key || null,
+              is_geofence_violation: chkLoc.is_geofence_violation || false
+            });
+          } else if (userPunches[j].punch_type === "out") {
+            outP = userPunches[j];
+            j += 1;
+            break;
+          }
+          j += 1;
         }
+        i = j;
 
         const inLoc = safeParseJSON(inP.location);
         const inMeta = safeParseJSON(inP.metadata);
@@ -392,18 +469,20 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
           if (diffMs > 0) totalHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
         }
 
-        const timeInStr = inP.punch_time instanceof Date ? inP.punch_time.toISOString() : new Date(inP.punch_time).toISOString();
-        const timeOutStr = outP ? (outP.punch_time instanceof Date ? outP.punch_time.toISOString() : new Date(outP.punch_time).toISOString()) : null;
+        const timeInStr = formatLocalDatetime(inP.punch_time);
+        const timeOutStr = outP ? formatLocalDatetime(outP.punch_time) : null;
 
-        const punchDate = new Date(inP.punch_time);
-        const today = new Date();
-        const isPastDay = punchDate.toDateString() !== today.toDateString() && punchDate < today;
+        const punchDateStr = formatLocalDate(inP.punch_time);
+        const todayDateStr = formatLocalDate(new Date());
+        const isPastDay = punchDateStr && todayDateStr && punchDateStr < todayDateStr;
 
         let sessionStatus = "PRESENT";
         if (inP.status === "closed" || outP) {
           sessionStatus = "CLOSED";
         } else if (inP.status === "missed_punch" || isPastDay) {
           sessionStatus = "MISSED_PUNCH";
+        } else {
+          sessionStatus = "ACTIVE";
         }
 
         allSessions.push({
@@ -416,10 +495,10 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
           time_out: timeOutStr,
           time_in_lat: inLoc.lat || null,
           time_in_lng: inLoc.lng || null,
-          time_in_address: inLoc.address || null,
+          time_in_address: (inLoc.address && inLoc.address !== 'Locating...') ? inLoc.address : null,
           time_out_lat: outLoc.lat || null,
           time_out_lng: outLoc.lng || null,
-          time_out_address: outLoc.address || null,
+          time_out_address: (outLoc.address && outLoc.address !== 'Locating...') ? outLoc.address : null,
           time_in_image_key: inMeta.image_key || null,
           time_out_image_key: outMeta.image_key || null,
           late_minutes: inMeta.late_minutes || 0,
@@ -431,7 +510,8 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
             time_out: { timezone: outMeta?.timezone || "Asia/Kolkata" }
           }),
           created_at: inP.created_at,
-          updated_at: outP ? outP.created_at : inP.created_at
+          updated_at: outP ? outP.created_at : inP.created_at,
+          checkpoints
         });
       } else {
         i += 1;
@@ -439,30 +519,93 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
     }
   }
 
-  allSessions.sort((a, b) => new Date(b.time_in) - new Date(a.time_in));
-  return allSessions.slice(0, Math.min(parseInt(limit) || 100, 100));
+  let finalSessions = allSessions;
+  if (date_from || date_to) {
+    finalSessions = allSessions.filter(s => {
+      const d = s.time_in ? s.time_in.split('T')[0].split(' ')[0] : null;
+      if (!d) return true;
+      if (date_from && d < date_from) return false;
+      if (date_to && d > date_to) return false;
+      return true;
+    });
+  }
+
+  finalSessions.sort((a, b) => new Date(b.time_in) - new Date(a.time_in));
+  return finalSessions.slice(0, Math.min(parseInt(limit) || 100, 100));
 }
 
 /**
  * Fetch attendance records for admin view with user details
  */
 export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, limit }) {
-  const records = await fetchSessionsFromPunches({ org_id, user_id, date_from, date_to, limit }).catch(() => []);
+  let records = await fetchSessionsFromPunches({ org_id, user_id, date_from, date_to, limit }).catch(() => []);
+
+  // Fallback to legacy attn_records if no sessions found in attn_punches
+  if (!records || records.length === 0) {
+    try {
+      let legacyQuery = attendanceDB("attn_records as ar")
+        .join("core_users as u", "ar.user_id", "u.user_id")
+        .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
+        .whereNull("u.deleted_at");
+      if (org_id) legacyQuery = legacyQuery.where("u.org_id", org_id);
+      if (user_id) legacyQuery = legacyQuery.where("ar.user_id", user_id);
+      if (date_from) legacyQuery = legacyQuery.whereRaw("DATE(ar.time_in) >= DATE(?)", [date_from]);
+      if (date_to) legacyQuery = legacyQuery.whereRaw("DATE(ar.time_in) <= DATE(?)", [date_to]);
+
+      const legacyRecords = await legacyQuery.select(
+        "ar.*",
+        "u.user_name",
+        "u.email",
+        "d.desg_name as designation"
+      ).orderBy("ar.time_in", "desc").limit(Math.min(parseInt(limit) || 100, 100)).catch(() => []);
+
+      if (legacyRecords.length > 0) {
+        records = legacyRecords;
+      }
+    } catch (_) {}
+  }
 
   // Fetch pre-signed URLs for images
   const withUrls = await Promise.all(
-    records.map(async (row) => {
+    (records || []).map(async (row) => {
       let timeInUrl = null;
       let timeOutUrl = null;
 
       if (row.time_in_image_key) {
-        const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key }).catch(() => ({ url: null }));
-        timeInUrl = url;
+        if (row.time_in_image_key.startsWith('http://') || row.time_in_image_key.startsWith('https://')) {
+          timeInUrl = row.time_in_image_key;
+        } else {
+          const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key }).catch(() => ({ url: null }));
+          timeInUrl = url;
+        }
       }
       if (row.time_out_image_key) {
-        const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key }).catch(() => ({ url: null }));
-        timeOutUrl = url;
+        if (row.time_out_image_key.startsWith('http://') || row.time_out_image_key.startsWith('https://')) {
+          timeOutUrl = row.time_out_image_key;
+        } else {
+          const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key }).catch(() => ({ url: null }));
+          timeOutUrl = url;
+        }
       }
+
+      const checkpoints = await Promise.all(
+        (row.checkpoints || []).map(async (chk) => {
+          let chkImgUrl = null;
+          if (chk.image_key) {
+            if (chk.image_key.startsWith('http://') || chk.image_key.startsWith('https://')) {
+              chkImgUrl = chk.image_key;
+            } else {
+              const { url } = await S3Service.getFileUrl({ key: chk.image_key }).catch(() => ({ url: null }));
+              chkImgUrl = url;
+            }
+          }
+          return {
+            ...chk,
+            image_url: chkImgUrl,
+            image: chkImgUrl
+          };
+        })
+      );
 
       const time_in = row.time_in_ts || (row.time_in ? String(row.time_in) : null);
       const time_out = row.time_out_ts || (row.time_out ? String(row.time_out) : null);
@@ -477,6 +620,7 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
         updated_at,
         time_in_image: timeInUrl,
         time_out_image: timeOutUrl,
+        checkpoints
       };
     })
   );
@@ -488,7 +632,30 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
  * Fetch attendance records for a specific user
  */
 export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
-  const records = await fetchSessionsFromPunches({ user_id, date_from, date_to, limit }).catch(() => []);
+  let records = await fetchSessionsFromPunches({ user_id, date_from, date_to, limit }).catch(() => []);
+
+  // Fallback to legacy attn_records if no sessions found in attn_punches
+  if (!records || records.length === 0) {
+    try {
+      let legacyQuery = attendanceDB("attn_records as ar")
+        .join("core_users as u", "ar.user_id", "u.user_id")
+        .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
+        .where("ar.user_id", user_id);
+      if (date_from) legacyQuery = legacyQuery.whereRaw("DATE(ar.time_in) >= DATE(?)", [date_from]);
+      if (date_to) legacyQuery = legacyQuery.whereRaw("DATE(ar.time_in) <= DATE(?)", [date_to]);
+
+      const legacyRecords = await legacyQuery.select(
+        "ar.*",
+        "u.user_name",
+        "u.email",
+        "d.desg_name as designation"
+      ).orderBy("ar.time_in", "desc").limit(Math.min(parseInt(limit) || 100, 100)).catch(() => []);
+
+      if (legacyRecords.length > 0) {
+        records = legacyRecords;
+      }
+    } catch (_) {}
+  }
 
   const withUrls = await Promise.all(
     (records || []).map(async (row) => {
@@ -496,13 +663,40 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
       let timeOutUrl = null;
 
       if (row.time_in_image_key) {
-        const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key }).catch(() => ({ url: null }));
-        timeInUrl = url;
+        if (row.time_in_image_key.startsWith('http://') || row.time_in_image_key.startsWith('https://')) {
+          timeInUrl = row.time_in_image_key;
+        } else {
+          const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key }).catch(() => ({ url: null }));
+          timeInUrl = url;
+        }
       }
       if (row.time_out_image_key) {
-        const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key }).catch(() => ({ url: null }));
-        timeOutUrl = url;
+        if (row.time_out_image_key.startsWith('http://') || row.time_out_image_key.startsWith('https://')) {
+          timeOutUrl = row.time_out_image_key;
+        } else {
+          const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key }).catch(() => ({ url: null }));
+          timeOutUrl = url;
+        }
       }
+
+      const checkpoints = await Promise.all(
+        (row.checkpoints || []).map(async (chk) => {
+          let chkImgUrl = null;
+          if (chk.image_key) {
+            if (chk.image_key.startsWith('http://') || chk.image_key.startsWith('https://')) {
+              chkImgUrl = chk.image_key;
+            } else {
+              const { url } = await S3Service.getFileUrl({ key: chk.image_key }).catch(() => ({ url: null }));
+              chkImgUrl = url;
+            }
+          }
+          return {
+            ...chk,
+            image_url: chkImgUrl,
+            image: chkImgUrl
+          };
+        })
+      );
 
       const time_in = row.time_in_ts || (row.time_in ? String(row.time_in) : null);
       const time_out = row.time_out_ts || (row.time_out ? String(row.time_out) : null);
@@ -517,6 +711,7 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
         updated_at,
         time_in_image: timeInUrl,
         time_out_image: timeOutUrl,
+        checkpoints
       };
     })
   );
@@ -1178,11 +1373,11 @@ export async function processTimeInSync(context) {
     user_agent
   } = context;
 
-  const todayDate = localTime ? localTime.split('T')[0] : new Date().toISOString().split('T')[0];
+  const todayDate = localTime ? localTime.split('T')[0] : formatLocalDate(new Date());
   const isSimulation = context.event_source === "SIMULATION" || context.punch_nature === "simulated";
   const punchNature = isSimulation ? "simulated" : (context.punch_nature || "default");
   const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
-  const addressStr = context.address || (isSimulation ? "Simulated Location" : "Locating...");
+  const addressStr = (context.address && context.address !== 'Locating...') ? context.address : (isSimulation ? "Simulated Location" : "Pending...");
 
   // 1. Check for open session on the target date
   const lastPunchOnDate = await attendanceDB("attn_punches")
@@ -1209,7 +1404,7 @@ export async function processTimeInSync(context) {
       .first();
 
     if (latestGlobal && latestGlobal.punch_type === "in") {
-      const lastPunchDate = new Date(latestGlobal.punch_time).toISOString().split('T')[0];
+      const lastPunchDate = formatLocalDate(latestGlobal.punch_time);
       if (lastPunchDate === todayDate) {
         return { ok: false, status: 400, message: "Already timed in. Please time out first." };
       }
@@ -1299,6 +1494,35 @@ export async function processTimeInSync(context) {
     console.error("Daily Sync Error:", dailyErr);
   }
 
+  // 9. Async geocode & image update (runs immediately, independent of BullMQ)
+  //    This ensures address/image are always updated even when Redis is offline.
+  if (!isSimulation && latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
+    const punchIdForGeo = punch_id;
+    setImmediate(async () => {
+      try {
+        const geoRes = await MapsService.coordsToAddress(latitude, longitude);
+        const resolvedAddress = (geoRes && geoRes.address) ? geoRes.address : 'Unknown Location';
+        const punch = await attendanceDB('attn_punches').where({ id: punchIdForGeo }).first();
+        if (punch) {
+          const loc = safeParseJSON(punch.location);
+          if (!loc.address || loc.address === 'Locating...' || loc.address === 'Pending...') {
+            loc.address = resolvedAddress;
+            await attendanceDB('attn_punches').where({ id: punchIdForGeo }).update({
+              location: JSON.stringify(loc)
+            });
+          }
+        }
+        // Also update legacy attn_records if it exists
+        await attendanceDB('attn_records').where({ attendance_id: punchIdForGeo }).update({
+          time_in_address: resolvedAddress,
+          updated_at: attendanceDB.fn.now()
+        }).catch(() => {});
+      } catch (geoErr) {
+        console.warn('[processTimeInSync] Inline geocoding failed:', geoErr.message);
+      }
+    });
+  }
+
   const expectedHours = ShiftService.getExpectedHours(localTime, rules.week_off_policy, rules);
 
   return {
@@ -1336,7 +1560,7 @@ export async function processTimeOutSync(context) {
   const isSimulation = context.event_source === "SIMULATION" || context.punch_nature === "simulated";
   const punchNature = isSimulation ? "simulated" : (context.punch_nature || "default");
   const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
-  const addressStr = context.address || (isSimulation ? "Simulated Location" : "Locating...");
+  const addressStr = (context.address && context.address !== 'Locating...') ? context.address : (isSimulation ? "Simulated Location" : "Pending...");
   const targetDate = localTime ? localTime.split('T')[0] : null;
 
   // 1. Find open session (latest non-deleted punch is 'in' on target date if simulating)
@@ -1361,7 +1585,7 @@ export async function processTimeOutSync(context) {
   const openInPunch = lastPunch;
 
   // 2. Check if the open session was flagged as MISSED_PUNCH by aggregator
-  const sessionDate = new Date(openInPunch.punch_time).toISOString().split('T')[0];
+  const sessionDate = formatLocalDate(openInPunch.punch_time);
   const daySummary = await attendanceDB("attn_daily_summary")
     .where({ user_id, date: sessionDate })
     .first();
@@ -1374,7 +1598,7 @@ export async function processTimeOutSync(context) {
   }
 
   // 3. Check session age (> 24h → require correction)
-  const durationHours = (new Date(localTime) - new Date(openInPunch.punch_time)) / (1000 * 60 * 60);
+  const durationHours = StatusService.calculateDurationHours(openInPunch.punch_time, localTime);
   if (durationHours > 24) {
     return {
       ok: false,
@@ -1438,7 +1662,35 @@ export async function processTimeOutSync(context) {
     console.error("Daily Sync Error (Timeout):", dailyErr);
   }
 
-  // 9. Get aggregated status + totals for response
+  // 9. Async geocode for time-out address (independent of BullMQ)
+  if (!isSimulation && latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
+    const outPunchId = punch_id;
+    setImmediate(async () => {
+      try {
+        const geoRes = await MapsService.coordsToAddress(latitude, longitude);
+        const resolvedAddress = (geoRes && geoRes.address) ? geoRes.address : 'Unknown Location';
+        const punch = await attendanceDB('attn_punches').where({ id: outPunchId }).first();
+        if (punch) {
+          const loc = safeParseJSON(punch.location);
+          if (!loc.address || loc.address === 'Locating...' || loc.address === 'Pending...') {
+            loc.address = resolvedAddress;
+            await attendanceDB('attn_punches').where({ id: outPunchId }).update({
+              location: JSON.stringify(loc)
+            });
+          }
+        }
+        // Also update legacy attn_records if it exists
+        await attendanceDB('attn_records').where({ attendance_id: outPunchId }).update({
+          time_out_address: resolvedAddress,
+          updated_at: attendanceDB.fn.now()
+        }).catch(() => {});
+      } catch (geoErr) {
+        console.warn('[processTimeOutSync] Inline geocoding failed:', geoErr.message);
+      }
+    });
+  }
+
+  // 10. Get aggregated status + totals for response
   let status = "PRESENT";
   let totalHoursToday = parseFloat(totalHours.toFixed(2));
   try {
@@ -1483,16 +1735,106 @@ export async function processTimeOutSync(context) {
   };
 }
 
-export async function recordLocationPing({ userId, latitude, longitude, ip, userAgent, isGeofenceViolation = false }) {
+export async function recordLocationPing({
+  userId,
+  latitude,
+  longitude,
+  accuracy = null,
+  address = null,
+  note = null,
+  file = null,
+  ip,
+  userAgent,
+  isGeofenceViolation = false,
+  localTime = null
+}) {
+  // 1. Shift Policy Enforcement for Checkpoints
+  const shift = await getUserShift(userId);
+  const rules = ShiftService.getShiftRules(shift);
+  const checkpointPolicy = rules?.checkpoint_requirements || { enabled: true, selfie: false };
+
+  if (checkpointPolicy.enabled === false) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Checkpoints are disabled by your assigned shift policy."
+    };
+  }
+
+  const hasSelfie = Boolean(file && (file.buffer || file.path));
+  if (checkpointPolicy.selfie === true && !hasSelfie) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Shift Policy Violation: Selfie is required to mark a checkpoint."
+    };
+  }
+
+  let initialAddress = (address && address !== "Locating...") ? address : null;
+  const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
+
+  const metadata = {
+    ip,
+    user_agent: userAgent,
+    note: note || null,
+    accuracy: accuracy ? Math.round(accuracy) : null,
+    image_key: null,
+    local_time: localTime ? toMySQLDateTime(localTime) : undefined
+  };
+
+  const locationData = {
+    lat: latitude,
+    lng: longitude,
+    accuracy: accuracy ? Math.round(accuracy) : null,
+    address: initialAddress,
+    is_geofence_violation: isGeofenceViolation
+  };
+
   const [punch_id] = await attendanceDB("attn_punches").insert({
     user_id: userId,
-    punch_time: attendanceDB.fn.now(),
+    punch_time: punchTime,
     punch_type: "normal_punch",
-    location: JSON.stringify({ lat: latitude, lng: longitude, is_geofence_violation: isGeofenceViolation }),
+    location: JSON.stringify(locationData),
     punch_nature: "default",
-    metadata: JSON.stringify({ ip, user_agent: userAgent }),
+    metadata: JSON.stringify(metadata),
     created_at: attendanceDB.fn.now()
   });
 
-  return { ok: true, punch_id, message: "Location ping recorded" };
+  // Async or immediate image upload to S3 only if selfie is enabled in shift policy and file provided
+  if (checkpointPolicy.selfie === true && file && (file.buffer || file.path)) {
+    try {
+      const uploadRes = await S3Service.uploadCompressedImage({
+        fileBuffer: file.buffer,
+        key: `${punch_id}_checkpoint`,
+        directory: "attendance_images"
+      });
+      if (uploadRes && uploadRes.key) {
+        metadata.image_key = uploadRes.key;
+        await attendanceDB("attn_punches").where({ id: punch_id }).update({
+          metadata: JSON.stringify(metadata)
+        });
+      }
+    } catch (s3Err) {
+      console.error(`[Checkpoint] S3 upload error for punch #${punch_id}:`, s3Err.message);
+    }
+  }
+
+  // Reverse geocode address if missing
+  if (!initialAddress && latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
+    setImmediate(async () => {
+      try {
+        const geoRes = await MapsService.coordsToAddress(latitude, longitude);
+        if (geoRes && geoRes.address) {
+          locationData.address = geoRes.address;
+          await attendanceDB("attn_punches").where({ id: punch_id }).update({
+            location: JSON.stringify(locationData)
+          });
+        }
+      } catch (geoErr) {
+        console.warn(`[Checkpoint] Geocoding error for punch #${punch_id}:`, geoErr.message);
+      }
+    });
+  }
+
+  return { ok: true, punch_id, message: "Checkpoint marked successfully" };
 }

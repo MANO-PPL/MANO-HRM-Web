@@ -41,8 +41,12 @@ import {
     ExternalLink
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { toast } from 'react-toastify';
 import MobileDatePicker from '../../components/MobileDatePicker';
+import AttendancePermissionsBanner from './components/AttendancePermissionsBanner';
+import CheckpointModal from './components/CheckpointModal';
+import { requestCameraAccess } from '../../utils/permissionUtils';
 import MonthPicker from '../../components/MonthPicker';
 import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
 import {
@@ -160,7 +164,7 @@ const getWeeksOfMonth = (monthStr) => {
         }
 
         const weekLabel = `Week ${weeks.length + 1} (${currentStart.toLocaleDateString('en-US', { day: '2-digit', month: 'short' })} - ${currentEnd.toLocaleDateString('en-US', { day: '2-digit', month: 'short' })})`;
-        const startVal = currentStart.toISOString().slice(0, 10);
+        const startVal = getLocalDateString(currentStart);
         weeks.push({ label: weekLabel, value: startVal });
 
         currentStart = new Date(currentEnd);
@@ -246,12 +250,12 @@ const MobileAttendancePage = () => {
     };
 
     const [correctionForm, setCorrectionForm] = useState({
-        date: new Date().toISOString().split('T')[0],
         type: 'Missed Punch',
-        method: 'manual', // 'manual' or 'reset'
-        sessions: [{ in: '', out: '' }],
+        date: getLocalDateString(),
+        in_time: '',
+        out_time: '',
         reason: '',
-        files: []
+        document: null
     });
 
     const [originalSessions, setOriginalSessions] = useState([]);
@@ -268,6 +272,20 @@ const MobileAttendancePage = () => {
     const [imgSrc, setImgSrc] = useState(null);
     const webcamRef = useRef(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [cameraError, setCameraError] = useState(null);
+    const [isRequestingCam, setIsRequestingCam] = useState(false);
+
+    const handleRequestCamera = async () => {
+        setIsRequestingCam(true);
+        setCameraError(null);
+        const res = await requestCameraAccess();
+        setIsRequestingCam(false);
+        if (!res.success) {
+            setCameraError(res.message);
+        } else {
+            setCameraError(null);
+        }
+    };
 
     // Late Reason
     const [requireLateReason, setRequireLateReason] = useState(false);
@@ -278,6 +296,7 @@ const MobileAttendancePage = () => {
     const [showCheckpointModal, setShowCheckpointModal] = useState(false);
     const [isMarkingCheckpoint, setIsMarkingCheckpoint] = useState(false);
     const [checkpointNote, setCheckpointNote] = useState('');
+    const [checkpointImgSrc, setCheckpointImgSrc] = useState(null);
     const [checkpointLocation, setCheckpointLocation] = useState({
         lat: null,
         lng: null,
@@ -294,7 +313,7 @@ const MobileAttendancePage = () => {
         const year = today.getFullYear();
         const month = String(today.getMonth() + 1).padStart(2, '0');
         const startDate = `${year}-${month}-01`;
-        const endDate = new Date(year, today.getMonth() + 1, 0).toISOString().split('T')[0];
+        const endDate = getLocalDateString(new Date(year, today.getMonth() + 1, 0));
         const cacheKey = `${startDate}_${endDate}`;
         const cached = attendanceCacheData.records[cacheKey];
         return cached ? (cached.data || cached) : [];
@@ -313,14 +332,14 @@ const MobileAttendancePage = () => {
 
     // Reports Self-Service States
     const [reportsSelectedMonth, setReportsSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-    const [reportsSelectedDate, setReportsSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+    const [reportsSelectedDate, setReportsSelectedDate] = useState(() => getLocalDateString());
     const [reportsReportType, setReportsReportType] = useState('attendance_detailed');
     const [reportsFileFormat, setReportsFileFormat] = useState('xlsx');
     const [reportsIsGenerating, setReportsIsGenerating] = useState(false);
     const [reportsActiveTab, setReportsActiveTab] = useState('preview'); // 'preview' | 'history'
     const [reportsUseCustomRange, setReportsUseCustomRange] = useState(false);
-    const [reportsCustomStartDate, setReportsCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
-    const [reportsCustomEndDate, setReportsCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
+    const [reportsCustomStartDate, setReportsCustomStartDate] = useState(() => getLocalDateString());
+    const [reportsCustomEndDate, setReportsCustomEndDate] = useState(() => getLocalDateString());
     const [reportsSelectedWeek, setReportsSelectedWeek] = useState('');
     const [reportsExportColumns, setReportsExportColumns] = useState({
         shift: true,
@@ -350,7 +369,7 @@ const MobileAttendancePage = () => {
     const [reportsLoadingPreview, setReportsLoadingPreview] = useState(false);
 
     // Dates
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
     const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [reportYear, setReportYear] = useState(new Date().getFullYear());
 
@@ -359,16 +378,27 @@ const MobileAttendancePage = () => {
     const [analyticsSelectedMonth, setAnalyticsSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [analyticsStartDate, setAnalyticsStartDate] = useState(() => {
         const d = new Date();
-        return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+        return getLocalDateString(new Date(d.getFullYear(), d.getMonth(), 1));
     });
     const [analyticsEndDate, setAnalyticsEndDate] = useState(() => {
         const d = new Date();
-        return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+        return getLocalDateString(new Date(d.getFullYear(), d.getMonth() + 1, 0));
     });
     const [analyticsSessions, setAnalyticsSessions] = useState([]);
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
     const [showFullCalendar, setShowFullCalendar] = useState(false);
     const [scrollerDates, setScrollerDates] = useState([]);
+
+    const refreshMyShiftPolicy = useCallback(async (force = true) => {
+        try {
+            const data = await attendanceService.getMyShiftPolicy(force);
+            if (data?.success || data?.ok || data?.shift) {
+                setMyShift(data.shift || data);
+            }
+        } catch (err) {
+            console.error("Failed to refresh mobile shift policy:", err);
+        }
+    }, []);
 
     useEffect(() => {
         const d = [];
@@ -381,18 +411,44 @@ const MobileAttendancePage = () => {
         }
         setScrollerDates(d);
 
-        attendanceService.getMyShiftPolicy()
-            .then(data => {
-                if (data.ok) setMyShift(data.shift);
-            })
-            .catch(console.error);
-    }, []);
+        refreshMyShiftPolicy(true);
+
+        const handleShiftUpdate = () => {
+            refreshMyShiftPolicy(true);
+        };
+
+        window.addEventListener('shift_policy_updated', handleShiftUpdate);
+        window.addEventListener('focus', handleShiftUpdate);
+
+        let bc;
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                bc = new BroadcastChannel('mano_shifts_channel');
+                bc.onmessage = (event) => {
+                    if (event?.data?.type === 'shift_policy_updated' || event?.data === 'shift_policy_updated') {
+                        handleShiftUpdate();
+                    }
+                };
+            } catch (e) {}
+        }
+
+        return () => {
+            window.removeEventListener('shift_policy_updated', handleShiftUpdate);
+            window.removeEventListener('focus', handleShiftUpdate);
+            if (bc) {
+                try { bc.close(); } catch (e) {}
+            }
+        };
+    }, [refreshMyShiftPolicy]);
 
     // --- FETCHING ---
 
-    const fetchDailyRecords = async () => {
+    const fetchDailyRecords = async (force = false) => {
+        if (force) {
+            refreshMyShiftPolicy(true);
+        }
         try {
-            const res = await attendanceService.getMyRecords(selectedDate, selectedDate);
+            const res = await attendanceService.getMyRecords(selectedDate, selectedDate, force);
             if (res.ok || res.data) {
                 const records = res.data || res || [];
                 setDailySessions(Array.isArray(records) ? records : []);
@@ -406,7 +462,7 @@ const MobileAttendancePage = () => {
         if (!reportMonth) return;
         const [year, month] = reportMonth.split('-');
         const startDate = `${year}-${month}-01`;
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        const endDate = getLocalDateString(new Date(year, month, 0));
         const cacheKey = `${startDate}_${endDate}`;
 
         if (!force && attendanceCacheData.records[cacheKey]) {
@@ -417,7 +473,7 @@ const MobileAttendancePage = () => {
 
         setLoading(true);
         try {
-            const res = await attendanceService.getMyRecords(startDate, endDate);
+            const res = await attendanceService.getMyRecords(startDate, endDate, force);
             if (res.ok || res.data) {
                 const records = res.data || res || [];
                 setMonthlySessions(Array.isArray(records) ? records : []);
@@ -439,18 +495,18 @@ const MobileAttendancePage = () => {
         if (analyticsFilterType === 'this_month') {
             const y = today.getFullYear();
             const m = today.getMonth();
-            start = new Date(y, m, 1).toISOString().split('T')[0];
-            end = new Date(y, m + 1, 0).toISOString().split('T')[0];
+            start = getLocalDateString(new Date(y, m, 1));
+            end = getLocalDateString(new Date(y, m + 1, 0));
         } else if (analyticsFilterType === 'last_month') {
             const y = today.getFullYear();
             const m = today.getMonth() - 1;
-            start = new Date(y, m, 1).toISOString().split('T')[0];
-            end = new Date(y, m + 1, 0).toISOString().split('T')[0];
+            start = getLocalDateString(new Date(y, m, 1));
+            end = getLocalDateString(new Date(y, m + 1, 0));
         } else if (analyticsFilterType === 'select_month') {
             if (analyticsSelectedMonth) {
                 const [y, m] = analyticsSelectedMonth.split('-').map(Number);
-                start = new Date(y, m - 1, 1).toISOString().split('T')[0];
-                end = new Date(y, m, 0).toISOString().split('T')[0];
+                start = getLocalDateString(new Date(y, m - 1, 1));
+                end = getLocalDateString(new Date(y, m, 0));
             }
         } else if (analyticsFilterType === 'custom') {
             start = analyticsStartDate;
@@ -597,13 +653,13 @@ const MobileAttendancePage = () => {
                     setOriginalSessions(loadedSessions.map(s => ({ time_in: s.in, time_out: s.out })));
                     setCorrectionForm(prev => ({
                         ...prev,
-                        sessions: loadedSessions
+                        sessions: []
                     }));
                 } else {
                     setOriginalSessions([]);
                     setCorrectionForm(prev => ({
                         ...prev,
-                        sessions: [{ in: '', out: '' }]
+                        sessions: []
                     }));
                 }
             } catch (error) {
@@ -611,7 +667,7 @@ const MobileAttendancePage = () => {
                 setOriginalSessions([]);
                 setCorrectionForm(prev => ({
                     ...prev,
-                    sessions: [{ in: '', out: '' }]
+                    sessions: []
                 }));
             }
         };
@@ -630,6 +686,9 @@ const MobileAttendancePage = () => {
         setLateReasonText('');
     };
 
+    const isCheckpointAllowed = myShift?.rules?.checkpoint_requirements?.enabled !== false;
+    const isCheckpointSelfieRequired = Boolean(myShift?.rules?.checkpoint_requirements?.selfie);
+
     const handlePunchClick = async (mode) => {
         const isSelfieRequired = mode === 'IN'
             ? (myShift?.rules?.entry_requirements?.selfie ?? false)
@@ -643,12 +702,17 @@ const MobileAttendancePage = () => {
     };
 
     const handleOpenCheckpointModal = () => {
+        if (!isCheckpointAllowed) {
+            toast.error("Checkpoints are disabled by your assigned shift policy.");
+            return;
+        }
         if (!hasActiveSession) {
             toast.warning("You must Clock IN before marking a checkpoint.");
             return;
         }
         setShowCheckpointModal(true);
         setCheckpointNote('');
+        setCheckpointImgSrc(null);
         setCheckpointLocation({ lat: null, lng: null, accuracy: null, address: '', error: null, loading: true });
 
         if (!navigator.geolocation) {
@@ -696,20 +760,55 @@ const MobileAttendancePage = () => {
         acquireLocation(true);
     };
 
-    const handleConfirmCheckpoint = async () => {
+    const dataURLtoBlob = (dataurl) => {
+        try {
+            let arr = dataurl.split(',');
+            let mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+            let bstr = atob(arr[1]);
+            let n = bstr.length;
+            let u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], { type: mime });
+        } catch (e) {
+            console.warn("Failed dataURLtoBlob conversion:", e);
+            return null;
+        }
+    };
+
+    const handleConfirmCheckpoint = async (capturedPhoto) => {
         if (!checkpointLocation.lat || !checkpointLocation.lng) {
             toast.error("Valid GPS coordinates are required.");
             return;
         }
 
+        if (isCheckpointSelfieRequired && !capturedPhoto && !checkpointImgSrc) {
+            toast.error("Selfie is required to mark a checkpoint.");
+            return;
+        }
+
         setIsMarkingCheckpoint(true);
         try {
+            // Only attach selfie photo if selfie is enabled by shift policy
+            const photoSrc = isCheckpointSelfieRequired ? (capturedPhoto || checkpointImgSrc) : null;
+            let imageBlob = null;
+            if (photoSrc) {
+                try {
+                    imageBlob = dataURLtoBlob(photoSrc);
+                } catch (bErr) {
+                    console.warn("Failed to convert checkpoint selfie to blob:", bErr);
+                }
+            }
+
             const payload = {
                 latitude: checkpointLocation.lat,
                 longitude: checkpointLocation.lng,
                 accuracy: checkpointLocation.accuracy,
                 address: checkpointLocation.address,
                 note: checkpointNote.trim() || undefined,
+                imageFile: imageBlob,
+                image: photoSrc,
                 is_geofence_violation: false
             };
 
@@ -717,7 +816,11 @@ const MobileAttendancePage = () => {
             toast.success(res.message || "Checkpoint marked successfully!");
             setShowCheckpointModal(false);
             setCheckpointNote('');
-            fetchData();
+            setCheckpointImgSrc(null);
+            await fetchDailyRecords(true);
+            await fetchMonthlyRecords(true);
+            setTimeout(() => fetchDailyRecords(true), 2500);
+            setTimeout(() => fetchDailyRecords(true), 6000);
         } catch (err) {
             console.error("Checkpoint error:", err);
             toast.error(err.message || "Failed to record checkpoint");
@@ -742,7 +845,8 @@ const MobileAttendancePage = () => {
             const payload = {
                 latitude: location.lat,
                 longitude: location.lng,
-                accuracy: location.lat ? 10 : null
+                accuracy: location.lat ? 10 : null,
+                address: location.address || null
             };
 
             if (requireLateReason && lateReasonText.trim()) {
@@ -760,8 +864,11 @@ const MobileAttendancePage = () => {
             closeCamera();
 
             try {
-                await fetchDailyRecords();
+                await fetchDailyRecords(true);
                 await fetchMonthlyRecords(true);
+                // Delayed re-fetches to pick up async geocoded address and S3 image URL
+                setTimeout(() => fetchDailyRecords(true), 2500);
+                setTimeout(() => fetchDailyRecords(true), 6000);
             } catch (refErr) {
                 console.error("Failed to refresh records after punch:", refErr);
             }
@@ -791,6 +898,7 @@ const MobileAttendancePage = () => {
         setShowCamera(false);
         setImgSrc(null);
         setCameraMode(null);
+        setCameraError(null);
         setRequireLateReason(false);
         setLateReasonMessage('');
         setLateReasonText('');
@@ -803,15 +911,6 @@ const MobileAttendancePage = () => {
 
     const retake = () => {
         setImgSrc(null);
-    };
-
-    const dataURLtoBlob = (dataurl) => {
-        let arr = dataurl.split(';base64,'), mime = arr[0].match(/:(.*?);/) ? arr[0].match(/:(.*?);/)[1] : 'image/png';
-        let bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-        }
-        return new Blob([u8arr], { type: mime });
     };
 
     const confirmAttendance = async () => {
@@ -839,7 +938,8 @@ const MobileAttendancePage = () => {
             const payload = {
                 latitude: location.lat,
                 longitude: location.lng,
-                accuracy: location.lat ? 10 : null
+                accuracy: location.lat ? 10 : null,
+                address: location.address || null
             };
             if (imgSrc) {
                 const imageBlob = dataURLtoBlob(imgSrc);
@@ -861,8 +961,11 @@ const MobileAttendancePage = () => {
             closeCamera();
 
             try {
-                await fetchDailyRecords();
+                await fetchDailyRecords(true);
                 await fetchMonthlyRecords(true);
+                // Delayed re-fetches to pick up async geocoded address and S3 image URL
+                setTimeout(() => fetchDailyRecords(true), 2500);
+                setTimeout(() => fetchDailyRecords(true), 6000);
             } catch (refErr) {
                 console.error("Failed to refresh records after punch:", refErr);
             }
@@ -960,10 +1063,8 @@ const MobileAttendancePage = () => {
                         is_overnight: isOvernight
                     };
                 });
-            } else if (originalSessions.length > 0) {
-                proposed_data = originalSessions.map(s => ({ time_in: s.time_in || '09:00', time_out: s.time_out || '18:00' }));
             } else {
-                proposed_data = [{ time_in: '09:00', time_out: '18:00' }];
+                proposed_data = [];
             }
 
             const payload = {
@@ -1410,7 +1511,7 @@ const MobileAttendancePage = () => {
             daysMap[dateKey].sessions.push(session);
         });
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateString();
 
         const processed = Object.values(daysMap).map(day => {
             day.sessions.sort((a, b) => new Date(a.time_in || a.check_in) - new Date(b.time_in || b.check_in));
@@ -1473,7 +1574,7 @@ const MobileAttendancePage = () => {
         <MobileDashboardLayout title="Attendance">
             <div className="pb-24" style={{ zoom: 0.8 }}>
                 {/* Premium Header / Greeting */}
-                <div className="px-5 pt-8 pb-12 bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-900 dark:from-indigo-900/40 dark:via-indigo-950/40 dark:to-black rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
+                <div className="px-5 pt-8 pb-12 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-b-[2.5rem] border-b border-indigo-500/20 shadow-xl relative overflow-hidden">
                     {/* Animated Background Blobs */}
                     <motion.div 
                         animate={{ 
@@ -1481,7 +1582,7 @@ const MobileAttendancePage = () => {
                             rotate: [0, 90, 0],
                         }}
                         transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                        className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/20 blur-3xl rounded-full"
+                        className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/15 blur-3xl rounded-full"
                     />
                     <motion.div 
                         animate={{ 
@@ -1489,16 +1590,23 @@ const MobileAttendancePage = () => {
                             x: [0, 50, 0],
                         }}
                         transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                        className="absolute -bottom-24 -left-24 w-80 h-80 bg-sky-500/10 blur-3xl rounded-full"
+                        className="absolute -bottom-24 -left-24 w-80 h-80 bg-purple-500/10 blur-3xl rounded-full"
                     />
 
-                    <div className="relative z-10">
+                    <div className="relative z-10 space-y-4">
+                        <AttendancePermissionsBanner
+                            onPermissionsUpdated={(permStatus) => {
+                                if (permStatus.location === 'granted' && (location.error || location.address?.includes('Denied'))) {
+                                    fetchUserLocation();
+                                }
+                            }}
+                        />
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <h1 className="text-2xl font-black text-white tracking-tight">
                                     Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.user_name?.split(' ')[0] || 'User'}!
                                 </h1>
-                                <p className="text-indigo-100/70 text-sm font-medium mt-1">
+                                <p className="text-indigo-200/80 text-sm font-medium mt-1">
                                     {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                                 </p>
                             </div>
@@ -1613,39 +1721,41 @@ const MobileAttendancePage = () => {
                                     </button>
 
                                     {/* Mark Checkpoint Button */}
-                                    <button
-                                        onClick={() => hasActiveSession && !isSubmitting && !isMarkingCheckpoint && handleOpenCheckpointModal()}
-                                        disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
-                                        className={`group relative p-4 rounded-[2rem] flex items-center justify-between transition-all duration-300 overflow-hidden border ${
-                                            !hasActiveSession
-                                                ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
-                                                : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-lg dark:shadow-2xl active:scale-[0.98]'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center relative ${
-                                                !hasActiveSession 
-                                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600' 
-                                                    : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20'
-                                            }`}>
-                                                <MapPin size={22} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
-                                                {hasActiveSession && (
-                                                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                                                    </span>
-                                                )}
+                                    {isCheckpointAllowed && (
+                                        <button
+                                            onClick={() => hasActiveSession && !isSubmitting && !isMarkingCheckpoint && handleOpenCheckpointModal()}
+                                            disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
+                                            className={`group relative p-4 rounded-[2rem] flex items-center justify-between transition-all duration-300 overflow-hidden border ${
+                                                !hasActiveSession
+                                                    ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
+                                                    : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-lg dark:shadow-2xl active:scale-[0.98]'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center relative ${
+                                                    !hasActiveSession 
+                                                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600' 
+                                                        : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20'
+                                                }`}>
+                                                    <MapPin size={22} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
+                                                    {hasActiveSession && (
+                                                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-left">
+                                                    <h3 className={`text-base font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                                                        {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
+                                                    </h3>
+                                                    <p className="text-slate-400 dark:text-slate-500 text-[11px] font-medium mt-0.5">
+                                                        {!hasActiveSession ? 'Requires active session' : 'Record mid-shift location'}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div className="text-left">
-                                                <h3 className={`text-base font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
-                                                    {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
-                                                </h3>
-                                                <p className="text-slate-400 dark:text-slate-500 text-[11px] font-medium mt-0.5">
-                                                    {!hasActiveSession ? 'Requires active session' : 'Record mid-shift location'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </button>
+                                        </button>
+                                    )}
 
                                     <button
                                         onClick={() => hasActiveSession && !isSubmitting && handlePunchClick('OUT')}
@@ -1706,7 +1816,7 @@ const MobileAttendancePage = () => {
                                                     for (let d = 1; d <= daysInMonth; d++) {
                                                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                                                         const isSelected = dateStr === selectedDate;
-                                                        const isToday = dateStr === today.toISOString().split('T')[0];
+                                                        const isToday = dateStr === getLocalDateString(today);
                                                         cells.push(
                                                             <button
                                                                 key={d}
@@ -1730,9 +1840,9 @@ const MobileAttendancePage = () => {
 
                                     <div className="flex gap-3 overflow-x-auto py-5 px-1 no-scrollbar scroll-smooth">
                                         {scrollerDates.map((date) => {
-                                            const dateStr = date.toISOString().split('T')[0];
+                                            const dateStr = getLocalDateString(date);
                                             const isSelected = dateStr === selectedDate;
-                                            const isToday = dateStr === new Date().toISOString().split('T')[0];
+                                            const isToday = dateStr === getLocalDateString();
                                             const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
                                             
                                             return (
@@ -1761,7 +1871,7 @@ const MobileAttendancePage = () => {
                                 <div className="pt-4">
                                     <div className="flex items-center justify-between mb-4 px-1">
                                         <h3 className="text-lg font-black text-slate-800 dark:text-github-dark-text tracking-tight">
-                                            {selectedDate === new Date().toISOString().split('T')[0] ? "Today's Logs" : `Logs for ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                                            {selectedDate === getLocalDateString() ? "Today's Logs" : `Logs for ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                                         </h3>
                                         <button onClick={() => setIsCorrectionOpen(true)} className="flex items-center gap-1.5 text-indigo-600 font-black text-xs tracking-widest bg-indigo-50 px-4 py-2 rounded-full active:scale-95 transition-all">
                                             <Plus size={14} strokeWidth={3} /> Correction
@@ -1846,7 +1956,11 @@ const MobileAttendancePage = () => {
                                                 <div className="flex items-center justify-between pt-3 border-t border-slate-50 dark:border-github-dark-border/10">
                                                     <div className="flex items-center gap-2 text-slate-500 dark:text-github-dark-muted text-[10px] font-bold truncate max-w-[150px]">
                                                         <MapPin size={12} className="text-indigo-400" />
-                                                        {s.location || 'Default Office'}
+                                                        {s.time_in_address && s.time_in_address !== 'Locating...' && s.time_in_address !== 'Pending...'
+                                                            ? s.time_in_address
+                                                            : (s.time_in_lat && s.time_in_lng
+                                                                ? `${parseFloat(s.time_in_lat).toFixed(4)}, ${parseFloat(s.time_in_lng).toFixed(4)}`
+                                                                : 'Address not captured')}
                                                     </div>
                                                     <div className="text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 rounded-full">
                                                         Total: {s.total_hours || calculateHours(s.time_in, s.time_out)}
@@ -1865,33 +1979,124 @@ const MobileAttendancePage = () => {
 
                                                 {/* Mobile Session Checkpoints List */}
                                                 {Array.isArray(s.checkpoints) && s.checkpoints.length > 0 && (
-                                                    <div className="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-github-dark-border/20 space-y-2">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                                            <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                                                                Checkpoints ({s.checkpoints.length})
-                                                            </span>
+                                                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-github-dark-border/20 space-y-2.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                                                                <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                                    Checkpoints ({s.checkpoints.length})
+                                                                </span>
+                                                            </div>
+                                                            {!s.time_out && isCheckpointAllowed && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleOpenCheckpointModal}
+                                                                    className="text-[9px] font-black text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 active:scale-95 transition-all cursor-pointer"
+                                                                >
+                                                                    <Plus size={10} strokeWidth={3} /> Add Checkpoint
+                                                                </button>
+                                                            )}
                                                         </div>
-                                                        <div className="space-y-1.5 pl-2 border-l border-amber-500/30">
-                                                            {s.checkpoints.map((chk, cIdx) => (
-                                                                <div key={chk.id || cIdx} className="p-2 bg-amber-500/5 rounded-xl border border-amber-500/10 text-[10px] space-y-0.5">
-                                                                    <div className="flex items-center justify-between font-bold text-slate-700 dark:text-slate-300">
-                                                                        <span>#{cIdx + 1} • {formatTime(chk.punch_time, s, false)}</span>
-                                                                        {chk.lat && chk.lng && (
-                                                                            <a
-                                                                                href={`https://www.google.com/maps?q=${chk.lat},${chk.lng}`}
-                                                                                target="_blank"
-                                                                                rel="noopener noreferrer"
-                                                                                className="text-amber-600 font-bold"
-                                                                            >
-                                                                                Map
-                                                                            </a>
-                                                                        )}
+                                                        <div className="space-y-2">
+                                                            {s.checkpoints.map((chk, cIdx) => {
+                                                                const selfieUrl = chk.image_url || chk.image;
+                                                                return (
+                                                                    <div
+                                                                        key={chk.id || cIdx}
+                                                                        className="p-2.5 bg-amber-500/5 dark:bg-amber-500/10 rounded-2xl border border-amber-500/20 text-[11px] space-y-2 transition-all"
+                                                                    >
+                                                                        <div className="flex items-start gap-2.5">
+                                                                            {/* Checkpoint Selfie / Image Thumbnail */}
+                                                                            {selfieUrl ? (
+                                                                                <div
+                                                                                    onClick={() => setPreviewImage({
+                                                                                        url: selfieUrl,
+                                                                                        title: `Checkpoint #${cIdx + 1} Photo`,
+                                                                                        subtitle: chk.address || 'Verified Checkpoint Selfie'
+                                                                                    })}
+                                                                                    className="relative group/chkimg w-14 h-14 rounded-xl overflow-hidden border-2 border-amber-500/40 bg-black/30 shrink-0 cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
+                                                                                    title="Tap to preview checkpoint selfie"
+                                                                                >
+                                                                                    <img
+                                                                                        src={selfieUrl}
+                                                                                        alt={`Checkpoint #${cIdx + 1}`}
+                                                                                        className="w-full h-full object-cover"
+                                                                                    />
+                                                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/chkimg:opacity-100 flex items-center justify-center transition-opacity">
+                                                                                        <Eye size={16} className="text-white drop-shadow-md" />
+                                                                                    </div>
+                                                                                    <div className="absolute bottom-0.5 right-0.5 p-0.5 rounded bg-black/60 backdrop-blur-xs text-white">
+                                                                                        <Camera size={9} />
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div
+                                                                                    className="w-12 h-12 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 flex flex-col items-center justify-center shrink-0 shadow-xs"
+                                                                                    title="Logged without selfie"
+                                                                                >
+                                                                                    <Camera size={16} className="opacity-50" />
+                                                                                    <span className="text-[7px] font-bold uppercase tracking-tight opacity-75 mt-0.5">No Photo</span>
+                                                                                </div>
+                                                                            )}
+
+                                                                            <div className="flex-1 min-w-0 space-y-1">
+                                                                                <div className="flex items-center justify-between font-black text-slate-800 dark:text-slate-200">
+                                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                        <span className="text-amber-600 dark:text-amber-400 font-black">
+                                                                                            #{cIdx + 1}
+                                                                                        </span>
+                                                                                        <span className="text-[10px] text-slate-600 dark:text-slate-300 font-bold">
+                                                                                            {formatTime(chk.punch_time, s, false)}
+                                                                                        </span>
+                                                                                        {chk.accuracy && (
+                                                                                            <span className="text-[8px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-1.5 py-0.2 rounded">
+                                                                                                ±{Math.round(chk.accuracy)}m
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+
+                                                                                    <div className="flex items-center gap-2 shrink-0">
+                                                                                        {selfieUrl && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => setPreviewImage({
+                                                                                                    url: selfieUrl,
+                                                                                                    title: `Checkpoint #${cIdx + 1} Photo`,
+                                                                                                    subtitle: chk.address || 'Verified Checkpoint Selfie'
+                                                                                                })}
+                                                                                                className="inline-flex items-center gap-1 text-[9px] font-black text-indigo-600 dark:text-indigo-400 hover:underline bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20 active:scale-95 transition-all cursor-pointer"
+                                                                                            >
+                                                                                                <Eye size={10} /> Photo
+                                                                                            </button>
+                                                                                        )}
+                                                                                        {chk.lat && chk.lng && (
+                                                                                            <a
+                                                                                                href={`https://www.google.com/maps?q=${chk.lat},${chk.lng}`}
+                                                                                                target="_blank"
+                                                                                                rel="noopener noreferrer"
+                                                                                                className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                                                                                            >
+                                                                                                <ExternalLink size={9} /> Map
+                                                                                            </a>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <p className="text-slate-600 dark:text-slate-300 text-[10px] leading-snug flex items-center gap-1 break-words">
+                                                                                    <MapPin size={11} className="text-amber-500 shrink-0" />
+                                                                                    <span className="line-clamp-2">{chk.address || `${chk.lat}, ${chk.lng}`}</span>
+                                                                                </p>
+
+                                                                                {chk.note && (
+                                                                                    <p className="text-[9px] italic text-slate-500 dark:text-slate-400 pl-2 border-l border-amber-500/30 break-words">
+                                                                                        "{chk.note}"
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
-                                                                    <p className="text-slate-500 text-[9px] truncate">{chk.address || `${chk.lat}, ${chk.lng}`}</p>
-                                                                    {chk.note && <p className="text-slate-400 text-[8px] italic">"{chk.note}"</p>}
-                                                                </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
                                                 )}
@@ -2099,6 +2304,80 @@ const MobileAttendancePage = () => {
                                                                                         <div className="p-2 bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/10 rounded-xl flex items-center gap-1.5 text-[9px] font-bold text-amber-700 dark:text-amber-400">
                                                                                             <AlertCircle size={10} className="shrink-0" />
                                                                                             <span>Late by {s.late_minutes}m {s.late_reason ? `(${s.late_reason})` : ''}</span>
+                                                                                        </div>
+                                                                                    )}
+
+                                                                                    {/* History Session Checkpoints */}
+                                                                                    {Array.isArray(s.checkpoints) && s.checkpoints.length > 0 && (
+                                                                                        <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-2">
+                                                                                            <div className="flex items-center gap-1.5">
+                                                                                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                                                                                <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                                                                    Checkpoints ({s.checkpoints.length})
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            <div className="space-y-1.5">
+                                                                                                {s.checkpoints.map((chk, cIdx) => {
+                                                                                                    const selfieUrl = chk.image_url || chk.image;
+                                                                                                    return (
+                                                                                                        <div key={chk.id || cIdx} className="p-2 bg-amber-500/5 dark:bg-amber-500/10 rounded-xl border border-amber-500/20 text-[10px] space-y-1.5">
+                                                                                                            <div className="flex items-start gap-2">
+                                                                                                                {selfieUrl ? (
+                                                                                                                    <button
+                                                                                                                        type="button"
+                                                                                                                        onClick={() => setPreviewImage({
+                                                                                                                            url: selfieUrl,
+                                                                                                                            title: `Checkpoint #${cIdx + 1} Photo`,
+                                                                                                                            subtitle: chk.address || 'Verified Checkpoint Selfie'
+                                                                                                                        })}
+                                                                                                                        className="relative w-10 h-10 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 cursor-pointer shadow-xs active:scale-95 transition-all"
+                                                                                                                    >
+                                                                                                                        <img src={selfieUrl} alt={`Checkpoint #${cIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                                                    </button>
+                                                                                                                ) : (
+                                                                                                                    <div className="w-8 h-8 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                                                                                                                        <Camera size={13} className="opacity-50" />
+                                                                                                                    </div>
+                                                                                                                )}
+                                                                                                                <div className="flex-1 min-w-0 space-y-0.5">
+                                                                                                                    <div className="flex items-center justify-between font-bold text-slate-700 dark:text-slate-300">
+                                                                                                                        <span className="text-amber-700 dark:text-amber-400 font-black">
+                                                                                                                            #{cIdx + 1} • {formatTime(chk.punch_time, s, false)}
+                                                                                                                        </span>
+                                                                                                                        <div className="flex items-center gap-1.5">
+                                                                                                                            {selfieUrl && (
+                                                                                                                                <button
+                                                                                                                                    type="button"
+                                                                                                                                    onClick={() => setPreviewImage({
+                                                                                                                                        url: selfieUrl,
+                                                                                                                                        title: `Checkpoint #${cIdx + 1} Photo`,
+                                                                                                                                        subtitle: chk.address || 'Verified Checkpoint Selfie'
+                                                                                                                                    })}
+                                                                                                                                    className="text-[9px] font-bold text-indigo-500 hover:underline cursor-pointer"
+                                                                                                                                >
+                                                                                                                                    Photo
+                                                                                                                                </button>
+                                                                                                                            )}
+                                                                                                                            {chk.lat && chk.lng && (
+                                                                                                                                <a
+                                                                                                                                    href={`https://www.google.com/maps?q=${chk.lat},${chk.lng}`}
+                                                                                                                                    target="_blank"
+                                                                                                                                    rel="noopener noreferrer"
+                                                                                                                                    className="text-amber-600 font-bold hover:underline"
+                                                                                                                                >
+                                                                                                                                    Map
+                                                                                                                                </a>
+                                                                                                                            )}
+                                                                                                                        </div>
+                                                                                                                    </div>
+                                                                                                                    <p className="text-slate-500 text-[9px] truncate">{chk.address || `${chk.lat}, ${chk.lng}`}</p>
+                                                                                                                    {chk.note && <p className="text-slate-400 text-[8px] italic truncate">"{chk.note}"</p>}
+                                                                                                                </div>
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </div>
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
@@ -2796,90 +3075,23 @@ const MobileAttendancePage = () => {
             {/* --- MODALS & PORTALS --- */}
 
             {/* Mobile Checkpoint Modal */}
-            {showCheckpointModal && createPortal(
-                <div className="fixed inset-0 z-[9999] bg-[#070a12]/95 backdrop-blur-xl flex flex-col justify-between p-4 sm:p-6 overflow-y-auto no-scrollbar">
-                    <div className="w-full max-w-lg mx-auto flex items-center justify-between py-2 shrink-0">
-                        <div className="w-10" />
-                        <h3 className="text-base font-bold text-white text-center">Mark Checkpoint</h3>
-                        <button
-                            onClick={() => !isMarkingCheckpoint && setShowCheckpointModal(false)}
-                            className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white"
-                        >
-                            <X size={20} />
-                        </button>
-                    </div>
-
-                    <div className="w-full max-w-lg mx-auto my-auto py-4 space-y-4">
-                        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                    <Navigation size={12} className="text-indigo-400" /> GPS Coordinates
-                                </span>
-                                {checkpointLocation.loading ? (
-                                    <span className="text-[10px] font-bold text-indigo-400 flex items-center gap-1">
-                                        <RefreshCw size={10} className="animate-spin" /> Locating...
-                                    </span>
-                                ) : checkpointLocation.error ? (
-                                    <span className="text-[10px] font-bold text-rose-400">Error</span>
-                                ) : (
-                                    <span className="text-[10px] font-bold text-emerald-400">Locked</span>
-                                )}
-                            </div>
-
-                            {checkpointLocation.loading ? (
-                                <div className="py-6 text-center text-slate-400 text-xs">
-                                    Acquiring GPS location...
-                                </div>
-                            ) : checkpointLocation.error ? (
-                                <div className="p-3 bg-rose-500/10 rounded-xl border border-rose-500/20 text-xs text-rose-400">
-                                    {checkpointLocation.error}
-                                </div>
-                            ) : (
-                                <div className="space-y-1">
-                                    <p className="text-xs font-bold text-white">{checkpointLocation.address}</p>
-                                    <p className="text-[10px] text-slate-400">
-                                        {checkpointLocation.lat?.toFixed(5)}, {checkpointLocation.lng?.toFixed(5)}
-                                        {checkpointLocation.accuracy && ` (±${Math.round(checkpointLocation.accuracy)}m)`}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-300">Note (Optional)</label>
-                            <input
-                                type="text"
-                                value={checkpointNote}
-                                onChange={(e) => setCheckpointNote(e.target.value)}
-                                placeholder="e.g. Site B inspection, floor round..."
-                                maxLength={100}
-                                disabled={isMarkingCheckpoint}
-                                className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="w-full max-w-lg mx-auto py-2 shrink-0 flex gap-3">
-                        <button
-                            type="button"
-                            onClick={() => setShowCheckpointModal(false)}
-                            disabled={isMarkingCheckpoint}
-                            className="flex-1 py-3 text-xs font-bold text-slate-400 bg-white/5 rounded-2xl"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleConfirmCheckpoint}
-                            disabled={isMarkingCheckpoint || checkpointLocation.loading || Boolean(checkpointLocation.error)}
-                            className="flex-1 py-3 text-xs font-black text-white bg-gradient-to-r from-amber-500 to-amber-600 rounded-2xl disabled:opacity-50"
-                        >
-                            {isMarkingCheckpoint ? 'Recording...' : 'Confirm Checkpoint'}
-                        </button>
-                    </div>
-                </div>,
-                document.body
-            )}
+            <CheckpointModal
+                isOpen={showCheckpointModal}
+                showCheckpointModal={showCheckpointModal}
+                onClose={() => !isMarkingCheckpoint && setShowCheckpointModal(false)}
+                setShowCheckpointModal={setShowCheckpointModal}
+                isMarkingCheckpoint={isMarkingCheckpoint}
+                checkpointLocation={checkpointLocation}
+                onRetryLocation={handleOpenCheckpointModal}
+                handleOpenCheckpointModal={handleOpenCheckpointModal}
+                checkpointNote={checkpointNote}
+                setCheckpointNote={setCheckpointNote}
+                onConfirm={handleConfirmCheckpoint}
+                handleConfirmCheckpoint={handleConfirmCheckpoint}
+                checkpointImgSrc={checkpointImgSrc}
+                setCheckpointImgSrc={setCheckpointImgSrc}
+                isSelfieRequired={isCheckpointSelfieRequired}
+            />
 
             {/* Camera Overlay */}
             {showCamera && createPortal(
@@ -2911,6 +3123,49 @@ const MobileAttendancePage = () => {
                                     {isSelfieRequired ? (
                                         imgSrc ? (
                                             <img src={imgSrc} alt="Captured Selfie" className="w-full h-full object-cover" />
+                                        ) : cameraError ? (
+                                            <div className="p-5 text-center space-y-3 bg-slate-900 text-white max-w-sm mx-auto rounded-xl">
+                                                <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 mx-auto flex items-center justify-center border border-rose-500/30">
+                                                    <Camera size={24} />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-xs font-black text-white">Camera Access Blocked or Needed</h4>
+                                                    <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                                                        {cameraError}
+                                                    </p>
+                                                </div>
+                                                <div className="text-[10px] bg-white/5 border border-white/10 rounded-lg p-2.5 text-left text-slate-300 space-y-1">
+                                                    <div className="font-bold text-amber-400">Browser Permissions:</div>
+                                                    <p>1. Tap the lock/settings icon in the browser URL bar.</p>
+                                                    <p>2. Set Camera to <strong>Allow</strong>.</p>
+                                                    <p>3. Tap <strong>Ask Browser for Permission</strong> below.</p>
+                                                </div>
+                                                <div className="flex items-center justify-center gap-2 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleRequestCamera}
+                                                        disabled={isRequestingCam}
+                                                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                                                    >
+                                                        {isRequestingCam ? (
+                                                            <>
+                                                                <RefreshCw size={12} className="animate-spin" /> Requesting...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Camera size={12} /> Ask Browser for Permission
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCameraError(null)}
+                                                        className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs"
+                                                    >
+                                                        Retry
+                                                    </button>
+                                                </div>
+                                            </div>
                                         ) : (
                                             <Webcam
                                                 audio={false}
@@ -2918,6 +3173,13 @@ const MobileAttendancePage = () => {
                                                 screenshotFormat="image/jpeg"
                                                 className="w-full h-full object-cover"
                                                 videoConstraints={{ facingMode: "user" }}
+                                                onUserMediaError={(err) => {
+                                                    console.warn("Mobile attendance webcam error:", err);
+                                                    const isDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+                                                    setCameraError(isDenied 
+                                                        ? "Camera permission was denied in your browser settings."
+                                                        : (err?.message || "Camera access denied or unavailable."));
+                                                }}
                                             />
                                         )
                                     ) : (
@@ -3086,8 +3348,8 @@ const MobileAttendancePage = () => {
                                 {/* Adjustment Reason Category */}
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1 uppercase">Adjustment Reason</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {['Missed Punch', 'Other'].map(type => (
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {['Missed Punch', 'Missed Day', 'Other'].map(type => (
                                             <button
                                                 key={type}
                                                 type="button"
@@ -3386,39 +3648,49 @@ const MobileAttendancePage = () => {
             {/* Image Preview Modal */}
             <AnimatePresence>
                 {previewImage && (
-                    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-6">
+                    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6">
                         <motion.div 
                             initial={{ opacity: 0 }} 
                             animate={{ opacity: 1 }} 
                             exit={{ opacity: 0 }} 
                             onClick={() => setPreviewImage(null)} 
-                            className="absolute inset-0 bg-black/90 backdrop-blur-xl" 
+                            className="absolute inset-0 bg-black/90 backdrop-blur-xl cursor-pointer" 
                         />
-                        <motion.div 
-                            initial={{ scale: 0.9, opacity: 0 }} 
-                            animate={{ scale: 1, opacity: 1 }} 
-                            exit={{ scale: 0.9, opacity: 0 }} 
-                            className="relative w-full max-w-lg aspect-[3/4] bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl border border-white/10"
-                        >
-                            <img src={previewImage} alt="Attendance" className="w-full h-full object-cover" />
-                            <button 
-                                onClick={() => setPreviewImage(null)} 
-                                className="absolute top-6 right-6 w-12 h-12 bg-black/50 backdrop-blur-md text-white rounded-full flex items-center justify-center border border-white/10 active:scale-95 transition-all"
-                            >
-                                <X size={24} />
-                            </button>
-                            <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black/80 to-transparent">
-                                <div className="flex items-center gap-3 text-white">
-                                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-                                        <Camera size={20} />
+                        {(() => {
+                            const imgUrl = typeof previewImage === 'string' ? previewImage : previewImage?.url;
+                            const title = typeof previewImage === 'object' && previewImage?.title ? previewImage.title : 'Attendance Photo';
+                            const subtitle = typeof previewImage === 'object' && previewImage?.subtitle ? previewImage.subtitle : 'Verification Image';
+                            return (
+                                <motion.div 
+                                    initial={{ scale: 0.9, opacity: 0 }} 
+                                    animate={{ scale: 1, opacity: 1 }} 
+                                    exit={{ scale: 0.9, opacity: 0 }} 
+                                    className="relative w-full max-w-lg max-h-[85vh] bg-slate-900 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-white/10 flex flex-col"
+                                >
+                                    <div className="relative flex-1 min-h-[280px] max-h-[65vh] bg-black flex items-center justify-center overflow-hidden">
+                                        <img src={imgUrl} alt={title} className="w-full h-full object-contain" />
+                                        <button 
+                                            onClick={() => setPreviewImage(null)} 
+                                            className="absolute top-4 right-4 w-10 h-10 bg-black/60 backdrop-blur-md text-white rounded-full flex items-center justify-center border border-white/20 active:scale-95 transition-all cursor-pointer shadow-lg"
+                                            aria-label="Close Preview"
+                                        >
+                                            <X size={20} />
+                                        </button>
                                     </div>
-                                    <div>
-                                        <h4 className="font-black text-sm uppercase tracking-widest">Attendance Photo</h4>
-                                        <p className="text-[10px] font-bold text-white/60 uppercase mt-1">Verification Image</p>
+                                    <div className="p-4 sm:p-5 bg-slate-950 border-t border-white/10 shrink-0">
+                                        <div className="flex items-center gap-3 text-white">
+                                            <div className="w-9 h-9 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl flex items-center justify-center shrink-0">
+                                                <Camera size={18} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h4 className="font-black text-xs sm:text-sm uppercase tracking-wider truncate">{title}</h4>
+                                                <p className="text-[10px] font-bold text-slate-400 truncate mt-0.5">{subtitle}</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        </motion.div>
+                                </motion.div>
+                            );
+                        })()}
                     </div>
                 )}
             </AnimatePresence>
