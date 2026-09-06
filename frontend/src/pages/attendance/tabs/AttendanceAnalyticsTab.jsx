@@ -9,6 +9,7 @@ import {
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import MonthPicker from '../../../components/MonthPicker';
 import DatePicker from '../../../components/DatePicker';
+import { formatLocalTimeString } from '../../../utils/dateUtils';
 
 const AttendanceAnalyticsTab = ({
     analyticsFilterType,
@@ -232,11 +233,11 @@ const AttendanceAnalyticsTab = ({
                                                             labelLines.push(`Status: ${session.status}`);
                                                         }
                                                         if (session.time_in) {
-                                                            const inTime = new Date(session.time_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                                                            const inTime = formatLocalTimeString(session.time_in);
                                                             labelLines.push(`In: ${inTime}`);
                                                         }
                                                         if (session.time_out) {
-                                                            const outTime = new Date(session.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                                                            const outTime = formatLocalTimeString(session.time_out);
                                                             labelLines.push(`Out: ${outTime}`);
                                                         } else if (session.time_in) {
                                                             labelLines.push(`Out: Active / Missed`);

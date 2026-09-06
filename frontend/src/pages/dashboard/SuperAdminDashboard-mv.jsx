@@ -139,7 +139,10 @@ const SuperAdminDashboardMobile = () => {
       <div className="space-y-5 pb-20">
 
         {/* Premium Greetings Card */}
-        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-900 dark:from-indigo-900/40 dark:via-indigo-950/40 dark:to-black rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+        <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-2xl p-5 sm:p-6 text-white border border-indigo-500/20 shadow-2xl">
+            {/* Subtle Ambient Glows */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 blur-[80px] pointer-events-none" />
+            <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-purple-500/10 blur-[70px] pointer-events-none" />
             {/* Animated Background Blobs */}
             <motion.div 
                 animate={{ 
@@ -147,7 +150,7 @@ const SuperAdminDashboardMobile = () => {
                     rotate: [0, 90, 0],
                 }}
                 transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/20 blur-3xl rounded-full pointer-events-none"
+                className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/15 blur-3xl rounded-full pointer-events-none"
             />
             <motion.div 
                 animate={{ 
@@ -155,24 +158,24 @@ const SuperAdminDashboardMobile = () => {
                     x: [0, 50, 0],
                 }}
                 transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                className="absolute -bottom-24 -left-24 w-80 h-80 bg-sky-500/10 blur-3xl rounded-full pointer-events-none"
+                className="absolute -bottom-24 -left-24 w-80 h-80 bg-purple-500/10 blur-3xl rounded-full pointer-events-none"
             />
 
             <div className="relative z-10 space-y-1 mb-4">
-                <p className="text-indigo-100 text-sm font-medium opacity-90">
+                <p className="text-indigo-200/80 text-sm font-medium">
                     Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'},
                 </p>
                 <h2 className="text-2xl font-bold tracking-tight">Super Admin</h2>
-                <p className="text-xs text-indigo-200 mt-1 flex items-center gap-1">
+                <p className="text-xs text-indigo-300/80 mt-1 flex items-center gap-1">
                     <Briefcase size={12} />
                     Platform Administrator
                 </p>
             </div>
 
             {/* Current Time / Location Widget */}
-            <div className="mt-5 bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex items-center justify-between text-white relative z-10">
+            <div className="mt-5 bg-white/10 dark:bg-black/30 backdrop-blur-md rounded-2xl p-4 border border-white/10 hover:border-white/20 transition-all flex items-center justify-between text-white relative z-10 shadow-lg">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-white/20 backdrop-blur-lg rounded-2xl flex items-center justify-center text-white shadow-inner">
+                    <div className="w-12 h-12 bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 rounded-2xl flex items-center justify-center shadow-inner">
                         <Clock size={24} />
                     </div>
                     <div>

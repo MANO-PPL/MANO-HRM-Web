@@ -10,7 +10,8 @@ import {
     ImageIcon,
     Maximize2,
     Download,
-    Paperclip
+    Paperclip,
+    Plus
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
@@ -31,7 +32,10 @@ const AttendanceCorrectionTab = ({
     isAdminUser,
     isAdminOrHr = false,
     normalizeCorrectionSessions,
-    setPreviewImage
+    setPreviewImage,
+    setIsCorrectionDrawerOpen,
+    setCorrDate,
+    loadCorrectionDataForDate
 }) => {
     const navigate = useNavigate();
     const canManageLive = Boolean(isAdminOrHr || isAdminUser);
@@ -120,14 +124,28 @@ const AttendanceCorrectionTab = ({
                     style={{ height: 'calc(100vh - 115px)', minHeight: '740px' }}
                 >
                     {/* Header */}
-                    <div className="p-4 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-center bg-slate-50/50 dark:bg-github-dark-bg/30">
-                        <div className="flex items-center gap-2">
-                            <FileClock size={16} className="text-indigo-600 dark:text-indigo-400" />
-                            <h3 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text">Correction Requests</h3>
+                    <div className="p-4 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-center bg-slate-50/50 dark:bg-github-dark-bg/30 gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <FileClock size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                            <h3 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate">Correction Requests</h3>
+                            <span className="text-xs font-mono font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-800 shrink-0">
+                                {filteredCorrectionHistory.length}
+                            </span>
                         </div>
-                        <span className="text-xs font-mono font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-800">
-                            {filteredCorrectionHistory.length} Total
-                        </span>
+                        {setIsCorrectionDrawerOpen && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const today = new Date().toISOString().split('T')[0];
+                                    if (setCorrDate) setCorrDate(today);
+                                    if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
+                                    setIsCorrectionDrawerOpen(true);
+                                }}
+                                className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-3 py-1.5 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs shrink-0"
+                            >
+                                <Plus size={14} strokeWidth={2.5} /> Request Correction
+                            </button>
+                        )}
                     </div>
 
                     {/* Filter Tabs */}
@@ -163,11 +181,25 @@ const AttendanceCorrectionTab = ({
                         {loading ? (
                             <div className="p-10 text-center text-slate-400 text-xs font-normal">Loading requests...</div>
                         ) : filteredCorrectionHistory.length === 0 ? (
-                            <div className="p-10 text-center">
-                                <FileClock size={30} className="mx-auto mb-2.5 text-slate-300 dark:text-slate-600" />
+                            <div className="p-10 text-center space-y-3">
+                                <FileClock size={30} className="mx-auto text-slate-300 dark:text-slate-600" />
                                 <p className="text-xs text-slate-400 dark:text-github-dark-muted font-normal">
                                     {correctionFilter === 'all' ? 'No correction requests yet.' : `No ${correctionFilter} requests found.`}
                                 </p>
+                                {setIsCorrectionDrawerOpen && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const today = new Date().toISOString().split('T')[0];
+                                            if (setCorrDate) setCorrDate(today);
+                                            if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
+                                            setIsCorrectionDrawerOpen(true);
+                                        }}
+                                        className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs"
+                                    >
+                                        <Plus size={15} strokeWidth={2.5} /> Request Correction
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             filteredCorrectionHistory.map((req) => {
@@ -371,6 +403,13 @@ const AttendanceCorrectionTab = ({
                                                     </div>
                                                 </div>
                                             )}
+
+                                            {proposedList.length === 0 && (
+                                                <div className="bg-slate-50/70 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
+                                                    <Clock size={15} className="text-slate-400 shrink-0" />
+                                                    <span>No custom punch timeline submitted. Request submitted with remarks and supporting documentation for review.</span>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })()}
@@ -445,9 +484,23 @@ const AttendanceCorrectionTab = ({
                             </div>
                         </>
                     ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center h-full text-slate-400 p-12">
-                            <FileText size={40} className="mb-3 opacity-40" />
+                        <div className="flex-1 flex flex-col items-center justify-center h-full text-slate-400 p-12 space-y-3">
+                            <FileText size={40} className="mb-1 opacity-40" />
                             <p className="text-xs font-normal">Select a request from the list to view details</p>
+                            {setIsCorrectionDrawerOpen && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const today = new Date().toISOString().split('T')[0];
+                                        if (setCorrDate) setCorrDate(today);
+                                        if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
+                                        setIsCorrectionDrawerOpen(true);
+                                    }}
+                                    className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs mt-1"
+                                >
+                                    <Plus size={15} strokeWidth={2.5} /> Request Correction
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>

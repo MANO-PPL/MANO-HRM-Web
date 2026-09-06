@@ -6,7 +6,11 @@ import {
     Calendar as CalendarIcon,
     Clock,
     ChevronDown,
-    AlertCircle
+    AlertCircle,
+    Plus,
+    MapPin,
+    ExternalLink,
+    Camera
 } from 'lucide-react';
 
 const AttendanceHistoryTab = ({
@@ -23,7 +27,10 @@ const AttendanceHistoryTab = ({
     formatTime,
     calculateDuration,
     setPreviewImage,
-    myShift
+    myShift,
+    setIsCorrectionDrawerOpen,
+    setCorrDate,
+    loadCorrectionDataForDate
 }) => {
     const isCurrentMonthSelected = reportYear === new Date().getFullYear() && reportMonthIdx === new Date().getMonth();
     const monthDateObj = new Date(reportYear, reportMonthIdx, 1);
@@ -118,9 +125,23 @@ const AttendanceHistoryTab = ({
                         )}
                     </div>
 
-                    {/* Recorded Sessions Count */}
-                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        <span className="flex items-center gap-1.5 bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5">
+                    {/* Actions & Recorded Sessions Count */}
+                    <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        {setIsCorrectionDrawerOpen && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const today = new Date().toISOString().split('T')[0];
+                                    if (setCorrDate) setCorrDate(today);
+                                    if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
+                                    setIsCorrectionDrawerOpen(true);
+                                }}
+                                className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-3.5 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs"
+                            >
+                                <Plus size={14} strokeWidth={2.5} /> Request Correction
+                            </button>
+                        )}
+                        <span className="hidden sm:flex items-center gap-1.5 bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5">
                             <CalendarIcon size={13} className="text-indigo-500" />
                             <span>{monthlySessions.length} {monthlySessions.length === 1 ? 'session' : 'sessions'} recorded</span>
                         </span>
@@ -321,8 +342,21 @@ const AttendanceHistoryTab = ({
                                                     className="border-t border-slate-100 dark:border-github-dark-border/60 bg-slate-50/60 dark:bg-white/[0.015] p-3.5 space-y-2.5"
                                                 >
                                                     <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60 dark:border-white/5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                                                        <span>Punch Breakdown</span>
-                                                        <span>{day.sessions.length} {day.sessions.length === 1 ? 'pair' : 'pairs'}</span>
+                                                        <span>Punch Breakdown ({day.sessions.length} {day.sessions.length === 1 ? 'pair' : 'pairs'})</span>
+                                                        {setIsCorrectionDrawerOpen && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (setCorrDate) setCorrDate(day.dateKey);
+                                                                    if (loadCorrectionDataForDate) loadCorrectionDataForDate(day.dateKey);
+                                                                    setIsCorrectionDrawerOpen(true);
+                                                                }}
+                                                                className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg transition-colors border border-indigo-100 dark:border-indigo-800/40 cursor-pointer"
+                                                            >
+                                                                <Plus size={12} strokeWidth={2.5} /> Request Correction
+                                                            </button>
+                                                        )}
                                                     </div>
 
                                                     <div className="grid gap-2">
@@ -426,6 +460,81 @@ const AttendanceHistoryTab = ({
                                                                             </div>
                                                                         );
                                                                     })()}
+
+                                                                    {/* Session Checkpoints */}
+                                                                    {Array.isArray(session.checkpoints) && session.checkpoints.length > 0 && (
+                                                                        <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1.5">
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                                                                <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                                                    Checkpoints ({session.checkpoints.length})
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="space-y-1.5">
+                                                                                {session.checkpoints.map((chk, cIdx) => {
+                                                                                    const selfieUrl = chk.image_url || chk.image;
+                                                                                    return (
+                                                                                        <div key={chk.id || cIdx} className="p-2 bg-amber-50/60 dark:bg-amber-500/10 rounded-xl border border-amber-500/20 text-[11px] flex items-start gap-2.5">
+                                                                                            {selfieUrl ? (
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        setPreviewImage(selfieUrl);
+                                                                                                    }}
+                                                                                                    className="relative w-10 h-10 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 cursor-pointer shadow-xs hover:scale-105 active:scale-95 transition-all"
+                                                                                                    title="View Checkpoint Photo"
+                                                                                                >
+                                                                                                    <img src={selfieUrl} alt={`Checkpoint #${cIdx + 1}`} className="w-full h-full object-cover" />
+                                                                                                </button>
+                                                                                            ) : (
+                                                                                                <div className="w-8 h-8 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                                                                                                    <Camera size={13} className="opacity-50" />
+                                                                                                </div>
+                                                                                            )}
+                                                                                            <div className="flex-1 min-w-0 space-y-0.5">
+                                                                                                <div className="flex items-center justify-between font-bold text-slate-700 dark:text-slate-300">
+                                                                                                    <span className="text-amber-700 dark:text-amber-400 font-black">
+                                                                                                        #{cIdx + 1} • {formatTime(chk.punch_time, session, false)}
+                                                                                                    </span>
+                                                                                                    <div className="flex items-center gap-2">
+                                                                                                        {selfieUrl && (
+                                                                                                            <button
+                                                                                                                type="button"
+                                                                                                                onClick={(e) => {
+                                                                                                                    e.stopPropagation();
+                                                                                                                    setPreviewImage(selfieUrl);
+                                                                                                                }}
+                                                                                                                className="text-[9px] font-bold text-indigo-500 hover:underline cursor-pointer"
+                                                                                                            >
+                                                                                                                View Photo
+                                                                                                            </button>
+                                                                                                        )}
+                                                                                                        {chk.lat && chk.lng && (
+                                                                                                            <a
+                                                                                                                href={`https://www.google.com/maps?q=${chk.lat},${chk.lng}`}
+                                                                                                                target="_blank"
+                                                                                                                rel="noopener noreferrer"
+                                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                                                className="text-[9px] font-bold text-amber-600 hover:underline inline-flex items-center gap-0.5"
+                                                                                                            >
+                                                                                                                <ExternalLink size={9} /> Map
+                                                                                                            </a>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <p className="text-slate-500 text-[10px] truncate flex items-center gap-1">
+                                                                                                    <MapPin size={10} className="text-amber-500 shrink-0" />
+                                                                                                    <span>{chk.address || `${chk.lat}, ${chk.lng}`}</span>
+                                                                                                </p>
+                                                                                                {chk.note && <p className="text-slate-400 text-[9px] italic">"{chk.note}"</p>}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })}
