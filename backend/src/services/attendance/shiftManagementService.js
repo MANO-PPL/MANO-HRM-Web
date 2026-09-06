@@ -324,6 +324,10 @@ export function getShiftRules(shift) {
             selfie: true,
             geofence: true
         },
+        checkpoint_requirements: {
+            enabled: parseBool(rules.checkpoint_requirements?.enabled, true),
+            selfie: parseBool(rules.checkpoint_requirements?.selfie, false)
+        },
         correction_deadline: rules.correction_deadline ?? 2,
         week_off_policy: normalisePolicyInput(rules.week_off_policy)
     };
@@ -354,6 +358,10 @@ function getDefaultShiftConfig() {
         exit_requirements: {
             selfie: false,
             geofence: false
+        },
+        checkpoint_requirements: {
+            enabled: true,
+            selfie: false
         },
         correction_deadline: 2,
         week_off_policy: [

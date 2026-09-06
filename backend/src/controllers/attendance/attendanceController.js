@@ -13,7 +13,8 @@ import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.j
 import { calculateWorkHours, deriveStatus } from "../../services/reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
 import { getLocalNow } from "../../services/attendance/statusEvaluationService.js";
-import { attendanceQueue } from "../../config/queues.js";
+import { attendanceQueue, redisConnection } from "../../config/queues.js";
+import { processAttendanceJob } from "../../workers/attendanceWorker.js";
 import { uploadFile } from "../../services/s3/s3Service.js";
 
 /**
@@ -28,10 +29,11 @@ export const timeIn = catchAsync(async (req, res) => {
   const longitude = Number(req.body.longitude);
   const accuracy = Number(req.body.accuracy);
   const late_reason = req.body.late_reason || null;
+  const address = req.body.address || null;
   const file = req.file;
 
   // 2. QUICK TIMEZONE LOOKUP (Fast: ~2ms DB lookup + local date conversion)
-  let timezone = 'UTC';
+  let timezone = req.body.timezone || req.headers['x-timezone'] || 'Asia/Kolkata';
   try {
     const org = await attendanceDB('core_organizations')
         .where({ org_id })
@@ -41,11 +43,11 @@ export const timeIn = catchAsync(async (req, res) => {
         timezone = org.timezone;
     }
   } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
+    console.warn(`Failed to fetch organization ${org_id} timezone`, err);
   }
 
   const nowVal = getLocalNow(timezone);
-  const localTime = typeof nowVal?.toISOString === 'function' ? nowVal.toISOString() : String(nowVal);
+  const localTime = req.body.local_time || req.body.localTime || String(nowVal).replace('Z', '');
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB insertion)
   const result = await AttendanceService.processTimeInSync({
@@ -54,6 +56,7 @@ export const timeIn = catchAsync(async (req, res) => {
     latitude,
     longitude,
     accuracy,
+    address,
     late_reason,
     file,
     localTime,
@@ -72,7 +75,7 @@ export const timeIn = catchAsync(async (req, res) => {
     try {
       const tempDir = path.join(process.cwd(), 'uploads', 'temp');
       await fs.mkdir(tempDir, { recursive: true });
-      const ext = path.extname(file.originalname) || '.jpg';
+      const ext = path.extname(file.originalname || '') || '.jpg';
       const filename = `${crypto.randomUUID()}${ext}`;
       tempFilePath = path.join(tempDir, filename);
       await fs.writeFile(tempFilePath, file.buffer);
@@ -86,9 +89,11 @@ export const timeIn = catchAsync(async (req, res) => {
     attendance_id: result.attendance_id,
     isTimeIn: true,
     tempFilePath,
+    fileBuffer: file ? file.buffer : null,
     latitude,
     longitude,
     accuracy,
+    address,
     ip: req.clientIp || req.ip,
     user_agent: req.get('User-Agent'),
     event_source: getEventSource(req),
@@ -98,13 +103,18 @@ export const timeIn = catchAsync(async (req, res) => {
     session_number: result.session_number
   };
 
-  try {
-    await attendanceQueue.add('attendance-checkin', jobData, {
+  if (redisConnection && redisConnection.status === 'ready') {
+    attendanceQueue.add('attendance-checkin', jobData, {
       attempts: 3,
       backoff: 5000
+    }).catch(queueErr => {
+      console.warn("attendanceQueue.add failed, processing directly:", queueErr.message);
+      processAttendanceJob(jobData).catch(directErr => {
+        console.error("Direct attendance checkin processing error:", directErr);
+      });
     });
-  } catch (err) {
-    // Direct background execution so image and address are NOT lost if Redis is offline
+  } else {
+    // Redis is offline / disconnected: run in direct async background immediately
     processAttendanceJob(jobData).catch(directErr => {
       console.error("Direct attendance checkin processing error:", directErr);
     });
@@ -120,10 +130,11 @@ export const timeOut = catchAsync(async (req, res) => {
   const latitude = Number(req.body.latitude);
   const longitude = Number(req.body.longitude);
   const accuracy = Number(req.body.accuracy);
+  const address = req.body.address || null;
   const file = req.file;
 
   // 2. QUICK TIMEZONE LOOKUP
-  let timezone = 'UTC';
+  let timezone = req.body.timezone || req.headers['x-timezone'] || 'Asia/Kolkata';
   try {
     const org = await attendanceDB('core_organizations')
         .where({ org_id })
@@ -133,11 +144,11 @@ export const timeOut = catchAsync(async (req, res) => {
         timezone = org.timezone;
     }
   } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
+    console.warn(`Failed to fetch organization ${org_id} timezone`, err);
   }
 
   const nowVal = getLocalNow(timezone);
-  const localTime = typeof nowVal?.toISOString === 'function' ? nowVal.toISOString() : String(nowVal);
+  const localTime = req.body.local_time || req.body.localTime || String(nowVal).replace('Z', '');
 
   // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB checkout status/hours update)
   const result = await AttendanceService.processTimeOutSync({
@@ -146,6 +157,7 @@ export const timeOut = catchAsync(async (req, res) => {
     latitude,
     longitude,
     accuracy,
+    address,
     file,
     localTime,
     timezone,
@@ -163,7 +175,7 @@ export const timeOut = catchAsync(async (req, res) => {
     try {
       const tempDir = path.join(process.cwd(), 'uploads', 'temp');
       await fs.mkdir(tempDir, { recursive: true });
-      const ext = path.extname(file.originalname) || '.jpg';
+      const ext = path.extname(file.originalname || '') || '.jpg';
       const filename = `${crypto.randomUUID()}${ext}`;
       tempFilePath = path.join(tempDir, filename);
       await fs.writeFile(tempFilePath, file.buffer);
@@ -177,9 +189,11 @@ export const timeOut = catchAsync(async (req, res) => {
     attendance_id: result.attendance_id,
     isTimeIn: false,
     tempFilePath,
+    fileBuffer: file ? file.buffer : null,
     latitude,
     longitude,
     accuracy,
+    address,
     ip: req.clientIp || req.ip,
     user_agent: req.get('User-Agent'),
     event_source: getEventSource(req),
@@ -189,12 +203,18 @@ export const timeOut = catchAsync(async (req, res) => {
     status: result.status
   };
 
-  try {
-    await attendanceQueue.add('attendance-checkout', jobData, {
+  if (redisConnection && redisConnection.status === 'ready') {
+    attendanceQueue.add('attendance-checkout', jobData, {
       attempts: 3,
       backoff: 5000
+    }).catch(queueErr => {
+      console.warn("attendanceQueue.add failed, processing directly:", queueErr.message);
+      processAttendanceJob(jobData).catch(directErr => {
+        console.error("Direct attendance checkout processing error:", directErr);
+      });
     });
-  } catch (err) {
+  } else {
+    // Redis is offline / disconnected: run in direct async background immediately
     processAttendanceJob(jobData).catch(directErr => {
       console.error("Direct attendance checkout processing error:", directErr);
     });
@@ -448,8 +468,8 @@ export const submitCorrectionRequest = catchAsync(async (req, res) => {
   }
 
   if (correction_type === 'punch') {
-    if (!parsedProposedData || !Array.isArray(parsedProposedData) || parsedProposedData.length === 0) {
-      return res.status(400).json({ error: "proposed_data (sessions array) is required for punch corrections" });
+    if (!parsedProposedData || !Array.isArray(parsedProposedData)) {
+      parsedProposedData = [];
     }
   } else if (correction_type === 'summary') {
     if (!parsedProposedData || typeof parsedProposedData !== 'object') {
@@ -860,7 +880,7 @@ export const getAdminDailySummary = catchAsync(async (req, res) => {
 });
 
 function generateNodeAiSummaryFallback(body) {
-  const date = body?.date || new Date().toISOString().split('T')[0];
+  const date = body?.date || getLocalNow('Asia/Kolkata').split('T')[0];
   const employees = Array.isArray(body?.employees) ? body.employees : [];
   const analytics = body?.analytics || {};
 
@@ -938,14 +958,42 @@ export const getAiSummary = catchAsync(async (req, res) => {
  * Handle presence/location ping (normal_punch)
  */
 export const pingLocation = catchAsync(async (req, res) => {
+  const userId = req.user.id || req.user.user_id;
+  const org_id = req.user.org_id;
+
+  let timezone = 'Asia/Kolkata';
+  try {
+    const org = await attendanceDB('core_organizations')
+        .where({ org_id })
+        .select('timezone')
+        .first();
+    if (org && org.timezone) {
+        timezone = org.timezone;
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch organization ${org_id} timezone`, err);
+  }
+
+  const nowVal = getLocalNow(timezone);
+  const localTime = String(nowVal).replace('Z', '');
+
   const result = await AttendanceService.recordLocationPing({
-    userId: req.user.id || req.user.user_id,
+    userId,
     latitude: Number(req.body.latitude),
     longitude: Number(req.body.longitude),
+    accuracy: req.body.accuracy ? Number(req.body.accuracy) : null,
+    address: req.body.address || null,
+    note: req.body.note ? String(req.body.note).trim() : null,
+    file: req.file || null,
     ip: req.clientIp || req.ip,
     userAgent: req.get('User-Agent'),
-    isGeofenceViolation: Boolean(req.body.is_geofence_violation)
+    isGeofenceViolation: Boolean(req.body.is_geofence_violation),
+    localTime: req.body.local_time || req.body.localTime || localTime
   });
+
+  if (!result.ok) {
+    return res.status(result.status || 400).json(result);
+  }
 
   return res.json(result);
 });

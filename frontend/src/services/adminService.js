@@ -1,7 +1,26 @@
 import api from './api';
+import { clearShiftPolicyCache } from './attendanceService';
 
 const ADMIN_API_URL = "/admin";
 const POLICY_API_URL = "/policies";
+
+const notifyShiftPolicyUpdated = () => {
+    try {
+        clearShiftPolicyCache();
+    } catch (e) {
+        console.warn("Failed to clear shift policy cache:", e);
+    }
+    try {
+        window.dispatchEvent(new CustomEvent('shift_policy_updated'));
+    } catch (e) {}
+    if (typeof BroadcastChannel !== 'undefined') {
+        try {
+            const bc = new BroadcastChannel('mano_shifts_channel');
+            bc.postMessage({ type: 'shift_policy_updated', timestamp: Date.now() });
+            bc.close();
+        } catch (e) {}
+    }
+};
 
 // Client-side memory cache for lookup configurations
 const cache = {
@@ -328,6 +347,7 @@ export const adminService = {
             adminCacheData.shifts = null;
             cache.shiftUsers = null;
             adminCacheData.shiftUsers = null;
+            notifyShiftPolicyUpdated();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to create shift");
@@ -340,6 +360,7 @@ export const adminService = {
             adminCacheData.shifts = null;
             cache.shiftUsers = null;
             adminCacheData.shiftUsers = null;
+            notifyShiftPolicyUpdated();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to update shift");
@@ -352,6 +373,7 @@ export const adminService = {
             adminCacheData.shifts = null;
             cache.shiftUsers = null;
             adminCacheData.shiftUsers = null;
+            notifyShiftPolicyUpdated();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to delete shift");
@@ -378,6 +400,7 @@ export const adminService = {
             clearUserCache();
             cache.shiftUsers = null;
             adminCacheData.shiftUsers = null;
+            notifyShiftPolicyUpdated();
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || "Failed to assign shift");
