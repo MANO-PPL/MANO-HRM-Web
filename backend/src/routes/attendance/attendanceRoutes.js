@@ -31,6 +31,7 @@ router.post("/timeout",
 
 router.post("/ping",
   authenticateJWT,
+  upload.single("image"),
   AttendanceController.pingLocation
 );
 

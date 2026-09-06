@@ -38,6 +38,10 @@ export async function getShiftsForOrg(org_id) {
             overtime: {
                 ...(rules.overtime || {}),
                 max_overtime: normalizeMaxOvertimeHours(rawMaxOvertime)
+            },
+            checkpoint_requirements: {
+                enabled: rules.checkpoint_requirements?.enabled !== undefined ? Boolean(rules.checkpoint_requirements.enabled) : true,
+                selfie: rules.checkpoint_requirements?.selfie !== undefined ? Boolean(rules.checkpoint_requirements.selfie) : false
             }
         };
         return {
@@ -66,7 +70,15 @@ export async function getShiftsForOrg(org_id) {
  * Create a new shift
  */
 export async function createShift({ org_id, shift_name, start_time, end_time, grace_period_mins, is_overtime_enabled, overtime_threshold_hours, is_active, policy_rules }) {
-    const rules = policy_rules || {};
+    let rules = policy_rules || {};
+    if (typeof rules === 'string') {
+        try {
+            rules = JSON.parse(rules);
+        } catch (e) {
+            rules = {};
+        }
+    }
+    rules = rules || {};
 
     const resolvedStart = start_time ?? rules.shift_timing?.start_time ?? null;
     const resolvedEnd = end_time ?? rules.shift_timing?.end_time ?? null;
@@ -81,6 +93,8 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
     const resolvedMaxOvertime = normalizeMaxOvertimeHours(rawMaxOvertime);
 
     const isActiveVal = is_active !== undefined ? (is_active ? 1 : 0) : (rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : 1);
+
+    const checkpointReq = rules.checkpoint_requirements || {};
 
     const finalRules = {
         ...rules,
@@ -102,6 +116,11 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
             max_overtime: resolvedMaxOvertime,
         },
         entry_requirements: rules.entry_requirements || { selfie: true, geofence: true },
+        exit_requirements: rules.exit_requirements || { selfie: true, geofence: true },
+        checkpoint_requirements: {
+            enabled: checkpointReq.enabled !== undefined ? Boolean(checkpointReq.enabled) : true,
+            selfie: checkpointReq.selfie !== undefined ? Boolean(checkpointReq.selfie) : false
+        },
     };
 
     const [id] = await attendanceDB('org_shifts').insert({
@@ -121,23 +140,82 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
  * Update an existing shift
  */
 export async function updateShift({ shift_id, org_id, shift_name, is_active, policy_rules }) {
-    const rules = policy_rules || {};
-    const isActiveVal = is_active !== undefined ? (is_active ? 1 : 0) : (rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : 1);
-    const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
-        ? rules.overtime.max_overtime
-        : rules.overtime?.maxOvertime;
+    const existing = await attendanceDB('org_shifts').where({ shift_id, org_id }).first();
+    if (!existing) return 0;
+
+    let existingRules = {};
+    if (existing.policy_rules) {
+        try {
+            existingRules = typeof existing.policy_rules === 'string'
+                ? JSON.parse(existing.policy_rules)
+                : existing.policy_rules;
+        } catch (e) {
+            existingRules = {};
+        }
+    }
+    existingRules = existingRules || {};
+
+    let incomingRules = policy_rules;
+    if (typeof incomingRules === 'string') {
+        try {
+            incomingRules = JSON.parse(incomingRules);
+        } catch (e) {
+            incomingRules = {};
+        }
+    }
+    incomingRules = incomingRules || {};
+
+    const checkpointReq = incomingRules.checkpoint_requirements !== undefined
+        ? incomingRules.checkpoint_requirements
+        : (existingRules.checkpoint_requirements || {});
+
+    const isActiveVal = is_active !== undefined
+        ? (is_active ? 1 : 0)
+        : (incomingRules.is_active !== undefined
+            ? (incomingRules.is_active ? 1 : 0)
+            : (existing.is_active !== undefined ? (existing.is_active ? 1 : 0) : 1));
+
+    const rawMaxOvertime = incomingRules.overtime?.max_overtime !== undefined
+        ? incomingRules.overtime.max_overtime
+        : (incomingRules.overtime?.maxOvertime !== undefined
+            ? incomingRules.overtime.maxOvertime
+            : (existingRules.overtime?.max_overtime !== undefined
+                ? existingRules.overtime.max_overtime
+                : existingRules.overtime?.maxOvertime));
 
     const finalRules = {
-        ...rules,
+        ...existingRules,
+        ...incomingRules,
         is_active: isActiveVal === 1,
+        shift_timing: {
+            ...(existingRules.shift_timing || {}),
+            ...(incomingRules.shift_timing || {})
+        },
+        grace_period: {
+            ...(existingRules.grace_period || {}),
+            ...(incomingRules.grace_period || {})
+        },
         overtime: {
-            ...(rules.overtime || {}),
+            ...(existingRules.overtime || {}),
+            ...(incomingRules.overtime || {}),
             max_overtime: normalizeMaxOvertimeHours(rawMaxOvertime)
+        },
+        entry_requirements: {
+            ...(existingRules.entry_requirements || { selfie: true, geofence: true }),
+            ...(incomingRules.entry_requirements || {})
+        },
+        exit_requirements: {
+            ...(existingRules.exit_requirements || { selfie: true, geofence: true }),
+            ...(incomingRules.exit_requirements || {})
+        },
+        checkpoint_requirements: {
+            enabled: checkpointReq.enabled !== undefined ? Boolean(checkpointReq.enabled) : true,
+            selfie: checkpointReq.selfie !== undefined ? Boolean(checkpointReq.selfie) : false
         }
     };
 
     const updates = {
-        shift_name,
+        shift_name: shift_name !== undefined ? shift_name : existing.shift_name,
         is_active: isActiveVal,
         policy_rules: JSON.stringify(finalRules)
     };

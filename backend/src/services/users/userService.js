@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { cacheService } from '../cache/cacheService.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js
 
@@ -835,7 +836,12 @@ export const createShift = async (shiftData, orgId) => {
                     : rules.overtime?.maxOvertime
             )
         },
-        entry_requirements: rules.entry_requirements || { selfie: true, geofence: true }
+        entry_requirements: rules.entry_requirements || { selfie: true, geofence: true },
+        exit_requirements: rules.exit_requirements || { selfie: true, geofence: true },
+        checkpoint_requirements: {
+            enabled: rules.checkpoint_requirements?.enabled !== undefined ? Boolean(rules.checkpoint_requirements.enabled) : true,
+            selfie: rules.checkpoint_requirements?.selfie !== undefined ? Boolean(rules.checkpoint_requirements.selfie) : false
+        }
     };
 
     const [newId] = await attendanceDB("org_shifts").insert({
@@ -848,37 +854,93 @@ export const createShift = async (shiftData, orgId) => {
 };
 
 export const updateShift = async (shiftId, shiftData, orgId) => {
-    const {
-        shift_name,
-        is_active,
-        policy_rules = {}
-    } = shiftData;
+    const existing = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id: orgId }).first();
+    if (!existing) throw new AppError("Shift not found", 404);
 
-    const rules = shiftData.policy_rules || {};
-    const isActiveVal = is_active !== undefined ? (is_active ? 1 : 0) : (rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : 1);
+    let existingRules = {};
+    if (existing.policy_rules) {
+        try {
+            existingRules = typeof existing.policy_rules === 'string'
+                ? JSON.parse(existing.policy_rules)
+                : existing.policy_rules;
+        } catch (e) {
+            existingRules = {};
+        }
+    }
+    existingRules = existingRules || {};
 
-    const updates = {
-        shift_name,
-        is_active: isActiveVal
+    let incomingRules = shiftData.policy_rules;
+    if (typeof incomingRules === 'string') {
+        try {
+            incomingRules = JSON.parse(incomingRules);
+        } catch (e) {
+            incomingRules = {};
+        }
+    }
+    incomingRules = incomingRules || {};
+
+    const checkpointReq = incomingRules.checkpoint_requirements !== undefined
+        ? incomingRules.checkpoint_requirements
+        : (existingRules.checkpoint_requirements || {});
+
+    const isActiveVal = shiftData.is_active !== undefined
+        ? (shiftData.is_active ? 1 : 0)
+        : (incomingRules.is_active !== undefined
+            ? (incomingRules.is_active ? 1 : 0)
+            : (existing.is_active !== undefined ? (existing.is_active ? 1 : 0) : 1));
+
+    const rawMaxOvertime = incomingRules.overtime?.max_overtime !== undefined
+        ? incomingRules.overtime.max_overtime
+        : (incomingRules.overtime?.maxOvertime !== undefined
+            ? incomingRules.overtime.maxOvertime
+            : (existingRules.overtime?.max_overtime !== undefined
+                ? existingRules.overtime.max_overtime
+                : existingRules.overtime?.maxOvertime));
+
+    const finalRules = {
+        ...existingRules,
+        ...incomingRules,
+        is_active: isActiveVal === 1,
+        shift_timing: {
+            ...(existingRules.shift_timing || {}),
+            ...(incomingRules.shift_timing || {})
+        },
+        grace_period: {
+            ...(existingRules.grace_period || {}),
+            ...(incomingRules.grace_period || {})
+        },
+        overtime: {
+            ...(existingRules.overtime || {}),
+            ...(incomingRules.overtime || {}),
+            max_overtime: normalizeMaxOvertimeHours(rawMaxOvertime)
+        },
+        entry_requirements: {
+            ...(existingRules.entry_requirements || { selfie: true, geofence: true }),
+            ...(incomingRules.entry_requirements || {})
+        },
+        exit_requirements: {
+            ...(existingRules.exit_requirements || { selfie: true, geofence: true }),
+            ...(incomingRules.exit_requirements || {})
+        },
+        checkpoint_requirements: {
+            enabled: checkpointReq.enabled !== undefined ? Boolean(checkpointReq.enabled) : true,
+            selfie: checkpointReq.selfie !== undefined ? Boolean(checkpointReq.selfie) : false
+        }
     };
 
-    if (shiftData.policy_rules || is_active !== undefined) {
-        updates.policy_rules = JSON.stringify({
-            ...rules,
-            is_active: isActiveVal === 1,
-            overtime: {
-                ...(rules.overtime || {}),
-                max_overtime: normalizeMaxOvertimeHours(
-                    rules.overtime?.max_overtime !== undefined
-                        ? rules.overtime.max_overtime
-                        : rules.overtime?.maxOvertime
-                )
-            }
-        });
+    const updates = {
+        shift_name: shiftData.shift_name !== undefined ? shiftData.shift_name : existing.shift_name,
+        is_active: isActiveVal,
+        policy_rules: JSON.stringify(finalRules)
+    };
+
+    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id: orgId }).update(updates);
+    if (affected === 0) throw new AppError("Shift not found", 404);
+
+    if (cacheService && cacheService.del) {
+        await cacheService.del(`mano-cache:shifts:org:${orgId}`);
     }
 
-    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id }).update(updates);
-    if (affected === 0) throw new AppError("Shift not found", 404);
     return true;
 };
 
@@ -888,8 +950,13 @@ export const deleteShift = async (shiftId, orgId) => {
         throw new AppError(`Cannot delete shift. It is assigned to ${usersCount.count} users.`, 400);
     }
 
-    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id }).del();
+    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id: orgId }).del();
     if (affected === 0) throw new AppError("Shift not found", 404);
+
+    if (cacheService && cacheService.del) {
+        await cacheService.del(`mano-cache:shifts:org:${orgId}`);
+    }
+
     return true;
 };
 
