@@ -1,4 +1,5 @@
 import api from './api';
+import { getLocalDateString } from '../utils/dateUtils';
 
 const API_BASE_URL = "/attendance";
 
@@ -36,6 +37,12 @@ export const attendanceCacheData = {
     myStats: {},
     todayStatus: {},
     recentActivity: {}
+};
+
+// Clear shift policy cache specifically
+export const clearShiftPolicyCache = () => {
+    cache.shiftPolicy = null;
+    attendanceCacheData.shiftPolicy = null;
 };
 
 // Clear the cache when data changes
@@ -77,8 +84,11 @@ export const attendanceService = {
         formData.append("accuracy", data.accuracy);
         const tz = data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         formData.append("timezone", tz);
+        if (data.address) {
+            formData.append("address", data.address);
+        }
         if (data.imageFile) {
-            formData.append("image", data.imageFile);
+            formData.append("image", data.imageFile, "selfie.jpg");
         }
         if (data.late_reason) {
             formData.append("late_reason", data.late_reason);
@@ -105,8 +115,11 @@ export const attendanceService = {
         formData.append("accuracy", data.accuracy);
         const tz = data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         formData.append("timezone", tz);
+        if (data.address) {
+            formData.append("address", data.address);
+        }
         if (data.imageFile) {
-            formData.append("image", data.imageFile);
+            formData.append("image", data.imageFile, "selfie.jpg");
         }
 
         try {
@@ -125,15 +138,40 @@ export const attendanceService = {
     // Mark Checkpoint (Presence/Location Ping)
     async markCheckpoint(data) {
         try {
-            const payload = {
-                latitude: data.latitude,
-                longitude: data.longitude,
-                accuracy: data.accuracy,
-                address: data.address,
-                note: data.note,
-                is_geofence_violation: Boolean(data.is_geofence_violation)
-            };
-            const res = await api.post(`${API_BASE_URL}/ping`, payload);
+            const formData = new FormData();
+            formData.append("latitude", data.latitude);
+            formData.append("longitude", data.longitude);
+            if (data.accuracy != null) formData.append("accuracy", data.accuracy);
+            if (data.address) formData.append("address", data.address);
+            if (data.note) formData.append("note", data.note);
+            if (data.localTime) formData.append("local_time", data.localTime);
+            formData.append("is_geofence_violation", Boolean(data.is_geofence_violation));
+            if (data.imageFile) {
+                formData.append("image", data.imageFile, "checkpoint_selfie.jpg");
+            } else if (data.image && typeof data.image === 'string' && data.image.startsWith('data:')) {
+                try {
+                    const parts = data.image.split(',');
+                    const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+                    const bstr = atob(parts[1]);
+                    let n = bstr.length;
+                    const u8arr = new Uint8Array(n);
+                    while (n--) {
+                        u8arr[n] = bstr.charCodeAt(n);
+                    }
+                    const blob = new Blob([u8arr], { type: mime });
+                    formData.append("image", blob, "checkpoint_selfie.jpg");
+                } catch (bErr) {
+                    console.warn("Failed to convert dataURL to Blob in markCheckpoint", bErr);
+                }
+            } else if (data.image) {
+                formData.append("image", data.image, "checkpoint_selfie.jpg");
+            }
+
+            const res = await api.post(`${API_BASE_URL}/ping`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
             clearCache();
             return res.data;
         } catch (error) {
@@ -142,9 +180,12 @@ export const attendanceService = {
     },
 
     // Get Records for a user
-    async getMyRecords(dateFrom, dateTo) {
+    async getMyRecords(dateFrom, dateTo, forceRefresh = false) {
         const cacheKey = `${dateFrom || ''}_${dateTo || ''}`;
-        if (cache.records.has(cacheKey)) {
+        if (forceRefresh) {
+            cache.records.delete(cacheKey);
+            delete attendanceCacheData.records[cacheKey];
+        } else if (cache.records.has(cacheKey)) {
             return cache.records.get(cacheKey);
         }
 
@@ -156,9 +197,15 @@ export const attendanceService = {
             try {
                 const res = await api.get(url);
                 attendanceCacheData.records[cacheKey] = res.data;
+                // Auto-expire cache after 30 seconds so records don't stay stale indefinitely
+                setTimeout(() => {
+                    cache.records.delete(cacheKey);
+                    delete attendanceCacheData.records[cacheKey];
+                }, 30000);
                 return res.data;
             } catch (error) {
                 cache.records.delete(cacheKey);
+                delete attendanceCacheData.records[cacheKey];
                 throw new Error(error.response?.data?.message || "Failed to fetch records");
             }
         })();
@@ -171,7 +218,7 @@ export const attendanceService = {
     // Get Real-time Attendance (Admin)
     async getRealTimeAttendance(date, forceRefresh = false) {
         // Defaults to today if no date provided
-        const targetDate = date || new Date().toISOString().split('T')[0];
+        const targetDate = date || getLocalDateString();
         
         const now = Date.now();
         const cachedTime = cacheTimestamps.realTimeAttendance.get(targetDate);
@@ -350,8 +397,8 @@ export const attendanceService = {
 
         const promise = (async () => {
             try {
-                const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-                const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+                const startOfMonth = getLocalDateString(new Date(today.getFullYear(), today.getMonth(), 1));
+                const endOfMonth = getLocalDateString(new Date(today.getFullYear(), today.getMonth() + 1, 0));
 
                 const res = await this.getMyRecords(startOfMonth, endOfMonth);
                 const records = res.data || [];
@@ -394,7 +441,7 @@ export const attendanceService = {
 
     // Employee Today's Status
     async getTodayStatus(forceRefresh = false) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDateString();
         if (!forceRefresh && cache.todayStatus.has(today)) {
             return cache.todayStatus.get(today);
         }
@@ -492,7 +539,7 @@ export const attendanceService = {
     // Recent Activity Feed
     async getRecentActivity(forceRefresh = false) {
         const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
+        const todayStr = getLocalDateString(today);
         if (!forceRefresh && cache.recentActivity.has(todayStr)) {
             return cache.recentActivity.get(todayStr);
         }
@@ -502,7 +549,7 @@ export const attendanceService = {
                 const lastWeek = new Date(today);
                 lastWeek.setDate(lastWeek.getDate() - 7);
 
-                const res = await this.getMyRecords(lastWeek.toISOString().split('T')[0], today.toISOString().split('T')[0]);
+                const res = await this.getMyRecords(getLocalDateString(lastWeek), todayStr);
                 const records = res.data || [];
 
                 const activities = [];
@@ -551,10 +598,16 @@ export const attendanceService = {
         cache.recentActivity.set(todayStr, promise);
         return promise;
     },
+    clearShiftPolicyCache,
     // Get My Shift Policy
-    async getMyShiftPolicy() {
-        if (cache.shiftPolicy) {
+    async getMyShiftPolicy(force = false) {
+        if (!force && cache.shiftPolicy && !(cache.shiftPolicy instanceof Promise)) {
             return cache.shiftPolicy;
+        }
+
+        if (force) {
+            cache.shiftPolicy = null;
+            attendanceCacheData.shiftPolicy = null;
         }
 
         const promise = (async () => {
@@ -599,7 +652,7 @@ export const attendanceService = {
     },
     // Get Daily Summary (Admin single date)
     async getDailySummaryAdmin(date) {
-        const cacheKey = date || new Date().toISOString().split('T')[0];
+        const cacheKey = date || getLocalDateString();
         
         const now = Date.now();
         const cachedTime = cacheTimestamps.dailySummaryAdmin.get(cacheKey);

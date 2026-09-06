@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import CustomCalendar from '../../../components/CustomCalendar';
 import SessionCheckpointsTimeline from '../components/SessionCheckpointsTimeline';
+import { getLocalDateString } from '../../../utils/dateUtils';
 
 const MarkAttendanceTab = ({
     globalActiveSession,
@@ -24,6 +25,7 @@ const MarkAttendanceTab = ({
     showCamera,
     handlePunchClick,
     handleOpenCheckpointModal,
+    isCheckpointAllowed = true,
     dailySessions,
     isWorkingDayToday,
     missedPunchWarning,
@@ -39,6 +41,7 @@ const MarkAttendanceTab = ({
     setSelectedDate,
     formatDateDisplay,
     calendarEvents,
+    workingDays,
     scrollerDates,
     loading,
     formatTime,
@@ -46,14 +49,14 @@ const MarkAttendanceTab = ({
     calculateDuration,
     setViewerImage
 }) => {
-    const hasActiveSession = globalActiveSession;
-    const isToday = selectedDate === new Date().toISOString().split('T')[0];
+    const hasActiveSession = Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !s.time_out)));
+    const isToday = selectedDate === getLocalDateString(new Date());
 
     return (
         <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Action Buttons & Punch Cards */}
             <div className="flex flex-col gap-6">
-                <div data-tour-id="att-session-actions" className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div data-tour-id="att-session-actions" className={`grid grid-cols-1 ${isCheckpointAllowed ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-5`}>
                     {/* Time In Card */}
                     <button
                         onClick={() => handlePunchClick('IN')}
@@ -86,48 +89,50 @@ const MarkAttendanceTab = ({
                     </button>
 
                     {/* Mark Checkpoint Card */}
-                    <button
-                        onClick={handleOpenCheckpointModal}
-                        disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
-                        data-tour-id="att-checkpoint-btn"
-                        className={`group relative p-5 rounded-xl flex items-center justify-between transition-all duration-500 overflow-hidden border-2 cursor-pointer ${!hasActiveSession
-                            ? 'bg-slate-50/50 dark:bg-slate-900/20 border-slate-100 dark:border-white/5 opacity-40 grayscale-[0.5]'
-                            : 'bg-white dark:bg-github-dark-subtle border-slate-100 dark:border-white/10 shadow-lg hover:shadow-xl hover:border-amber-500/30 active:scale-[0.98]'
-                            }`}
-                    >
-                        <div className="flex items-center gap-4 relative z-10">
-                            <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-500 relative ${!hasActiveSession
-                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                                : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 shadow-lg shadow-amber-500/10'
-                                }`}>
-                                <MapPin size={24} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
-                                {hasActiveSession && (
-                                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-                                    </span>
-                                )}
-                            </div>
-                            <div className="text-left">
-                                <h3 className={`text-xl font-black tracking-tight ${!hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>
-                                    {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
-                                </h3>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <p className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider opacity-60">
-                                        {!hasActiveSession ? 'Requires Active Session' : 'Record Mid-Shift Location'}
-                                    </p>
-                                    {hasActiveSession && Array.isArray(dailySessions) && dailySessions.some(s => Array.isArray(s.checkpoints) && s.checkpoints.length > 0) && (
-                                        <span className="px-1.5 py-0.5 text-[9px] font-black bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full border border-amber-500/20">
-                                            {dailySessions.reduce((acc, s) => acc + (Array.isArray(s.checkpoints) ? s.checkpoints.length : 0), 0)} logged
+                    {isCheckpointAllowed && (
+                        <button
+                            onClick={handleOpenCheckpointModal}
+                            disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
+                            data-tour-id="att-checkpoint-btn"
+                            className={`group relative p-5 rounded-xl flex items-center justify-between transition-all duration-500 overflow-hidden border-2 cursor-pointer ${!hasActiveSession
+                                ? 'bg-slate-50/50 dark:bg-slate-900/20 border-slate-100 dark:border-white/5 opacity-40 grayscale-[0.5]'
+                                : 'bg-white dark:bg-github-dark-subtle border-slate-100 dark:border-white/10 shadow-lg hover:shadow-xl hover:border-amber-500/30 active:scale-[0.98]'
+                                }`}
+                        >
+                            <div className="flex items-center gap-4 relative z-10">
+                                <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-500 relative ${!hasActiveSession
+                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                    : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 shadow-lg shadow-amber-500/10'
+                                    }`}>
+                                    <MapPin size={24} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
+                                    {hasActiveSession && (
+                                        <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
                                         </span>
                                     )}
                                 </div>
+                                <div className="text-left">
+                                    <h3 className={`text-xl font-black tracking-tight ${!hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>
+                                        {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
+                                    </h3>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <p className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider opacity-60">
+                                            {!hasActiveSession ? 'Requires Active Session' : 'Record Mid-Shift Location'}
+                                        </p>
+                                        {hasActiveSession && Array.isArray(dailySessions) && dailySessions.some(s => Array.isArray(s.checkpoints) && s.checkpoints.length > 0) && (
+                                            <span className="px-1.5 py-0.5 text-[9px] font-black bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full border border-amber-500/20">
+                                                {dailySessions.reduce((acc, s) => acc + (Array.isArray(s.checkpoints) ? s.checkpoints.length : 0), 0)} logged
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center transition-all duration-300 group-hover:bg-amber-500/10 group-hover:text-amber-500">
-                            <ChevronRight size={20} className={!hasActiveSession ? 'text-slate-200 dark:text-slate-700' : 'text-slate-400 dark:text-slate-500'} />
-                        </div>
-                    </button>
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center transition-all duration-300 group-hover:bg-amber-500/10 group-hover:text-amber-500">
+                                <ChevronRight size={20} className={!hasActiveSession ? 'text-slate-200 dark:text-slate-700' : 'text-slate-400 dark:text-slate-500'} />
+                            </div>
+                        </button>
+                    )}
 
                     {/* Time Out Card */}
                     <button
@@ -243,9 +248,9 @@ const MarkAttendanceTab = ({
             {/* Horizontal Date Scroller */}
             <div className="flex gap-4 overflow-x-auto py-6 px-2 no-scrollbar scroll-smooth">
                 {scrollerDates.map((date) => {
-                    const dateStr = date.toISOString().split('T')[0];
+                    const dateStr = getLocalDateString(date);
                     const isSelected = dateStr === selectedDate;
-                    const isDateToday = dateStr === new Date().toISOString().split('T')[0];
+                    const isDateToday = dateStr === getLocalDateString(new Date());
                     const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
 
                     return (
@@ -279,15 +284,16 @@ const MarkAttendanceTab = ({
                         </h3>
                     </div>
                     <button
+                        type="button"
                         onClick={() => {
                             setCorrDate(selectedDate);
                             loadCorrectionDataForDate(selectedDate);
                             setIsCorrectionDrawerOpen(true);
                         }}
                         data-tour-id="att-correction-btn"
-                        className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-[10px] tracking-widest bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 rounded-xl hover:shadow-lg transition-all active:scale-95 border border-indigo-100/50 dark:border-indigo-500/20 cursor-pointer"
+                        className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs"
                     >
-                        <Plus size={14} strokeWidth={3} /> Request Correction
+                        <Plus size={15} strokeWidth={2.5} /> Request Correction
                     </button>
                 </div>
 
@@ -311,9 +317,11 @@ const MarkAttendanceTab = ({
                                     <div className="flex flex-col items-end gap-2">
                                         {(() => {
                                             const isSessionOpen = !session.time_out;
-                                            const selectedDateStr = selectedDate ? (selectedDate instanceof Date ? selectedDate.toLocaleDateString('en-CA') : String(selectedDate).split('T')[0]) : '';
-                                            const todayDateStr = new Date().toLocaleDateString('en-CA');
-                                            const isPastDate = Boolean(selectedDateStr && selectedDateStr < todayDateStr);
+                                            const selectedDateStr = selectedDate ? getLocalDateString(selectedDate) : '';
+                                            const todayDateStr = getLocalDateString(new Date());
+                                            const sessionTimeIn = session.time_in ? new Date(session.time_in) : null;
+                                            const hoursSinceIn = sessionTimeIn ? (Date.now() - sessionTimeIn.getTime()) / (1000 * 60 * 60) : 0;
+                                            const isPastDate = Boolean(selectedDateStr && selectedDateStr < todayDateStr && hoursSinceIn >= 20);
                                             const isSessionMissed = session.status === 'MISSED_PUNCH' || (isPastDate && isSessionOpen);
                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'CLOSED');
                                             const style = getStatusStyle(sessionStatus);
@@ -351,7 +359,20 @@ const MarkAttendanceTab = ({
                                         <div className="flex items-start gap-3 bg-slate-50/50 dark:bg-white/5 p-4 rounded-2xl border border-slate-100/50 dark:border-white/5">
                                             <MapPin size={16} className="text-slate-400 mt-0.5 shrink-0" />
                                             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
-                                                {session.time_in_address || 'Address not captured'}
+                                                {session.time_in_address && session.time_in_address !== 'Locating...' && session.time_in_address !== 'Pending...' ? (
+                                                    session.time_in_address
+                                                ) : session.time_in_lat && session.time_in_lng ? (
+                                                    <a
+                                                        href={`https://www.google.com/maps?q=${session.time_in_lat},${session.time_in_lng}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-indigo-500 dark:text-indigo-400 underline underline-offset-2 hover:text-indigo-700"
+                                                    >
+                                                        {`${parseFloat(session.time_in_lat).toFixed(5)}, ${parseFloat(session.time_in_lng).toFixed(5)}`}
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-slate-400 italic">Address not captured</span>
+                                                )}
                                             </p>
                                         </div>
 
@@ -402,7 +423,22 @@ const MarkAttendanceTab = ({
                                         <div className="flex items-start gap-3 bg-slate-50/50 dark:bg-white/5 p-4 rounded-2xl border border-slate-100/50 dark:border-white/5">
                                             <MapPin size={16} className="text-slate-400 mt-0.5 shrink-0" />
                                             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
-                                                {session.time_out ? (session.time_out_address || 'Address not captured') : 'Ongoing session...'}
+                                                {session.time_out ? (
+                                                    session.time_out_address && session.time_out_address !== 'Locating...' && session.time_out_address !== 'Pending...' ? (
+                                                        session.time_out_address
+                                                    ) : session.time_out_lat && session.time_out_lng ? (
+                                                        <a
+                                                            href={`https://www.google.com/maps?q=${session.time_out_lat},${session.time_out_lng}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-indigo-500 dark:text-indigo-400 underline underline-offset-2 hover:text-indigo-700"
+                                                        >
+                                                            {`${parseFloat(session.time_out_lat).toFixed(5)}, ${parseFloat(session.time_out_lng).toFixed(5)}`}
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-slate-400 italic">Address not captured</span>
+                                                    )
+                                                ) : 'Ongoing session...'}
                                             </p>
                                         </div>
 
@@ -441,7 +477,9 @@ const MarkAttendanceTab = ({
                                     session={session}
                                     formatTime={formatTime}
                                     onOpenCheckpointModal={handleOpenCheckpointModal}
+                                    isCheckpointAllowed={isCheckpointAllowed}
                                     isCurrentDate={isToday}
+                                    setViewerImage={setViewerImage}
                                 />
                             </div>
                         ))

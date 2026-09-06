@@ -21,12 +21,18 @@ Mano is a high-density workforce monitoring, attendance tracking, and administra
 
 ### 4. Attendance Tracking and Live Monitoring
 - Real-time administrative monitor displaying check-in times, check-out times, and calculated late check-in or early leave durations.
-- Automated compliance alerts flags for out-of-boundary check-ins and unauthorized device identifiers.
-- Self-service employee portals for location-validated check-in and check-out.
-- Correction request system enabling employees to propose adjustments for missing logs, with full administrative approval workflows.
+- Mid-shift checkpoint logging allowing active work sessions to record verified GPS location pings throughout the workday.
+- Conditional camera enforcement: when selfie verification is required by shift policy, live webcam capture is mandated; when disabled, the camera hardware is not initialized and coordinates are logged directly.
+- Automated compliance alert flags for out-of-boundary check-ins, poor GPS accuracy, and unauthorized device identifiers.
+- Self-service employee portals for location-validated check-in, check-out, and checkpoints across both desktop and dedicated mobile web views.
+- Correction request system enabling employees to propose adjustments for missing logs, with full administrative approval workflows and visual audit timelines.
 
 ### 5. Shift Management and Geofencing
 - Dynamic creation and assignment of work shifts with configurable start times, end times, grace periods, and late-arrival limits.
+- Configurable checkpoint policy rules: administrators can enable or disable checkpoints per shift, and independently toggle mandatory selfie requirements.
+- Safe policy rule engine with deep merging to preserve shift configuration history and prevent accidental attribute resets.
+- Real-time policy synchronization: administrative shift modifications automatically clear stale client-side caches and broadcast updates across browser tabs and mobile sessions.
+- Automatic active shift inheritance: employees without explicit individual shift assignments dynamically inherit the organization's primary active shift policy.
 - Precise geofencing controls allowing administrators to designate valid check-in coordinates and set search radius thresholds in meters.
 - Multi-location bindings to assign employees to specific branch offices or external job sites.
 
