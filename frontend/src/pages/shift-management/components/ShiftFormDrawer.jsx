@@ -16,10 +16,10 @@ const Toggle = ({ label, subLabel, checked, onChange }) => (
     </div>
 );
 
-const Checkbox = ({ label, checked, onChange }) => (
-    <label className="flex items-center gap-2.5 cursor-pointer py-1.5 group">
+const Checkbox = ({ label, checked, onChange, disabled = false }) => (
+    <label className={`flex items-center gap-2.5 py-1.5 group ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${checked ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 dark:border-github-dark-border group-hover:border-indigo-400'}`}
-            onClick={onChange}>
+            onClick={disabled ? undefined : onChange}>
             {checked && <Check size={10} className="text-white" strokeWidth={3} />}
         </div>
         <span className="text-xs text-slate-700 dark:text-slate-300 font-normal">{label}</span>
@@ -377,10 +377,10 @@ const ShiftFormDrawer = ({
                             </div>
                         </div>
 
-                        {/* Punch In / Out Verification */}
+                        {/* Punch In / Out / Checkpoint Verification */}
                         <div className="p-4 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border space-y-3">
                             <h4 className="text-xs font-semibold text-slate-800 dark:text-github-dark-text">Verification Requirements</h4>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Check-In</p>
                                     <Checkbox label="Selfie Required" checked={shiftForm.reqEntrySelfie} onChange={() => setShiftForm(p => ({ ...p, reqEntrySelfie: !p.reqEntrySelfie }))} />
@@ -388,6 +388,11 @@ const ShiftFormDrawer = ({
                                 <div>
                                     <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Check-Out</p>
                                     <Checkbox label="Selfie Required" checked={shiftForm.reqExitSelfie} onChange={() => setShiftForm(p => ({ ...p, reqExitSelfie: !p.reqExitSelfie }))} />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Checkpoint</p>
+                                    <Checkbox label="Enable Checkpoints" checked={shiftForm.checkpointEnabled} onChange={() => setShiftForm(p => ({ ...p, checkpointEnabled: !p.checkpointEnabled }))} />
+                                    <Checkbox label="Selfie Required" checked={shiftForm.reqCheckpointSelfie} disabled={!shiftForm.checkpointEnabled} onChange={() => setShiftForm(p => ({ ...p, reqCheckpointSelfie: !p.reqCheckpointSelfie }))} />
                                 </div>
                             </div>
                         </div>

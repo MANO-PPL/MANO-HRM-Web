@@ -70,6 +70,8 @@ const ShiftManagement = ({ embedded = false }) => {
     const [newValCheckInSelfie, setNewValCheckInSelfie] = useState(true);
     const [newValCheckOutGps, setNewValCheckOutGps] = useState(false);
     const [newValCheckOutSelfie, setNewValCheckOutSelfie] = useState(false);
+    const [newValCheckpointEnabled, setNewValCheckpointEnabled] = useState(true);
+    const [newValCheckpointSelfie, setNewValCheckpointSelfie] = useState(false);
     const [newWorkingDays, setNewWorkingDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
     const [newWeekOffRules, setNewWeekOffRules] = useState([]);
     const [newHalfDayRules, setNewHalfDayRules] = useState([]);
@@ -186,6 +188,8 @@ const ShiftManagement = ({ embedded = false }) => {
         setNewValCheckInSelfie(true);
         setNewValCheckOutGps(true); // GPS is mandatory
         setNewValCheckOutSelfie(false);
+        setNewValCheckpointEnabled(true);
+        setNewValCheckpointSelfie(false);
         setNewWorkingDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
         setNewWeekOffRules([]);
         setNewHalfDayRules([]);
@@ -212,6 +216,8 @@ const ShiftManagement = ({ embedded = false }) => {
         setNewValCheckInSelfie(rules.entry_requirements?.selfie ?? true);
         setNewValCheckOutGps(true); // GPS is mandatory
         setNewValCheckOutSelfie(rules.exit_requirements?.selfie ?? false);
+        setNewValCheckpointEnabled(rules.checkpoint_requirements?.enabled !== false);
+        setNewValCheckpointSelfie(Boolean(rules.checkpoint_requirements?.selfie));
         setNewWorkingDays(parsed.workingDays.length > 0 ? parsed.workingDays : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
         setNewWeekOffRules(parsed.weekOffRules);
         setNewHalfDayRules(parsed.halfDayRules);
@@ -270,6 +276,10 @@ const ShiftManagement = ({ embedded = false }) => {
             correction_deadline: parseInt(newCorrectionDeadline) || 2,
             entry_requirements: { selfie: newValCheckInSelfie, geofence: true }, // GPS is mandatory
             exit_requirements: { selfie: newValCheckOutSelfie, geofence: true }, // GPS is mandatory
+            checkpoint_requirements: {
+                enabled: newValCheckpointEnabled,
+                selfie: newValCheckpointSelfie
+            },
             week_off_policy
         };
 
@@ -560,19 +570,30 @@ const ShiftManagement = ({ embedded = false }) => {
                                     {/* Validation Grid */}
                                     <div>
                                         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Validation Rules</p>
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-3 gap-2 sm:gap-4">
                                             <div className="space-y-2">
                                                 <p className="text-[10px] font-bold text-slate-800 dark:text-github-dark-text">Check-In</p>
-                                                <div className={`flex items-center gap-2 p-2 rounded-xl border ${selectedShift.policy_rules?.entry_requirements?.selfie ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-500/5 dark:border-emerald-500/20' : 'bg-slate-50 border-slate-100 dark:bg-github-dark-subtle dark:border-github-dark-border opacity-60'}`}>
-                                                    <CheckCircle2 size={14} className={selectedShift.policy_rules?.entry_requirements?.selfie ? 'text-emerald-500' : 'text-slate-300'} />
-                                                    <span className="text-[11px] font-bold text-slate-700 dark:text-github-dark-text">Selfie Req</span>
+                                                <div className={`flex items-center gap-1.5 p-2 rounded-xl border ${selectedShift.policy_rules?.entry_requirements?.selfie ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-500/5 dark:border-emerald-500/20' : 'bg-slate-50 border-slate-100 dark:bg-github-dark-subtle dark:border-github-dark-border opacity-60'}`}>
+                                                    <CheckCircle2 size={13} className={selectedShift.policy_rules?.entry_requirements?.selfie ? 'text-emerald-500' : 'text-slate-300'} />
+                                                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-github-dark-text">Selfie</span>
                                                 </div>
                                             </div>
                                             <div className="space-y-2">
                                                 <p className="text-[10px] font-bold text-slate-800 dark:text-github-dark-text">Check-Out</p>
-                                                <div className={`flex items-center gap-2 p-2 rounded-xl border ${selectedShift.policy_rules?.exit_requirements?.selfie ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-500/5 dark:border-emerald-500/20' : 'bg-slate-50 border-slate-100 dark:bg-github-dark-subtle dark:border-github-dark-border opacity-60'}`}>
-                                                    <CheckCircle2 size={14} className={selectedShift.policy_rules?.exit_requirements?.selfie ? 'text-emerald-500' : 'text-slate-300'} />
-                                                    <span className="text-[11px] font-bold text-slate-700 dark:text-github-dark-text">Selfie Req</span>
+                                                <div className={`flex items-center gap-1.5 p-2 rounded-xl border ${selectedShift.policy_rules?.exit_requirements?.selfie ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-500/5 dark:border-emerald-500/20' : 'bg-slate-50 border-slate-100 dark:bg-github-dark-subtle dark:border-github-dark-border opacity-60'}`}>
+                                                    <CheckCircle2 size={13} className={selectedShift.policy_rules?.exit_requirements?.selfie ? 'text-emerald-500' : 'text-slate-300'} />
+                                                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-github-dark-text">Selfie</span>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <p className="text-[10px] font-bold text-slate-800 dark:text-github-dark-text">Checkpoint</p>
+                                                <div className={`flex items-center gap-1.5 p-2 rounded-xl border ${selectedShift.policy_rules?.checkpoint_requirements?.enabled !== false ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-500/5 dark:border-emerald-500/20' : 'bg-rose-50 border-rose-100 dark:bg-rose-500/5 dark:border-rose-500/20 opacity-60'}`}>
+                                                    <CheckCircle2 size={13} className={selectedShift.policy_rules?.checkpoint_requirements?.enabled !== false ? 'text-emerald-500' : 'text-rose-400'} />
+                                                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-github-dark-text">
+                                                        {selectedShift.policy_rules?.checkpoint_requirements?.enabled !== false 
+                                                            ? (selectedShift.policy_rules?.checkpoint_requirements?.selfie ? 'Selfie' : 'Active') 
+                                                            : 'Off'}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
@@ -975,7 +996,7 @@ const ShiftManagement = ({ embedded = false }) => {
                                             <p className="text-xs font-bold text-slate-800 dark:text-github-dark-text">
                                                 Identity & Location Validation
                                             </p>
-                                            <div className="grid grid-cols-2 gap-3">
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                                 {/* Clock In Column */}
                                                 <div className="space-y-2">
                                                     <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Clock In</p>
@@ -998,6 +1019,27 @@ const ShiftManagement = ({ embedded = false }) => {
                                                         <input type="checkbox" className="hidden" checked={newValCheckOutSelfie} onChange={() => setNewValCheckOutSelfie(!newValCheckOutSelfie)} />
                                                         <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Selfie Photo</span>
                                                     </label>
+                                                </div>
+
+                                                {/* Checkpoint Column */}
+                                                <div className="space-y-2">
+                                                    <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Checkpoint</p>
+                                                    <div className="space-y-1.5">
+                                                        <label className="flex items-center gap-2.5 p-2 bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-xl cursor-pointer">
+                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${newValCheckpointEnabled ? 'bg-amber-600 border-amber-600' : 'border-slate-300'}`}>
+                                                                {newValCheckpointEnabled && <CheckCircle2 size={12} className="text-white" />}
+                                                            </div>
+                                                            <input type="checkbox" className="hidden" checked={newValCheckpointEnabled} onChange={() => setNewValCheckpointEnabled(!newValCheckpointEnabled)} />
+                                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Enabled</span>
+                                                        </label>
+                                                        <label className={`flex items-center gap-2.5 p-2 bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-xl ${!newValCheckpointEnabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${newValCheckpointSelfie ? 'bg-amber-600 border-amber-600' : 'border-slate-300'}`}>
+                                                                {newValCheckpointSelfie && <CheckCircle2 size={12} className="text-white" />}
+                                                            </div>
+                                                            <input type="checkbox" className="hidden" disabled={!newValCheckpointEnabled} checked={newValCheckpointSelfie} onChange={() => setNewValCheckpointSelfie(!newValCheckpointSelfie)} />
+                                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Selfie Photo</span>
+                                                        </label>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

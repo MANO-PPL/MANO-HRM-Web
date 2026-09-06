@@ -201,8 +201,8 @@ const ShiftDetailsPanel = ({
                 </div>
 
                 {/* Policies Display */}
-                <div className="grid grid-cols-2 gap-6">
-                    <div data-tour-id="shift-detail-policies" className="bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl p-5 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div data-tour-id="shift-detail-policies" className="bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl p-4 space-y-3">
                         <div className="flex items-center gap-2 mb-1">
                             <MapPin size={16} className="text-indigo-500" />
                             <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Punch In Rules</h4>
@@ -221,7 +221,7 @@ const ShiftDetailsPanel = ({
                         </div>
                     </div>
 
-                    <div className="bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl p-5 space-y-3">
+                    <div className="bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl p-4 space-y-3">
                         <div className="flex items-center gap-2 mb-1">
                             <MapPin size={16} className="text-indigo-500" />
                             <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Punch Out Rules</h4>
@@ -229,6 +229,26 @@ const ShiftDetailsPanel = ({
                         <div className="space-y-2">
                             {[
                                 { label: 'Selfie Required', val: selectedShift.policy_rules?.exit_requirements?.selfie },
+                            ].map(r => (
+                                <div key={r.label} className="flex items-center gap-2 py-1">
+                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center ${r.val ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}>
+                                        {r.val ? <Check size={10} strokeWidth={3} /> : <X size={10} strokeWidth={3} />}
+                                    </div>
+                                    <span className="text-xs text-slate-600 dark:text-github-dark-muted font-normal">{r.label}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-xl p-4 space-y-3">
+                        <div className="flex items-center gap-2 mb-1">
+                            <MapPin size={16} className="text-amber-500" />
+                            <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Checkpoint Rules</h4>
+                        </div>
+                        <div className="space-y-2">
+                            {[
+                                { label: 'Checkpoints Enabled', val: selectedShift.policy_rules?.checkpoint_requirements?.enabled !== false },
+                                { label: 'Selfie Required', val: Boolean(selectedShift.policy_rules?.checkpoint_requirements?.selfie) },
                             ].map(r => (
                                 <div key={r.label} className="flex items-center gap-2 py-1">
                                     <div className={`w-4 h-4 rounded-full flex items-center justify-center ${r.val ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600' : 'bg-slate-100 dark:bg-slate-700 text-slate-400'}`}>

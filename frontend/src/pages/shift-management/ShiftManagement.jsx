@@ -71,6 +71,7 @@ const ShiftManagement = ({ embedded = false }) => {
         otThreshold: 9.0, otBuffer: 0.5, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
         reqEntrySelfie: true, reqEntryGeofence: true,
         reqExitSelfie: false, reqExitGeofence: true,
+        checkpointEnabled: true, reqCheckpointSelfie: false,
         workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
         weekOffRules: [],
         halfDayRules: [],
@@ -172,6 +173,8 @@ const ShiftManagement = ({ embedded = false }) => {
                 reqEntryGeofence: true, // GPS is mandatory
                 reqExitSelfie: !!rules.exit_requirements?.selfie,
                 reqExitGeofence: true, // GPS is mandatory
+                checkpointEnabled: rules.checkpoint_requirements?.enabled !== undefined ? !!rules.checkpoint_requirements.enabled : true,
+                reqCheckpointSelfie: !!rules.checkpoint_requirements?.selfie,
                 workingDays: parsed.workingDays.length > 0 ? parsed.workingDays : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
                 weekOffRules: parsed.weekOffRules,
                 halfDayRules: parsed.halfDayRules,
@@ -184,6 +187,7 @@ const ShiftManagement = ({ embedded = false }) => {
             setShiftForm({ 
                 name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otBuffer: 0.5, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
                 reqEntrySelfie: true, reqEntryGeofence: true, reqExitSelfie: false, reqExitGeofence: true, // GPS is mandatory
+                checkpointEnabled: true, reqCheckpointSelfie: false,
                 workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], weekOffRules: [], halfDayRules: [],
                 is_active: true
             });
@@ -213,6 +217,10 @@ const ShiftManagement = ({ embedded = false }) => {
             correction_deadline: parseInt(shiftForm.correctionDeadline) || 2,
             entry_requirements: { selfie: shiftForm.reqEntrySelfie, geofence: true }, // GPS is mandatory
             exit_requirements: { selfie: shiftForm.reqExitSelfie, geofence: true }, // GPS is mandatory
+            checkpoint_requirements: {
+                enabled: shiftForm.checkpointEnabled ?? true,
+                selfie: shiftForm.reqCheckpointSelfie ?? false
+            },
             week_off_policy
         };
         // Cleanup old fields if updating an old shift
