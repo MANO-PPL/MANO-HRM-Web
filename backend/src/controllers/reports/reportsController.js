@@ -437,23 +437,6 @@ export const previewReport = catchAsync(async (req, res) => {
     res.json({ ok: true, data });
 });
 
-export const getReportEmployees = catchAsync(async (req, res) => {
-    const org_id = req.user.org_id;
-    const { month, date, startDate: queryStart, endDate: queryEnd, type = "matrix_monthly", dept_id, desg_id, shift_id } = req.query;
-    const { startDate, endDate } = reportsService.resolveDateRange({ type, month, date, startDate: queryStart, endDate: queryEnd });
-
-    const users = await reportsService.getUsers({
-        org_id,
-        dept_id,
-        desg_id,
-        shift_id,
-        startDate,
-        endDate,
-        include_inactive: type === "employee_master"
-    });
-
-    res.json({ ok: true, users });
-});
 
 export const compileReportBuffer = async ({ org_id, targetUserId, month, date, type, format, startDate: queryStart, endDate: queryEnd, columns, dept_id, desg_id, shift_id }) => {
     const colsObj = typeof columns === 'string' ? JSON.parse(columns) : (columns || {});
@@ -471,8 +454,10 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         include_inactive: type === "employee_master"
     });
     let records = [];
+    let approvedLeaves = [];
     if (type !== "employee_master") {
         records = await reportsService.getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
+        approvedLeaves = await reportsService.getApprovedLeaves({ org_id, startDate, endDate, targetUserId });
     }
 
     if (format === "pdf") {
@@ -576,6 +561,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             pushPdfCol("Late Count", "late", 6);
             pushPdfCol("Present Days", "attendanceDays", 7);
             pushPdfCol("Absent Days", "attendanceDays", 8);
+            pushPdfCol("In Location", "location", 9);
+            pushPdfCol("Out Location", "location", 10);
 
             pdfRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
@@ -583,17 +570,21 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 const rules = reportsService.getShiftRules(u);
                 const dayType = reportsService.getDayType(startDate, rules.week_off_policy);
                 const dayOfWeek = new Date(startDate + 'T00:00:00Z').getUTCDay();
+                const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
+                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, startDate);
                 const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' ? 1 : 0;
                 
                 let attendanceStatus = isPresent.toString() + ".0";
                 if (!isPresent) {
-                    if (startDate > todayStr && dayType !== 'week_off') {
+                    if (leaveOnDate) {
+                        attendanceStatus = "On Leave";
+                    } else if (startDate > todayStr && dayType !== 'week_off') {
                         attendanceStatus = "Not Recorded";
                     } else if (dayType === 'week_off') {
                         attendanceStatus = dayOfWeek === 0 ? "Sun" : dayOfWeek === 6 ? "Sat" : "WEEK_OFF";
                     }
                 }
-                const isAbsent = !isPresent && dayType !== 'week_off' && attendanceStatus !== "Not Recorded" ? 1 : 0;
+                const isAbsent = !isPresent && !leaveOnDate && dayType !== 'week_off' && attendanceStatus !== "Not Recorded" ? 1 : 0;
 
                 const reqHrs = reportsService.getExpectedHours(startDate, rules.week_off_policy, rules);
                 const workedHrs = aggregated.worked_hours;
@@ -609,7 +600,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     lateHrs.toFixed(2),
                     lateCount,
                     isPresent,
-                    isAbsent
+                    isAbsent,
+                    aggregated.time_in_address || "-",
+                    aggregated.time_out_address || "-"
                 ];
 
                 const row = [fullRow[0], fullRow[1], fullRow[2]];
@@ -637,8 +630,6 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             pushPdfCol("Present Days", "attendanceDays", 4);
             pushPdfCol("Absent Days", "attendanceDays", 5);
 
-            const start = new Date(startDate);
-            const end = new Date(endDate);
             const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
             const dateHeaders = dateStrings.map(dateStr => {
                 const [y, m, d] = dateStr.split('-').map(Number);
@@ -646,6 +637,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             });
             pdfRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
+                const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
                 let totalWorkedHrs = 0;
                 let totalLateMins = 0;
                 let presentDays = 0;
@@ -672,8 +664,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                     const rules = reportsService.getShiftRules(u);
                     const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
+                    const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
                     const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave';
-                    if (!isPresent && dateStr <= todayStr && dayType !== 'week_off') {
+                    if (!isPresent && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
                         calculatedAbsentDays++;
                     }
                 });
@@ -735,6 +728,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
             const baseRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
+                const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
                 
                 let presentDays = 0;
                 let halfDayCount = 0;
@@ -747,17 +741,22 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
                 dateStrings.forEach(dateStr => {
                     const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
+                    const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
 
                     if (dayRecs.length > 0) {
                         const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                         
-                        if (aggregated.status === "On Leave") {
+                        if (aggregated.status === "On Leave" || leaveOnDate) {
                             leaveCount++;
                         } else if (aggregated.status === "Half Day") {
                             halfDayCount++;
                             presentDays++;
                         } else if (aggregated.status === "Absent") {
-                            absentDays++;
+                            if (leaveOnDate) {
+                                leaveCount++;
+                            } else {
+                                absentDays++;
+                            }
                         } else {
                             presentDays++;
                         }
@@ -778,11 +777,15 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         }
                         totalOvertimeHrs += overtime_hours;
                     } else {
-                        const rules = reportsService.getShiftRules(u);
-                        const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
-                        const userStartDate = reportsService.getUserStartDate(u);
-                        if (dateStr <= todayStr && dayType !== 'week_off' && (!userStartDate || dateStr >= userStartDate)) {
-                            absentDays++;
+                        if (leaveOnDate) {
+                            leaveCount++;
+                        } else {
+                            const rules = reportsService.getShiftRules(u);
+                            const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
+                            const userStartDate = reportsService.getUserStartDate(u);
+                            if (dateStr <= todayStr && dayType !== 'week_off' && (!userStartDate || dateStr >= userStartDate)) {
+                                absentDays++;
+                            }
                         }
                     }
                 });
@@ -887,21 +890,23 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             if (colsObj.workedHours !== false) rowData.work_hrs = parseFloat(aggregated.worked_hours.toFixed(2));
             if (colsObj.status !== false) rowData.status = aggregated.status;
             if (colsObj.location !== false) {
-                rowData.time_in_address = aggregated.time_in_address;
-                rowData.time_out_address = aggregated.time_out_address;
+                rowData.time_in_address = aggregated.time_in_address || "-";
+                rowData.time_out_address = aggregated.time_out_address || "-";
             }
 
             worksheet.addRow(rowData);
         });
 
-        const lastRow = worksheet.rowCount;
-        const workHrsColIdx = worksheet.columns.findIndex(c => c.key === "work_hrs") + 1; // 1-based index
-        const totalsRowData = { name: "TOTALS" };
-        if (workHrsColIdx > 0) {
-            const workHrsColLetter = getColLetter(workHrsColIdx);
-            totalsRowData.work_hrs = { formula: `SUM(${workHrsColLetter}2:${workHrsColLetter}${lastRow})` };
+        if (users.length > 0) {
+            const lastRow = worksheet.rowCount;
+            const workHrsColIdx = worksheet.columns.findIndex(c => c.key === "work_hrs") + 1; // 1-based index
+            const totalsRowData = { name: "TOTALS" };
+            if (workHrsColIdx > 0) {
+                const workHrsColLetter = getColLetter(workHrsColIdx);
+                totalsRowData.work_hrs = { formula: `SUM(${workHrsColLetter}2:${workHrsColLetter}${lastRow})` };
+            }
+            worksheet.addRow(totalsRowData);
         }
-        worksheet.addRow(totalsRowData);
     } else if (type === "attendance_matrix_daily") {
         const cols = [];
         cols.push({ header: "Name", key: "name", width: 25 });
@@ -920,6 +925,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         pushCol("Late Count", "late_count", "late", 15);
         pushCol("Present Days", "present_days", "attendanceDays", 15);
         pushCol("Absent Days", "absent_days", "attendanceDays", 15);
+        pushCol("In Location", "time_in_address", "location", 40);
+        pushCol("Out Location", "time_out_address", "location", 40);
 
         worksheet.columns = cols;
         users.forEach(u => {
@@ -928,17 +935,21 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const rules = reportsService.getShiftRules(u);
             const dayType = reportsService.getDayType(startDate, rules.week_off_policy);
             const dayOfWeek = new Date(startDate + 'T00:00:00Z').getUTCDay();
+            const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
+            const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, startDate);
             const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' ? 1 : 0;
             
             let attendanceStatus = isPresent.toString() + ".0";
             if (!isPresent) {
-                if (startDate > todayStr && dayType !== 'week_off') {
+                if (leaveOnDate) {
+                    attendanceStatus = "On Leave";
+                } else if (startDate > todayStr && dayType !== 'week_off') {
                     attendanceStatus = "Not Recorded";
                 } else if (dayType === 'week_off') {
                     attendanceStatus = dayOfWeek === 0 ? "Sun" : dayOfWeek === 6 ? "Sat" : "WEEK_OFF";
                 }
             }
-            const isAbsent = !isPresent && dayType !== 'week_off' && attendanceStatus !== "Not Recorded" ? 1 : 0;
+            const isAbsent = !isPresent && !leaveOnDate && dayType !== 'week_off' && attendanceStatus !== "Not Recorded" ? 1 : 0;
 
             const reqHrs = reportsService.getExpectedHours(startDate, rules.week_off_policy, rules);
             const workedHrs = aggregated.worked_hours;
@@ -962,20 +973,26 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 rowData.present_days = isPresent;
                 rowData.absent_days = isAbsent;
             }
+            if (colsObj.location !== false) {
+                rowData.time_in_address = aggregated.time_in_address || "-";
+                rowData.time_out_address = aggregated.time_out_address || "-";
+            }
 
             worksheet.addRow(rowData);
         });
 
-        const lastRow = worksheet.rowCount;
-        const totalsRowData = { name: "TOTALS" };
-        worksheet.columns.forEach((col, idx) => {
-            const key = col.key;
-            if (["req_hrs", "worked_hrs", "late_hrs", "late_count", "present_days", "absent_days"].includes(key)) {
-                const letter = getColLetter(idx + 1);
-                        totalsRowData[key] = { formula: `SUM(${letter}2:${letter}${lastRow})` };
-            }
-        });
-        worksheet.addRow(totalsRowData);
+        if (users.length > 0) {
+            const lastRow = worksheet.rowCount;
+            const totalsRowData = { name: "TOTALS" };
+            worksheet.columns.forEach((col, idx) => {
+                const key = col.key;
+                if (["req_hrs", "worked_hrs", "late_hrs", "late_count", "present_days", "absent_days"].includes(key)) {
+                    const letter = getColLetter(idx + 1);
+                    totalsRowData[key] = { formula: `SUM(${letter}2:${letter}${lastRow})` };
+                }
+            });
+            worksheet.addRow(totalsRowData);
+        }
     } else if (type === "attendance_matrix_weekly" || type === "attendance_matrix_monthly") {
         const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
         const dateHeaders = dateStrings.map(dateStr => {
@@ -1012,6 +1029,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
         users.forEach((u, index) => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
+            const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
 
             const userRow = [
                 index + 1,
@@ -1035,6 +1053,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 const rules = reportsService.getShiftRules(u);
                 const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
                 const dayOfWeek = d.getDay();
+                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
                     dateCells.push("1.0");
@@ -1043,6 +1062,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     if (aggregated.late_minutes > 0) {
                         totalLateMins += aggregated.late_minutes;
                     }
+                } else if (leaveOnDate) {
+                    dateCells.push("L");
                 } else if (dateStr > todayStr) {
                     if (dayType === 'week_off') {
                         dateCells.push(dayOfWeek === 0 ? "Sun" : dayOfWeek === 6 ? "Sat" : "WEEK_OFF");
@@ -1066,12 +1087,15 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let calculatedAbsentDays = 0;
             dateHeaders.forEach((d, dIdx) => {
                 const dateStr = dateStrings[dIdx];
+                const userStartDate = reportsService.getUserStartDate(u);
+                if (userStartDate && dateStr < userStartDate) return;
                 const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
                 const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                 const rules = reportsService.getShiftRules(u);
                 const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
+                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
                 const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave';
-                if (!isPresent && dateStr <= todayStr && dayType !== 'week_off') {
+                if (!isPresent && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
                     calculatedAbsentDays++;
                 }
             });
@@ -1092,44 +1116,46 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             worksheet.addRow(userRow);
         });
 
-        // Add TOTALS row
-        const totalsRow = ["TOTALS", "", "", ""];
-        dateHeaders.forEach(() => {
-            totalsRow.push("");
-        });
+        // Add TOTALS row if users exist
+        if (users.length > 0) {
+            const totalsRow = ["TOTALS", "", "", ""];
+            dateHeaders.forEach(() => {
+                totalsRow.push("");
+            });
 
-        const startColIndex = baseHeaders.length + dateHeaders.length + 1; // 1-based index in Excel
-        const lastRow = worksheet.rowCount;
+            const startColIndex = baseHeaders.length + dateHeaders.length + 1; // 1-based index in Excel
+            const lastRow = worksheet.rowCount;
 
-        let currCol = startColIndex;
-        if (colsObj.requiredHours !== false) {
-            const letter = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter}2:${letter}${lastRow})` });
-            currCol++;
-        }
-        if (colsObj.workedHours !== false) {
-            const letter = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter}2:${letter}${lastRow})` });
-            currCol++;
-        }
-        if (colsObj.late !== false) {
-            const letter1 = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter1}2:${letter1}${lastRow})` });
-            currCol++;
-            const letter2 = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter2}2:${letter2}${lastRow})` });
-            currCol++;
-        }
-        if (colsObj.attendanceDays !== false) {
-            const letter1 = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter1}2:${letter1}${lastRow})` });
-            currCol++;
-            const letter2 = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter2}2:${letter2}${lastRow})` });
-            currCol++;
-        }
+            let currCol = startColIndex;
+            if (colsObj.requiredHours !== false) {
+                const letter = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter}2:${letter}${lastRow})` });
+                currCol++;
+            }
+            if (colsObj.workedHours !== false) {
+                const letter = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter}2:${letter}${lastRow})` });
+                currCol++;
+            }
+            if (colsObj.late !== false) {
+                const letter1 = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter1}2:${letter1}${lastRow})` });
+                currCol++;
+                const letter2 = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter2}2:${letter2}${lastRow})` });
+                currCol++;
+            }
+            if (colsObj.attendanceDays !== false) {
+                const letter1 = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter1}2:${letter1}${lastRow})` });
+                currCol++;
+                const letter2 = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter2}2:${letter2}${lastRow})` });
+                currCol++;
+            }
 
-        worksheet.addRow(totalsRow);
+            worksheet.addRow(totalsRow);
+        }
     } else if (type === "attendance_detailed") {
         const cols = [
             { header: "Date", key: "date", width: 15 },
@@ -1209,6 +1235,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
         users.forEach(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
+            const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
             
             let presentDays = 0;
             let halfDayCount = 0;
@@ -1221,17 +1248,22 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
             dateStrings.forEach(dateStr => {
                 const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
+                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (dayRecs.length > 0) {
                     const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
                     
-                    if (aggregated.status === "On Leave") {
+                    if (aggregated.status === "On Leave" || leaveOnDate) {
                         leaveCount++;
                     } else if (aggregated.status === "Half Day") {
                         halfDayCount++;
                         presentDays++;
                     } else if (aggregated.status === "Absent") {
-                        absentDays++;
+                        if (leaveOnDate) {
+                            leaveCount++;
+                        } else {
+                            absentDays++;
+                        }
                     } else {
                         presentDays++;
                     }
@@ -1252,10 +1284,15 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     }
                     totalOvertimeHrs += overtime_hours;
                 } else {
-                    const rules = reportsService.getShiftRules(u);
-                    const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
-                    if (dateStr <= todayStr && dayType !== 'week_off') {
-                        absentDays++;
+                    if (leaveOnDate) {
+                        leaveCount++;
+                    } else {
+                        const rules = reportsService.getShiftRules(u);
+                        const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
+                        const userStartDate = reportsService.getUserStartDate(u);
+                        if (dateStr <= todayStr && dayType !== 'week_off' && (!userStartDate || dateStr >= userStartDate)) {
+                            absentDays++;
+                        }
                     }
                 }
             });
@@ -1289,21 +1326,23 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             worksheet.addRow(rowData);
         });
 
-        const lastRow = worksheet.rowCount;
-        const totalsRow = {
-            name: "TOTALS",
-            dept: "",
-            total_days: ""
-        };
+        if (users.length > 0) {
+            const lastRow = worksheet.rowCount;
+            const totalsRow = {
+                name: "TOTALS",
+                dept: "",
+                total_days: ""
+            };
 
-        worksheet.columns.forEach((col, idx) => {
-            const key = col.key;
-            if (key !== "name" && key !== "dept" && key !== "total_days") {
-                const letter = getColLetter(idx + 1);
-                totalsRow[key] = { formula: `SUM(${letter}2:${letter}${lastRow})` };
-            }
-        });
-        worksheet.addRow(totalsRow);
+            worksheet.columns.forEach((col, idx) => {
+                const key = col.key;
+                if (key !== "name" && key !== "dept" && key !== "total_days") {
+                    const letter = getColLetter(idx + 1);
+                    totalsRow[key] = { formula: `SUM(${letter}2:${letter}${lastRow})` };
+                }
+            });
+            worksheet.addRow(totalsRow);
+        }
 
     } else if (type === "employee_master") {
         worksheet.columns = [
@@ -1432,6 +1471,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         // Add data rows
         users.forEach((u, index) => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
+            const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
             const userRow = [index + 1, u.user_name, u.desg_name || "-", u.dept_name || "-"];
             if (colsObj.shift !== false) {
                 userRow.push(u.shift_name || "-");
@@ -1448,6 +1488,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 const rules = reportsService.getShiftRules(u);
                 const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
                 const dayOfWeek = d.getUTCDay();
+                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (aggregated.time_in) {
                     subCols.forEach(sc => {
@@ -1471,7 +1512,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     }
                 } else {
                     let statusStr = "Absent";
-                    if (dateStr > todayStr) {
+                    if (leaveOnDate) {
+                        statusStr = "On Leave";
+                    } else if (dateStr > todayStr) {
                         if (dayType === 'week_off') {
                             statusStr = dayOfWeek === 0 ? "Sun" : dayOfWeek === 6 ? "Sat" : "WEEK_OFF";
                         } else {
@@ -1517,49 +1560,51 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             });
         });
 
-        // Add TOTALS row
-        const totalsRow = ["TOTALS", "", "", ""];
-        // Add empty cells for all grid columns
-        dateHeaders.forEach(() => {
-            if (dailyColspan > 0) {
-                for (let i = 0; i < dailyColspan; i++) {
-                    totalsRow.push("");
+        // Add TOTALS row if users exist
+        if (users.length > 0) {
+            const totalsRow = ["TOTALS", "", "", ""];
+            // Add empty cells for all grid columns
+            dateHeaders.forEach(() => {
+                if (dailyColspan > 0) {
+                    for (let i = 0; i < dailyColspan; i++) {
+                        totalsRow.push("");
+                    }
                 }
+            });
+
+            const startColIndex = baseHeaders.length + (dateHeaders.length * dailyColspan) + 1; // 1-based index in Excel
+            const lastRow = worksheet.rowCount;
+
+            let currCol = startColIndex;
+            if (colsObj.requiredHours !== false) {
+                const letter = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter}3:${letter}${lastRow})` });
+                currCol++;
             }
-        });
+            if (colsObj.workedHours !== false) {
+                const letter = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter}3:${letter}${lastRow})` });
+                currCol++;
+            }
+            if (colsObj.late !== false) {
+                const letter1 = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter1}3:${letter1}${lastRow})` });
+                currCol++;
+                const letter2 = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter2}3:${letter2}${lastRow})` });
+                currCol++;
+            }
+            if (colsObj.attendanceDays !== false) {
+                const letter1 = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter1}3:${letter1}${lastRow})` });
+                currCol++;
+                const letter2 = getColLetter(currCol);
+                totalsRow.push({ formula: `SUM(${letter2}3:${letter2}${lastRow})` });
+                currCol++;
+            }
 
-        const startColIndex = baseHeaders.length + (dateHeaders.length * dailyColspan) + 1; // 1-based index in Excel
-        const lastRow = worksheet.rowCount;
-
-        let currCol = startColIndex;
-        if (colsObj.requiredHours !== false) {
-            const letter = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter}3:${letter}${lastRow})` });
-            currCol++;
+            worksheet.addRow(totalsRow);
         }
-        if (colsObj.workedHours !== false) {
-            const letter = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter}3:${letter}${lastRow})` });
-            currCol++;
-        }
-        if (colsObj.late !== false) {
-            const letter1 = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter1}3:${letter1}${lastRow})` });
-            currCol++;
-            const letter2 = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter2}3:${letter2}${lastRow})` });
-            currCol++;
-        }
-        if (colsObj.attendanceDays !== false) {
-            const letter1 = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter1}3:${letter1}${lastRow})` });
-            currCol++;
-            const letter2 = getColLetter(currCol);
-            totalsRow.push({ formula: `SUM(${letter2}3:${letter2}${lastRow})` });
-            currCol++;
-        }
-
-        worksheet.addRow(totalsRow);
     }
 
     if (format === "xlsx") {

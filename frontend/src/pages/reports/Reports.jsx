@@ -447,7 +447,7 @@ const Reports = () => {
         workedHours: true,
         requiredHours: false,
         late: false,
-        location: false,
+        location: true,
         attendanceDays: true
     });
     const [tableFileFormat, setTableFileFormat] = useState('xlsx');
@@ -662,19 +662,18 @@ const Reports = () => {
         const fetchCardEmployees = async () => {
             try {
                 const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(attendanceReportType);
+                const isMonthly = ['matrix_monthly', 'attendance_matrix_monthly'].includes(attendanceReportType);
                 const dateToUse = isWeekly ? attendanceWeek : attendanceDate;
-                const res = await adminService.getReportEmployees(
-                    attendanceMonth,
-                    attendanceReportType,
-                    dateToUse,
-                    '',
-                    '',
-                    attendanceDeptId,
-                    attendanceDesgId,
-                    attendanceShiftId
-                );
-                if (!isCancelled && res.ok && res.users) {
-                    setAttendanceEmployees(res.users);
+                const res = await adminService.getAllUsers({
+                    month: isMonthly ? attendanceMonth : '',
+                    date: dateToUse,
+                    dept_id: attendanceDeptId,
+                    desg_id: attendanceDesgId,
+                    shift_id: attendanceShiftId
+                });
+                if (!isCancelled && res) {
+                    const userList = res.users || (Array.isArray(res) ? res : []);
+                    setAttendanceEmployees(userList);
                 }
             } catch (err) {
                 console.error("Failed to fetch dynamic card employees", err);
@@ -690,21 +689,22 @@ const Reports = () => {
         const fetchTableEmployees = async () => {
             try {
                 const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType);
+                const isMonthly = ['matrix_monthly', 'attendance_matrix_monthly'].includes(tableReportType);
                 const dateToUse = (isWeekly && !tableUseCustomRange) ? tableWeek : tableDate;
                 const qStart = tableUseCustomRange ? tableCustomStartDate : '';
                 const qEnd = tableUseCustomRange ? tableCustomEndDate : '';
-                const res = await adminService.getReportEmployees(
-                    tableMonth,
-                    tableReportType,
-                    dateToUse,
-                    qStart,
-                    qEnd,
-                    tableDeptId,
-                    tableDesgId,
-                    tableShiftId
-                );
-                if (!isCancelled && res.ok && res.users) {
-                    setTableEmployees(res.users);
+                const res = await adminService.getAllUsers({
+                    month: isMonthly && !tableUseCustomRange ? tableMonth : '',
+                    date: !tableUseCustomRange ? dateToUse : '',
+                    startDate: qStart,
+                    endDate: qEnd,
+                    dept_id: tableDeptId,
+                    desg_id: tableDesgId,
+                    shift_id: tableShiftId
+                });
+                if (!isCancelled && res) {
+                    const userList = res.users || (Array.isArray(res) ? res : []);
+                    setTableEmployees(userList);
                 }
             } catch (err) {
                 console.error("Failed to fetch dynamic table employees", err);
@@ -1231,14 +1231,19 @@ const Reports = () => {
         previewData.cardRecords.forEach(record => {
             if (!empMap.has(record.user_id)) {
                 empMap.set(record.user_id, {
+                    id: record.user_id,
                     user_id: record.user_id,
+                    name: record.user_name,
                     user_name: record.user_name,
                     designation: record.designation,
                     department: record.department,
-                    records: {}
+                    records: {},
+                    attendance: {}
                 });
             }
-            empMap.get(record.user_id).records[record.rawDate] = record;
+            const empEntry = empMap.get(record.user_id);
+            empEntry.records[record.rawDate] = record;
+            empEntry.attendance[record.rawDate] = record;
             dateSet.add(record.rawDate);
         });
         const dates = Array.from(dateSet).sort();
@@ -2264,7 +2269,7 @@ const Reports = () => {
                             <p className="text-slate-500 text-sm font-medium">Crunching and parsing preview records...</p>
                         </div>
                     ) : (matrixData.employees && matrixData.employees.length > 0) ? (
-                        <div className="w-full overflow-x-auto no-scrollbar rounded-xl border border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card shadow-sm animate-none" style={{ isolation: 'isolate' }}>
+                        <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 rounded-xl border border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card shadow-sm animate-none" style={{ isolation: 'isolate' }}>
                             <table className="w-full text-left border-collapse" style={{ minWidth: 'max-content' }}>
                                 <thead className="sticky top-0 z-30">
                                     <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
@@ -2307,22 +2312,23 @@ const Reports = () => {
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-github-dark-border">
                                     {matrixData.employees.map((emp) => {
-                                        const initials = emp.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                                        const empName = emp.user_name || emp.name || 'Employee';
+                                        const initials = empName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
                                         return (
-                                            <tr key={emp.user_id} className="hover:bg-slate-50 dark:hover:bg-[#1c2128] transition-colors group">
+                                            <tr key={emp.user_id || emp.id} className="hover:bg-slate-50 dark:hover:bg-[#1c2128] transition-colors group">
                                                 <td className="px-5 py-3.5 sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-[#1c2128] transition-colors z-10 border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.08)' }}>
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shadow-inner shrink-0">
                                                             {initials || <User size={14} />}
                                                         </div>
                                                         <div>
-                                                            <span className="block font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{emp.user_name}</span>
+                                                            <span className="block font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{empName}</span>
                                                             <span className="block text-[10px] font-medium text-slate-400 dark:text-github-dark-muted mt-0.5">{emp.designation} · {emp.department}</span>
                                                         </div>
                                                     </div>
                                                 </td>
                                                 {matrixData.dates.map(rawDate => {
-                                                    const record = emp.records[rawDate];
+                                                    const record = emp?.records?.[rawDate] || emp?.attendance?.[rawDate];
                                                     const status = record?.status || '-';
                                                     const isNonClickableStatus = ['Sun', 'Sat', 'WEEK_OFF', 'Not Recorded', '-'].includes(status);
                                                     const isClickable = !!record && !isNonClickableStatus;
@@ -2397,7 +2403,7 @@ const Reports = () => {
                                     Report Preview Data
                                 </h3>
                                 <p className="text-xs text-slate-400 dark:text-github-dark-muted mt-1 leading-none">
-                                    Active report: <span className="font-bold text-slate-600 dark:text-slate-300">{activeFilters.reportType.replace(/_/g, ' ')}</span>
+                                    Active report: <span className="font-bold text-slate-600 dark:text-slate-300">{selectedReportTypeLabel}</span>
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -2419,13 +2425,13 @@ const Reports = () => {
                         </div>
 
                         {/* Preview Body */}
-                        <div className="w-full no-scrollbar bg-slate-100 dark:bg-github-dark-bg border-t border-slate-200 dark:border-github-dark-border overflow-x-auto px-4 pb-4 pt-4">
+                        <div className="w-full scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 bg-slate-100 dark:bg-github-dark-bg border-t border-slate-200 dark:border-github-dark-border overflow-x-auto px-4 pb-4 pt-4">
                             {loadingPreview ? (
                                 <div className="flex flex-col items-center justify-center py-24 gap-4">
                                     <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
                                     <p className="text-slate-500 text-sm font-medium">Crunching and parsing preview records...</p>
                                 </div>
-                            ) : (previewData.rows && previewData.rows.length > 0) ? (
+                            ) : (previewData.rows && previewData.rows.filter(r => { const f = r[0]?.toString().toUpperCase(); return f !== 'TOTALS' && f !== 'TOTAL'; }).length > 0) ? (
                                 <>
                                     {/* Attendance Summary Section */}
                                     {activeFilters.reportType !== 'employee_master' && (
@@ -2488,7 +2494,7 @@ const Reports = () => {
                                     )}
 
                                     {/* Spreadsheet View: Premium Excel-replica table */}
-                                    <div className="rounded-xl overflow-hidden border border-slate-300 dark:border-[#30363d] shadow-md">
+                                    <div className="rounded-xl overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 border border-slate-300 dark:border-[#30363d] shadow-md">
                                         {/* Row number + freeze bar header */}
                                         <div className="flex items-center gap-2 px-3 py-1.5 bg-[#217346]/10 border-b border-[#217346]/20">
                                             <span className="w-1.5 h-1.5 rounded-full bg-[#217346] animate-pulse" />
@@ -2505,8 +2511,13 @@ const Reports = () => {
                                                         {/* Row 1 – group headers */}
                                                         <tr>
                                                             {/* Row # column */}
-                                                            <th style={{ backgroundColor: '#1F4E78', color: '#FFFFFF', border: '1px solid #2563EB', width: '36px', minWidth: '36px' }}
-                                                                className="px-2 py-2 text-center text-[9px] font-bold uppercase tracking-wider">#</th>
+                                                            <th
+                                                                rowSpan={2}
+                                                                style={{ backgroundColor: '#1F4E78', color: '#FFFFFF', border: '1px solid #2563EB', width: '36px', minWidth: '36px' }}
+                                                                className="px-2 py-2 text-center text-[9px] font-bold uppercase tracking-wider"
+                                                            >
+                                                                #
+                                                            </th>
                                                             {previewData.headers[0].map((cell, idx) => (
                                                                 <th
                                                                     key={idx}
@@ -2611,8 +2622,11 @@ const Reports = () => {
                                 </>
                             ) : (
                                 <div className="flex flex-col items-center justify-center py-20 gap-3 bg-white dark:bg-dark-card border border-dashed border-slate-200 dark:border-github-dark-border rounded-xl">
-                                    <Table className="text-slate-200 dark:text-slate-700" size={48} />
-                                    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">No preview records loaded for this filter.</p>
+                                    <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                                        <Table size={24} />
+                                    </div>
+                                    <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">No records found</h4>
+                                    <p className="text-xs text-slate-400 max-w-sm text-center">No attendance or employee records were found for the selected date range and filter criteria.</p>
                                 </div>
                             )}
                         </div>

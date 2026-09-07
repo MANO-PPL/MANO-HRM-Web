@@ -438,7 +438,7 @@ const MobileReports = () => {
         workedHours: true,
         requiredHours: false,
         late: false,
-        location: false,
+        location: true,
         attendanceDays: true
     });
     const [tableFileFormat, setTableFileFormat] = useState('xlsx');
@@ -628,19 +628,18 @@ const MobileReports = () => {
         const fetchCardEmployees = async () => {
             try {
                 const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(attendanceReportType);
+                const isMonthly = ['matrix_monthly', 'attendance_matrix_monthly'].includes(attendanceReportType);
                 const dateToUse = isWeekly ? attendanceWeek : attendanceDate;
-                const res = await adminService.getReportEmployees(
-                    attendanceMonth,
-                    attendanceReportType,
-                    dateToUse,
-                    '',
-                    '',
-                    attendanceDeptId,
-                    attendanceDesgId,
-                    attendanceShiftId
-                );
-                if (!isCancelled && res.ok && res.users) {
-                    setAttendanceEmployees(res.users);
+                const res = await adminService.getAllUsers({
+                    month: isMonthly ? attendanceMonth : '',
+                    date: dateToUse,
+                    dept_id: attendanceDeptId,
+                    desg_id: attendanceDesgId,
+                    shift_id: attendanceShiftId
+                });
+                if (!isCancelled && res) {
+                    const userList = res.users || (Array.isArray(res) ? res : []);
+                    setAttendanceEmployees(userList);
                 }
             } catch (err) {
                 console.error("Failed to fetch dynamic card employees (mobile)", err);
@@ -656,21 +655,22 @@ const MobileReports = () => {
         const fetchTableEmployees = async () => {
             try {
                 const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(tableReportType);
+                const isMonthly = ['matrix_monthly', 'attendance_matrix_monthly'].includes(tableReportType);
                 const dateToUse = (isWeekly && !tableUseCustomRange) ? tableWeek : tableDate;
                 const qStart = tableUseCustomRange ? tableCustomStartDate : '';
                 const qEnd = tableUseCustomRange ? tableCustomEndDate : '';
-                const res = await adminService.getReportEmployees(
-                    tableMonth,
-                    tableReportType,
-                    dateToUse,
-                    qStart,
-                    qEnd,
-                    tableDeptId,
-                    tableDesgId,
-                    tableShiftId
-                );
-                if (!isCancelled && res.ok && res.users) {
-                    setTableEmployees(res.users);
+                const res = await adminService.getAllUsers({
+                    month: isMonthly && !tableUseCustomRange ? tableMonth : '',
+                    date: !tableUseCustomRange ? dateToUse : '',
+                    startDate: qStart,
+                    endDate: qEnd,
+                    dept_id: tableDeptId,
+                    desg_id: tableDesgId,
+                    shift_id: tableShiftId
+                });
+                if (!isCancelled && res) {
+                    const userList = res.users || (Array.isArray(res) ? res : []);
+                    setTableEmployees(userList);
                 }
             } catch (err) {
                 console.error("Failed to fetch dynamic table employees (mobile)", err);
@@ -1036,14 +1036,19 @@ const MobileReports = () => {
         previewData.cardRecords.forEach(record => {
             if (!empMap.has(record.user_id)) {
                 empMap.set(record.user_id, {
+                    id: record.user_id,
                     user_id: record.user_id,
+                    name: record.user_name,
                     user_name: record.user_name,
                     designation: record.designation,
                     department: record.department,
-                    records: {}
+                    records: {},
+                    attendance: {}
                 });
             }
-            empMap.get(record.user_id).records[record.rawDate] = record;
+            const empEntry = empMap.get(record.user_id);
+            empEntry.records[record.rawDate] = record;
+            empEntry.attendance[record.rawDate] = record;
             dateSet.add(record.rawDate);
         });
         const dates = Array.from(dateSet).sort();
@@ -1110,7 +1115,7 @@ const MobileReports = () => {
                                 <FileText size={16} />
                             </div>
                             <div>
-                                <h3 className="text-[10px] font-black text-slate-800 dark:text-white uppercase leading-none">{activeFilters.reportType.replace(/_/g, ' ')}</h3>
+                                <h3 className="text-[10px] font-black text-slate-800 dark:text-white uppercase leading-none">{selectedReportTypeLabel}</h3>
                                 <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5">Live Data & Past Exports</p>
                             </div>
                         </div>
@@ -2175,7 +2180,7 @@ const MobileReports = () => {
                                                         </div>
                                                     </td>
                                                     {matrixData.dates.map(rawDate => {
-                                                        const record = emp.records[rawDate];
+                                                        const record = emp?.records?.[rawDate] || emp?.attendance?.[rawDate];
                                                         const status = record?.status || '-';
                                                         const isNonClickableStatus = ['Sun', 'Sat', 'WEEK_OFF', 'Not Recorded', '-'].includes(status);
                                                         const isClickable = !!record && !isNonClickableStatus;
@@ -2245,9 +2250,9 @@ const MobileReports = () => {
                                         <div className="w-8 h-8 border-3 border-indigo-100 dark:border-indigo-900/30 border-t-indigo-500 rounded-full animate-spin" />
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Crunching records...</p>
                                     </div>
-                                ) : (previewData.rows && previewData.rows.length > 0) ? (
+                                ) : (previewData.rows && previewData.rows.filter(r => { const f = r[0]?.toString().toUpperCase(); return f !== 'TOTALS' && f !== 'TOTAL'; }).length > 0) ? (
                                     /* Spreadsheet View: Render Original Excel replica table in scroll container */
-                                    <div className="overflow-x-auto no-scrollbar">
+                                    <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
                                         <table className="w-full text-left border-collapse min-w-max bg-white text-slate-800 shadow-sm rounded border border-slate-300" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
                                             <thead className="sticky top-0 z-10 bg-white/95 dark:bg-github-dark-bg/95 backdrop-blur-md">
                                                 {previewData.headers ? (
@@ -2330,8 +2335,11 @@ const MobileReports = () => {
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center py-16 gap-3 border border-dashed border-slate-200 dark:border-white/5 rounded-2xl bg-white dark:bg-github-dark-subtle/50">
-                                        <Activity size={32} className="text-slate-200 dark:text-white/5" />
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">No results for this selection</p>
+                                        <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-400">
+                                            <Table size={20} />
+                                        </div>
+                                        <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-200">No records found</h4>
+                                        <p className="text-[10px] text-slate-400 text-center max-w-xs">No attendance or employee records match this selection.</p>
                                     </div>
                                 )}
                             </div>

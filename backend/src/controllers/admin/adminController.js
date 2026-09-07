@@ -11,9 +11,29 @@ export const getAllUsers = catchAsync(async (req, res, next) => {
     }
 
     const includeWorkLocation = req.query.workLocation === 'true';
+    const { startDate: qStart, endDate: qEnd, month, date, dept_id, desg_id, shift_id } = req.query;
     const orgId = req.user.org_id;
 
-    const users = await userService.getAllUsers(orgId, includeWorkLocation);
+    let startDate = qStart;
+    let endDate = qEnd;
+    if ((!startDate || !endDate) && month) {
+        const [year, monthNum] = month.split("-").map(Number);
+        startDate = `${month}-01`;
+        const lastDay = new Date(year, monthNum, 0).getDate();
+        endDate = `${year}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    } else if ((!startDate || !endDate) && date) {
+        startDate = date;
+        endDate = date;
+    }
+
+    const users = await userService.getAllUsers(orgId, {
+        includeWorkLocation,
+        startDate,
+        endDate,
+        dept_id,
+        desg_id,
+        shift_id
+    });
 
     res.json({
         success: true,

@@ -49,15 +49,34 @@ const clearCache = () => {
 
 export const adminService = {
     // Get all users
-    async getAllUsers(includeWorkLocation = false) {
-        const cacheKey = String(includeWorkLocation);
+    async getAllUsers(options = false) {
+        const isLegacyBool = typeof options === 'boolean';
+        const includeWorkLocation = isLegacyBool ? options : !!options?.includeWorkLocation;
+        const { startDate, endDate, month, date, dept_id, desg_id, shift_id } = (!isLegacyBool && typeof options === 'object' && options !== null) ? options : {};
+
+        const hasFilters = !!(startDate || endDate || month || date || dept_id || desg_id || shift_id);
+        const cacheKey = hasFilters
+            ? `filtered_${includeWorkLocation}_${startDate || ''}_${endDate || ''}_${month || ''}_${date || ''}_${dept_id || ''}_${desg_id || ''}_${shift_id || ''}`
+            : String(includeWorkLocation);
+
         if (cache.users.has(cacheKey)) {
             return cache.users.get(cacheKey);
         }
 
         const promise = (async () => {
             try {
-                const res = await api.get(`${ADMIN_API_URL}/users?workLocation=${includeWorkLocation}`);
+                const params = new URLSearchParams();
+                if (includeWorkLocation) params.append('workLocation', 'true');
+                if (startDate) params.append('startDate', startDate);
+                if (endDate) params.append('endDate', endDate);
+                if (month) params.append('month', month);
+                if (date) params.append('date', date);
+                if (dept_id) params.append('dept_id', dept_id);
+                if (desg_id) params.append('desg_id', desg_id);
+                if (shift_id) params.append('shift_id', shift_id);
+
+                const queryString = params.toString() ? `?${params.toString()}` : '';
+                const res = await api.get(`${ADMIN_API_URL}/users${queryString}`);
                 adminCacheData.users[cacheKey] = res.data;
                 return res.data;
             } catch (error) {
@@ -406,15 +425,7 @@ export const adminService = {
             throw new Error(error.response?.data?.message || "Failed to fetch report preview");
         }
     },
-    async getReportEmployees(month, type = "matrix_monthly", date = "", startDate = "", endDate = "", deptId = "", desgId = "", shiftId = "") {
-        try {
-            const res = await api.get(`${ADMIN_API_URL}/reports/employees?month=${month || ""}&type=${type || ""}&date=${date || ""}${startDate ? `&startDate=${startDate}` : ""}${endDate ? `&endDate=${endDate}` : ""}${deptId ? `&dept_id=${deptId}` : ""}${desgId ? `&desg_id=${desgId}` : ""}${shiftId ? `&shift_id=${shiftId}` : ""}&_t=${Date.now()}`);
-            return res.data;
-        } catch (error) {
-            console.error("Failed to fetch report employees", error);
-            return { ok: false, users: [] };
-        }
-    },
+
     async downloadReport(month, type, format = "xlsx", userId = "", date = "", startDate = "", endDate = "", deptId = "", desgId = "", shiftId = "") {
         try {
             const url = `${ADMIN_API_URL}/reports/download?month=${month}&type=${type}&format=${format}${userId ? `&user_id=${userId}` : ""}${date ? `&date=${date}` : ""}${startDate ? `&startDate=${startDate}` : ""}${endDate ? `&endDate=${endDate}` : ""}${deptId ? `&dept_id=${deptId}` : ""}${desgId ? `&desg_id=${desgId}` : ""}${shiftId ? `&shift_id=${shiftId}` : ""}&_t=${Date.now()}`;

@@ -9,8 +9,6 @@ router.use(authenticateJWT, requireActiveOrg);
 // GET /admin/reports/preview
 router.get("/preview", reportsController.previewReport);
 
-// GET /admin/reports/employees
-router.get("/employees", reportsController.getReportEmployees);
 
 // GET /admin/reports/download OR /attendance/reports/download
 router.get("/download", reportsController.downloadReport);

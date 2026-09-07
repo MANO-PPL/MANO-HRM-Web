@@ -22,7 +22,10 @@ const ALLOWED_UPDATE_FIELDS = new Set([
     "force_password_change"
 ]);
 
-export const getAllUsers = async (orgId, includeWorkLocation = false) => {
+export const getAllUsers = async (orgId, options = false) => {
+    const includeWorkLocation = typeof options === 'boolean' ? options : !!options?.includeWorkLocation;
+    const { startDate, endDate, dept_id, desg_id, shift_id } = (typeof options === 'object' && options !== null) ? options : {};
+
     let usersQuery = attendanceDB('core_users as u')
         .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
         .leftJoin('org_departments as dep', 'u.dept_id', 'dep.dept_id')
@@ -31,9 +34,40 @@ export const getAllUsers = async (orgId, includeWorkLocation = false) => {
             'u.user_id', 'u.user_name', 'u.email', 'u.phone_no', 'u.user_type',
             'd.desg_name', 'd.desg_id', 'dep.dept_name', 'dep.dept_id',
             's.shift_name', 's.shift_id', 'u.profile_image_url',
-            'u.is_active', 'u.is_deleted', 'u.deleted_at', 'u.force_password_change'
+            'u.is_active', 'u.is_deleted', 'u.deleted_at', 'u.force_password_change',
+            'u.created_at', 'u.joining_date'
         )
         .where('u.org_id', orgId);
+
+    if (dept_id) {
+        usersQuery.where('u.dept_id', dept_id);
+    }
+    if (desg_id) {
+        usersQuery.where('u.desg_id', desg_id);
+    }
+    if (shift_id) {
+        usersQuery.where('u.shift_id', shift_id);
+    }
+
+    if (startDate && endDate) {
+        usersQuery.where(function () {
+            // 1. Active employees who joined on or before endDate 
+            this.where(function () {
+                this.where('u.is_deleted', 0)
+                    .andWhere(function () {
+                        this.where('u.is_active', 1).orWhere('u.is_active', true);
+                    })
+                    .andWhere(attendanceDB.raw('COALESCE(DATE(u.joining_date), DATE(u.created_at)) <= ?', [endDate]));
+            })
+                // 2. OR inactive / soft-deleted users who have at least 1 punch in this period
+                .orWhereExists(function () {
+                    this.select(1)
+                        .from('attn_records as ar')
+                        .whereRaw('ar.user_id = u.user_id')
+                        .whereRaw('DATE(ar.time_in) >= ? AND DATE(ar.time_in) <= ?', [startDate, endDate]);
+                });
+        });
+    }
 
     const users = await usersQuery;
 
@@ -491,7 +525,7 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('comm_notifications').where('user_id', userId).del();
         await trx('sys_activity_logs').where('user_id', userId).del();
         await trx('sys_error_logs').where('user_id', userId).del();
-        
+
         // Nullify reviewer/altered references where this user is referenced
         await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null });
         await trx('attn_records').where('altered_by', userId).update({ altered_by: null });
