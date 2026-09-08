@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import DashboardLayout from '../../components/DashboardLayout';
 import { adminService } from '../../services/adminService';
 import { useTour } from '../../context/TourContext';
+import { useAuth } from '../../context/AuthContext';
 
 // Modular Subcomponents
 import AttendanceViewToolbar from './components/AttendanceViewToolbar';
@@ -28,12 +29,16 @@ const attendanceViewCache = new Map();
 
 const Reports = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const isEmployee = user?.user_type === 'employee';
+    const currentUserId = user?.user_id || user?.id || '';
+
     const { startTour, hasSeenPage, wasSkippedThisSession, tourEnabled } = useTour();
 
     // Attendance View Filters State
     const [attendanceMonth, setAttendanceMonth] = useState(new Date().toISOString().slice(0, 7));
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
-    const [attendanceEmployeeId, setAttendanceEmployeeId] = useState('');
+    const [attendanceEmployeeId, setAttendanceEmployeeId] = useState(isEmployee ? currentUserId : '');
     const [attendanceWeek, setAttendanceWeek] = useState('');
     const [attendanceReportType, setAttendanceReportType] = useState('matrix_monthly');
     const [attendanceIsEmpDropdownOpen, setAttendanceIsEmpDropdownOpen] = useState(false);
@@ -43,10 +48,17 @@ const Reports = () => {
     // Full Report Filters State
     const [tableMonth, setTableMonth] = useState(new Date().toISOString().slice(0, 7));
     const [tableDate, setTableDate] = useState(new Date().toISOString().slice(0, 10));
-    const [tableEmployeeId, setTableEmployeeId] = useState('');
+    const [tableEmployeeId, setTableEmployeeId] = useState(isEmployee ? currentUserId : '');
     const [tableWeek, setTableWeek] = useState('');
-    const [tableReportType, setTableReportType] = useState('matrix_monthly');
+    const [tableReportType, setTableReportType] = useState(isEmployee ? 'attendance_detailed' : 'matrix_monthly');
     const [tableUseCustomRange, setTableUseCustomRange] = useState(false);
+
+    useEffect(() => {
+        if (isEmployee && currentUserId) {
+            setAttendanceEmployeeId(currentUserId);
+            setTableEmployeeId(currentUserId);
+        }
+    }, [isEmployee, currentUserId]);
     const [tableCustomStartDate, setTableCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableCustomEndDate, setTableCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableExportColumns, setTableExportColumns] = useState({
@@ -221,6 +233,7 @@ const Reports = () => {
     }, [tableWeeks]);
 
     useEffect(() => {
+        if (isEmployee) return;
         if (attendanceEmployeeId) {
             const emp = employees.find(e => e.user_id === attendanceEmployeeId);
             if (emp) {
@@ -232,9 +245,10 @@ const Reports = () => {
                 }
             }
         }
-    }, [attendanceDeptId, attendanceDesgId, attendanceShiftId, employees, attendanceEmployeeId]);
+    }, [isEmployee, attendanceDeptId, attendanceDesgId, attendanceShiftId, employees, attendanceEmployeeId]);
 
     useEffect(() => {
+        if (isEmployee) return;
         if (tableEmployeeId) {
             const emp = employees.find(e => e.user_id === tableEmployeeId);
             if (emp) {
@@ -246,9 +260,10 @@ const Reports = () => {
                 }
             }
         }
-    }, [tableDeptId, tableDesgId, tableShiftId, employees, tableEmployeeId]);
+    }, [isEmployee, tableDeptId, tableDesgId, tableShiftId, employees, tableEmployeeId]);
 
     useEffect(() => {
+        if (isEmployee) return;
         const fetchEmployeesAndDepts = async () => {
             try {
                 const [empRes, deptRes, desgRes, shiftRes] = await Promise.all([
@@ -278,7 +293,7 @@ const Reports = () => {
             }
         };
         fetchEmployeesAndDepts();
-    }, []);
+    }, [isEmployee]);
 
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('mano-active-tab', {
@@ -311,10 +326,10 @@ const Reports = () => {
         const selectedMonth = isCard ? attendanceMonth : tableMonth;
         const selectedDate = isCard ? attendanceDate : tableDate;
         const selectedWeek = isCard ? attendanceWeek : tableWeek;
-        const selectedEmployeeId = isCard ? attendanceEmployeeId : tableEmployeeId;
-        const selectedDeptId = isCard ? attendanceDeptId : tableDeptId;
-        const selectedDesgId = isCard ? attendanceDesgId : tableDesgId;
-        const selectedShiftId = isCard ? attendanceShiftId : tableShiftId;
+        const selectedEmployeeId = isEmployee ? currentUserId : (isCard ? attendanceEmployeeId : tableEmployeeId);
+        const selectedDeptId = isEmployee ? '' : (isCard ? attendanceDeptId : tableDeptId);
+        const selectedDesgId = isEmployee ? '' : (isCard ? attendanceDesgId : tableDesgId);
+        const selectedShiftId = isEmployee ? '' : (isCard ? attendanceShiftId : tableShiftId);
         const useCustomRange = isCard ? false : tableUseCustomRange;
         const customStartDate = isCard ? '' : tableCustomStartDate;
         const customEndDate = isCard ? '' : tableCustomEndDate;
@@ -352,6 +367,7 @@ const Reports = () => {
             qEnd
         };
     }, [
+        isEmployee, currentUserId,
         previewMode,
         attendanceReportType, attendanceMonth, attendanceDate, attendanceWeek, attendanceEmployeeId, attendanceDeptId, attendanceDesgId, attendanceShiftId,
         tableReportType, tableMonth, tableDate, tableWeek, tableEmployeeId, tableDeptId, tableDesgId, tableShiftId, tableUseCustomRange, tableCustomStartDate, tableCustomEndDate, tableExportColumns
@@ -482,18 +498,19 @@ const Reports = () => {
             const qStart = tableUseCustomRange ? tableCustomStartDate : "";
             const qEnd = tableUseCustomRange ? tableCustomEndDate : "";
 
+            const targetUser = isEmployee ? currentUserId : tableEmployeeId;
             const res = await adminService.queueReport(
                 tableMonth,
                 tableReportType,
                 tableFileFormat,
-                tableEmployeeId,
+                targetUser,
                 dateToUse,
                 qStart,
                 qEnd,
                 JSON.stringify(tableExportColumns),
-                tableDeptId,
-                tableDesgId,
-                tableShiftId
+                isEmployee ? '' : tableDeptId,
+                isEmployee ? '' : tableDesgId,
+                isEmployee ? '' : tableShiftId
             );
             if (res.ok) {
                 const reportId = res.reportId;
@@ -572,7 +589,8 @@ const Reports = () => {
         return () => clearInterval(interval);
     }, [exportHistory]);
 
-    const reportTypeOptions = [
+    const allReportTypeOptions = [
+        { value: 'attendance_detailed', label: 'Detailed Attendance Report' },
         { value: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
         { value: 'matrix_daily', label: 'Daily Attendance Report' },
         { value: 'employee_master', label: 'Employee Master Data' },
@@ -582,6 +600,13 @@ const Reports = () => {
         { value: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix' },
         { value: 'matrix_weekly', label: 'Weekly Attendance Report' }
     ];
+
+    const reportTypeOptions = useMemo(() => {
+        if (isEmployee) {
+            return allReportTypeOptions.filter(opt => opt.value !== 'employee_master');
+        }
+        return allReportTypeOptions;
+    }, [isEmployee]);
 
     const reportsSummary = useMemo(() => {
         const summary = {
@@ -778,15 +803,15 @@ const Reports = () => {
     };
 
     return (
-        <DashboardLayout title="Reports & Exports" noPadding={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
+        <DashboardLayout title={isEmployee ? "My Reports" : "Live Reports"} noPadding={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
             <div className="min-h-[calc(100vh-64px)] px-2 pt-1.5 pb-2.5 flex flex-col space-y-2.5">
                 {/* Switcher & Filters Row */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
                     {/* View Switcher Tabs */}
                     <div className="flex w-fit items-center gap-2 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         {[
-                            { id: 'card', label: 'Attendance View', icon: TrendingUp, tourId: 'reports-attendance-view-tab' },
-                            { id: 'table', label: 'Full Report', icon: Table, tourId: 'reports-full-report-tab' }
+                            { id: 'card', label: isEmployee ? 'Attendance Matrix' : 'Attendance View', icon: TrendingUp, tourId: 'reports-attendance-view-tab' },
+                            { id: 'table', label: isEmployee ? 'Excel Report' : 'Full Report', icon: Table, tourId: 'reports-full-report-tab' }
                         ].map((tab) => {
                             const isSelected = previewMode === tab.id;
                             return (
@@ -794,9 +819,9 @@ const Reports = () => {
                                     key={tab.id}
                                     data-tour-id={tab.tourId}
                                     onClick={() => setPreviewMode(tab.id)}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${isSelected
-                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs transition-all duration-200 cursor-pointer ${isSelected
+                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
                                         }`}
                                 >
                                     <tab.icon size={14} />
@@ -809,6 +834,8 @@ const Reports = () => {
                     {/* Attendance View Filters Toolbar (In line with tab switcher) */}
                     {previewMode === 'card' && (
                         <AttendanceViewToolbar
+                            isEmployee={isEmployee}
+                            currentUser={user}
                             attendanceReportType={attendanceReportType}
                             attendanceMonth={attendanceMonth}
                             setAttendanceMonth={setAttendanceMonth}
@@ -864,6 +891,8 @@ const Reports = () => {
                 {/* Full Report Parameters Panel */}
                 {previewMode === 'table' && (
                     <FullReportFiltersPanel
+                        isEmployee={isEmployee}
+                        currentUser={user}
                         reportTypeOptions={reportTypeOptions}
                         tableReportType={tableReportType}
                         setTableReportType={setTableReportType}

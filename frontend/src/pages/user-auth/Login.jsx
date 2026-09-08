@@ -142,7 +142,7 @@ const Login = () => {
                                 <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter uppercase italic leading-none">
                                     MANO <span className="text-indigo-600 dark:text-indigo-400 not-italic font-medium opacity-80">Attendance</span>
                                 </h1>
-                                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.4em] mt-1">Enterprise Grade Security</span>
+                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400 tracking-wide mt-1">Enterprise Grade Security</span>
                             </div>
                         </motion.div>
 
@@ -154,7 +154,7 @@ const Login = () => {
                                 transition={{ delay: 0.2 }}
                                 className="space-y-5"
                             >
-                                <h2 className="text-6xl font-black text-slate-900 dark:text-white leading-tight tracking-[calc(-0.02em)] uppercase">
+                                <h2 className="text-6xl font-extrabold text-slate-900 dark:text-white leading-tight tracking-tight">
                                     Precision <br />
                                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-500 dark:from-indigo-400 dark:to-violet-400">Intelligence.</span>
                                 </h2>
@@ -176,21 +176,21 @@ const Login = () => {
                                             <div className="p-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg">
                                                 <Activity size={18} />
                                             </div>
-                                            <span className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest">Network Status</span>
+                                            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Network Status</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <div className="w-2 h-2 bg-emerald-500 dark:bg-emerald-400 rounded-full animate-ping" />
-                                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-tighter">Operational</span>
+                                            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Operational</span>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="p-4 bg-slate-50 dark:bg-white/5 rounded-2xl border border-slate-100 dark:border-white/5">
-                                            <span className="block text-[10px] text-slate-500 uppercase tracking-widest mb-1 font-black underline decoration-indigo-500/30 underline-offset-4">Daily Sync</span>
-                                            <span className="text-lg font-mono text-slate-900 dark:text-white font-black">99.98%</span>
+                                            <span className="block text-xs text-slate-500 dark:text-slate-400 mb-1 font-normal">Daily Sync</span>
+                                            <span className="text-lg font-mono text-slate-900 dark:text-white font-bold">99.98%</span>
                                         </div>
                                         <div className="p-4 bg-slate-50 dark:bg-white/5 rounded-2xl border border-slate-100 dark:border-white/5">
-                                            <span className="block text-[10px] text-slate-500 uppercase tracking-widest mb-1 font-black underline decoration-indigo-500/30 underline-offset-4">Uptime</span>
-                                            <span className="text-lg font-mono text-slate-900 dark:text-white font-black">365 Days</span>
+                                            <span className="block text-xs text-slate-500 dark:text-slate-400 mb-1 font-normal">Uptime</span>
+                                            <span className="text-lg font-mono text-slate-900 dark:text-white font-bold">365 Days</span>
                                         </div>
                                     </div>
                                 </div>
@@ -209,8 +209,8 @@ const Login = () => {
                             transition={{ delay: 0.1 }}
                             className={isMobile ? 'text-center' : ''}
                         >
-                            <h3 className="text-4xl font-bold text-slate-900 dark:text-white tracking-tight uppercase mb-3">Sign In</h3>
-                            <p className="text-slate-500 font-normal tracking-tight">Enter your credentials to access the enterprise dashboard.</p>
+                            <h3 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">Sign In</h3>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm font-normal">Enter your credentials to access the enterprise dashboard.</p>
                         </motion.div>
 
                         {/* Form Group */}
@@ -219,11 +219,11 @@ const Login = () => {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.2 }}
                             onSubmit={handleSubmit}
-                            className="space-y-8"
+                            className="space-y-7"
                         >
                             {/* Identifier Field */}
-                            <div className="space-y-3">
-                                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-1">
+                            <div className="space-y-2.5">
+                                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 px-1">
                                     Email / Mobile
                                 </label>
                                 <div className="relative group">
@@ -234,21 +234,21 @@ const Login = () => {
                                         value={formData.identifier}
                                         onChange={handleChange}
                                         required
-                                        className="w-full bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-2xl py-4 pl-14 pr-5 text-slate-900 dark:text-white font-medium outline-none ring-offset-bg focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
+                                        className="w-full bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-2xl py-4 pl-14 pr-5 text-slate-900 dark:text-white font-normal outline-none ring-offset-bg focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
                                         placeholder="Enter Email or Mobile"
                                     />
                                 </div>
                             </div>
 
                             {/* Password Field */}
-                            <div className="space-y-3">
+                            <div className="space-y-2.5">
                                 <div className="flex justify-between items-center px-1">
-                                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+                                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
                                         Password
                                     </label>
                                     <Link
                                         to="/forgot-password"
-                                        className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 uppercase tracking-widest transition-colors"
+                                        className="text-xs font-normal text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 hover:underline transition-colors"
                                     >
                                         Forgot Password?
                                     </Link>
@@ -261,7 +261,7 @@ const Login = () => {
                                         value={formData.password}
                                         onChange={handleChange}
                                         required
-                                        className="w-full bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-2xl py-4 pl-14 pr-12 text-slate-900 dark:text-white font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
+                                        className="w-full bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-2xl py-4 pl-14 pr-12 text-slate-900 dark:text-white font-normal outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
                                         placeholder="••••••••"
                                     />
                                     <button
@@ -294,7 +294,7 @@ const Login = () => {
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                         </svg>
                                     </div>
-                                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] select-none transition-colors group-hover:text-slate-600 dark:group-hover:text-slate-400">
+                                    <span className="text-xs font-normal text-slate-600 dark:text-slate-400 select-none transition-colors group-hover:text-slate-800 dark:group-hover:text-slate-200">
                                         Keep me signed in
                                     </span>
                                 </label>
@@ -317,18 +317,16 @@ const Login = () => {
                             )}
 
                             {/* Submit Action */}
-                            <div className="pt-4">
+                            <div className="pt-2">
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="group relative w-full bg-indigo-600 hover:bg-indigo-700 text-white py-5 rounded-[1.25rem] text-[10px] font-bold uppercase tracking-[0.3em] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-2xl shadow-indigo-600/20 disabled:opacity-50"
+                                    className="group relative w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-xl shadow-indigo-600/25 disabled:opacity-50"
                                 >
                                     {loading ? (
                                         <Loader2 className="animate-spin" size={18} />
                                     ) : (
-                                        <>
-                                            Login
-                                        </>
+                                        <span>Login</span>
                                     )}
                                 </button>
                             </div>
@@ -339,11 +337,13 @@ const Login = () => {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ delay: 0.3 }}
-                            className="text-center pt-4"
+                            className="text-center pt-2"
                         >
-                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] leading-relaxed text-center flex flex-wrap justify-center gap-x-2 gap-y-1">
+                            <p className="text-xs font-normal text-slate-500 dark:text-slate-400 leading-relaxed text-center flex flex-wrap justify-center gap-x-1.5 gap-y-1">
                                 <span className="whitespace-nowrap">Don't have an account?</span>
-                                <Link to="/signup" className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors opacity-80 whitespace-nowrap">Create your organization login</Link>
+                                <Link to="/signup" className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 font-medium hover:underline transition-colors whitespace-nowrap">
+                                    Create your organization login
+                                </Link>
                             </p>
                         </motion.div>
                     </div>

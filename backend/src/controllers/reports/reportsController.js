@@ -407,7 +407,8 @@ export const styleExcelWorksheet = (worksheet, type) => {
 
 
 export const previewReport = catchAsync(async (req, res) => {
-    const isUserReport = req.originalUrl.includes("/attendance/");
+    const isEmployee = req.user.user_type === "employee";
+    const isUserReport = req.originalUrl.includes("/attendance/") || isEmployee;
     const targetUserId = isUserReport ? (req.user.user_id || req.user.id) : req.query.user_id;
 
     if (!isUserReport && req.user.user_type !== "admin" && req.user.user_type !== "hr") {
@@ -1569,7 +1570,8 @@ export const downloadReport = catchAsync(async (req, res) => {
         fs.appendFileSync('request-debug.log', `[${new Date().toISOString()}] downloadReport req.query: ${JSON.stringify(req.query)}\n`);
     } catch (e) {}
     const org_id = req.user.org_id;
-    const isUserReport = req.originalUrl.includes("/attendance/");
+    const isEmployee = req.user.user_type === "employee";
+    const isUserReport = req.originalUrl.includes("/attendance/") || isEmployee;
     const targetUserId = isUserReport ? (req.user.user_id || req.user.id) : req.query.user_id;
 
     if (!isUserReport && req.user.user_type !== "admin" && req.user.user_type !== "hr") {

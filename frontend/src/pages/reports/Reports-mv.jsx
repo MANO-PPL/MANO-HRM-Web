@@ -24,6 +24,7 @@ import {
     MapPin
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 import MonthPicker from '../../components/MonthPicker';
 import MobileDatePicker from '../../components/MobileDatePicker';
@@ -412,10 +413,14 @@ const mvGetStatusLabel = (status) => {
 };
 
 const MobileReports = () => {
+    const { user } = useAuth();
+    const isEmployee = user?.user_type === 'employee';
+    const currentUserId = user?.user_id || user?.id || '';
+
     // Attendance View Filters State
     const [attendanceMonth, setAttendanceMonth] = useState(new Date().toISOString().slice(0, 7));
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
-    const [attendanceEmployeeId, setAttendanceEmployeeId] = useState('');
+    const [attendanceEmployeeId, setAttendanceEmployeeId] = useState(isEmployee ? currentUserId : '');
     const [attendanceWeek, setAttendanceWeek] = useState('');
     const [attendanceReportType, setAttendanceReportType] = useState('matrix_monthly');
     const [attendanceIsEmpDropdownOpen, setAttendanceIsEmpDropdownOpen] = useState(false);
@@ -425,9 +430,9 @@ const MobileReports = () => {
     // Full Report Filters State
     const [tableMonth, setTableMonth] = useState(new Date().toISOString().slice(0, 7));
     const [tableDate, setTableDate] = useState(new Date().toISOString().slice(0, 10));
-    const [tableEmployeeId, setTableEmployeeId] = useState('');
+    const [tableEmployeeId, setTableEmployeeId] = useState(isEmployee ? currentUserId : '');
     const [tableWeek, setTableWeek] = useState('');
-    const [tableReportType, setTableReportType] = useState('matrix_monthly');
+    const [tableReportType, setTableReportType] = useState(isEmployee ? 'attendance_detailed' : 'matrix_monthly');
     const [tableUseCustomRange, setTableUseCustomRange] = useState(false);
     const [tableCustomStartDate, setTableCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableCustomEndDate, setTableCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
@@ -605,7 +610,15 @@ const MobileReports = () => {
     }, [tableDeptId, tableDesgId, tableShiftId, employees, tableEmployeeId]);
 
     useEffect(() => {
+        if (isEmployee && currentUserId) {
+            setAttendanceEmployeeId(currentUserId);
+            setTableEmployeeId(currentUserId);
+        }
+    }, [isEmployee, currentUserId]);
+
+    useEffect(() => {
         const fetchEmployeesAndDepts = async () => {
+            if (isEmployee) return;
             try {
                 const [empRes, deptRes, desgRes, shiftRes] = await Promise.all([
                     adminService.getAllUsers(),
@@ -646,7 +659,7 @@ const MobileReports = () => {
         { id: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
         { id: 'matrix_daily', label: 'Daily Attendance Report' },
         { id: 'attendance_detailed', label: 'Detailed Log' },
-        { id: 'employee_master', label: 'Employee Master Data' },
+        ...(!isEmployee ? [{ id: 'employee_master', label: 'Employee Master Data' }] : []),
         { id: 'lateness_report', label: 'Lateness Report' },
         { id: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix' },
         { id: 'matrix_monthly', label: 'Monthly Attendance Report' },
@@ -684,10 +697,10 @@ const MobileReports = () => {
         const selectedMonth = isCard ? attendanceMonth : tableMonth;
         const selectedDate = isCard ? attendanceDate : tableDate;
         const selectedWeek = isCard ? attendanceWeek : tableWeek;
-        const selectedEmployeeId = isCard ? attendanceEmployeeId : tableEmployeeId;
-        const selectedDeptId = isCard ? attendanceDeptId : tableDeptId;
-        const selectedDesgId = isCard ? attendanceDesgId : tableDesgId;
-        const selectedShiftId = isCard ? attendanceShiftId : tableShiftId;
+        const selectedEmployeeId = isEmployee ? currentUserId : (isCard ? attendanceEmployeeId : tableEmployeeId);
+        const selectedDeptId = isEmployee ? '' : (isCard ? attendanceDeptId : tableDeptId);
+        const selectedDesgId = isEmployee ? '' : (isCard ? attendanceDesgId : tableDesgId);
+        const selectedShiftId = isEmployee ? '' : (isCard ? attendanceShiftId : tableShiftId);
         const useCustomRange = isCard ? false : tableUseCustomRange;
         const customStartDate = isCard ? '' : tableCustomStartDate;
         const customEndDate = isCard ? '' : tableCustomEndDate;
@@ -799,18 +812,23 @@ const MobileReports = () => {
             const qStart = tableUseCustomRange ? tableCustomStartDate : "";
             const qEnd = tableUseCustomRange ? tableCustomEndDate : "";
 
+            const targetEmpId = isEmployee ? currentUserId : tableEmployeeId;
+            const targetDeptId = isEmployee ? '' : tableDeptId;
+            const targetDesgId = isEmployee ? '' : tableDesgId;
+            const targetShiftId = isEmployee ? '' : tableShiftId;
+
             const res = await adminService.queueReport(
                 tableMonth,
                 tableReportType,
                 tableFileFormat,
-                tableEmployeeId,
+                targetEmpId,
                 dateToUse,
                 qStart,
                 qEnd,
                 JSON.stringify(tableExportColumns),
-                tableDeptId,
-                tableDesgId,
-                tableShiftId
+                targetDeptId,
+                targetDesgId,
+                targetShiftId
             );
             if (res.ok) {
                 const reportId = res.reportId;
@@ -1049,7 +1067,7 @@ const MobileReports = () => {
     }, [previewData.cardRecords]);
 
     return (
-        <MobileDashboardLayout title="Reports & Exports">
+        <MobileDashboardLayout title={isEmployee ? "My Reports" : "Reports & Exports"}>
             <div className="min-h-screen bg-slate-50 dark:bg-black pb-24 transition-colors duration-300">
 
                 {/* --- HEADER AREA --- */}
@@ -1076,8 +1094,8 @@ const MobileReports = () => {
                     {/* View Switcher Tabs (tab bar is kept below the header) */}
                     <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1 flex rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm">
                         {[
-                            { id: 'card', label: 'Attendance View' },
-                            { id: 'table', label: 'Full Report' }
+                            { id: 'card', label: isEmployee ? 'Attendance Matrix' : 'Attendance View' },
+                            { id: 'table', label: isEmployee ? 'Excel Report' : 'Full Report' }
                         ].map((tab) => (
                             <button
                                 key={tab.id}
@@ -1180,301 +1198,320 @@ const MobileReports = () => {
                                     )}
                                 </div>
 
-                                {/* Custom Searchable Department Selector */}
-                                <div className="space-y-1.5 relative animate-none" ref={tableDeptDropdownRef}>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Department</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setTableIsDeptDropdownOpen(!tableIsDeptDropdownOpen);
-                                            setTableDeptSearchQuery('');
-                                        }}
-                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                    >
-                                        <span className="truncate">
-                                            {departments.find(d => d.dept_id === tableDeptId)?.dept_name || 'All Departments'}
+                                {isEmployee ? (
+                                    <div className="col-span-2 flex items-center gap-3 p-3 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
+                                        <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                                            {user?.user_name?.slice(0, 2)?.toUpperCase() || 'ME'}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white truncate">{user?.user_name || 'My Reports'}</div>
+                                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{user?.user_email || 'Employee'}</div>
+                                        </div>
+                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 shrink-0 uppercase tracking-wider">
+                                            You
                                         </span>
-                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsDeptDropdownOpen ? 'rotate-180' : ''}`} />
-                                    </button>
-
-                                    {tableIsDeptDropdownOpen && (
-                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                            <div className="relative mb-2">
-                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search departments..."
-                                                    value={tableDeptSearchQuery}
-                                                    onChange={(e) => setTableDeptSearchQuery(e.target.value)}
-                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setTableDeptId('');
-                                                        setTableIsDeptDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableDeptId === ''
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    All Departments
-                                                </button>
-                                                {departments.filter(d => d.dept_name.toLowerCase().includes(tableDeptSearchQuery.toLowerCase())).length > 0 ? (
-                                                    departments.filter(d => d.dept_name.toLowerCase().includes(tableDeptSearchQuery.toLowerCase())).map(d => (
-                                                        <button
-                                                            key={d.dept_id}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setTableDeptId(d.dept_id);
-                                                                setTableIsDeptDropdownOpen(false);
-                                                            }}
-                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableDeptId === d.dept_id
-                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                                }`}
-                                                        >
-                                                            {d.dept_name}
-                                                        </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
-                                                        No departments found
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Custom Searchable Designation Selector */}
-                                <div className="space-y-1.5 relative animate-none" ref={tableDesgDropdownRef}>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Designation</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setTableIsDesgDropdownOpen(!tableIsDesgDropdownOpen);
-                                            setTableDesgSearchQuery('');
-                                        }}
-                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                    >
-                                        <span className="truncate">
-                                            {designations.find(d => String(d.desg_id) === String(tableDesgId))?.desg_name || 'All Designations'}
-                                        </span>
-                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsDesgDropdownOpen ? 'rotate-180' : ''}`} />
-                                    </button>
-
-                                    {tableIsDesgDropdownOpen && (
-                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                            <div className="relative mb-2">
-                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search designations..."
-                                                    value={tableDesgSearchQuery}
-                                                    onChange={(e) => setTableDesgSearchQuery(e.target.value)}
-                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setTableDesgId('');
-                                                        setTableIsDesgDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableDesgId === ''
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    All Designations
-                                                </button>
-                                                {designations.filter(d => d.desg_name.toLowerCase().includes(tableDesgSearchQuery.toLowerCase())).length > 0 ? (
-                                                    designations.filter(d => d.desg_name.toLowerCase().includes(tableDesgSearchQuery.toLowerCase())).map(d => (
-                                                        <button
-                                                            key={d.desg_id}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setTableDesgId(d.desg_id);
-                                                                setTableIsDesgDropdownOpen(false);
-                                                            }}
-                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(tableDesgId) === String(d.desg_id)
-                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                                }`}
-                                                        >
-                                                            {d.desg_name}
-                                                        </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
-                                                        No designations found
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Custom Searchable Shift Selector */}
-                                <div className="space-y-1.5 relative animate-none" ref={tableShiftDropdownRef}>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Shift</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setTableIsShiftDropdownOpen(!tableIsShiftDropdownOpen);
-                                            setTableShiftSearchQuery('');
-                                        }}
-                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                    >
-                                        <span className="truncate">
-                                            {tableShiftId === 'open_shift' ? 'Open Shift' : (shifts.find(s => String(s.shift_id) === String(tableShiftId))?.shift_name || 'All Shifts')}
-                                        </span>
-                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
-                                    </button>
-
-                                    {tableIsShiftDropdownOpen && (
-                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                            <div className="relative mb-2">
-                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search shifts..."
-                                                    value={tableShiftSearchQuery}
-                                                    onChange={(e) => setTableShiftSearchQuery(e.target.value)}
-                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setTableShiftId('');
-                                                        setTableIsShiftDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableShiftId === ''
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    All Shifts
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setTableShiftId('open_shift');
-                                                        setTableIsShiftDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableShiftId === 'open_shift'
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    Open Shift
-                                                </button>
-                                                {shifts.filter(s => s.shift_name.toLowerCase().includes(tableShiftSearchQuery.toLowerCase())).length > 0 ? (
-                                                    shifts.filter(s => s.shift_name.toLowerCase().includes(tableShiftSearchQuery.toLowerCase())).map(s => (
-                                                        <button
-                                                            key={s.shift_id}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setTableShiftId(s.shift_id);
-                                                                setTableIsShiftDropdownOpen(false);
-                                                            }}
-                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(tableShiftId) === String(s.shift_id)
-                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                                }`}
-                                                        >
-                                                            {s.shift_name}
-                                                        </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
-                                                        No shifts found
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Employee Selector */}
-                            <div className="space-y-1.5 relative animate-none" ref={tableEmpDropdownRef}>
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Employee</label>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTableIsEmpDropdownOpen(!tableIsEmpDropdownOpen);
-                                        setTableEmpSearchQuery('');
-                                    }}
-                                    className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                >
-                                    <span className="truncate">{tableSelectedEmployeeName}</span>
-                                    <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {tableIsEmpDropdownOpen && (
-                                    <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                        <div className="relative mb-2">
-                                            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                            <input
-                                                type="text"
-                                                placeholder="Search..."
-                                                value={tableEmpSearchQuery}
-                                                onChange={(e) => setTableEmpSearchQuery(e.target.value)}
-                                                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                autoFocus
-                                            />
-                                        </div>
-                                        <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Custom Searchable Department Selector */}
+                                        <div className="space-y-1.5 relative animate-none" ref={tableDeptDropdownRef}>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Department</label>
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    setTableEmployeeId('');
-                                                    setTableIsEmpDropdownOpen(false);
+                                                    setTableIsDeptDropdownOpen(!tableIsDeptDropdownOpen);
+                                                    setTableDeptSearchQuery('');
                                                 }}
-                                                className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableEmployeeId === ''
-                                                        ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                    }`}
+                                                className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
                                             >
-                                                All Employees
+                                                <span className="truncate">
+                                                    {departments.find(d => d.dept_id === tableDeptId)?.dept_name || 'All Departments'}
+                                                </span>
+                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsDeptDropdownOpen ? 'rotate-180' : ''}`} />
                                             </button>
-                                            {tableFilteredEmployees.length > 0 ? (
-                                                tableFilteredEmployees.map(emp => (
-                                                    <button
-                                                        key={emp.user_id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setTableEmployeeId(emp.user_id);
-                                                            setTableIsEmpDropdownOpen(false);
-                                                        }}
-                                                        className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableEmployeeId === emp.user_id
-                                                                ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                                : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                            }`}
-                                                    >
-                                                        {emp.user_name}
-                                                    </button>
-                                                ))
-                                            ) : (
-                                                <div className="text-[10px] text-slate-400 dark:text-github-dark-muted text-center py-3 font-bold uppercase tracking-widest">
-                                                    No results
+
+                                            {tableIsDeptDropdownOpen && (
+                                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                                    <div className="relative mb-2">
+                                                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search departments..."
+                                                            value={tableDeptSearchQuery}
+                                                            onChange={(e) => setTableDeptSearchQuery(e.target.value)}
+                                                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTableDeptId('');
+                                                                setTableIsDeptDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableDeptId === ''
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            All Departments
+                                                        </button>
+                                                        {departments.filter(d => d.dept_name.toLowerCase().includes(tableDeptSearchQuery.toLowerCase())).length > 0 ? (
+                                                            departments.filter(d => d.dept_name.toLowerCase().includes(tableDeptSearchQuery.toLowerCase())).map(d => (
+                                                                <button
+                                                                    key={d.dept_id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setTableDeptId(d.dept_id);
+                                                                        setTableIsDeptDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableDeptId === d.dept_id
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {d.dept_name}
+                                                                </button>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                                No departments found
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
-                                    </div>
+
+                                        {/* Custom Searchable Designation Selector */}
+                                        <div className="space-y-1.5 relative animate-none" ref={tableDesgDropdownRef}>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Designation</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setTableIsDesgDropdownOpen(!tableIsDesgDropdownOpen);
+                                                    setTableDesgSearchQuery('');
+                                                }}
+                                                className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                            >
+                                                <span className="truncate">
+                                                    {designations.find(d => String(d.desg_id) === String(tableDesgId))?.desg_name || 'All Designations'}
+                                                </span>
+                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsDesgDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
+
+                                            {tableIsDesgDropdownOpen && (
+                                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                                    <div className="relative mb-2">
+                                                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search designations..."
+                                                            value={tableDesgSearchQuery}
+                                                            onChange={(e) => setTableDesgSearchQuery(e.target.value)}
+                                                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTableDesgId('');
+                                                                setTableIsDesgDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableDesgId === ''
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            All Designations
+                                                        </button>
+                                                        {designations.filter(d => d.desg_name.toLowerCase().includes(tableDesgSearchQuery.toLowerCase())).length > 0 ? (
+                                                            designations.filter(d => d.desg_name.toLowerCase().includes(tableDesgSearchQuery.toLowerCase())).map(d => (
+                                                                <button
+                                                                    key={d.desg_id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setTableDesgId(d.desg_id);
+                                                                        setTableIsDesgDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(tableDesgId) === String(d.desg_id)
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {d.desg_name}
+                                                                </button>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                                No designations found
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Custom Searchable Shift Selector */}
+                                        <div className="space-y-1.5 relative animate-none" ref={tableShiftDropdownRef}>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Shift</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setTableIsShiftDropdownOpen(!tableIsShiftDropdownOpen);
+                                                    setTableShiftSearchQuery('');
+                                                }}
+                                                className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                            >
+                                                <span className="truncate">
+                                                    {tableShiftId === 'open_shift' ? 'Open Shift' : (shifts.find(s => String(s.shift_id) === String(tableShiftId))?.shift_name || 'All Shifts')}
+                                                </span>
+                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
+
+                                            {tableIsShiftDropdownOpen && (
+                                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                                    <div className="relative mb-2">
+                                                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search shifts..."
+                                                            value={tableShiftSearchQuery}
+                                                            onChange={(e) => setTableShiftSearchQuery(e.target.value)}
+                                                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTableShiftId('');
+                                                                setTableIsShiftDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableShiftId === ''
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            All Shifts
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTableShiftId('open_shift');
+                                                                setTableIsShiftDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableShiftId === 'open_shift'
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            Open Shift
+                                                        </button>
+                                                        {shifts.filter(s => s.shift_name.toLowerCase().includes(tableShiftSearchQuery.toLowerCase())).length > 0 ? (
+                                                            shifts.filter(s => s.shift_name.toLowerCase().includes(tableShiftSearchQuery.toLowerCase())).map(s => (
+                                                                <button
+                                                                    key={s.shift_id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setTableShiftId(s.shift_id);
+                                                                        setTableIsShiftDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(tableShiftId) === String(s.shift_id)
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {s.shift_name}
+                                                                </button>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                                No shifts found
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
                                 )}
                             </div>
+
+                            {!isEmployee && (
+                                /* Employee Selector */
+                                <div className="space-y-1.5 relative animate-none" ref={tableEmpDropdownRef}>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Employee</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTableIsEmpDropdownOpen(!tableIsEmpDropdownOpen);
+                                            setTableEmpSearchQuery('');
+                                        }}
+                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                    >
+                                        <span className="truncate">{tableSelectedEmployeeName}</span>
+                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {tableIsEmpDropdownOpen && (
+                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                            <div className="relative mb-2">
+                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search..."
+                                                    value={tableEmpSearchQuery}
+                                                    onChange={(e) => setTableEmpSearchQuery(e.target.value)}
+                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setTableEmployeeId('');
+                                                        setTableIsEmpDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableEmployeeId === ''
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                        }`}
+                                                >
+                                                    All Employees
+                                                </button>
+                                                {tableFilteredEmployees.length > 0 ? (
+                                                    tableFilteredEmployees.map(emp => (
+                                                        <button
+                                                            key={emp.user_id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTableEmployeeId(emp.user_id);
+                                                                setTableIsEmpDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableEmployeeId === emp.user_id
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            {emp.user_name}
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-[10px] text-slate-400 dark:text-github-dark-muted text-center py-3 font-bold uppercase tracking-widest">
+                                                        No results
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Date Picker Section */}
                             {tableUseCustomRange ? (
@@ -1684,300 +1721,317 @@ const MobileReports = () => {
                         /* Compact filters for Attendance View on mobile */
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-white/5 shadow-sm space-y-5">
                             <div className="grid grid-cols-2 gap-4">
-                                {/* Custom Searchable Department Selector */}
-                                <div className="space-y-1.5 relative animate-none" ref={attendanceDeptDropdownRef}>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Department</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setAttendanceIsDeptDropdownOpen(!attendanceIsDeptDropdownOpen);
-                                            setAttendanceDeptSearchQuery('');
-                                        }}
-                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                    >
-                                        <span className="truncate">
-                                            {departments.find(d => d.dept_id === attendanceDeptId)?.dept_name || 'All Departments'}
+                                {isEmployee ? (
+                                    <div className="col-span-2 flex items-center gap-3 p-3 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
+                                        <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                                            {user?.user_name?.slice(0, 2)?.toUpperCase() || 'ME'}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs font-bold text-slate-800 dark:text-white truncate">{user?.user_name || 'My Reports'}</div>
+                                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{user?.user_email || 'Employee'}</div>
+                                        </div>
+                                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 shrink-0 uppercase tracking-wider">
+                                            You
                                         </span>
-                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsDeptDropdownOpen ? 'rotate-180' : ''}`} />
-                                    </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Custom Searchable Department Selector */}
+                                        <div className="space-y-1.5 relative animate-none" ref={attendanceDeptDropdownRef}>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Department</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setAttendanceIsDeptDropdownOpen(!attendanceIsDeptDropdownOpen);
+                                                    setAttendanceDeptSearchQuery('');
+                                                }}
+                                                className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                            >
+                                                <span className="truncate">
+                                                    {departments.find(d => d.dept_id === attendanceDeptId)?.dept_name || 'All Departments'}
+                                                </span>
+                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsDeptDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
 
-                                    {attendanceIsDeptDropdownOpen && (
-                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                            <div className="relative mb-2">
-                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search departments..."
-                                                    value={attendanceDeptSearchQuery}
-                                                    onChange={(e) => setAttendanceDeptSearchQuery(e.target.value)}
-                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setAttendanceDeptId('');
-                                                        setAttendanceIsDeptDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceDeptId === ''
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    All Departments
-                                                </button>
-                                                {departments.filter(d => d.dept_name.toLowerCase().includes(attendanceDeptSearchQuery.toLowerCase())).length > 0 ? (
-                                                    departments.filter(d => d.dept_name.toLowerCase().includes(attendanceDeptSearchQuery.toLowerCase())).map(d => (
+                                            {attendanceIsDeptDropdownOpen && (
+                                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                                    <div className="relative mb-2">
+                                                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search departments..."
+                                                            value={attendanceDeptSearchQuery}
+                                                            onChange={(e) => setAttendanceDeptSearchQuery(e.target.value)}
+                                                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
                                                         <button
-                                                            key={d.dept_id}
                                                             type="button"
                                                             onClick={() => {
-                                                                setAttendanceDeptId(d.dept_id);
+                                                                setAttendanceDeptId('');
                                                                 setAttendanceIsDeptDropdownOpen(false);
                                                             }}
-                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceDeptId === d.dept_id
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceDeptId === ''
                                                                     ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
                                                                     : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
                                                                 }`}
                                                         >
-                                                            {d.dept_name}
+                                                            All Departments
                                                         </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
-                                                        No departments found
+                                                        {departments.filter(d => d.dept_name.toLowerCase().includes(attendanceDeptSearchQuery.toLowerCase())).length > 0 ? (
+                                                            departments.filter(d => d.dept_name.toLowerCase().includes(attendanceDeptSearchQuery.toLowerCase())).map(d => (
+                                                                <button
+                                                                    key={d.dept_id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setAttendanceDeptId(d.dept_id);
+                                                                        setAttendanceIsDeptDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceDeptId === d.dept_id
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {d.dept_name}
+                                                                </button>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                                No departments found
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
 
-                                {/* Custom Searchable Designation Selector */}
-                                <div className="space-y-1.5 relative animate-none" ref={attendanceDesgDropdownRef}>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Designation</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setAttendanceIsDesgDropdownOpen(!attendanceIsDesgDropdownOpen);
-                                            setAttendanceDesgSearchQuery('');
-                                        }}
-                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                    >
-                                        <span className="truncate">
-                                            {designations.find(d => String(d.desg_id) === String(attendanceDesgId))?.desg_name || 'All Designations'}
-                                        </span>
-                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsDesgDropdownOpen ? 'rotate-180' : ''}`} />
-                                    </button>
+                                        {/* Custom Searchable Designation Selector */}
+                                        <div className="space-y-1.5 relative animate-none" ref={attendanceDesgDropdownRef}>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Designation</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setAttendanceIsDesgDropdownOpen(!attendanceIsDesgDropdownOpen);
+                                                    setAttendanceDesgSearchQuery('');
+                                                }}
+                                                className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                            >
+                                                <span className="truncate">
+                                                    {designations.find(d => String(d.desg_id) === String(attendanceDesgId))?.desg_name || 'All Designations'}
+                                                </span>
+                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsDesgDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
 
-                                    {attendanceIsDesgDropdownOpen && (
-                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                            <div className="relative mb-2">
-                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search designations..."
-                                                    value={attendanceDesgSearchQuery}
-                                                    onChange={(e) => setAttendanceDesgSearchQuery(e.target.value)}
-                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setAttendanceDesgId('');
-                                                        setAttendanceIsDesgDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceDesgId === ''
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    All Designations
-                                                </button>
-                                                {designations.filter(d => d.desg_name.toLowerCase().includes(attendanceDesgSearchQuery.toLowerCase())).length > 0 ? (
-                                                    designations.filter(d => d.desg_name.toLowerCase().includes(attendanceDesgSearchQuery.toLowerCase())).map(d => (
+                                            {attendanceIsDesgDropdownOpen && (
+                                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                                    <div className="relative mb-2">
+                                                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search designations..."
+                                                            value={attendanceDesgSearchQuery}
+                                                            onChange={(e) => setAttendanceDesgSearchQuery(e.target.value)}
+                                                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
                                                         <button
-                                                            key={d.desg_id}
                                                             type="button"
                                                             onClick={() => {
-                                                                setAttendanceDesgId(d.desg_id);
+                                                                setAttendanceDesgId('');
                                                                 setAttendanceIsDesgDropdownOpen(false);
                                                             }}
-                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(attendanceDesgId) === String(d.desg_id)
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceDesgId === ''
                                                                     ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
                                                                     : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
                                                                 }`}
                                                         >
-                                                            {d.desg_name}
+                                                            All Designations
                                                         </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
-                                                        No designations found
+                                                        {designations.filter(d => d.desg_name.toLowerCase().includes(attendanceDesgSearchQuery.toLowerCase())).length > 0 ? (
+                                                            designations.filter(d => d.desg_name.toLowerCase().includes(attendanceDesgSearchQuery.toLowerCase())).map(d => (
+                                                                <button
+                                                                    key={d.desg_id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setAttendanceDesgId(d.desg_id);
+                                                                        setAttendanceIsDesgDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(attendanceDesgId) === String(d.desg_id)
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {d.desg_name}
+                                                                </button>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                                No designations found
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
 
-                                {/* Custom Searchable Shift Selector */}
-                                <div className="space-y-1.5 relative animate-none" ref={attendanceShiftDropdownRef}>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Shift</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setAttendanceIsShiftDropdownOpen(!attendanceIsShiftDropdownOpen);
-                                            setAttendanceShiftSearchQuery('');
-                                        }}
-                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                    >
-                                        <span className="truncate">
-                                            {attendanceShiftId === 'open_shift' ? 'Open Shift' : (shifts.find(s => String(s.shift_id) === String(attendanceShiftId))?.shift_name || 'All Shifts')}
-                                        </span>
-                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
-                                    </button>
+                                        {/* Custom Searchable Shift Selector */}
+                                        <div className="space-y-1.5 relative animate-none" ref={attendanceShiftDropdownRef}>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Shift</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setAttendanceIsShiftDropdownOpen(!attendanceIsShiftDropdownOpen);
+                                                    setAttendanceShiftSearchQuery('');
+                                                }}
+                                                className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                            >
+                                                <span className="truncate">
+                                                    {attendanceShiftId === 'open_shift' ? 'Open Shift' : (shifts.find(s => String(s.shift_id) === String(attendanceShiftId))?.shift_name || 'All Shifts')}
+                                                </span>
+                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsShiftDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
 
-                                    {attendanceIsShiftDropdownOpen && (
-                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                            <div className="relative mb-2">
-                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search shifts..."
-                                                    value={attendanceShiftSearchQuery}
-                                                    onChange={(e) => setAttendanceShiftSearchQuery(e.target.value)}
-                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setAttendanceShiftId('');
-                                                        setAttendanceIsShiftDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceShiftId === ''
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    All Shifts
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setAttendanceShiftId('open_shift');
-                                                        setAttendanceIsShiftDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceShiftId === 'open_shift'
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    Open Shift
-                                                </button>
-                                                {shifts.filter(s => s.shift_name.toLowerCase().includes(attendanceShiftSearchQuery.toLowerCase())).length > 0 ? (
-                                                    shifts.filter(s => s.shift_name.toLowerCase().includes(attendanceShiftSearchQuery.toLowerCase())).map(s => (
+                                            {attendanceIsShiftDropdownOpen && (
+                                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                                    <div className="relative mb-2">
+                                                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search shifts..."
+                                                            value={attendanceShiftSearchQuery}
+                                                            onChange={(e) => setAttendanceShiftSearchQuery(e.target.value)}
+                                                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
                                                         <button
-                                                            key={s.shift_id}
                                                             type="button"
                                                             onClick={() => {
-                                                                setAttendanceShiftId(s.shift_id);
+                                                                setAttendanceShiftId('');
                                                                 setAttendanceIsShiftDropdownOpen(false);
                                                             }}
-                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(attendanceShiftId) === String(s.shift_id)
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceShiftId === ''
                                                                     ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
                                                                     : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
                                                                 }`}
                                                         >
-                                                            {s.shift_name}
+                                                            All Shifts
                                                         </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
-                                                        No shifts found
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Employee Selector */}
-                                <div className="space-y-1.5 relative animate-none col-span-2" ref={attendanceEmpDropdownRef}>
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Employee</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setAttendanceIsEmpDropdownOpen(!attendanceIsEmpDropdownOpen);
-                                            setAttendanceEmpSearchQuery('');
-                                        }}
-                                        className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
-                                    >
-                                        <span className="truncate">{attendanceSelectedEmployeeName}</span>
-                                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
-                                    </button>
-
-                                    {attendanceIsEmpDropdownOpen && (
-                                        <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
-                                            <div className="relative mb-2">
-                                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search..."
-                                                    value={attendanceEmpSearchQuery}
-                                                    onChange={(e) => setAttendanceEmpSearchQuery(e.target.value)}
-                                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setAttendanceEmployeeId('');
-                                                        setAttendanceIsEmpDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceEmployeeId === ''
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    All Employees
-                                                </button>
-                                                {attendanceFilteredEmployees.length > 0 ? (
-                                                    attendanceFilteredEmployees.map(emp => (
                                                         <button
-                                                            key={emp.user_id}
                                                             type="button"
                                                             onClick={() => {
-                                                                setAttendanceEmployeeId(emp.user_id);
-                                                                setAttendanceIsEmpDropdownOpen(false);
+                                                                setAttendanceShiftId('open_shift');
+                                                                setAttendanceIsShiftDropdownOpen(false);
                                                             }}
-                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceEmployeeId === emp.user_id
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceShiftId === 'open_shift'
                                                                     ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
                                                                     : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
                                                                 }`}
                                                         >
-                                                            {emp.user_name}
+                                                            Open Shift
                                                         </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-[10px] text-slate-400 dark:text-github-dark-muted text-center py-3 font-bold uppercase tracking-widest">
-                                                        No results
+                                                        {shifts.filter(s => s.shift_name.toLowerCase().includes(attendanceShiftSearchQuery.toLowerCase())).length > 0 ? (
+                                                            shifts.filter(s => s.shift_name.toLowerCase().includes(attendanceShiftSearchQuery.toLowerCase())).map(s => (
+                                                                <button
+                                                                    key={s.shift_id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setAttendanceShiftId(s.shift_id);
+                                                                        setAttendanceIsShiftDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${String(attendanceShiftId) === String(s.shift_id)
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {s.shift_name}
+                                                                </button>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-xs text-slate-400 dark:text-github-dark-muted text-center py-3">
+                                                                No shifts found
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
+
+                                        {/* Employee Selector */}
+                                        <div className="space-y-1.5 relative animate-none col-span-2" ref={attendanceEmpDropdownRef}>
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Employee</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setAttendanceIsEmpDropdownOpen(!attendanceIsEmpDropdownOpen);
+                                                    setAttendanceEmpSearchQuery('');
+                                                }}
+                                                className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
+                                            >
+                                                <span className="truncate">{attendanceSelectedEmployeeName}</span>
+                                                <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${attendanceIsEmpDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
+
+                                            {attendanceIsEmpDropdownOpen && (
+                                                <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 flex flex-col">
+                                                    <div className="relative mb-2">
+                                                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search..."
+                                                            value={attendanceEmpSearchQuery}
+                                                            onChange={(e) => setAttendanceEmpSearchQuery(e.target.value)}
+                                                            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setAttendanceEmployeeId('');
+                                                                setAttendanceIsEmpDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceEmployeeId === ''
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            All Employees
+                                                        </button>
+                                                        {attendanceFilteredEmployees.length > 0 ? (
+                                                            attendanceFilteredEmployees.map(emp => (
+                                                                <button
+                                                                    key={emp.user_id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setAttendanceEmployeeId(emp.user_id);
+                                                                        setAttendanceIsEmpDropdownOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${attendanceEmployeeId === emp.user_id
+                                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                        }`}
+                                                                >
+                                                                    {emp.user_name}
+                                                                </button>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-[10px] text-slate-400 dark:text-github-dark-muted text-center py-3 font-bold uppercase tracking-widest">
+                                                                No results
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
 
                                 {/* Period Picker */}
                                 {attendanceReportType !== 'employee_master' && (

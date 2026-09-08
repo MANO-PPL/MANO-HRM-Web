@@ -115,7 +115,7 @@ const MobileLoginPage = () => {
                                 <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tighter uppercase italic leading-none">
                                     MANO <span className="text-indigo-600 dark:text-indigo-400 not-italic font-medium opacity-80 text-sm">Attendance</span>
                                 </h1>
-                                <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] mt-1">Enterprise Grade Security</span>
+                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400 tracking-wide mt-1">Enterprise Grade Security</span>
                             </div>
                         </motion.div>
 
@@ -136,7 +136,7 @@ const MobileLoginPage = () => {
                         transition={{ delay: 0.1 }}
                         className="space-y-3"
                     >
-                        <h2 className="text-3xl font-black text-slate-900 dark:text-white leading-tight uppercase tracking-tight">
+                        <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white leading-tight tracking-tight">
                             Precision <br />
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-500 dark:from-indigo-400 dark:to-violet-400">Intelligence.</span>
                         </h2>
@@ -156,16 +156,16 @@ const MobileLoginPage = () => {
                     <div className="p-4 bg-white/60 dark:bg-[#0d1117]/60 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm">
                         <div className="flex items-center gap-2 mb-2 text-emerald-600 dark:text-emerald-400">
                             <Activity size={12} />
-                            <span className="text-[8px] font-black uppercase tracking-widest">Live Sync</span>
+                            <span className="text-xs font-medium">Live Sync</span>
                         </div>
-                        <span className="text-xl font-mono text-slate-900 dark:text-white font-black">99.98%</span>
+                        <span className="text-xl font-mono text-slate-900 dark:text-white font-bold">99.98%</span>
                     </div>
                     <div className="p-4 bg-white/60 dark:bg-[#0d1117]/60 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm">
                         <div className="flex items-center gap-2 mb-2 text-indigo-600 dark:text-indigo-400">
                             <Shield size={12} />
-                            <span className="text-[8px] font-black uppercase tracking-widest">Uptime</span>
+                            <span className="text-xs font-medium">Uptime</span>
                         </div>
-                        <span className="text-xl font-mono text-slate-900 dark:text-white font-black">365<span className="text-[10px] ml-1">Days</span></span>
+                        <span className="text-xl font-mono text-slate-900 dark:text-white font-bold">365 <span className="text-xs font-normal">Days</span></span>
                     </div>
                 </motion.div>
 
@@ -178,7 +178,7 @@ const MobileLoginPage = () => {
                 >
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="space-y-2">
-                            <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-1">
+                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 px-1">
                                 Email / Mobile
                             </label>
                             <div className="relative group">
@@ -189,19 +189,19 @@ const MobileLoginPage = () => {
                                     value={formData.identifier}
                                     onChange={handleChange}
                                     required
-                                    className="w-full bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-[1.25rem] py-4 pl-14 pr-5 text-slate-900 dark:text-white font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
-                                    placeholder="Enter identifier"
+                                    className="w-full bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-[1.25rem] py-4 pl-14 pr-5 text-slate-900 dark:text-white font-normal outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
+                                    placeholder="Enter Email or Mobile"
                                 />
                             </div>
                         </div>
 
                         <div className="space-y-2">
                             <div className="flex justify-between items-center px-1">
-                                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+                                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
                                     Password
                                 </label>
-                                <Link to="/forgot-password" className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest transition-colors">
-                                    Forgot?
+                                <Link to="/forgot-password" className="text-xs font-normal text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 hover:underline transition-colors">
+                                    Forgot Password?
                                 </Link>
                             </div>
                             <div className="relative group">
@@ -212,8 +212,8 @@ const MobileLoginPage = () => {
                                     value={formData.password}
                                     onChange={handleChange}
                                     required
-                                    className="w-full bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-[1.25rem] py-4 pl-14 pr-12 text-slate-900 dark:text-white font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
-                                    placeholder="********"
+                                    className="w-full bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-[1.25rem] py-4 pl-14 pr-12 text-slate-900 dark:text-white font-normal outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
+                                    placeholder="••••••••"
                                 />
                                 <button
                                     type="button"
@@ -245,7 +245,7 @@ const MobileLoginPage = () => {
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                     </svg>
                                 </div>
-                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] select-none transition-colors group-hover:text-slate-600 dark:group-hover:text-slate-400">
+                                <span className="text-xs font-normal text-slate-600 dark:text-slate-400 select-none transition-colors group-hover:text-slate-800 dark:group-hover:text-slate-200">
                                     Keep me signed in
                                 </span>
                             </label>
@@ -269,14 +269,14 @@ const MobileLoginPage = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="group relative w-full bg-indigo-600 hover:bg-indigo-700 text-white py-5 rounded-[1.25rem] text-[10px] font-bold uppercase tracking-[0.3em] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-xl shadow-indigo-600/20 disabled:opacity-50"
+                            className="group relative w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-xl shadow-indigo-600/25 disabled:opacity-50"
                         >
                             {loading ? (
                                 <Loader2 className="animate-spin" size={18} />
                             ) : (
                                 <>
-                                    Secure Login
-                                    <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                                    <span>Login</span>
+                                    <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                                 </>
                             )}
                         </button>
@@ -284,10 +284,10 @@ const MobileLoginPage = () => {
                 </motion.div>
 
                 {/* Footer */}
-                <footer className="mt-auto pt-10 text-center">
-                    <p className="text-[9px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-[0.2em] leading-relaxed">
+                <footer className="mt-auto pt-8 text-center">
+                    <p className="text-xs font-normal text-slate-500 dark:text-slate-400 leading-relaxed">
                         Don't have an account? <br />
-                        <Link to="/signup" className="text-indigo-600 dark:text-indigo-400 hover:underline">Create your organization login</Link>
+                        <Link to="/signup" className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Create your organization login</Link>
                     </p>
                 </footer>
             </div>

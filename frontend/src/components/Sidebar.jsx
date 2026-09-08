@@ -77,6 +77,7 @@ export const getNavItems = (userType) => {
             { icon: <Calendar size={18} />, text: "Attendance", to: "/attendance" },
             { icon: <CalendarDays size={18} />, text: "Holidays & Leaves", to: "/holidays" },
             { icon: <ClipboardList size={18} />, text: "Daily Activity Report", to: "/daily-activity" },
+            { icon: <TrendingUp size={18} />, text: "Reports", to: "/reports" },
         ];
     }
 
