@@ -5,23 +5,57 @@ import { toast } from 'react-toastify';
 
 function DirectTimeInput({ value, onChange }) {
     const [text, setText] = useState(value || '');
+    const inputRef = useRef(null);
+    const debounceTimerRef = useRef(null);
+    const lastCommittedRef = useRef(value || '');
 
+    // Sync from prop ONLY when input is not actively focused by user
     useEffect(() => {
-        setText(value || '');
+        if (document.activeElement !== inputRef.current) {
+            setText(value || '');
+            lastCommittedRef.current = value || '';
+        }
     }, [value]);
+
+    // Clean up timer on unmount
+    useEffect(() => {
+        return () => {
+            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        };
+    }, []);
+
+    const commitChange = useCallback((valToCommit) => {
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+        }
+        if (valToCommit && valToCommit !== lastCommittedRef.current) {
+            lastCommittedRef.current = valToCommit;
+            onChange(valToCommit);
+        }
+    }, [onChange]);
+
+    const scheduleCommit = (valToCommit) => {
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+        }
+        debounceTimerRef.current = setTimeout(() => {
+            commitChange(valToCommit);
+        }, 180);
+    };
 
     const handleChange = (e) => {
         const val = e.target.value;
         setText(val);
         if (/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(val)) {
-            onChange(val);
+            scheduleCommit(val);
         }
     };
 
     const handleBlur = () => {
         const clean = text.trim();
         if (!clean) {
-            setText(value || '');
+            setText(lastCommittedRef.current || value || '');
             return;
         }
 
@@ -45,29 +79,184 @@ function DirectTimeInput({ value, onChange }) {
         if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
             const normalized = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
             setText(normalized);
-            onChange(normalized);
+            commitChange(normalized);
         } else {
-            setText(value || '');
+            setText(lastCommittedRef.current || value || '');
         }
+    };
+
+    const stepTime = (isDown, isShift = false) => {
+        let clean = text.trim();
+        let h = 0;
+        let m = 0;
+        if (clean.includes(':')) {
+            const parts = clean.split(':');
+            h = parseInt(parts[0], 10) || 0;
+            m = parseInt(parts[1], 10) || 0;
+        } else if (clean.length === 4) {
+            h = parseInt(clean.slice(0, 2), 10) || 0;
+            m = parseInt(clean.slice(2), 10) || 0;
+        } else {
+            h = parseInt(clean, 10) || 0;
+        }
+
+        h = Math.max(0, Math.min(23, h));
+        m = Math.max(0, Math.min(59, m));
+
+        const el = inputRef.current;
+        const selStart = el?.selectionStart ?? 3;
+        const selEnd = el?.selectionEnd ?? 5;
+
+        // Is targeting Hours or Minutes?
+        // If selection is whole string [0, 5], default to minutes.
+        // If cursor/selection is <= 2 (before or on ':'), target hours.
+        const isWholeSelected = selStart === 0 && selEnd >= 4;
+        const isHour = !isWholeSelected && selStart <= 2 && selEnd <= 2;
+
+        let nextSelStart = selStart;
+        let nextSelEnd = selEnd;
+
+        if (isHour) {
+            const step = isShift ? 5 : 1;
+            h = isDown ? (h - step + 24) % 24 : (h + step) % 24;
+            if (selStart !== selEnd) {
+                nextSelStart = 0;
+                nextSelEnd = 2;
+            } else {
+                nextSelStart = Math.min(2, selStart);
+                nextSelEnd = nextSelStart;
+            }
+        } else {
+            const step = isShift ? 15 : 1;
+            m = isDown ? (m - step + 60) % 60 : (m + step) % 60;
+            if (isWholeSelected || selStart !== selEnd) {
+                nextSelStart = 3;
+                nextSelEnd = 5;
+            } else {
+                nextSelStart = Math.max(3, selStart);
+                nextSelEnd = nextSelStart;
+            }
+        }
+
+        const normalized = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        setText(normalized);
+
+        // Schedule debounced commit for smooth, blazing fast repeat
+        scheduleCommit(normalized);
+
+        // Keep selection and focus strictly on this element immediately
+        if (el) {
+            el.setSelectionRange(nextSelStart, nextSelEnd);
+        }
+        requestAnimationFrame(() => {
+            if (inputRef.current) {
+                inputRef.current.setSelectionRange(nextSelStart, nextSelEnd);
+            }
+        });
     };
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
+            handleBlur();
             e.target.blur();
+            return;
+        }
+        if (e.key === 'Escape') {
+            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+            setText(lastCommittedRef.current || value || '');
+            e.target.blur();
+            return;
+        }
+
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            stepTime(false, e.shiftKey);
+            return;
+        }
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            stepTime(true, e.shiftKey);
+            return;
+        }
+
+        // Seamless segment navigation with Left / Right
+        if (e.key === 'ArrowLeft' && e.target.selectionStart === 3 && e.target.selectionEnd === 5) {
+            e.preventDefault();
+            inputRef.current?.setSelectionRange(0, 2);
+            return;
+        }
+        if (e.key === 'ArrowRight' && e.target.selectionStart === 0 && e.target.selectionEnd === 2) {
+            e.preventDefault();
+            inputRef.current?.setSelectionRange(3, 5);
+            return;
         }
     };
 
     return (
-        <input
-            type="text"
-            value={text}
-            onChange={handleChange}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            placeholder="00:00"
-            maxLength={5}
-            className="w-full px-2 py-1 text-xs font-mono font-medium text-center rounded-lg border border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all tracking-wider"
-        />
+        <div className="relative flex items-center w-full group/time">
+            <input
+                ref={inputRef}
+                type="text"
+                value={text}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                onKeyDown={handleKeyDown}
+                onFocus={(e) => {
+                    // Select minute digits by default for rapid arrow key incrementing
+                    if (e.target.value.length === 5) {
+                        e.target.setSelectionRange(3, 5);
+                    } else {
+                        e.target.select();
+                    }
+                }}
+                placeholder="00:00"
+                maxLength={5}
+                title="Use ↑/↓ arrow keys to adjust time (Shift for ±15m / ±5h, ←/→ to switch HH:MM)"
+                className="w-full px-2 py-1 text-xs font-mono font-medium text-center rounded-lg border border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all tracking-wider"
+            />
+            <div className="hidden group-hover/time:flex group-focus-within/time:flex flex-col absolute right-1 inset-y-1 justify-center z-10 bg-white/90 dark:bg-dark-card/90 rounded-r-md pl-0.5">
+                <button
+                    type="button"
+                    tabIndex={-1}
+                    onMouseDown={(e) => {
+                        // Prevent button click from taking focus away from input
+                        e.preventDefault();
+                    }}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        stepTime(false, e.shiftKey);
+                    }}
+                    className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer p-0.5 leading-none transition-colors"
+                    title="Increment (Shift: +15m / +5h)"
+                    aria-label="Increment"
+                >
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    tabIndex={-1}
+                    onMouseDown={(e) => {
+                        // Prevent button click from taking focus away from input
+                        e.preventDefault();
+                    }}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        stepTime(true, e.shiftKey);
+                    }}
+                    className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer p-0.5 leading-none transition-colors"
+                    title="Decrement (Shift: -15m / -5h)"
+                    aria-label="Decrement"
+                >
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
     );
 }
 
@@ -166,20 +355,28 @@ export default function VisualCorrectionTimeline({
         });
     }, [parseMinutes]);
 
-    // Flatten initial proposed punches
+    // Flatten initial proposed punches with STABLE IDs (never incorporating p.time!)
     const initialProposedPunches = useMemo(() => {
         if (!Array.isArray(requestData?.proposed_data)) return [];
         const list = [];
-        requestData.proposed_data.forEach((s) => {
-            if (s.time_in) list.push({ time: s.time_in, type: s.punch_type === 'normal' ? 'normal' : 'in' });
-            if (s.time_out) list.push({ time: s.time_out, type: 'out' });
+        requestData.proposed_data.forEach((s, sIdx) => {
+            if (s.time_in) {
+                list.push({
+                    id: s.inPunchId || (s.id ? `${s.id}-in` : `p-sess-${sIdx}-in`),
+                    time: s.time_in,
+                    type: s.punch_type === 'normal' ? 'normal' : 'in'
+                });
+            }
+            if (s.time_out) {
+                list.push({
+                    id: s.outPunchId || (s.id ? `${s.id}-out` : `p-sess-${sIdx}-out`),
+                    time: s.time_out,
+                    type: 'out'
+                });
+            }
         });
         const sorted = list.sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
-        return resequencePunches(sorted.map((p, idx) => ({
-            id: `p-${idx}-${p.time}`,
-            time: p.time,
-            type: p.type || (idx % 2 === 0 ? 'in' : 'out')
-        })));
+        return resequencePunches(sorted);
     }, [requestData, parseMinutes, resequencePunches]);
 
     const [punches, setPunches] = useState(initialProposedPunches);
@@ -195,10 +392,11 @@ export default function VisualCorrectionTimeline({
     const scrollContainerRef = useRef(null);
     const lastClickRef = useRef({ id: null, time: 0 });
 
-    // Sync from props only when changes originate from outside
+    // Sync from props only when changes originate from outside and user is not actively editing
     useEffect(() => {
         const incomingJson = JSON.stringify(requestData?.proposed_data || []);
-        if (incomingJson !== lastEmittedJsonRef.current && !creatingRange && !draggingPunchId) {
+        const isEditingInput = document.activeElement && document.activeElement.tagName === 'INPUT';
+        if (incomingJson !== lastEmittedJsonRef.current && !creatingRange && !draggingPunchId && !isEditingInput) {
             setPunches(initialProposedPunches);
         }
     }, [initialProposedPunches, creatingRange, draggingPunchId, requestData?.proposed_data]);
@@ -250,26 +448,29 @@ export default function VisualCorrectionTimeline({
         const sequenced = resequencePunches(updatedPunches);
         const paired = [];
         let curIn = null;
+        let curInPunchId = null;
 
         for (const p of sequenced) {
             if (p.type === 'normal') {
-                paired.push({ id: `normal-${paired.length}`, time_in: p.time, time_out: '', punch_type: 'normal' });
+                paired.push({ id: `normal-${paired.length}`, time_in: p.time, time_out: '', punch_type: 'normal', inPunchId: p.id });
             } else if (p.type === 'in') {
                 if (curIn !== null) {
-                    paired.push({ id: `sess-${paired.length}`, time_in: curIn, time_out: '', punch_type: 'regular' });
+                    paired.push({ id: `sess-${paired.length}`, time_in: curIn, time_out: '', punch_type: 'regular', inPunchId: curInPunchId });
                 }
                 curIn = p.time;
+                curInPunchId = p.id;
             } else if (p.type === 'out') {
                 if (curIn !== null) {
-                    paired.push({ id: `sess-${paired.length}`, time_in: curIn, time_out: p.time, punch_type: 'regular' });
+                    paired.push({ id: `sess-${paired.length}`, time_in: curIn, time_out: p.time, punch_type: 'regular', inPunchId: curInPunchId, outPunchId: p.id });
                     curIn = null;
+                    curInPunchId = null;
                 } else {
-                    paired.push({ id: `sess-${paired.length}`, time_in: '', time_out: p.time, punch_type: 'regular' });
+                    paired.push({ id: `sess-${paired.length}`, time_in: '', time_out: p.time, punch_type: 'regular', outPunchId: p.id });
                 }
             }
         }
         if (curIn !== null) {
-            paired.push({ id: `sess-${paired.length}`, time_in: curIn, time_out: '', punch_type: 'regular' });
+            paired.push({ id: `sess-${paired.length}`, time_in: curIn, time_out: '', punch_type: 'regular', inPunchId: curInPunchId });
         }
 
         lastEmittedJsonRef.current = JSON.stringify(paired);

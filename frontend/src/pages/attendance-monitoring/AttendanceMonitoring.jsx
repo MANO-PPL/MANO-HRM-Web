@@ -1518,13 +1518,46 @@ const AttendanceMonitoring = () => {
                             )}
                         </AnimatePresence>
 
-                        {/* --- Universal Document & Image Preview Modal (Image, Word, PowerPoint, PDF, Excel, etc.) --- */}
-                        {previewImage && (
-                            <CorrectionDocumentModal
-                                previewUrl={previewImage}
-                                onClose={() => setPreviewImage(null)}
-                            />
-                        )}
+                        {/* --- Universal Document & Image Preview Modal (Safe separation for document vs selfie lightbox) --- */}
+                        {previewImage && (() => {
+                            const isDoc = typeof previewImage === 'string' && /\.(pdf|docx?|xlsx?|pptx?|csv|txt)/i.test(previewImage.split('?')[0]);
+                            if (isDoc) {
+                                return (
+                                    <CorrectionDocumentModal
+                                        previewUrl={previewImage}
+                                        onClose={() => setPreviewImage(null)}
+                                    />
+                                );
+                            }
+                            return createPortal(
+                                <AnimatePresence>
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+                                        onClick={() => setPreviewImage(null)}
+                                    >
+                                        <button
+                                            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
+                                            onClick={() => setPreviewImage(null)}
+                                        >
+                                            <XCircle size={32} />
+                                        </button>
+                                        <motion.img
+                                            initial={{ scale: 0.9, opacity: 0 }}
+                                            animate={{ scale: 1, opacity: 1 }}
+                                            exit={{ scale: 0.9, opacity: 0 }}
+                                            src={previewImage}
+                                            alt="Selfie Preview"
+                                            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    </motion.div>
+                                </AnimatePresence>,
+                                document.body
+                            );
+                        })()}
 
                     </div>
                 </div>
@@ -1539,36 +1572,6 @@ const AttendanceMonitoring = () => {
                     selectedDate={selectedDate}
                     generateAiSummary={generateAiSummary}
                 />
-
-                {/* Image Preview Lightbox */}
-                {previewImage && createPortal(
-                    <AnimatePresence>
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
-                            onClick={() => setPreviewImage(null)}
-                        >
-                            <button
-                                className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
-                                onClick={() => setPreviewImage(null)}
-                            >
-                                <XCircle size={32} />
-                            </button>
-                            <motion.img
-                                initial={{ scale: 0.9, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.9, opacity: 0 }}
-                                src={previewImage}
-                                alt="Selfie Preview"
-                                className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
-                                onClick={(e) => e.stopPropagation()}
-                            />
-                        </motion.div>
-                    </AnimatePresence>,
-                    document.body
-                )}
             </DashboardLayout>
         </>
     );

@@ -141,9 +141,9 @@ const AttendanceCorrectionTab = ({
                                     if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
                                     setIsCorrectionDrawerOpen(true);
                                 }}
-                                className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-3 py-1.5 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs shrink-0"
+                                className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-medium text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-3 py-1.5 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs shrink-0"
                             >
-                                <Plus size={14} strokeWidth={2.5} /> Request Correction
+                                <Plus size={14} strokeWidth={2} /> Request Correction
                             </button>
                         )}
                     </div>
@@ -195,9 +195,9 @@ const AttendanceCorrectionTab = ({
                                             if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
                                             setIsCorrectionDrawerOpen(true);
                                         }}
-                                        className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs"
+                                        className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-medium text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs"
                                     >
-                                        <Plus size={15} strokeWidth={2.5} /> Request Correction
+                                        <Plus size={15} strokeWidth={2} /> Request Correction
                                     </button>
                                 )}
                             </div>
@@ -496,9 +496,9 @@ const AttendanceCorrectionTab = ({
                                         if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
                                         setIsCorrectionDrawerOpen(true);
                                     }}
-                                    className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs mt-1"
+                                    className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-medium text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs mt-1"
                                 >
-                                    <Plus size={15} strokeWidth={2.5} /> Request Correction
+                                    <Plus size={15} strokeWidth={2} /> Request Correction
                                 </button>
                             )}
                         </div>

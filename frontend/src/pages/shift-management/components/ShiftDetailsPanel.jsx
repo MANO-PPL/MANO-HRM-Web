@@ -31,9 +31,11 @@ const ShiftDetailsPanel = ({
                 </div>
                 <div className="flex items-center gap-3">
                     {/* Inline Status Toggle */}
-                    <div className="flex items-center gap-2 border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-1.5 bg-slate-50 dark:bg-slate-800/30 text-xs font-medium select-none">
-                        <span className="text-slate-600 dark:text-slate-350">Active</span>
-                        <label className="relative inline-flex items-center cursor-pointer">
+                    <div className="flex items-center gap-2.5 border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-1.5 bg-slate-50 dark:bg-slate-800/30 text-xs font-medium select-none">
+                        <span className={`text-xs font-medium transition-colors ${selectedShift.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                            {selectedShift.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                        <label className="relative inline-flex items-center cursor-pointer shrink-0">
                             <input 
                                 type="checkbox" 
                                 className="sr-only peer" 
@@ -57,7 +59,7 @@ const ShiftDetailsPanel = ({
                                     }
                                 }} 
                             />
-                            <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                            <div className="w-9 h-5 bg-slate-200 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/30 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-0 after:rounded-full after:h-4 after:w-4 after:shadow-xs after:transition-transform after:duration-200 after:ease-in-out peer-checked:bg-emerald-500 transition-colors duration-200"></div>
                         </label>
                     </div>
                     <button
