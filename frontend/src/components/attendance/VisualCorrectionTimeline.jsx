@@ -1,8 +1,75 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, AlertCircle, CheckSquare, Square, PlusCircle, Clock, RefreshCw } from 'lucide-react';
+import { Trash2, AlertCircle, CheckSquare, Square, PlusCircle, Clock, RefreshCw, X } from 'lucide-react';
 import { toast } from 'react-toastify';
-import TimePicker from '../TimePicker';
+
+function DirectTimeInput({ value, onChange }) {
+    const [text, setText] = useState(value || '');
+
+    useEffect(() => {
+        setText(value || '');
+    }, [value]);
+
+    const handleChange = (e) => {
+        const val = e.target.value;
+        setText(val);
+        if (/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/.test(val)) {
+            onChange(val);
+        }
+    };
+
+    const handleBlur = () => {
+        const clean = text.trim();
+        if (!clean) {
+            setText(value || '');
+            return;
+        }
+
+        let h = NaN;
+        let m = NaN;
+        if (clean.includes(':')) {
+            const parts = clean.split(':');
+            h = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10);
+        } else if (clean.length === 3) {
+            h = parseInt(clean.slice(0, 1), 10);
+            m = parseInt(clean.slice(1), 10);
+        } else if (clean.length === 4) {
+            h = parseInt(clean.slice(0, 2), 10);
+            m = parseInt(clean.slice(2), 10);
+        } else if (clean.length === 1 || clean.length === 2) {
+            h = parseInt(clean, 10);
+            m = 0;
+        }
+
+        if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+            const normalized = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            setText(normalized);
+            onChange(normalized);
+        } else {
+            setText(value || '');
+        }
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.target.blur();
+        }
+    };
+
+    return (
+        <input
+            type="text"
+            value={text}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            placeholder="00:00"
+            maxLength={5}
+            className="w-full px-2 py-1 text-xs font-mono font-medium text-center rounded-lg border border-slate-200 dark:border-github-dark-border bg-white dark:bg-dark-card text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all tracking-wider"
+        />
+    );
+}
 
 export default function VisualCorrectionTimeline({
     requestData,
@@ -11,7 +78,9 @@ export default function VisualCorrectionTimeline({
     className = '',
     showOriginalOnly = false,
     shift = null,
-    onRemoveOriginalPunch = null
+    onRemoveOriginalPunch = null,
+    frameless = false,
+    hideHeader = false
 }) {
     if (!requestData) return null;
 
@@ -75,6 +144,28 @@ export default function VisualCorrectionTimeline({
         }));
     }, [requestData, parseMinutes]);
 
+    // Resequence ONLY boundary punches (preserving normal checkpoints strictly)
+    const resequencePunches = useCallback((punchList) => {
+        const sorted = [...punchList].sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
+        let boundaryIndex = 0;
+        let currentPairIdx = 0;
+
+        return sorted.map((p) => {
+            if (p.type === 'normal') {
+                return { ...p, type: 'normal', pairIdx: currentPairIdx };
+            }
+            const assignedType = boundaryIndex % 2 === 0 ? 'in' : 'out';
+            const assignedPair = Math.floor(boundaryIndex / 2);
+            if (assignedType === 'in') currentPairIdx = assignedPair;
+            boundaryIndex++;
+            return {
+                ...p,
+                type: assignedType,
+                pairIdx: assignedPair
+            };
+        });
+    }, [parseMinutes]);
+
     // Flatten initial proposed punches
     const initialProposedPunches = useMemo(() => {
         if (!Array.isArray(requestData?.proposed_data)) return [];
@@ -84,19 +175,18 @@ export default function VisualCorrectionTimeline({
             if (s.time_out) list.push({ time: s.time_out, type: 'out' });
         });
         const sorted = list.sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
-        return sorted.map((p, idx) => ({
+        return resequencePunches(sorted.map((p, idx) => ({
             id: `p-${idx}-${p.time}`,
             time: p.time,
-            type: p.type || (idx % 2 === 0 ? 'in' : 'out'),
-            pairIdx: Math.floor(idx / 2)
-        }));
-    }, [requestData, parseMinutes]);
+            type: p.type || (idx % 2 === 0 ? 'in' : 'out')
+        })));
+    }, [requestData, parseMinutes, resequencePunches]);
 
     const [punches, setPunches] = useState(initialProposedPunches);
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [draggingPunchId, setDraggingPunchId] = useState(null);
     const [creatingRange, setCreatingRange] = useState(null);
-    const [hoveredAuraPairIdx, setHoveredAuraPairIdx] = useState(null);
+    const [hoveredSessionIdx, setHoveredSessionIdx] = useState(null);
     const [hoveredPunchId, setHoveredPunchId] = useState(null);
     const [, setHoveredMins] = useState(null);
     const [warningMsg, setWarningMsg] = useState(null);
@@ -154,27 +244,6 @@ export default function VisualCorrectionTimeline({
         return Math.round(rawMinutes / 5) * 5;
     }, [TOTAL_MINUTES]);
 
-    // Resequence ONLY boundary punches (preserving normal punches strictly)
-    const resequencePunches = (punchList) => {
-        const sorted = [...punchList].sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
-        let boundaryIndex = 0;
-        let currentPairIdx = 0;
-
-        return sorted.map((p) => {
-            if (p.type === 'normal') {
-                return { ...p, type: 'normal', pairIdx: currentPairIdx };
-            }
-            const assignedType = boundaryIndex % 2 === 0 ? 'in' : 'out';
-            const assignedPair = Math.floor(boundaryIndex / 2);
-            if (assignedType === 'in') currentPairIdx = assignedPair;
-            boundaryIndex++;
-            return {
-                ...p,
-                type: assignedType,
-                pairIdx: assignedPair
-            };
-        });
-    };
 
     // Emit updated punches paired chronologically for parent / backend
     const emitChanges = (updatedPunches) => {
@@ -387,37 +456,6 @@ export default function VisualCorrectionTimeline({
         emitChanges(sequenced);
     };
 
-    // Add Checkpoint punch programmatically
-    const handleAddCheckpointAtCurrent = () => {
-        const boundary = punches
-            .filter(p => p.type !== 'normal')
-            .sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
-
-        for (let i = 0; i < boundary.length; i += 2) {
-            const inP = boundary[i];
-            const outP = boundary[i + 1];
-            if (inP && outP && inP.type === 'in' && outP.type === 'out') {
-                const inM = parseMinutes(inP.time);
-                const outM = parseMinutes(outP.time);
-                if (inM !== null && outM !== null && outM - inM >= 15) {
-                    const midPoint = Math.round((inM + outM) / 2 / 5) * 5;
-                    const newNormalPunch = {
-                        id: `p-chk-${Date.now()}`,
-                        time: minutesToTimeStr(midPoint),
-                        type: 'normal',
-                        pairIdx: Math.floor(i / 2)
-                    };
-                    const next = resequencePunches([...punches, newNormalPunch]);
-                    setPunches(next);
-                    emitChanges(next);
-                    setHoveredPunchId(newNormalPunch.id);
-                    return;
-                }
-            }
-        }
-        setWarningMsg('Add a Clock IN and Clock OUT pair first to add a checkpoint between them.');
-        setTimeout(() => setWarningMsg(null), 2500);
-    };
 
     // Toggle select a specific punch
     const handleToggleSelect = (punchId) => {
@@ -475,22 +513,89 @@ export default function VisualCorrectionTimeline({
         }
     };
 
-    // Track auras for interval spans on track
-    const trackAuras = useMemo(() => {
-        const auras = [];
-        const boundary = punches
-            .filter(p => p.type !== 'normal')
-            .sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
+    // Group proposed punches chronologically into sessions (IN -> [intermediate checkpoints] -> OUT)
+    const proposedSessions = useMemo(() => {
+        const sorted = [...punches].sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
+        const result = [];
+        let curIn = null;
+        let curCheckpoints = [];
 
-        for (let i = 0; i < boundary.length; i += 2) {
-            const inP = boundary[i];
-            const outP = boundary[i + 1];
-            if (inP && outP) {
-                auras.push({ pairIdx: inP.pairIdx, inP, outP });
+        sorted.forEach(p => {
+            if (p.type === 'in') {
+                if (curIn) {
+                    result.push({
+                        sessionIdx: result.length,
+                        inP: curIn,
+                        outP: null,
+                        checkpoints: curCheckpoints,
+                        punches: [curIn, ...curCheckpoints]
+                    });
+                }
+                curIn = p;
+                curCheckpoints = [];
+            } else if (p.type === 'normal') {
+                curCheckpoints.push(p);
+            } else if (p.type === 'out') {
+                if (curIn) {
+                    result.push({
+                        sessionIdx: result.length,
+                        inP: curIn,
+                        outP: p,
+                        checkpoints: curCheckpoints,
+                        punches: [curIn, ...curCheckpoints, p]
+                    });
+                    curIn = null;
+                    curCheckpoints = [];
+                } else {
+                    result.push({
+                        sessionIdx: result.length,
+                        inP: null,
+                        outP: p,
+                        checkpoints: curCheckpoints,
+                        punches: [...curCheckpoints, p]
+                    });
+                    curCheckpoints = [];
+                }
             }
+        });
+
+        if (curIn) {
+            result.push({
+                sessionIdx: result.length,
+                inP: curIn,
+                outP: null,
+                checkpoints: curCheckpoints,
+                punches: [curIn, ...curCheckpoints]
+            });
         }
-        return auras;
+
+        return result;
     }, [punches, parseMinutes]);
+
+    // Map each punch ID to its session index so all punches in a session can be linked
+    const punchSessionMap = useMemo(() => {
+        const map = new Map();
+        proposedSessions.forEach(s => {
+            s.punches.forEach(p => {
+                map.set(p.id, s.sessionIdx);
+            });
+        });
+        return map;
+    }, [proposedSessions]);
+
+    // Track auras for interval spans on track (closed IN -> OUT sessions)
+    const trackAuras = useMemo(() => {
+        return proposedSessions
+            .filter(s => s.inP && s.outP)
+            .map(s => ({
+                sessionIdx: s.sessionIdx,
+                pairIdx: s.sessionIdx,
+                inP: s.inP,
+                outP: s.outP,
+                punches: s.punches,
+                checkpoints: s.checkpoints
+            }));
+    }, [proposedSessions]);
 
     const originalPunchPairs = useMemo(() => {
         const pairs = [];
@@ -721,24 +826,37 @@ export default function VisualCorrectionTimeline({
     // MAIN COMPARISON & EDITABLE VIEW (SYNCHRONIZED 24HR RAILS)
     // ==========================================================
     return (
-        <div className={`bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl p-4 sm:p-5 select-none space-y-4 shadow-2xs ${className}`}>
+        <div className={`select-none space-y-4 ${frameless ? '' : 'bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl p-4 sm:p-5 shadow-2xs'} ${className}`}>
             {/* Header & Helper Banner */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-100 dark:border-github-dark-border/40 gap-2">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <Clock size={15} className="text-indigo-500" />
-                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                            Punch Timeline Visualizer
-                        </h4>
+            {!hideHeader ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-100 dark:border-github-dark-border/40 gap-2">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <Clock size={15} className="text-indigo-500" />
+                            <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                Punch Timeline Visualizer
+                            </h4>
+                        </div>
+                        <p className="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">
+                            {editable
+                                ? 'Original punches are fixed reference. Drag or click on Proposed Timeline to build your adjustment'
+                                : 'Comparison of originally recorded vs proposed punches'}
+                        </p>
                     </div>
-                    <p className="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">
-                        {editable
-                            ? 'Original punches are fixed reference. Drag or click on Proposed Timeline to build your adjustment'
-                            : 'Comparison of originally recorded vs proposed punches'}
-                    </p>
-                </div>
 
-                {warningMsg && (
+                    {warningMsg && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-300 text-xs font-medium"
+                        >
+                            <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span>{warningMsg}</span>
+                        </motion.div>
+                    )}
+                </div>
+            ) : (
+                warningMsg && (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -747,8 +865,8 @@ export default function VisualCorrectionTimeline({
                         <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
                         <span>{warningMsg}</span>
                     </motion.div>
-                )}
-            </div>
+                )
+            )}
 
             {/* SHARED HORIZONTAL SCROLL CONTAINER FOR BOTH RAILS (PERFECT VERTICAL ALIGNMENT) */}
             <div
@@ -974,20 +1092,19 @@ export default function VisualCorrectionTimeline({
                                 const inPct = getPosPercent(parseMinutes(aura.inP.time));
                                 const outPct = getPosPercent(parseMinutes(aura.outP.time));
                                 const spanWidth = Math.max(0, outPct - inPct);
-                                const durationMinutes = parseMinutes(aura.outP.time) - parseMinutes(aura.inP.time);
-                                const isAuraHovered = editable && hoveredAuraPairIdx === aura.pairIdx;
+                                const isAuraHovered = editable && hoveredSessionIdx === aura.sessionIdx;
 
                                 return (
                                     <div
-                                        key={aura.pairIdx}
+                                        key={`aura-${aura.sessionIdx}`}
                                         onMouseEnter={() => {
                                             if (!editable) return;
-                                            setHoveredAuraPairIdx(aura.pairIdx);
+                                            setHoveredSessionIdx(aura.sessionIdx);
                                             setHoveredPunchId(null);
                                         }}
                                         onMouseLeave={() => {
                                             if (!editable) return;
-                                            setHoveredAuraPairIdx(null);
+                                            setHoveredSessionIdx(null);
                                         }}
                                         className={`group absolute top-1/2 -translate-y-1/2 h-7 rounded-xl transition-all flex items-center justify-center ${
                                             editable
@@ -1000,13 +1117,6 @@ export default function VisualCorrectionTimeline({
                                         }`}
                                         style={{ left: `${inPct}%`, width: `${spanWidth}%` }}
                                     >
-                                        {/* Centered duration pill if span is wide enough */}
-                                        {spanWidth >= 8 && durationMinutes > 0 && (
-                                            <span className="text-[10px] font-mono font-medium text-emerald-700 dark:text-emerald-300 bg-white/90 dark:bg-dark-card/90 px-2 py-0.5 rounded-full shadow-2xs border border-emerald-300/50 dark:border-emerald-700/50 pointer-events-none">
-                                                {formatDuration(durationMinutes)}
-                                            </span>
-                                        )}
-
                                         {/* Middle Hover Prompt to Drop Checkpoint */}
                                         {editable && (
                                             <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-10 whitespace-nowrap bg-slate-900 text-white text-[11px] font-medium px-2.5 py-0.5 rounded-lg shadow-md flex items-center gap-1 pointer-events-none z-30">
@@ -1046,8 +1156,8 @@ export default function VisualCorrectionTimeline({
                             {/* Empty Proposed Timeline Placeholder Prompt */}
                             {punches.length === 0 && !creatingRange && (
                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-white/90 dark:bg-dark-card/90 px-3 py-1 rounded-full border border-dashed border-indigo-300 dark:border-indigo-700/60 shadow-2xs">
-                                        Proposed timeline is empty — Click rail to add punch, or drag across to set a session
+                                    <span className="text-xs font-normal text-slate-400 dark:text-slate-500 bg-white/90 dark:bg-dark-card/90 px-3 py-1 rounded-full border border-dashed border-slate-300 dark:border-slate-700/60 shadow-2xs">
+                                        No punches proposed yet
                                     </span>
                                 </div>
                             )}
@@ -1058,7 +1168,8 @@ export default function VisualCorrectionTimeline({
                                 const pct = getPosPercent(mins);
                                 const isDragging = draggingPunchId === p.id;
                                 const isThisDotHovered = hoveredPunchId === p.id;
-                                const isAuraActive = hoveredAuraPairIdx === p.pairIdx;
+                                const punchSessionIdx = punchSessionMap.get(p.id);
+                                const isSessionActive = hoveredSessionIdx !== null && punchSessionIdx !== undefined && hoveredSessionIdx === punchSessionIdx;
                                 const isIn = p.type === 'in';
                                 const isNormal = p.type === 'normal';
 
@@ -1097,10 +1208,13 @@ export default function VisualCorrectionTimeline({
                                         }}
                                         onMouseEnter={() => {
                                             setHoveredPunchId(p.id);
-                                            setHoveredAuraPairIdx(null);
+                                            if (punchSessionIdx !== undefined) {
+                                                setHoveredSessionIdx(punchSessionIdx);
+                                            }
                                         }}
                                         onMouseLeave={() => {
                                             setHoveredPunchId(null);
+                                            setHoveredSessionIdx(null);
                                         }}
                                     >
                                         {/* Floating Time Tooltip */}
@@ -1135,8 +1249,8 @@ export default function VisualCorrectionTimeline({
                                                     ? 'scale-125 ring-4 ring-indigo-400/50'
                                                     : isThisDotHovered
                                                         ? 'scale-125 ring-4 ring-indigo-400/40'
-                                                        : isAuraActive
-                                                            ? 'scale-110'
+                                                        : isSessionActive
+                                                            ? 'scale-110 ring-2 ring-emerald-400/50'
                                                             : 'hover:scale-120'
                                             }`}
                                         >
@@ -1151,7 +1265,7 @@ export default function VisualCorrectionTimeline({
             </div>
 
             {/* ─── ROW 3: DETAILED PUNCH LIST & ACTIONS (EDITABLE MODE) ─── */}
-            {editable && (
+            {editable && punches.length > 0 && (
                 <div className="space-y-2.5 pt-1">
                     {/* Action Bar */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-github-dark-border/40">
@@ -1159,24 +1273,14 @@ export default function VisualCorrectionTimeline({
                             <button
                                 type="button"
                                 onClick={handleToggleSelectAll}
-                                disabled={punches.length === 0}
-                                className="text-xs font-normal text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="text-xs font-normal text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                             >
-                                {selectedIds.size === punches.length && punches.length > 0 ? (
+                                {selectedIds.size === punches.length ? (
                                     <CheckSquare size={14} className="text-emerald-600 dark:text-emerald-400" />
                                 ) : (
                                     <Square size={14} className="text-slate-400" />
                                 )}
                                 <span>Select All ({punches.length})</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={handleAddCheckpointAtCurrent}
-                                className="text-xs font-normal text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/40 border border-amber-200 dark:border-amber-800/40 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-                            >
-                                <PlusCircle size={13} className="text-amber-500" />
-                                <span>Add Checkpoint</span>
                             </button>
 
                             {selectedIds.size > 0 && (
@@ -1191,34 +1295,22 @@ export default function VisualCorrectionTimeline({
                             )}
                         </div>
 
-                        {punches.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={handleClearAll}
-                                className="text-xs font-normal text-slate-400 hover:text-rose-500 transition-colors self-end sm:self-auto cursor-pointer"
-                            >
-                                Clear All Proposed
-                            </button>
-                        )}
+                        <button
+                            type="button"
+                            onClick={handleClearAll}
+                            className="text-xs font-normal text-slate-400 hover:text-rose-500 transition-colors self-end sm:self-auto cursor-pointer"
+                        >
+                            Clear All Proposed
+                        </button>
                     </div>
 
-                    {/* Empty State when no punches proposed */}
-                    {punches.length === 0 ? (
-                        <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-github-dark-border bg-slate-50/40 dark:bg-github-dark-bg/20 text-center space-y-1">
-                            <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                                Proposed Timeline is Empty
-                            </p>
-                            <p className="text-[11px] text-slate-400">
-                                Click directly on the timeline rail above to drop punch points, drag across to set a session, or use the presets above to propose your hours.
-                            </p>
-                        </div>
-                    ) : (
-                        /* Single Punch Rows */
-                        <div className="space-y-2 max-h-56 overflow-y-auto no-scrollbar pr-0.5">
+                    {/* Single Punch Rows */}
+                    <div className="space-y-2">
                             {punches.map((p, idx) => {
                                 const isChecked = selectedIds.has(p.id);
-                                const isBlinkingAlone = hoveredPunchId === p.id;
-                                const isBlinkingAsPair = hoveredAuraPairIdx !== null && hoveredAuraPairIdx === p.pairIdx;
+                                const punchSessionIdx = punchSessionMap.get(p.id);
+                                const isSessionActive = hoveredSessionIdx !== null && punchSessionIdx !== undefined && hoveredSessionIdx === punchSessionIdx;
+                                const isDirectlyHovered = hoveredPunchId === p.id;
                                 const isIn = p.type === 'in';
                                 const isNormal = p.type === 'normal';
 
@@ -1229,23 +1321,22 @@ export default function VisualCorrectionTimeline({
                                         title="Double-click to remove punch"
                                         onMouseEnter={() => {
                                             setHoveredPunchId(p.id);
-                                            setHoveredAuraPairIdx(null);
+                                            if (punchSessionIdx !== undefined) {
+                                                setHoveredSessionIdx(punchSessionIdx);
+                                            }
                                         }}
                                         onMouseLeave={() => {
                                             setHoveredPunchId(null);
+                                            setHoveredSessionIdx(null);
                                         }}
                                         className={`flex items-center justify-between p-2.5 rounded-xl transition-all border select-none ${
-                                            isBlinkingAlone
-                                                ? (isNormal
-                                                    ? 'ring-2 ring-amber-400 bg-amber-50/80 dark:bg-amber-950/40 border-amber-400 shadow-xs'
-                                                    : isIn
-                                                        ? 'ring-2 ring-emerald-400 bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-400 shadow-xs'
-                                                        : 'ring-2 ring-rose-400 bg-rose-50/80 dark:bg-rose-950/40 border-rose-400 shadow-xs')
-                                                : isBlinkingAsPair
-                                                    ? 'ring-1 ring-emerald-400/80 bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-400/60 shadow-xs'
-                                                    : isChecked
-                                                        ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-500/40'
-                                                        : 'bg-white dark:bg-dark-card border-slate-200 dark:border-github-dark-border shadow-2xs hover:border-slate-300'
+                                            isChecked
+                                                ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-1 ring-emerald-400/30 shadow-xs'
+                                                : isDirectlyHovered
+                                                    ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/40 ring-1 ring-emerald-400/40 shadow-xs'
+                                                    : isSessionActive
+                                                        ? 'border-emerald-400/70 dark:border-emerald-500/50 bg-emerald-50/40 dark:bg-emerald-950/20 ring-1 ring-emerald-400/20 shadow-2xs'
+                                                        : 'bg-white dark:bg-dark-card border-slate-200 dark:border-github-dark-border shadow-2xs hover:border-slate-300 dark:hover:border-github-dark-border/80'
                                         }`}
                                     >
                                         {/* Checkbox + Punch Info with Pixel-Perfect Alignment */}
@@ -1293,38 +1384,29 @@ export default function VisualCorrectionTimeline({
                                                 <span>{isNormal ? 'Checkpoint' : isIn ? 'Clock IN' : 'Clock OUT'}</span>
                                             </span>
 
-                                            {/* Editable Time Picker - Lets User Write Directly */}
-                                            <div className="w-28 sm:w-32 shrink-0">
-                                                <TimePicker
+                                            {/* Direct Editable Time Input - Lets User Type Directly Without Dropdowns */}
+                                            <div className="w-20 sm:w-24 shrink-0">
+                                                <DirectTimeInput
                                                     value={p.time || ''}
                                                     onChange={(newTime) => handleTimeChange(p.id, newTime)}
-                                                    compact={true}
-                                                    placeholder="--:--"
-                                                    align="left"
                                                 />
                                             </div>
-
-                                            {/* 12-Hour Formatted Preview */}
-                                            <span className="font-mono text-xs font-normal text-slate-400 w-20 shrink-0 hidden sm:inline-block">
-                                                ({formatDisplayTime(p.time)})
-                                            </span>
                                         </div>
 
-                                        {/* 1-Click Delete Button */}
+                                        {/* 1-Click Cross Button to Delete */}
                                         <button
                                             type="button"
                                             onClick={() => handleRemovePunch(p.id)}
-                                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all flex items-center gap-1 text-xs font-normal cursor-pointer"
-                                            title="Delete this punch"
+                                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all flex items-center justify-center cursor-pointer shrink-0"
+                                            title="Delete punch"
+                                            aria-label="Delete punch"
                                         >
-                                            <Trash2 size={14} />
-                                            <span className="hidden sm:inline">Delete</span>
+                                            <X size={15} />
                                         </button>
                                     </div>
                                 );
                             })}
                         </div>
-                    )}
                 </div>
             )}
 

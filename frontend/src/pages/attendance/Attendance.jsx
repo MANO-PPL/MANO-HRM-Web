@@ -90,7 +90,6 @@ import MarkAttendanceTab from './tabs/MarkAttendanceTab';
 import AttendanceHistoryTab from './tabs/AttendanceHistoryTab';
 import AttendanceAnalyticsTab from './tabs/AttendanceAnalyticsTab';
 import AttendanceCorrectionTab from './tabs/AttendanceCorrectionTab';
-import AttendanceReportsTab from './tabs/AttendanceReportsTab';
 
 // ─── Per-Page Tour Steps ───────────────────────────────────────────────────
 const PAGE_KEY = 'emp_attendance';
@@ -583,163 +582,8 @@ const Attendance = () => {
                 setSubTab('correction');
             }
         },
-        {
-            targetId: 'att-reports-sub-tab',
-            title: 'Reports & Exports',
-            description: 'Under the Reports tab, you can export your official monthly attendance records. Select your preferred file format (Excel, CSV, or PDF) and click the Download Report button to export your records.',
-            action: () => {
-                setIsCorrectionDrawerOpen(false);
-                setActiveTab('my_attendance');
-                setSubTab('reports');
-            }
-        },
     ], []);
 
-
-    // Reports Self-Service States
-    const [reportsSelectedMonth, setReportsSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-    const [reportsSelectedDate, setReportsSelectedDate] = useState(() => getLocalDateString());
-    const [reportsReportType, setReportsReportType] = useState('attendance_detailed');
-    const [reportsFileFormat, setReportsFileFormat] = useState('xlsx');
-    const [reportsIsGenerating, setReportsIsGenerating] = useState(false);
-    const [reportsActiveTab, setReportsActiveTab] = useState('preview'); // 'preview' | 'history'
-    const [reportsUseCustomRange, setReportsUseCustomRange] = useState(false);
-    const [reportsCustomStartDate, setReportsCustomStartDate] = useState(() => getLocalDateString());
-    const [reportsCustomEndDate, setReportsCustomEndDate] = useState(() => getLocalDateString());
-    const [reportsSelectedWeek, setReportsSelectedWeek] = useState('');
-    const [reportsExportColumns, setReportsExportColumns] = useState({
-        shift: true,
-        timeIn: true,
-        timeOut: true,
-        workedHours: true,
-        requiredHours: true,
-        late: true,
-        location: true,
-        attendanceDays: true
-    });
-
-    const [reportsIsTypeDropdownOpen, setReportsIsTypeDropdownOpen] = useState(false);
-    const [reportsIsWeekDropdownOpen, setReportsIsWeekDropdownOpen] = useState(false);
-    const [reportsIsColsDropdownOpen, setReportsIsColsDropdownOpen] = useState(false);
-
-    const reportsTypeDropdownRef = useRef(null);
-    const reportsWeekDropdownRef = useRef(null);
-    const reportsColsDropdownRef = useRef(null);
-
-    const [reportsExportHistory, setReportsExportHistory] = useState(() => {
-        const savedHistory = localStorage.getItem('attendance_my_reports_export_history');
-        return savedHistory ? JSON.parse(savedHistory) : [];
-    });
-
-    const [reportsPreviewData, setReportsPreviewData] = useState({ columns: [], rows: [] });
-    const [reportsLoadingPreview, setReportsLoadingPreview] = useState(false);
-
-    const reportsSummary = useMemo(() => {
-        const summary = {
-            present: 0,
-            absent: 0,
-            leave: 0,
-            halfDay: 0,
-            overtime: 0,
-            hasData: false
-        };
-
-        if (!reportsPreviewData || !reportsPreviewData.rows || reportsPreviewData.rows.length === 0) {
-            return summary;
-        }
-
-        // 1. If we have cardRecords, we can calculate from daily records directly
-        if (reportsPreviewData.cardRecords && reportsPreviewData.cardRecords.length > 0) {
-            summary.hasData = true;
-            reportsPreviewData.cardRecords.forEach(record => {
-                const status = record.status || '';
-                const statusLower = status.toLowerCase();
-
-                if (status === 'Present' || statusLower.includes('present')) {
-                    summary.present += 1;
-                } else if (status === 'Absent' || statusLower.includes('absent')) {
-                    summary.absent += 1;
-                } else if (statusLower === 'on leave' || statusLower === 'leave') {
-                    summary.leave += 1;
-                } else if (statusLower === 'half day') {
-                    summary.halfDay += 1;
-                } else if (statusLower.includes('late') || statusLower.includes('overtime')) {
-                    summary.present += 1; // late/overtime counts as present
-                }
-
-                const otHrs = parseFloat(record.overtime_hours);
-                if (!isNaN(otHrs) && otHrs > 0) {
-                    summary.overtime += otHrs;
-                }
-            });
-            return summary;
-        }
-
-        // 2. Otherwise, parse spreadsheet columns
-        const columns = reportsPreviewData.columns || [];
-        const rows = reportsPreviewData.rows || [];
-
-        const dataRows = rows.filter(row => {
-            const firstCell = row[0]?.toString().toUpperCase();
-            return firstCell !== 'TOTALS' && firstCell !== 'TOTAL';
-        });
-
-        if (dataRows.length === 0) return summary;
-
-        // Find indices of relevant columns
-        const presentIdx = columns.findIndex(c => {
-            const cl = c?.toString().toLowerCase() || '';
-            return cl === 'present' || cl === 'present days';
-        });
-        const absentIdx = columns.findIndex(c => {
-            const cl = c?.toString().toLowerCase() || '';
-            return cl === 'absent' || cl === 'absent days';
-        });
-        const leaveIdx = columns.findIndex(c => {
-            const cl = c?.toString().toLowerCase() || '';
-            return cl === 'on leave' || cl === 'leave' || cl === 'leave days';
-        });
-        const halfDayIdx = columns.findIndex(c => {
-            const cl = c?.toString().toLowerCase() || '';
-            return cl === 'half day' || cl === 'half days';
-        });
-        const overtimeIdx = columns.findIndex(c => {
-            const cl = c?.toString().toLowerCase() || '';
-            return cl.includes('overtime') || cl === 'ot' || cl === 'ot hrs';
-        });
-        const statusIdx = columns.findIndex(c => (c?.toString().toLowerCase() || '') === 'status');
-
-        if (presentIdx !== -1 || absentIdx !== -1 || leaveIdx !== -1 || halfDayIdx !== -1 || overtimeIdx !== -1) {
-            summary.hasData = true;
-            dataRows.forEach(row => {
-                if (presentIdx !== -1) summary.present += parseInt(row[presentIdx]) || 0;
-                if (absentIdx !== -1) summary.absent += parseInt(row[absentIdx]) || 0;
-                if (leaveIdx !== -1) summary.leave += parseInt(row[leaveIdx]) || 0;
-                if (halfDayIdx !== -1) summary.halfDay += parseInt(row[halfDayIdx]) || 0;
-                if (overtimeIdx !== -1) summary.overtime += parseFloat(row[overtimeIdx]) || 0;
-            });
-        } else if (statusIdx !== -1) {
-            summary.hasData = true;
-            dataRows.forEach(row => {
-                const status = row[statusIdx]?.toString() || '';
-                const statusLower = status.toLowerCase();
-
-                if (status === 'Present' || statusLower.includes('present')) {
-                    summary.present += 1;
-                } else if (status === 'Absent' || statusLower.includes('absent')) {
-                    summary.absent += 1;
-                } else if (statusLower === 'on leave' || statusLower === 'leave') {
-                    summary.leave += 1;
-                } else if (statusLower === 'half day') {
-                    summary.halfDay += 1;
-                } else if (statusLower.includes('late') || statusLower.includes('overtime')) {
-                    summary.present += 1;
-                }
-            });
-        }
-
-        return summary;
-    }, [reportsPreviewData]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -784,170 +628,7 @@ const Attendance = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showCalendar]);
 
-    // Handle outside click for reports dropdowns
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (reportsTypeDropdownRef.current && !reportsTypeDropdownRef.current.contains(event.target)) {
-                setReportsIsTypeDropdownOpen(false);
-            }
-            if (reportsWeekDropdownRef.current && !reportsWeekDropdownRef.current.contains(event.target)) {
-                setReportsIsWeekDropdownOpen(false);
-            }
-            if (reportsColsDropdownRef.current && !reportsColsDropdownRef.current.contains(event.target)) {
-                setReportsIsColsDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
 
-    // Save reports export history
-    useEffect(() => {
-        localStorage.setItem('attendance_my_reports_export_history', JSON.stringify(reportsExportHistory));
-    }, [reportsExportHistory]);
-
-    // Calculate weeks for reports selection
-    const reportsWeeks = useMemo(() => getWeeksOfMonth(reportsSelectedMonth), [reportsSelectedMonth]);
-
-    useEffect(() => {
-        if (reportsWeeks.length > 0) {
-            setReportsSelectedWeek(reportsWeeks[0].value);
-        }
-    }, [reportsWeeks]);
-
-    // Fetch reports preview data
-    const reportsExportColumnsKey = JSON.stringify(reportsExportColumns);
-
-    useEffect(() => {
-        if (activeTab !== 'my_attendance' || subTab !== 'reports') return;
-        let cancelled = false;
-        const fetchPreview = async () => {
-            setReportsLoadingPreview(true);
-            try {
-                const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportsReportType);
-                const dateToUse = (isWeekly && !reportsUseCustomRange) ? reportsSelectedWeek : reportsSelectedDate;
-
-                const qStart = reportsUseCustomRange ? reportsCustomStartDate : "";
-                const qEnd = reportsUseCustomRange ? reportsCustomEndDate : "";
-
-                const res = await attendanceService.getMyReportPreview(
-                    reportsSelectedMonth,
-                    reportsReportType,
-                    dateToUse,
-                    qStart,
-                    qEnd,
-                    reportsExportColumnsKey
-                );
-                if (!cancelled && res.ok) {
-                    setReportsPreviewData(res.data);
-                }
-            } catch (error) {
-                if (!cancelled) {
-                    console.error("fetchPreview failed:", error);
-                    toast.error("Failed to load preview data");
-                }
-            } finally {
-                if (!cancelled) setReportsLoadingPreview(false);
-            }
-        };
-        fetchPreview();
-        return () => { cancelled = true; };
-    }, [activeTab, subTab, reportsSelectedMonth, reportsReportType, reportsSelectedDate, reportsUseCustomRange, reportsCustomStartDate, reportsCustomEndDate, reportsSelectedWeek, reportsExportColumnsKey]);
-
-    // Poll status for generating self-service reports
-    useEffect(() => {
-        const generatingReports = reportsExportHistory.filter(item => item.status === 'Generating');
-        if (generatingReports.length === 0) return;
-
-        const interval = setInterval(async () => {
-            let updated = false;
-            const nextHistory = await Promise.all(reportsExportHistory.map(async (item) => {
-                if (item.status === 'Generating' && item.reportId) {
-                    try {
-                        const res = await attendanceService.getMyReportStatus(item.reportId);
-                        if (res.ok && res.data) {
-                            const { status, file_url, error_message } = res.data;
-                            if (status === 'completed') {
-                                updated = true;
-                                toast.success(`Report Ready: ${item.type} has compiled successfully.`);
-                                const link = document.createElement('a');
-                                link.href = file_url;
-                                link.setAttribute('download', item.name);
-                                document.body.appendChild(link);
-                                link.click();
-                                link.remove();
-                                return {
-                                    ...item,
-                                    status: 'Ready',
-                                    file_url,
-                                    size: 'S3 Link'
-                                };
-                            } else if (status === 'failed') {
-                                updated = true;
-                                toast.error(`Report Failed: ${error_message || 'Compilation failed'}`);
-                                return {
-                                    ...item,
-                                    status: 'Failed',
-                                    size: 'Error'
-                                };
-                            }
-                        }
-                    } catch (err) {
-                        console.error("Failed to poll status for report", item.reportId, err);
-                    }
-                }
-                return item;
-            }));
-
-            if (updated) {
-                setReportsExportHistory(nextHistory);
-            }
-        }, 3000);
-
-        return () => clearInterval(interval);
-    }, [reportsExportHistory]);
-
-    const handleReportsGenerate = async () => {
-        setReportsIsGenerating(true);
-        try {
-            const isWeekly = ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportsReportType);
-            const dateToUse = (isWeekly && !reportsUseCustomRange) ? reportsSelectedWeek : reportsSelectedDate;
-
-            const qStart = reportsUseCustomRange ? reportsCustomStartDate : "";
-            const qEnd = reportsUseCustomRange ? reportsCustomEndDate : "";
-
-            const res = await attendanceService.queueMyReport(
-                reportsSelectedMonth,
-                reportsReportType,
-                reportsFileFormat,
-                dateToUse,
-                qStart,
-                qEnd,
-                JSON.stringify(reportsExportColumns)
-            );
-            if (res.ok) {
-                const reportId = res.reportId;
-                const filename = `My_Report_${reportsReportType}_${reportsUseCustomRange ? `${reportsCustomStartDate}_to_${reportsCustomEndDate}` : (reportsSelectedMonth || dateToUse)}.${reportsFileFormat}`;
-                const reportTypeLabel = reportsReportType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                const newReport = {
-                    id: reportId || Date.now().toString(),
-                    reportId: reportId,
-                    name: filename,
-                    type: reportTypeLabel,
-                    date: new Date().toLocaleString(),
-                    status: 'Generating',
-                    size: 'Pending'
-                };
-                setReportsExportHistory(prev => [newReport, ...prev]);
-                toast.info("Report is compiling in the background! Track it in Export History.");
-                setReportsActiveTab('history');
-            }
-        } catch (error) {
-            toast.error(error.message || "Failed to generate report");
-        } finally {
-            setReportsIsGenerating(false);
-        }
-    };
 
     // Camera State
     const [showCamera, setShowCamera] = useState(false);
@@ -1539,11 +1220,25 @@ const Attendance = () => {
                 const loadedSessions = rawList.map((s, i) => {
                     const time_in_str = extractHHMM(s.time_in || s.time_in_ts);
                     const time_out_str = extractHHMM(s.time_out || s.time_out_ts);
-                    return { id: Date.now() + i, time_in: time_in_str, time_out: time_out_str, punch_type: 'regular' };
+                    return {
+                        id: Date.now() + i,
+                        time_in: time_in_str,
+                        time_out: time_out_str,
+                        punch_type: 'regular',
+                        checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : (Array.isArray(s.raw_checkpoints) ? s.raw_checkpoints : []),
+                        status: s.status,
+                        raw_session: s
+                    };
                 });
 
                 // Save a frozen snapshot for original_data - never modified by form edits
-                setOriginalSessions(loadedSessions.map(s => ({ time_in: s.time_in, time_out: s.time_out })));
+                setOriginalSessions(loadedSessions.map(s => ({
+                    time_in: s.time_in,
+                    time_out: s.time_out,
+                    checkpoints: s.checkpoints,
+                    status: s.status,
+                    raw_session: s.raw_session
+                })));
 
                 // Proposed sessions start empty so user can construct timeline with their own mindset
                 setCorrSessions([]);
@@ -2864,22 +2559,6 @@ const Attendance = () => {
                                         <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full"></div>
                                     )}
                                 </button>
-                                <button
-                                    onClick={() => setSubTab('reports')}
-                                    data-tour-id="att-reports-sub-tab"
-                                    className={`pb-3 text-sm font-normal transition-all relative ${subTab === 'reports'
-                                        ? 'text-indigo-600 dark:text-indigo-400'
-                                        : 'text-slate-500 hover:text-slate-700 dark:text-github-dark-muted'
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <FileText size={16} />
-                                        Reports
-                                    </div>
-                                    {subTab === 'reports' && (
-                                        <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full"></div>
-                                    )}
-                                </button>
                             </div>
 
                             {/* SUB-TAB: HISTORY (Day-Level Expandable Grouped Cards) */}
@@ -2946,47 +2625,6 @@ const Attendance = () => {
                                     setIsCorrectionDrawerOpen={setIsCorrectionDrawerOpen}
                                     setCorrDate={setCorrDate}
                                     loadCorrectionDataForDate={loadCorrectionDataForDate}
-                                />
-                            )}
-                            {/* SUB-TAB: REPORTS (Self-Service) */}
-                            {subTab === 'reports' && (
-                                <AttendanceReportsTab
-                                    reportsTypeDropdownRef={reportsTypeDropdownRef}
-                                    reportsIsTypeDropdownOpen={reportsIsTypeDropdownOpen}
-                                    setReportsIsTypeDropdownOpen={setReportsIsTypeDropdownOpen}
-                                    reportsReportType={reportsReportType}
-                                    setReportsReportType={setReportsReportType}
-                                    reportsUseCustomRange={reportsUseCustomRange}
-                                    setReportsUseCustomRange={setReportsUseCustomRange}
-                                    reportsCustomStartDate={reportsCustomStartDate}
-                                    setReportsCustomStartDate={setReportsCustomStartDate}
-                                    reportsCustomEndDate={reportsCustomEndDate}
-                                    setReportsCustomEndDate={setReportsCustomEndDate}
-                                    reportsSelectedMonth={reportsSelectedMonth}
-                                    setReportsSelectedMonth={setReportsSelectedMonth}
-                                    reportsSelectedWeek={reportsSelectedWeek}
-                                    setReportsSelectedWeek={setReportsSelectedWeek}
-                                    reportsWeeks={reportsWeeks}
-                                    reportsWeekDropdownRef={reportsWeekDropdownRef}
-                                    reportsIsWeekDropdownOpen={reportsIsWeekDropdownOpen}
-                                    setReportsIsWeekDropdownOpen={setReportsIsWeekDropdownOpen}
-                                    reportsSelectedDate={reportsSelectedDate}
-                                    setReportsSelectedDate={setReportsSelectedDate}
-                                    reportsColsDropdownRef={reportsColsDropdownRef}
-                                    reportsIsColsDropdownOpen={reportsIsColsDropdownOpen}
-                                    setReportsIsColsDropdownOpen={setReportsIsColsDropdownOpen}
-                                    reportsExportColumns={reportsExportColumns}
-                                    setReportsExportColumns={setReportsExportColumns}
-                                    reportsFileFormat={reportsFileFormat}
-                                    setReportsFileFormat={setReportsFileFormat}
-                                    handleReportsGenerate={handleReportsGenerate}
-                                    reportsIsGenerating={reportsIsGenerating}
-                                    reportsActiveTab={reportsActiveTab}
-                                    setReportsActiveTab={setReportsActiveTab}
-                                    reportsPreviewData={reportsPreviewData}
-                                    reportsSummary={reportsSummary}
-                                    reportsLoadingPreview={reportsLoadingPreview}
-                                    reportsExportHistory={reportsExportHistory}
                                 />
                             )}
                         </div>
@@ -3270,15 +2908,6 @@ const Attendance = () => {
                                                 </div>
                                             )}
 
-                                            {/* Shift Policy & Deadline Alert */}
-                                            <div className="p-3.5 bg-slate-50 dark:bg-github-dark-bg/50 border border-slate-200/80 dark:border-github-dark-border rounded-xl flex items-center gap-3">
-                                                <Info size={16} className="text-indigo-500 shrink-0" />
-                                                <div className="text-xs font-normal text-slate-600 dark:text-slate-300">
-                                                    <span className="font-medium text-slate-800 dark:text-slate-100">Shift Policy: </span>
-                                                    Corrections are accepted within <span className="font-medium text-indigo-600 dark:text-indigo-400">{correctionDeadlineDays} days</span> of the attendance date. Eligible dates: <span className="font-normal text-slate-700 dark:text-slate-200">{minAllowedCorrectionDate}</span> to <span className="font-normal text-slate-700 dark:text-slate-200">Today ({maxAllowedCorrectionDate})</span>.
-                                                </div>
-                                            </div>
-
                                             {/* Date & Category Grid - Perfectly Aligned */}
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
                                                 <div data-tour-id="att-correction-date" className="space-y-1.5">
@@ -3332,7 +2961,7 @@ const Attendance = () => {
                                                 </motion.div>
                                             )}
 
-                                            {/* Original Attendance Context Card with Visual Timeline & Session Text */}
+                                            {/* Original Attendance Context Card */}
                                             <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3.5">
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2">
@@ -3346,57 +2975,95 @@ const Attendance = () => {
                                                             No Punches Recorded
                                                         </span>
                                                     ) : originalSessions.some(s => s.time_in && !s.time_out) ? (
-                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40">
-                                                            Punch Out Missing
+                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center gap-1.5">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                            Active Session
                                                         </span>
                                                     ) : (
                                                         <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
-                                                            Punches Recorded
+                                                            {originalSessions.length} Session{originalSessions.length > 1 ? 's' : ''} Recorded
                                                         </span>
                                                     )}
                                                 </div>
 
-                                                {/* Visual Timeline of Original Sessions (Read-Only 24hr Reference) */}
-                                                <VisualCorrectionTimeline
-                                                    requestData={{
-                                                        original_data: originalSessions,
-                                                        proposed_data: [],
-                                                        correction_type: corrType,
-                                                        status: 'draft'
-                                                    }}
-                                                    showOriginalOnly={true}
-                                                    shift={myShift}
-                                                />
-
-                                                {/* Text Stating Each Session */}
+                                                {/* Text Stating Each Session and Checkpoints */}
                                                 {originalSessions.length > 0 ? (
                                                     <div className="space-y-2 pt-0.5">
-                                                        {originalSessions.map((s, idx) => (
-                                                            <div key={idx} className="flex items-center justify-between text-xs bg-white dark:bg-github-dark-subtle/80 p-2.5 rounded-xl border border-slate-200/70 dark:border-github-dark-border/60">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                                                                    <span className="font-medium text-slate-700 dark:text-slate-300">Session #{idx + 1}</span>
+                                                        {originalSessions.map((s, idx) => {
+                                                            const isActive = Boolean(s.time_in && !s.time_out);
+                                                            const checkpointsList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
+                                                            return (
+                                                                <div key={idx} className="bg-white dark:bg-github-dark-subtle/80 p-3 rounded-xl border border-slate-200/70 dark:border-github-dark-border/60 space-y-2">
+                                                                    <div className="flex items-center justify-between text-xs">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}`} />
+                                                                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                                                                                Session #{idx + 1}
+                                                                            </span>
+                                                                            {isActive && (
+                                                                                <span className="text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
+                                                                                    In Progress
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 font-mono text-xs">
+                                                                            <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400"}>
+                                                                                {s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}
+                                                                            </span>
+                                                                            <span className="text-slate-400">→</span>
+                                                                            <span className={s.time_out ? "text-rose-600 dark:text-rose-400 font-medium" : "text-amber-500 dark:text-amber-400 italic"}>
+                                                                                {s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Not Clocked Out'}
+                                                                            </span>
+                                                                            {s.time_in && s.time_out && (
+                                                                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md ml-1">
+                                                                                    {calculateSessionDurationHours(s.time_in, s.time_out).toFixed(1)} hrs
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Checkpoints shown compactly without taking much space */}
+                                                                    {checkpointsList.length > 0 && (
+                                                                        <div className="pt-2 border-t border-slate-100 dark:border-github-dark-border/60">
+                                                                            <div className="flex items-center gap-1.5 mb-1.5">
+                                                                                <MapPin size={12} className="text-amber-500 shrink-0" />
+                                                                                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                                                    Checkpoints ({checkpointsList.length})
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex flex-wrap gap-1.5">
+                                                                                {checkpointsList.map((chk, cIdx) => {
+                                                                                    const selfieUrl = chk.image_url || chk.image;
+                                                                                    const chkTime = chk.punch_time ? (formatTime ? formatTime(chk.punch_time, null, false) : formatLocalTimeString(chk.punch_time)) : (chk.time || `Point #${cIdx + 1}`);
+                                                                                    const locLabel = chk.address ? chk.address.split(',')[0] : (chk.lat && chk.lng ? `${Number(chk.lat).toFixed(2)}, ${Number(chk.lng).toFixed(2)}` : null);
+                                                                                    return (
+                                                                                        <div
+                                                                                            key={chk.id || cIdx}
+                                                                                            onClick={() => selfieUrl && setPreviewImage(selfieUrl)}
+                                                                                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/40 ${selfieUrl ? 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40' : ''}`}
+                                                                                            title={chk.address || (selfieUrl ? 'Click to view photo' : undefined)}
+                                                                                        >
+                                                                                            {selfieUrl ? (
+                                                                                                <Camera size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                                                                            ) : (
+                                                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                                                                            )}
+                                                                                            <span className="font-medium">#{cIdx + 1}</span>
+                                                                                            <span className="font-mono text-[10px] text-amber-700/80 dark:text-amber-400/80">{chkTime}</span>
+                                                                                            {locLabel && (
+                                                                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[110px] truncate">
+                                                                                                    • {locLabel}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                                <div className="flex items-center gap-2 font-mono font-normal">
-                                                                    <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400"}>
-                                                                        {s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}
-                                                                    </span>
-                                                                    <span className="text-slate-400">→</span>
-                                                                    <span className={s.time_out ? "text-rose-600 dark:text-rose-400 font-medium" : "text-amber-500 dark:text-amber-400 italic"}>
-                                                                        {s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Not Clocked Out'}
-                                                                    </span>
-                                                                </div>
-                                                                {s.time_in && s.time_out ? (
-                                                                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md">
-                                                                        {calculateSessionDurationHours(s.time_in, s.time_out).toFixed(1)} hrs
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-xs font-normal text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200/60 dark:border-amber-800/40">
-                                                                        Incomplete
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        ))}
+                                                            );
+                                                        })}
                                                     </div>
                                                 ) : (
                                                     <p className="text-xs text-slate-400 dark:text-slate-400 font-normal py-0.5">
@@ -3405,70 +3072,37 @@ const Attendance = () => {
                                                 )}
 
                                                 {/* Auto-fill actions */}
-                                                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/60 dark:border-github-dark-border/40">
-                                                    {originalSessions.some(s => s.time_in && !s.time_out) && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleAutoFillMissingOut}
-                                                            className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                        >
-                                                            <Sparkles size={13} /> Auto-fill Missing Out ({myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00'})
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={handlePresetFullShift}
-                                                        className="px-3 py-1.5 rounded-xl bg-white dark:bg-github-dark-bg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50 border border-slate-200 dark:border-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                    >
-                                                        <Clock size={13} /> Full Shift Preset ({myShift?.start_time ? myShift.start_time.slice(0, 5) : '09:00'} to {myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00'})
-                                                    </button>
-                                                    {originalSessions.length > 0 && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleResetCorrectionToOriginal}
-                                                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                        >
-                                                            <RotateCcw size={13} /> Reset to Logged
-                                                        </button>
-                                                    )}
-                                                </div>
+                                                {(originalSessions.some(s => s.time_in && !s.time_out) || originalSessions.length > 0) && (
+                                                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/60 dark:border-github-dark-border/40">
+                                                        {originalSessions.some(s => s.time_in && !s.time_out) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleAutoFillMissingOut}
+                                                                className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                            >
+                                                                <Sparkles size={13} /> Auto-fill Missing Out ({myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00'})
+                                                            </button>
+                                                        )}
+                                                        {originalSessions.length > 0 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleResetCorrectionToOriginal}
+                                                                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                            >
+                                                                <RotateCcw size={13} /> Reset to Logged
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
 
-                                            {/* Remarks & WhatsApp-Style Chat Composer */}
-                                            <div className="space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                                            Reason & Remarks
-                                                        </label>
-                                                        <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
-                                                            Manager Review
-                                                        </span>
-                                                    </div>
-                                                    <span className="text-xs font-normal text-rose-500">Required</span>
-                                                </div>
+                                            {/* Reason Field */}
+                                            <div className="space-y-2">
+                                                <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                    Reason <span className="text-rose-500 font-bold">*</span>
+                                                </label>
 
-                                                {/* Quick reason presets */}
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {[
-                                                        "Forgot to punch out before leaving",
-                                                        "Forgot to punch in upon arrival",
-                                                        "App GPS / connection timeout",
-                                                        "Webcam capture error",
-                                                        "On-duty offsite client meeting"
-                                                    ].map((r, i) => (
-                                                        <button
-                                                            key={i}
-                                                            type="button"
-                                                            onClick={() => setCorrReason(prev => prev ? `${prev}. ${r}` : r)}
-                                                            className="text-xs font-normal px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-github-dark-bg dark:hover:bg-emerald-950/30 text-slate-600 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 border border-slate-200/80 dark:border-github-dark-border transition-colors cursor-pointer"
-                                                        >
-                                                            {r}
-                                                        </button>
-                                                    ))}
-                                                </div>
-
-                                                {/* Text Box Directly Aligned with Attach Icon */}
+                                                {/* Text Box with Attach Icon on the Right */}
                                                 <div
                                                     onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
                                                     onDragLeave={() => setIsDraggingFile(false)}
@@ -3491,15 +3125,20 @@ const Attendance = () => {
                                                             : 'border-slate-200 dark:border-github-dark-border focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500'
                                                     }`}
                                                 >
-                                                    {/* Attach Button */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => corrFileInputRef.current?.click()}
-                                                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer shrink-0 flex items-center justify-center"
-                                                        title="Attach document, doctor's slip, or proof file"
-                                                    >
-                                                        <Paperclip size={18} />
-                                                    </button>
+                                                    {/* Textarea */}
+                                                    <textarea
+                                                        data-tour-id="att-correction-reason"
+                                                        value={corrReason}
+                                                        onChange={(e) => setCorrReason(e.target.value)}
+                                                        onInput={(e) => {
+                                                            e.target.style.height = 'auto';
+                                                            e.target.style.height = `${e.target.scrollHeight}px`;
+                                                        }}
+                                                        placeholder="Write your message or reason for adjustment..."
+                                                        rows={1}
+                                                        className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none resize-none min-h-[22px] max-h-32 py-0 px-0 leading-5"
+                                                        required
+                                                    />
 
                                                     <input
                                                         ref={corrFileInputRef}
@@ -3519,20 +3158,15 @@ const Attendance = () => {
                                                         }}
                                                     />
 
-                                                    {/* Textarea */}
-                                                    <textarea
-                                                        data-tour-id="att-correction-reason"
-                                                        value={corrReason}
-                                                        onChange={(e) => setCorrReason(e.target.value)}
-                                                        onInput={(e) => {
-                                                            e.target.style.height = 'auto';
-                                                            e.target.style.height = `${e.target.scrollHeight}px`;
-                                                        }}
-                                                        placeholder="Write your message or reason for adjustment..."
-                                                        rows={1}
-                                                        className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none resize-none min-h-[22px] max-h-32 py-0 px-0 leading-5"
-                                                        required
-                                                    />
+                                                    {/* Attach Button (Right Aligned) */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => corrFileInputRef.current?.click()}
+                                                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+                                                        title="Attach document, doctor's slip, or proof file"
+                                                    >
+                                                        <Paperclip size={18} />
+                                                    </button>
                                                 </div>
 
                                                 {/* Attached File Preview Chip / Existing Attachment */}
@@ -3629,18 +3263,13 @@ const Attendance = () => {
                                                         <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
                                                             <Clock size={15} />
                                                         </div>
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                                                                    Advanced: Custom Punch Timeline
-                                                                </span>
-                                                                <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-200 dark:bg-github-dark-border text-slate-600 dark:text-slate-300">
-                                                                    Optional
-                                                                </span>
-                                                            </div>
-                                                            <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-0.5">
-                                                                Expand to drag and customize punch sessions visually
-                                                            </p>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                                                Advanced
+                                                            </span>
+                                                            <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-200 dark:bg-github-dark-border text-slate-600 dark:text-slate-300">
+                                                                Optional
+                                                            </span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3">
@@ -3667,34 +3296,29 @@ const Attendance = () => {
                                                             exit={{ height: 0, opacity: 0 }}
                                                             className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-4 sm:p-5 space-y-4 bg-white dark:bg-github-dark-subtle/50"
                                                         >
-                                                            {/* Preset actions inside advanced */}
-                                                            <div className="flex flex-wrap items-center gap-2 pb-1 border-b border-slate-100 dark:border-github-dark-border/60">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={handlePresetFullShift}
-                                                                    className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 border border-indigo-200/60 dark:border-indigo-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                                >
-                                                                    <Clock size={13} /> Full Shift Preset ({myShift?.start_time ? myShift.start_time.slice(0, 5) : '09:00'} to {myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00'})
-                                                                </button>
-                                                                {originalSessions.some(s => s.time_in && !s.time_out) && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={handleAutoFillMissingOut}
-                                                                        className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                                    >
-                                                                        <Sparkles size={13} /> Auto-fill Missing Out
-                                                                    </button>
-                                                                )}
-                                                                {originalSessions.length > 0 && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={handleResetCorrectionToOriginal}
-                                                                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                                    >
-                                                                        <RotateCcw size={13} /> Reset to Logged
-                                                                    </button>
-                                                                )}
-                                                            </div>
+                                                            {/* Quick helper actions if applicable */}
+                                                            {(originalSessions.some(s => s.time_in && !s.time_out) || originalSessions.length > 0) && (
+                                                                <div className="flex flex-wrap items-center gap-2 pb-1 border-b border-slate-100 dark:border-github-dark-border/60">
+                                                                    {originalSessions.some(s => s.time_in && !s.time_out) && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handleAutoFillMissingOut}
+                                                                            className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                                        >
+                                                                            <Sparkles size={13} /> Auto-fill Missing Out
+                                                                        </button>
+                                                                    )}
+                                                                    {originalSessions.length > 0 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handleResetCorrectionToOriginal}
+                                                                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                                        >
+                                                                            <RotateCcw size={13} /> Reset to Logged
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
 
                                                             {/* Interactive Visual Timeline Only */}
                                                             <VisualCorrectionTimeline
@@ -3706,6 +3330,8 @@ const Attendance = () => {
                                                                 }}
                                                                 editable={true}
                                                                 shift={myShift}
+                                                                frameless={true}
+                                                                hideHeader={true}
                                                                 onSessionsChange={(updated) => {
                                                                     setCorrSessions(updated.map((s, idx) => ({
                                                                         id: `session-${idx}-${s.time_in || s.time_out}`,
