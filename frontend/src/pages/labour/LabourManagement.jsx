@@ -19,10 +19,10 @@ import BulkLabourUploadModal from './components/modals/BulkLabourUploadModal';
 import ConfirmDialogModal from './components/modals/ConfirmDialogModal';
 
 // Views & Header
+import LoadingScreen from '../../components/LoadingScreen';
 import LabourHeader from './components/LabourHeader';
 import SitesListView from './components/sites/SitesListView';
 import SiteDailyAttendanceTab from './components/sites/SiteDailyAttendanceTab';
-import SiteMonthlyGridTab from './components/sites/SiteMonthlyGridTab';
 import SiteFinancesTab from './components/sites/SiteFinancesTab';
 import LabourDirectoryTab from './components/directory/LabourDirectoryTab';
 
@@ -33,8 +33,15 @@ const LabourManagement = () => {
     // Navigation / Tab state
     const [activeTab, setActiveTab] = useState('sites'); // 'sites', 'directory'
     const [selectedSite, setSelectedSite] = useState(null);
-    const [subTab, setSubTab] = useState('attendance'); // 'attendance', 'grid', 'finances'
+    const [subTab, setSubTab] = useState('attendance'); // 'attendance', 'finances'
     const [ledgerViewMode, setLedgerViewMode] = useState('matrix'); // 'matrix' (3-Row Spreadsheet Matrix) or 'summary' (Summary Cards/Table)
+
+    // Fallback if subTab is set to legacy 'grid'
+    useEffect(() => {
+        if (subTab === 'grid') {
+            setSubTab('attendance');
+        }
+    }, [subTab]);
 
     // Data States
     const [sites, setSites] = useState([]);
@@ -252,13 +259,11 @@ const LabourManagement = () => {
         if (activeTab === 'sites' && selectedSite) {
             if (subTab === 'attendance') {
                 loadAttendanceRoster();
-            } else if (subTab === 'grid') {
-                fetchGridData();
             } else if (subTab === 'finances') {
                 fetchFinances(financeMonth);
             }
         }
-    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, financeMonth, activeTab, selectedSite, subTab]);
+    }, [attendanceSiteId, attendanceDate, financeMonth, activeTab, selectedSite, subTab]);
     // Instant Client-Side / Backend Bulk upload CSV & Excel handlers
     const handleInstantFileParse = async (e) => {
         const file = e.target.files?.[0];
@@ -1123,9 +1128,8 @@ const LabourManagement = () => {
 
                 {/* Main Content Pane */}
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-20 gap-3">
-                        <Clock className="animate-spin text-indigo-500" size={32} />
-                        <span className="text-xs text-slate-500 font-medium">Fetching details...</span>
+                    <div className="bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-xl shadow-sm overflow-hidden min-h-[300px] flex items-center justify-center">
+                        <LoadingScreen message="Loading workforce & project details..." fullScreen={false} />
                     </div>
                 ) : (
                     <>
@@ -1178,19 +1182,10 @@ const LabourManagement = () => {
                                         />
                                     )}
 
-                                    {subTab === 'grid' && (
-                                        <SiteMonthlyGridTab
-                                            gridLoading={gridLoading}
-                                            gridMonthDetails={gridMonthDetails}
-                                            gridRoleFilter={gridRoleFilter}
-                                            gridMonth={gridMonth}
-                                            gridData={gridData}
-                                        />
-                                    )}
-
                                     {subTab === 'finances' && (
                                         <SiteFinancesTab
                                             ledgerViewMode={ledgerViewMode}
+                                            setLedgerViewMode={setLedgerViewMode}
                                             selectedSite={selectedSite}
                                             financeMonth={financeMonth}
                                             handleOpenAdvance={handleOpenAdvance}

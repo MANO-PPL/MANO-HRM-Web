@@ -2,19 +2,20 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
     Calendar,
     DollarSign,
-    Clock,
     User,
     Search,
     Filter,
     ArrowUpDown,
     CheckCircle,
     AlertTriangle,
+    Clock,
     RefreshCw,
     Info,
     ChevronRight
 } from 'lucide-react';
 import { labourService } from '../../../services/labourService';
 import MinimalSelect from '../../../components/MinimalSelect';
+import LoadingScreen from '../../../components/LoadingScreen';
 import { toast } from 'react-toastify';
 
 const MonthlyDetailedMatrix = ({
@@ -22,7 +23,11 @@ const MonthlyDetailedMatrix = ({
     month,
     siteName,
     onOpenAdvance,
-    onOpenPayout
+    onOpenPayout,
+    ledgerViewMode = 'matrix',
+    setLedgerViewMode = () => {},
+    financeSummary = [],
+    selectedSite = null
 }) => {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState(null);
@@ -80,18 +85,18 @@ const MonthlyDetailedMatrix = ({
     return (
         <div className="space-y-4 animate-in fade-in duration-200">
             {/* Control & Filter Header */}
-            <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-4 rounded-xl shadow-xs space-y-3">
+            <div className="bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] p-4 rounded-xl shadow-xs space-y-3">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
-                    <div>
+                    <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-sm text-slate-800 dark:text-github-dark-text uppercase tracking-wider">
+                            <span className="font-semibold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
                                 Detailed Daily Matrix & Salary Sheet
                             </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                                 {getMonthName(activeMonth)}
                             </span>
                         </div>
-                        <p className="text-slate-500 dark:text-github-dark-muted text-[11px] mt-0.5">
+                        <p className="text-slate-500 dark:text-[#8b949e] text-[11px] mt-1">
                             3-row daily breakdown per worker: <strong>Row 1: Attendance</strong> (P/HD), <strong>Row 2: Overtime Hours</strong>, <strong>Row 3: Cash Advances</strong>.
                         </p>
                     </div>
@@ -105,7 +110,7 @@ const MonthlyDetailedMatrix = ({
                                 placeholder="Search worker..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-8 pr-3 py-1 w-full bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs text-slate-700 dark:text-github-dark-text focus:outline-none"
+                                className="pl-8 pr-3 py-1 w-full bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-xl text-xs text-slate-700 dark:text-[#f0f6fc] focus:outline-none"
                             />
                         </div>
 
@@ -118,15 +123,43 @@ const MonthlyDetailedMatrix = ({
                                     { value: '', label: 'All Roles' },
                                     ...availableRoles.map(r => ({ value: r, label: r }))
                                 ]}
-                                triggerClassName="h-7 text-xs font-semibold"
+                                triggerClassName="h-7 text-xs font-medium"
                                 variant="input"
                             />
+                        </div>
+
+                        {/* View-mode tab switcher next to roles filter */}
+                        <div className="flex bg-[#f6f8fa] dark:bg-[#161b22] p-0.5 rounded-lg border border-[#d0d7de] dark:border-[#30363d] select-none shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setLedgerViewMode('matrix')}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium transition-all cursor-pointer ${
+                                    ledgerViewMode === 'matrix'
+                                        ? 'bg-white dark:bg-[#21262d] text-indigo-600 dark:text-[#58a6ff] shadow-sm border border-transparent dark:border-[#30363d]'
+                                        : 'text-slate-500 dark:text-[#8b949e] hover:text-slate-800 dark:hover:text-[#f0f6fc]'
+                                }`}
+                            >
+                                <Calendar size={11} />
+                                <span>3-Row Spreadsheet</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setLedgerViewMode('summary')}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium transition-all cursor-pointer ${
+                                    ledgerViewMode === 'summary'
+                                        ? 'bg-white dark:bg-[#21262d] text-indigo-600 dark:text-[#58a6ff] shadow-sm border border-transparent dark:border-[#30363d]'
+                                        : 'text-slate-500 dark:text-[#8b949e] hover:text-slate-800 dark:hover:text-[#f0f6fc]'
+                                }`}
+                            >
+                                <DollarSign size={11} />
+                                <span>Summary Table</span>
+                            </button>
                         </div>
 
                         <button
                             type="button"
                             onClick={() => loadMatrixData()}
-                            className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#21262d] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#30363d] transition-all cursor-pointer"
+                            className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#21262d] text-slate-600 dark:text-[#c9d1d9] hover:bg-slate-200 dark:hover:bg-[#30363d] transition-all cursor-pointer"
                             title="Refresh Data"
                         >
                             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -136,60 +169,166 @@ const MonthlyDetailedMatrix = ({
 
                 {/* Quick Metrics Bar */}
                 {data && data.grandTotals && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-2 border-t border-slate-100 dark:border-github-dark-border/50 text-[11px]">
-                        <div className="p-2 rounded-lg bg-slate-50/70 dark:bg-[#161b22]/50 border border-slate-100 dark:border-[#30363d]">
-                            <span className="text-[10px] text-slate-500 dark:text-github-dark-muted font-bold block uppercase">Workers</span>
-                            <span className="font-extrabold text-slate-800 dark:text-slate-200 text-xs">{filteredWorkers.length} assigned</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d] text-[11px]">
+                        <div className="p-2 rounded-lg bg-slate-50/70 dark:bg-[#161b22]/70 border border-slate-100 dark:border-[#30363d]">
+                            <span className="text-[10px] text-slate-500 dark:text-[#8b949e] font-medium block uppercase">Workers</span>
+                            <span className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-xs">{filteredWorkers.length} assigned</span>
                         </div>
-                        <div className="p-2 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30">
-                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold block uppercase">Work Days</span>
-                            <span className="font-extrabold text-emerald-700 dark:text-emerald-300 text-xs">{data.grandTotals.totalPresentDays} days</span>
+                        <div className="p-2 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
+                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium block uppercase">Work Days</span>
+                            <span className="font-semibold text-emerald-700 dark:text-emerald-300 text-xs">{data.grandTotals.totalPresentDays} days</span>
                         </div>
-                        <div className="p-2 rounded-lg bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30">
-                            <span className="text-[10px] text-indigo-700 dark:text-indigo-400 font-bold block uppercase">Total OT</span>
-                            <span className="font-extrabold text-indigo-700 dark:text-indigo-300 text-xs">{data.grandTotals.totalOtHours} hrs</span>
+                        <div className="p-2 rounded-lg bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40">
+                            <span className="text-[10px] text-indigo-700 dark:text-indigo-400 font-medium block uppercase">Total OT</span>
+                            <span className="font-semibold text-indigo-700 dark:text-indigo-300 text-xs">{data.grandTotals.totalOtHours} hrs</span>
                         </div>
-                        <div className="p-2 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
-                            <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold block uppercase">Advances</span>
-                            <span className="font-extrabold text-amber-700 dark:text-amber-300 text-xs">₹{data.grandTotals.totalAdvances.toLocaleString()}</span>
+                        <div className="p-2 rounded-lg bg-amber-50/50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40">
+                            <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium block uppercase">Advances</span>
+                            <span className="font-semibold text-amber-700 dark:text-amber-300 text-xs">₹{data.grandTotals.totalAdvances.toLocaleString()}</span>
                         </div>
-                        <div className="p-2 rounded-lg bg-slate-50/70 dark:bg-[#161b22]/50 border border-slate-100 dark:border-[#30363d]">
-                            <span className="text-[10px] text-slate-500 dark:text-github-dark-muted font-bold block uppercase">Gross Earned</span>
-                            <span className="font-extrabold text-slate-800 dark:text-slate-200 text-xs">₹{data.grandTotals.totalGrossEarned.toLocaleString()}</span>
+                        <div className="p-2 rounded-lg bg-slate-50/70 dark:bg-[#161b22]/70 border border-slate-100 dark:border-[#30363d]">
+                            <span className="text-[10px] text-slate-500 dark:text-[#8b949e] font-medium block uppercase">Gross Earned</span>
+                            <span className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-xs">₹{data.grandTotals.totalGrossEarned.toLocaleString()}</span>
                         </div>
                         <div className="p-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/40">
-                            <span className="text-[10px] text-indigo-800 dark:text-indigo-300 font-extrabold block uppercase">Net Payable</span>
-                            <span className="font-black text-indigo-600 dark:text-indigo-400 text-xs">₹{data.grandTotals.totalNetPayable.toLocaleString()}</span>
+                            <span className="text-[10px] text-indigo-800 dark:text-indigo-300 font-semibold block uppercase">Net Payable</span>
+                            <span className="font-semibold text-indigo-600 dark:text-indigo-400 text-xs">₹{data.grandTotals.totalNetPayable.toLocaleString()}</span>
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* Matrix Spreadsheet Table */}
-            {loading ? (
-                <div className="flex flex-col items-center justify-center py-24 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl">
-                    <Clock className="animate-spin text-indigo-500 mb-2" size={28} />
-                    <p className="text-xs text-slate-500 font-semibold">Generating monthly ledger matrix...</p>
-                </div>
-            ) : !data || filteredWorkers.length === 0 ? (
-                <div className="text-center py-16 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl p-6">
-                    <Calendar className="mx-auto text-slate-300 dark:text-slate-600 mb-2" size={36} />
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No matrix ledger records found</p>
-                    <p className="text-xs text-slate-400 mt-0.5">No active workers or attendance data recorded for this site in {getMonthName(activeMonth)}.</p>
+            {/* Content: conditionally show Summary Table or Matrix Spreadsheet */}
+            {ledgerViewMode === 'summary' ? (
+                /* Summary Table */
+                <div className="bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-xl shadow-xs overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
+                            <thead>
+                                <tr className="bg-slate-50 dark:bg-[#161b22] text-slate-500 dark:text-[#8b949e] font-medium border-b border-slate-200 dark:border-[#30363d] text-[11px]">
+                                    <th className="p-3 text-left">Worker Name</th>
+                                    <th className="p-3 text-left">Role</th>
+                                    <th className="p-3 text-left">Wage &amp; OT Rates</th>
+                                    <th className="p-3 text-right">Total Earned</th>
+                                    <th className="p-3 text-right">Advances Taken</th>
+                                    <th className="p-3 text-right">Total Paid</th>
+                                    <th className="p-3 text-right">Final Net Payable</th>
+                                    <th className="p-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {financeSummary.filter(row => {
+                                    const matchesSite = selectedSite
+                                        ? ((row.site_ids && Array.isArray(row.site_ids) && row.site_ids.includes(selectedSite.site_id)) || row.site_id === selectedSite.site_id)
+                                        : true;
+                                    const matchesRole = !roleFilter || row.role?.toLowerCase() === roleFilter.toLowerCase();
+                                    return matchesSite && matchesRole;
+                                }).length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" className="p-10 text-center text-slate-400 dark:text-[#8b949e] italic">
+                                            No salary ledger details for workers assigned to this site.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    financeSummary
+                                        .filter(row => {
+                                            const matchesSite = selectedSite
+                                                ? ((row.site_ids && Array.isArray(row.site_ids) && row.site_ids.includes(selectedSite.site_id)) || row.site_id === selectedSite.site_id)
+                                                : true;
+                                            const matchesRole = !roleFilter || row.role?.toLowerCase() === roleFilter.toLowerCase();
+                                            return matchesSite && matchesRole;
+                                        })
+                                        .map(row => {
+                                            const advanceAlert = row.advances_taken > row.accrued_credit;
+                                            return (
+                                                <tr key={row.labour_id} className="border-b border-slate-100 dark:border-[#21262d] hover:bg-slate-50/50 dark:hover:bg-[#161b22]/50 align-middle">
+                                                    <td className="p-3 font-semibold text-slate-800 dark:text-[#f0f6fc] whitespace-nowrap">{row.name}</td>
+                                                    <td className="p-3">
+                                                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#21262d] text-slate-600 dark:text-[#c9d1d9] whitespace-nowrap">{row.role}</span>
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="flex flex-col items-start gap-0.5">
+                                                            <span className="text-slate-800 dark:text-[#f0f6fc] font-medium text-[11px] whitespace-nowrap">
+                                                                ₹{row.monthly_salary?.toLocaleString()}/day
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-500 dark:text-[#8b949e] font-normal whitespace-nowrap">
+                                                                ₹{Number(row.overtime_pay_per_hour || 0).toLocaleString()}/hr OT
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-3 font-medium text-slate-700 dark:text-[#c9d1d9] text-right whitespace-nowrap">₹{row.accrued_credit?.toLocaleString()}</td>
+                                                    <td className={`p-3 font-medium text-right whitespace-nowrap ${advanceAlert ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-[#c9d1d9]'}`}>
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <span>₹{row.advances_taken?.toLocaleString()}</span>
+                                                            {advanceAlert && <AlertTriangle size={12} className="text-rose-500 animate-pulse" title="Advances exceed earned credit" />}
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-3 font-medium text-slate-700 dark:text-[#c9d1d9] text-right whitespace-nowrap">₹{row.total_paid?.toLocaleString()}</td>
+                                                    <td className={`p-3 font-semibold text-xs text-right whitespace-nowrap ${row.net_payable < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                                        ₹{row.net_payable?.toLocaleString()}
+                                                    </td>
+                                                    <td className="p-3 text-right">
+                                                        <div className="flex justify-end items-center gap-2 flex-nowrap">
+                                                            {row.net_payable <= 0 ? (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+                                                                    <CheckCircle size={10} /> Settled
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap">
+                                                                    <Clock size={10} /> Pending
+                                                                </span>
+                                                            )}
+                                                            <button
+                                                                onClick={() => onOpenAdvance(row)}
+                                                                className="px-2.5 py-1 text-[10px] font-medium bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 rounded transition-all cursor-pointer whitespace-nowrap"
+                                                            >
+                                                                Advance
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onOpenPayout(row)}
+                                                                disabled={row.net_payable <= 0}
+                                                                className={`px-2.5 py-1 text-[10px] font-medium rounded border transition-all cursor-pointer whitespace-nowrap ${row.net_payable <= 0
+                                                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-50'
+                                                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent'
+                                                                }`}
+                                                            >
+                                                                Release Salary
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             ) : (
-                <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm overflow-hidden">
+                /* Matrix Spreadsheet */
+                loading ? (
+                    <div className="bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-xl p-8 shadow-xs">
+                        <LoadingScreen message="Generating monthly ledger matrix..." fullScreen={false} />
+                    </div>
+                ) : !data || filteredWorkers.length === 0 ? (
+                    <div className="text-center py-16 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-xl p-6">
+                        <Calendar className="mx-auto text-slate-300 dark:text-[#8b949e] mb-2" size={36} />
+                        <p className="text-sm font-semibold text-slate-700 dark:text-[#f0f6fc]">No matrix ledger records found</p>
+                        <p className="text-xs text-slate-400 dark:text-[#8b949e] mt-0.5">No active workers or attendance data recorded for this site in {getMonthName(activeMonth)}.</p>
+                    </div>
+                ) : (
+                <div className="bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-xl shadow-xs overflow-hidden">
                     <div className="overflow-x-auto relative custom-scrollbar" style={{ maxHeight: '72vh' }}>
                         <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
                             {/* Sticky Header */}
-                            <thead className="sticky top-0 z-30 bg-slate-100 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border shadow-xs">
+                            <thead className="sticky top-0 z-30 bg-slate-100 dark:bg-[#161b22] border-b border-slate-200 dark:border-[#30363d] shadow-xs">
                                 <tr>
                                     {/* Freeze Col 1: Sr No */}
-                                    <th className="p-2 text-center font-bold text-slate-500 dark:text-github-dark-muted sticky left-0 z-40 bg-slate-100 dark:bg-[#161b22] w-10 min-w-[40px] max-w-[40px] border-r border-slate-200 dark:border-github-dark-border">
+                                    <th className="p-2 text-center font-medium text-slate-500 dark:text-[#8b949e] sticky left-0 z-40 bg-slate-100 dark:bg-[#161b22] w-10 min-w-[40px] max-w-[40px] border-r border-slate-200 dark:border-[#30363d]">
                                         #
                                     </th>
                                     {/* Freeze Col 2: Worker Info */}
-                                    <th className="p-2.5 text-left font-bold text-slate-700 dark:text-github-dark-text sticky left-[40px] z-40 bg-slate-100 dark:bg-[#161b22] w-[210px] min-w-[210px] max-w-[210px] border-r border-slate-200 dark:border-github-dark-border shadow-md">
+                                    <th className="p-2.5 text-left font-medium text-slate-700 dark:text-[#f0f6fc] sticky left-[40px] z-40 bg-slate-100 dark:bg-[#161b22] w-[210px] min-w-[210px] max-w-[210px] border-r border-slate-200 dark:border-[#30363d] shadow-md">
                                         Worker / Designation
                                     </th>
 
@@ -197,50 +336,50 @@ const MonthlyDetailedMatrix = ({
                                     {data.days.map(day => (
                                         <th
                                             key={day.dateStr}
-                                            className={`p-1 text-center w-[54px] min-w-[54px] max-w-[54px] border-r border-slate-200/60 dark:border-github-dark-border/50 ${
+                                            className={`p-1 text-center w-[54px] min-w-[54px] max-w-[54px] border-r border-slate-200/60 dark:border-[#30363d]/60 ${
                                                 day.isFuture
                                                     ? 'opacity-40 bg-slate-50 dark:bg-[#0d1117]/50'
                                                     : day.isWeekend
-                                                        ? 'bg-slate-200/40 dark:bg-[#1f242c]'
+                                                        ? 'bg-slate-200/40 dark:bg-[#21262d]'
                                                         : ''
                                             }`}
                                         >
-                                                <div className="text-[8px] uppercase text-slate-400 dark:text-slate-500 font-bold leading-none">
+                                                <div className="text-[8px] uppercase text-slate-400 dark:text-[#8b949e] font-medium leading-none">
                                                     {day.dayName}
                                                 </div>
-                                                <div className="text-[11px] font-black text-slate-700 dark:text-slate-200 leading-tight mt-0.5">
+                                                <div className="text-[11px] font-semibold text-slate-700 dark:text-[#f0f6fc] leading-tight mt-0.5">
                                                     {day.day}
                                                 </div>
                                             </th>
                                     ))}
 
                                     {/* Summary Right Columns */}
-                                    <th className="p-2.5 text-right font-bold text-slate-700 dark:text-github-dark-text min-w-[65px] border-l border-slate-200 dark:border-github-dark-border bg-slate-100 dark:bg-[#161b22]">
+                                    <th className="p-2.5 text-right font-medium text-slate-700 dark:text-[#f0f6fc] min-w-[65px] border-l border-slate-200 dark:border-[#30363d] bg-slate-100 dark:bg-[#161b22]">
                                         Days
                                     </th>
-                                    <th className="p-2.5 text-right font-bold text-slate-700 dark:text-github-dark-text min-w-[65px] bg-slate-100 dark:bg-[#161b22]">
+                                    <th className="p-2.5 text-right font-medium text-slate-700 dark:text-[#f0f6fc] min-w-[65px] bg-slate-100 dark:bg-[#161b22]">
                                         OT (Hrs)
                                     </th>
-                                    <th className="p-2.5 text-right font-bold text-slate-700 dark:text-github-dark-text min-w-[75px] bg-slate-100 dark:bg-[#161b22]">
+                                    <th className="p-2.5 text-right font-medium text-slate-700 dark:text-[#f0f6fc] min-w-[75px] bg-slate-100 dark:bg-[#161b22]">
                                         Advances
                                     </th>
-                                    <th className="p-2.5 text-right font-bold text-slate-700 dark:text-github-dark-text min-w-[85px] bg-slate-100 dark:bg-[#161b22]">
+                                    <th className="p-2.5 text-right font-medium text-slate-700 dark:text-[#f0f6fc] min-w-[85px] bg-slate-100 dark:bg-[#161b22]">
                                         Gross Earned
                                     </th>
-                                    <th className="p-2.5 text-right font-bold text-slate-700 dark:text-github-dark-text min-w-[75px] bg-slate-100 dark:bg-[#161b22]">
+                                    <th className="p-2.5 text-right font-medium text-slate-700 dark:text-[#f0f6fc] min-w-[75px] bg-slate-100 dark:bg-[#161b22]">
                                         Paid
                                     </th>
-                                    <th className="p-2.5 text-right font-bold text-indigo-600 dark:text-indigo-400 min-w-[95px] bg-slate-100 dark:bg-[#161b22]">
+                                    <th className="p-2.5 text-right font-medium text-indigo-600 dark:text-indigo-400 min-w-[95px] bg-slate-100 dark:bg-[#161b22]">
                                         Net Payable
                                     </th>
-                                    <th className="p-2.5 text-center font-bold text-slate-600 dark:text-slate-400 min-w-[130px] bg-slate-100 dark:bg-[#161b22]">
+                                    <th className="p-2.5 text-center font-medium text-slate-600 dark:text-[#8b949e] min-w-[130px] bg-slate-100 dark:bg-[#161b22]">
                                         Actions
                                     </th>
                                 </tr>
                             </thead>
 
                             {/* Body: 3 Rows per Worker */}
-                            <tbody className="divide-y-2 divide-slate-200 dark:divide-github-dark-border">
+                            <tbody className="divide-y-2 divide-slate-200 dark:divide-[#30363d]">
                                 {filteredWorkers.map((worker) => {
                                     const totals = worker.totals;
                                     const advanceAlert = totals.advances > totals.gross_earned;
@@ -248,11 +387,11 @@ const MonthlyDetailedMatrix = ({
                                     return (
                                         <React.Fragment key={worker.labour_id}>
                                             {/* SUB-ROW 1: ATTENDANCE (P / HD / A / -) */}
-                                            <tr className="hover:bg-slate-50/40 dark:hover:bg-[#161b22]/40 transition-colors border-t border-slate-200 dark:border-github-dark-border">
+                                            <tr className="hover:bg-slate-50/40 dark:hover:bg-[#161b22]/50 transition-colors border-t border-slate-200 dark:border-[#30363d]">
                                                 {/* Freeze 1: Sr No */}
                                                 <td
                                                     rowSpan={3}
-                                                    className="p-2 text-center font-bold text-slate-400 dark:text-slate-500 sticky left-0 z-20 bg-white dark:bg-github-dark-subtle w-10 min-w-[40px] max-w-[40px] border-r border-b border-slate-200 dark:border-github-dark-border align-middle"
+                                                    className="p-2 text-center font-medium text-slate-400 dark:text-[#8b949e] sticky left-0 z-20 bg-white dark:bg-[#0d1117] w-10 min-w-[40px] max-w-[40px] border-r border-b border-slate-200 dark:border-[#30363d] align-middle"
                                                 >
                                                     {worker.sr_no}
                                                 </td>
@@ -260,17 +399,17 @@ const MonthlyDetailedMatrix = ({
                                                 {/* Freeze 2: Worker Info */}
                                                 <td
                                                     rowSpan={3}
-                                                    className="p-2.5 sticky left-[40px] z-20 bg-white dark:bg-github-dark-subtle w-[210px] min-w-[210px] max-w-[210px] border-r border-b border-slate-200 dark:border-github-dark-border shadow-md align-middle"
+                                                    className="p-2.5 sticky left-[40px] z-20 bg-white dark:bg-[#0d1117] w-[210px] min-w-[210px] max-w-[210px] border-r border-b border-slate-200 dark:border-[#30363d] shadow-md align-middle"
                                                 >
                                                     <div className="flex flex-col">
-                                                        <span className="font-extrabold text-xs text-slate-800 dark:text-github-dark-text leading-tight truncate">
+                                                        <span className="font-semibold text-xs text-slate-800 dark:text-[#f0f6fc] leading-tight truncate">
                                                             {worker.name}
                                                         </span>
                                                         <div className="flex items-center gap-1.5 mt-0.5">
-                                                            <span className="text-[9px] font-semibold px-1 py-0.2 rounded bg-slate-100 dark:bg-[#21262d] text-slate-600 dark:text-slate-300">
+                                                            <span className="text-[9px] font-medium px-1 py-0.2 rounded bg-slate-100 dark:bg-[#21262d] text-slate-600 dark:text-[#c9d1d9]">
                                                                 {worker.role}
                                                             </span>
-                                                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
+                                                            <span className="text-[9px] text-slate-400 dark:text-[#8b949e] font-mono">
                                                                 ₹{worker.daily_rate}/d • ₹{worker.overtime_pay_per_hour}/h
                                                             </span>
                                                         </div>
@@ -286,25 +425,25 @@ const MonthlyDetailedMatrix = ({
                                                     return (
                                                         <td
                                                             key={`att-${day.dateStr}`}
-                                                            className={`p-1 text-center w-[54px] min-w-[54px] max-w-[54px] align-middle border-r border-slate-100 dark:border-github-dark-border/40 ${
-                                                                isFuture ? 'opacity-30' : day.isWeekend ? 'bg-slate-50/60 dark:bg-[#12161c]' : ''
+                                                            className={`p-1 text-center w-[54px] min-w-[54px] max-w-[54px] align-middle border-r border-slate-100 dark:border-[#21262d] ${
+                                                                isFuture ? 'opacity-30' : day.isWeekend ? 'bg-slate-50/60 dark:bg-[#161b22]/40' : ''
                                                             }`}
                                                         >
                                                             {status === 'Present' ? (
-                                                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-2xs">
+                                                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-semibold bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/40 shadow-2xs">
                                                                     P
                                                                 </span>
                                                             ) : status === 'Half Day' ? (
-                                                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[8px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[8px] font-semibold bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40">
                                                                     HD
                                                                 </span>
                                                             ) : status === 'Absent' ? (
-                                                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-bold bg-rose-500/10 text-rose-500 dark:text-rose-400">
+                                                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-semibold bg-rose-500/20 text-rose-500 dark:text-rose-300 border border-rose-500/30">
                                                                     A
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 font-mono">
-                                                                    {day.isWeekend ? day.dayName.slice(0, 2) : '-'}
+                                                                <span className="text-[10px] text-slate-400 dark:text-[#8b949e] font-mono">
+                                                                    {day.isWeekend ? day.dayName.slice(0, 2) : '·'}
                                                                 </span>
                                                             )}
                                                         </td>
@@ -312,24 +451,24 @@ const MonthlyDetailedMatrix = ({
                                                 })}
 
                                                 {/* Right Summary Row 1: Total Present Days */}
-                                                <td className="p-2 text-right font-extrabold text-emerald-600 dark:text-emerald-400 border-l border-slate-200 dark:border-github-dark-border bg-slate-50/30 dark:bg-[#161b22]/30">
+                                                <td className="p-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 border-l border-slate-200 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#161b22]/30">
                                                     {totals.present_days} d
                                                 </td>
-                                                <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    N/A
+                                                <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e]">
+                                                    -
                                                 </td>
-                                                <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    N/A
+                                                <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e]">
+                                                    -
                                                 </td>
-                                                <td className="p-2 text-right font-semibold text-slate-700 dark:text-slate-300">
+                                                <td className="p-2 text-right font-medium text-slate-700 dark:text-[#f0f6fc]">
                                                     ₹{totals.base_earned.toLocaleString()}
                                                 </td>
-                                                <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    N/A
+                                                <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e]">
+                                                    -
                                                 </td>
                                                 <td
                                                     rowSpan={3}
-                                                    className="p-2.5 text-right font-black text-xs align-middle border-l border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-[#161b22]/50"
+                                                    className="p-2.5 text-right font-semibold text-xs align-middle border-l border-slate-200 dark:border-[#30363d] bg-slate-50/50 dark:bg-[#161b22]/50"
                                                 >
                                                     <span className={totals.net_payable < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-600 dark:text-indigo-400'}>
                                                         ₹{totals.net_payable.toLocaleString()}
@@ -337,13 +476,13 @@ const MonthlyDetailedMatrix = ({
                                                 </td>
                                                 <td
                                                     rowSpan={3}
-                                                    className="p-2 text-center align-middle border-l border-slate-200 dark:border-github-dark-border"
+                                                    className="p-2 text-center align-middle border-l border-slate-200 dark:border-[#30363d]"
                                                 >
                                                     <div className="flex flex-col gap-1 items-center justify-center">
                                                         <button
                                                             type="button"
                                                             onClick={() => onOpenAdvance(worker)}
-                                                            className="w-full px-2 py-0.5 text-[9px] font-extrabold bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/40 text-amber-600 dark:text-amber-400 hover:bg-amber-100 rounded cursor-pointer transition-all"
+                                                            className="w-full px-2 py-0.5 text-[9px] font-medium bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/40 text-amber-600 dark:text-amber-400 hover:bg-amber-100 rounded cursor-pointer transition-all"
                                                         >
                                                             + Advance
                                                         </button>
@@ -351,7 +490,7 @@ const MonthlyDetailedMatrix = ({
                                                             type="button"
                                                             onClick={() => onOpenPayout(worker)}
                                                             disabled={totals.net_payable <= 0}
-                                                            className={`w-full px-2 py-0.5 text-[9px] font-extrabold rounded border transition-all cursor-pointer ${
+                                                            className={`w-full px-2 py-0.5 text-[9px] font-medium rounded border transition-all cursor-pointer ${
                                                                 totals.net_payable <= 0
                                                                     ? 'bg-slate-100 dark:bg-[#21262d] text-slate-400 border-slate-200 dark:border-[#30363d] cursor-not-allowed opacity-50'
                                                                     : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent shadow-2xs'
@@ -364,7 +503,7 @@ const MonthlyDetailedMatrix = ({
                                             </tr>
 
                                             {/* SUB-ROW 2: OVERTIME HOURS */}
-                                            <tr className="hover:bg-slate-50/40 dark:hover:bg-[#161b22]/40 transition-colors">
+                                            <tr className="hover:bg-slate-50/40 dark:hover:bg-[#161b22]/50 transition-colors">
                                                 {/* Daily OT Cells */}
                                                 {data.days.map(day => {
                                                     const dayData = worker.days[day.dateStr];
@@ -374,41 +513,41 @@ const MonthlyDetailedMatrix = ({
                                                     return (
                                                         <td
                                                             key={`ot-${day.dateStr}`}
-                                                            className={`p-1 text-center w-[54px] min-w-[54px] max-w-[54px] align-middle border-r border-slate-100 dark:border-github-dark-border/40 ${
-                                                                isFuture ? 'opacity-30' : day.isWeekend ? 'bg-slate-50/60 dark:bg-[#12161c]' : ''
+                                                            className={`p-1 text-center w-[54px] min-w-[54px] max-w-[54px] align-middle border-r border-slate-100 dark:border-[#21262d] ${
+                                                                isFuture ? 'opacity-30' : day.isWeekend ? 'bg-slate-50/60 dark:bg-[#161b22]/40' : ''
                                                             }`}
                                                         >
                                                             {ot > 0 ? (
-                                                                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-black bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">
+                                                                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">
                                                                     {ot}h
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 font-mono">N/A</span>
+                                                                <span className="text-[10px] text-slate-400 dark:text-[#8b949e] font-mono">-</span>
                                                             )}
                                                         </td>
                                                     );
                                                 })}
 
                                                 {/* Right Summary Row 2: OT Stats */}
-                                                <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-github-dark-border bg-slate-50/30 dark:bg-[#161b22]/30">
-                                                    N/A
-                                                </td>
-                                                <td className="p-2 text-right font-extrabold text-indigo-600 dark:text-indigo-400">
-                                                    {totals.ot_hours} h
-                                                </td>
-                                                <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    N/A
+                                                <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e] border-l border-slate-200 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#161b22]/30">
+                                                    -
                                                 </td>
                                                 <td className="p-2 text-right font-semibold text-indigo-600 dark:text-indigo-400">
+                                                    {totals.ot_hours} h
+                                                </td>
+                                                <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e]">
+                                                    -
+                                                </td>
+                                                <td className="p-2 text-right font-medium text-indigo-600 dark:text-indigo-400">
                                                     +₹{totals.ot_earned.toLocaleString()}
                                                 </td>
-                                                <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    N/A
+                                                <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e]">
+                                                    -
                                                 </td>
                                             </tr>
 
                                             {/* SUB-ROW 3: CASH ADVANCES */}
-                                            <tr className="hover:bg-slate-50/40 dark:hover:bg-[#161b22]/40 transition-colors border-b border-slate-200 dark:border-github-dark-border">
+                                            <tr className="hover:bg-slate-50/40 dark:hover:bg-[#161b22]/50 transition-colors border-b border-slate-200 dark:border-[#30363d]">
                                                 {/* Daily Advance Cells */}
                                                 {data.days.map(day => {
                                                     const dayData = worker.days[day.dateStr];
@@ -418,35 +557,35 @@ const MonthlyDetailedMatrix = ({
                                                     return (
                                                         <td
                                                             key={`adv-${day.dateStr}`}
-                                                            className={`p-1 text-center w-[54px] min-w-[54px] max-w-[54px] align-middle border-r border-slate-100 dark:border-github-dark-border/40 ${
-                                                                isFuture ? 'opacity-30' : day.isWeekend ? 'bg-slate-50/60 dark:bg-[#12161c]' : ''
+                                                            className={`p-1 text-center w-[54px] min-w-[54px] max-w-[54px] align-middle border-r border-slate-100 dark:border-[#21262d] ${
+                                                                isFuture ? 'opacity-30' : day.isWeekend ? 'bg-slate-50/60 dark:bg-[#161b22]/40' : ''
                                                             }`}
                                                         >
                                                             {adv > 0 ? (
-                                                                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+                                                                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
                                                                     ₹{adv >= 1000 ? `${adv / 1000}k` : adv}
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 font-mono">N/A</span>
+                                                                <span className="text-[10px] text-slate-400 dark:text-[#8b949e] font-mono">-</span>
                                                             )}
                                                         </td>
                                                     );
                                                 })}
 
                                                 {/* Right Summary Row 3: Advance & Net Calculation */}
-                                                <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400 border-l border-slate-200 dark:border-github-dark-border bg-slate-50/30 dark:bg-[#161b22]/30">
-                                                    N/A
+                                                <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e] border-l border-slate-200 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#161b22]/30">
+                                                    -
                                                 </td>
-                                                <td className="p-2 text-right font-semibold text-slate-500 dark:text-slate-400">
-                                                    N/A
+                                                <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e]">
+                                                    -
                                                 </td>
-                                                <td className={`p-2 text-right font-extrabold ${advanceAlert ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                                <td className={`p-2 text-right font-semibold ${advanceAlert ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
                                                     -₹{totals.advances.toLocaleString()}
                                                 </td>
-                                                <td className="p-2 text-right font-black text-slate-800 dark:text-slate-200">
+                                                <td className="p-2 text-right font-semibold text-slate-800 dark:text-[#f0f6fc]">
                                                     ₹{totals.gross_earned.toLocaleString()}
                                                 </td>
-                                                <td className="p-2 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                                                <td className="p-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
                                                     ₹{totals.total_paid.toLocaleString()}
                                                 </td>
                                             </tr>
@@ -456,56 +595,56 @@ const MonthlyDetailedMatrix = ({
                             </tbody>
 
                             {/* Sticky Footer: Daily Column Totals */}
-                            <tfoot className="sticky bottom-0 z-30 bg-slate-100 dark:bg-[#161b22] border-t-2 border-slate-300 dark:border-github-dark-border font-bold shadow-lg">
+                            <tfoot className="sticky bottom-0 z-30 bg-slate-100 dark:bg-[#161b22] border-t-2 border-slate-300 dark:border-[#30363d] font-medium shadow-lg">
                                 {/* FOOTER 1: DAILY PRESENT HEADCOUNT */}
-                                <tr className="border-b border-slate-200 dark:border-github-dark-border/50 text-[10px]">
+                                <tr className="border-b border-slate-200 dark:border-[#30363d] text-[10px]">
                                     <td
                                         colSpan={2}
-                                        className="p-2.5 text-left font-black text-emerald-700 dark:text-emerald-400 sticky left-0 z-40 bg-emerald-50 dark:bg-emerald-950/90 border-r border-slate-200 dark:border-github-dark-border uppercase shadow-md w-[250px] min-w-[250px] max-w-[250px] whitespace-nowrap"
+                                        className="p-2.5 text-left font-semibold text-emerald-700 dark:text-emerald-400 sticky left-0 z-40 bg-emerald-50 dark:bg-emerald-950/90 border-r border-slate-200 dark:border-[#30363d] uppercase shadow-md w-[250px] min-w-[250px] max-w-[250px] whitespace-nowrap"
                                     >
                                         Daily Present Headcount
                                     </td>
                                     {data.days.map((day, idx) => (
                                         <td
                                             key={`tot-p-${day.dateStr}`}
-                                            className={`p-1 text-center font-bold text-emerald-700 dark:text-emerald-400 w-[54px] min-w-[54px] max-w-[54px] border-r border-slate-200/50 dark:border-github-dark-border/50 ${
+                                            className={`p-1 text-center font-medium text-emerald-700 dark:text-emerald-400 w-[54px] min-w-[54px] max-w-[54px] border-r border-slate-200/50 dark:border-[#30363d]/50 ${
                                                 day.isFuture ? 'opacity-30' : ''
                                             }`}
                                         >
                                             {data.dailyTotals.presentCount[idx] || 0}
                                         </td>
                                     ))}
-                                    <td className="p-2 text-right font-black text-emerald-700 dark:text-emerald-400 border-l border-slate-200 dark:border-github-dark-border">
+                                    <td className="p-2 text-right font-semibold text-emerald-700 dark:text-emerald-400 border-l border-slate-200 dark:border-[#30363d]">
                                         {data.grandTotals.totalPresentDays} d
                                     </td>
-                                    <td colSpan={6} className="p-2 text-slate-400 dark:text-slate-600 italic text-right">
+                                    <td colSpan={6} className="p-2 text-slate-400 dark:text-[#8b949e] italic text-right">
                                         Total Active Work Days Recorded
                                     </td>
                                 </tr>
 
                                 {/* FOOTER 2: DAILY OT HOURS */}
-                                <tr className="border-b border-slate-200 dark:border-github-dark-border/50 text-[10px] bg-indigo-50/30 dark:bg-indigo-950/20">
+                                <tr className="border-b border-slate-200 dark:border-[#30363d] text-[10px] bg-indigo-50/30 dark:bg-indigo-950/20">
                                     <td
                                         colSpan={2}
-                                        className="p-2.5 text-left font-black text-indigo-700 dark:text-indigo-400 sticky left-0 z-40 bg-indigo-50 dark:bg-indigo-950/90 border-r border-slate-200 dark:border-github-dark-border uppercase shadow-md w-[250px] min-w-[250px] max-w-[250px] whitespace-nowrap"
+                                        className="p-2.5 text-left font-semibold text-indigo-700 dark:text-indigo-400 sticky left-0 z-40 bg-indigo-50 dark:bg-indigo-950/90 border-r border-slate-200 dark:border-[#30363d] uppercase shadow-md w-[250px] min-w-[250px] max-w-[250px] whitespace-nowrap"
                                     >
                                         Daily Overtime Hours
                                     </td>
                                     {data.days.map((day, idx) => (
                                         <td
                                             key={`tot-ot-${day.dateStr}`}
-                                            className={`p-1 text-center font-bold text-indigo-600 dark:text-indigo-400 w-[54px] min-w-[54px] max-w-[54px] border-r border-slate-200/50 dark:border-github-dark-border/50 ${
+                                            className={`p-1 text-center font-medium text-indigo-600 dark:text-indigo-400 w-[54px] min-w-[54px] max-w-[54px] border-r border-slate-200/50 dark:border-[#30363d]/50 ${
                                                 day.isFuture ? 'opacity-30' : ''
                                             }`}
                                         >
                                             {data.dailyTotals.otHours[idx] ? `${data.dailyTotals.otHours[idx]}h` : '-'}
                                         </td>
                                     ))}
-                                    <td className="p-2 text-right font-semibold text-slate-400">N/A</td>
-                                    <td className="p-2 text-right font-black text-indigo-600 dark:text-indigo-400">
+                                    <td className="p-2 text-right font-normal text-slate-400 dark:text-[#8b949e]">-</td>
+                                    <td className="p-2 text-right font-semibold text-indigo-600 dark:text-indigo-400">
                                         {data.grandTotals.totalOtHours} hrs
                                     </td>
-                                    <td colSpan={5} className="p-2 text-slate-400 dark:text-slate-600 italic text-right">
+                                    <td colSpan={5} className="p-2 text-slate-400 dark:text-[#8b949e] italic text-right">
                                         Total Overtime Hours Logged
                                     </td>
                                 </tr>
@@ -514,7 +653,7 @@ const MonthlyDetailedMatrix = ({
                                 <tr className="text-[10px] bg-amber-50/40 dark:bg-amber-950/20">
                                     <td
                                         colSpan={2}
-                                        className="p-2.5 text-left font-black text-amber-800 dark:text-amber-300 sticky left-0 z-40 bg-amber-50 dark:bg-amber-950/90 border-r border-slate-200 dark:border-github-dark-border uppercase shadow-md w-[250px] min-w-[250px] max-w-[250px] whitespace-nowrap"
+                                        className="p-2.5 text-left font-semibold text-amber-800 dark:text-amber-300 sticky left-0 z-40 bg-amber-50 dark:bg-amber-950/90 border-r border-slate-200 dark:border-[#30363d] uppercase shadow-md w-[250px] min-w-[250px] max-w-[250px] whitespace-nowrap"
                                     >
                                         Daily Advances Disbursed
                                     </td>
@@ -523,7 +662,7 @@ const MonthlyDetailedMatrix = ({
                                         return (
                                             <td
                                                 key={`tot-adv-${day.dateStr}`}
-                                                className={`p-1 text-center font-extrabold text-amber-700 dark:text-amber-400 w-[54px] min-w-[54px] max-w-[54px] border-r border-slate-200/50 dark:border-github-dark-border/50 ${
+                                                className={`p-1 text-center font-medium text-amber-700 dark:text-amber-400 w-[54px] min-w-[54px] max-w-[54px] border-r border-slate-200/50 dark:border-[#30363d]/50 ${
                                                     day.isFuture ? 'opacity-30' : ''
                                                 }`}
                                             >
@@ -531,21 +670,21 @@ const MonthlyDetailedMatrix = ({
                                             </td>
                                         );
                                     })}
-                                    <td className="p-2 text-right font-semibold text-slate-400">N/A</td>
-                                    <td className="p-2 text-right font-semibold text-slate-400">N/A</td>
-                                    <td className="p-2 text-right font-black text-amber-700 dark:text-amber-400">
+                                    <td className="p-2 text-right font-normal text-slate-400 dark:text-[#8b949e]">-</td>
+                                    <td className="p-2 text-right font-normal text-slate-400 dark:text-[#8b949e]">-</td>
+                                    <td className="p-2 text-right font-semibold text-amber-700 dark:text-amber-400">
                                         ₹{data.grandTotals.totalAdvances.toLocaleString()}
                                     </td>
-                                    <td className="p-2 text-right font-black text-slate-800 dark:text-slate-200">
+                                    <td className="p-2 text-right font-semibold text-slate-800 dark:text-[#f0f6fc]">
                                         ₹{data.grandTotals.totalGrossEarned.toLocaleString()}
                                     </td>
-                                    <td className="p-2 text-right font-black text-emerald-600 dark:text-emerald-400">
+                                    <td className="p-2 text-right font-semibold text-emerald-600 dark:text-emerald-400">
                                         ₹{data.grandTotals.totalPaid.toLocaleString()}
                                     </td>
-                                    <td className="p-2 text-right font-black text-indigo-600 dark:text-indigo-400">
+                                    <td className="p-2 text-right font-semibold text-indigo-600 dark:text-indigo-400">
                                         ₹{data.grandTotals.totalNetPayable.toLocaleString()}
                                     </td>
-                                    <td className="p-2 text-center text-slate-400 dark:text-slate-500 text-[9px] font-bold">
+                                    <td className="p-2 text-right font-semibold text-slate-800 dark:text-[#f0f6fc]">
                                         Grand Totals
                                     </td>
                                 </tr>
@@ -553,6 +692,7 @@ const MonthlyDetailedMatrix = ({
                         </table>
                     </div>
                 </div>
+            )
             )}
         </div>
     );

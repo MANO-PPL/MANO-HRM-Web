@@ -12,20 +12,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import MinimalSelect from '../../components/MinimalSelect';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import MonthPicker from '../../components/MonthPicker';
+import LoadingScreen from '../../components/LoadingScreen';
 import MonthlyDetailedMatrix from './components/MonthlyDetailedMatrix';
 
 const getStatusColor = (status) => {
     const s = status || '';
-    if (!s || s === '-') return 'bg-slate-50 text-slate-300 dark:bg-slate-900 dark:text-slate-700 border border-slate-200 dark:border-slate-800';
-    if (s === 'Present' || s.includes('Present')) return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/50';
-    if (s === 'Absent') return 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400 ring-1 ring-rose-200 dark:ring-rose-800/50';
-    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) return 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-800/50';
-    if (s.toLowerCase().includes('late')) return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 ring-1 ring-amber-200 dark:ring-amber-800/50';
-    if (s.toLowerCase().includes('overtime')) return 'bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400 ring-1 ring-purple-200 dark:ring-purple-800/50';
-    if (s === 'Sun' || s === 'Sat' || s === 'SU' || s === 'SA' || s === 'Sunday' || s === 'Saturday') return 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500';
-    if (s.toLowerCase() === 'on leave' || s.toLowerCase() === 'paid leave') return 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400 ring-1 ring-sky-200 dark:ring-sky-800/50';
-    if (s.toLowerCase() === 'half day') return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800/50';
-    return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+    if (!s || s === '-') return 'bg-slate-50 text-slate-400 dark:bg-[#161b22] dark:text-[#8b949e] border border-slate-200 dark:border-[#30363d]';
+    if (s === 'Present' || s.includes('Present')) return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-300 dark:ring-emerald-700/60 font-semibold';
+    if (s === 'Absent') return 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-700/60 font-semibold';
+    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) return 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 ring-1 ring-orange-300 dark:ring-orange-700/60 font-semibold';
+    if (s.toLowerCase().includes('late')) return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 ring-1 ring-amber-300 dark:ring-amber-700/60 font-semibold';
+    if (s.toLowerCase().includes('overtime')) return 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 ring-1 ring-purple-300 dark:ring-purple-700/60 font-semibold';
+    if (s === 'Sun' || s === 'Sat' || s === 'SU' || s === 'SA' || s === 'Sunday' || s === 'Saturday') return 'bg-slate-100 dark:bg-[#21262d] text-slate-500 dark:text-[#c9d1d9] font-medium border border-transparent dark:border-[#30363d]/60';
+    if (s.toLowerCase() === 'on leave' || s.toLowerCase() === 'paid leave') return 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 ring-1 ring-sky-300 dark:ring-sky-700/60 font-semibold';
+    if (s.toLowerCase() === 'half day') return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 ring-1 ring-indigo-300 dark:ring-indigo-700/60 font-semibold';
+    return 'bg-slate-100 text-slate-500 dark:bg-[#21262d] dark:text-[#c9d1d9]';
 };
 
 const getStatusLabel = (status) => {
@@ -48,8 +49,15 @@ const MobileLabourManagement = () => {
     // Navigation / Tab state
     const [activeTab, setActiveTab] = useState('sites'); // 'sites', 'directory'
     const [selectedSite, setSelectedSite] = useState(null);
-    const [subTab, setSubTab] = useState('attendance'); // 'attendance', 'grid', 'finances'
-    const [ledgerViewMode, setLedgerViewMode] = useState('matrix'); // 'matrix' or 'summary'
+    const [subTab, setSubTab] = useState('attendance'); // 'attendance', 'finances'
+    const [ledgerViewMode, setLedgerViewMode] = useState('matrix'); // 'matrix' (Spreadsheet Matrix) or 'summary' (Summary Cards/Table)
+
+    // Fallback if subTab is set to legacy 'grid'
+    useEffect(() => {
+        if (subTab === 'grid') {
+            setSubTab('attendance');
+        }
+    }, [subTab]);
 
     // Data States
     const [sites, setSites] = useState([]);
@@ -258,13 +266,11 @@ const MobileLabourManagement = () => {
         if (activeTab === 'sites' && selectedSite) {
             if (subTab === 'attendance') {
                 loadAttendanceRoster();
-            } else if (subTab === 'grid') {
-                fetchGridData();
             } else if (subTab === 'finances') {
                 fetchFinances(financeMonth);
             }
         }
-    }, [attendanceSiteId, attendanceDate, gridSiteId, gridMonth, financeMonth, activeTab, selectedSite, subTab]);
+    }, [attendanceSiteId, attendanceDate, financeMonth, activeTab, selectedSite, subTab]);
 
     // Bulk upload CSV/Excel handlers for Mobile
     const handleCSVUpload = async (e) => {
@@ -859,7 +865,7 @@ const MobileLabourManagement = () => {
             <div className="space-y-4 pb-24 text-xs">
 
                 {/* Status Tabs - Pill Style */}
-                <div className="bg-slate-200/50 dark:bg-github-dark-border/50 p-1 flex rounded-xl border border-slate-200 dark:border-github-dark-border/50 sticky top-16 z-20">
+                <div className="bg-[#f6f8fa] dark:bg-[#161b22] p-1 flex rounded-xl border border-slate-200 dark:border-[#30363d] sticky top-16 z-20">
                     {[
                         { id: 'sites', label: 'Sites Overview' },
                         { id: 'directory', label: 'Labour Directory' }
@@ -867,9 +873,9 @@ const MobileLabourManagement = () => {
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex-1 py-2 text-[10px] font-semibold rounded-lg transition-all ${activeTab === tab.id
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                                    : 'text-slate-500 dark:text-github-dark-muted'
+                            className={`flex-1 py-2 text-[10px] rounded-lg transition-all cursor-pointer ${activeTab === tab.id
+                                    ? 'bg-white dark:bg-[#21262d] text-indigo-600 dark:text-[#58a6ff] dark:border dark:border-[#30363d] shadow-sm font-medium'
+                                    : 'text-slate-500 dark:text-[#8b949e] hover:text-slate-900 dark:hover:text-[#f0f6fc] font-normal'
                                 }`}
                         >
                             {tab.label}
@@ -878,17 +884,16 @@ const MobileLabourManagement = () => {
                 </div>
 
                 {activeTab === 'sites' && selectedSite !== null && (
-                    <div className="flex items-center gap-0.5 text-[10px] font-semibold text-slate-450 dark:text-slate-500 px-1 select-none animate-in fade-in duration-200">
-                        <span className="hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => setSelectedSite(null)}>Sites Overview</span>
-                        <ChevronRight size={10} className="text-slate-350 dark:text-slate-700" />
-                        <span className="text-slate-700 dark:text-github-dark-text font-bold truncate max-w-[150px]">{selectedSite.site_name}</span>
+                    <div className="flex items-center gap-0.5 text-[10px] font-semibold text-slate-450 dark:text-[#8b949e] px-1 select-none animate-in fade-in duration-200">
+                        <span className="hover:text-indigo-600 dark:hover:text-[#58a6ff] cursor-pointer transition-colors" onClick={() => setSelectedSite(null)}>Sites Overview</span>
+                        <ChevronRight size={10} className="text-slate-350 dark:text-[#8b949e]" />
+                        <span className="text-slate-700 dark:text-[#f0f6fc] font-semibold truncate max-w-[150px]">{selectedSite.site_name}</span>
                     </div>
                 )}
 
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-20 gap-3">
-                        <Clock className="animate-spin text-indigo-500" size={24} />
-                        <span className="text-[10px] text-slate-400">Loading data...</span>
+                    <div className="bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-2xl p-6 shadow-xs my-4">
+                        <LoadingScreen message="Loading workforce data..." fullScreen={false} />
                     </div>
                 ) : (
                     <>
@@ -899,10 +904,10 @@ const MobileLabourManagement = () => {
                             selectedSite === null ? (
                                 <div className="space-y-3 animate-in fade-in duration-150">
                                     <div className="flex justify-between items-center bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm">
-                                        <span className="font-bold text-slate-700 dark:text-white">Active Projects</span>
+                                        <span className="font-semibold text-slate-700 dark:text-white">Active Projects</span>
                                         <button
                                             onClick={() => { setEditingSite(null); setSiteForm({ site_name: '', location_details: '', status: 'Active' }); setShowSiteModal(true); }}
-                                            className="px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg font-bold flex items-center gap-1 text-[10px]"
+                                            className="px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg font-medium flex items-center gap-1 text-[10px]"
                                         >
                                             <Plus size={12} /> Add Site
                                         </button>
@@ -921,14 +926,14 @@ const MobileLabourManagement = () => {
                                             >
                                                 <div>
                                                     <div className="flex justify-between items-center">
-                                                        <h4 className="font-bold text-xs text-slate-800 dark:text-white">{site.site_name}</h4>
-                                                        <span className={`px-2 py-0.5 text-[8px] font-bold rounded-full uppercase ${site.status === 'Active' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-github-dark-muted'
+                                                        <h4 className="font-semibold text-xs text-slate-800 dark:text-white">{site.site_name}</h4>
+                                                        <span className={`px-2 py-0.5 text-[8px] font-medium rounded-full uppercase ${site.status === 'Active' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-github-dark-muted'
                                                             }`}>
                                                             {site.status}
                                                         </span>
                                                     </div>
                                                     <p className="text-[10px] text-slate-500 dark:text-github-dark-muted mt-1">{site.location_details || 'No details.'}</p>
-                                                    <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 mt-1 block">
+                                                    <span className="text-[9px] font-medium text-indigo-600 dark:text-indigo-400 mt-1 block">
                                                         {labours.filter(l => l.site_id === site.site_id).length} Assigned Workers
                                                     </span>
                                                 </div>
@@ -945,21 +950,20 @@ const MobileLabourManagement = () => {
                                 <div className="space-y-4 animate-in fade-in duration-150">
                                     <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm space-y-3">
                                         <div>
-                                            <h3 className="font-extrabold text-xs text-slate-800 dark:text-white">{selectedSite.site_name}</h3>
+                                            <h3 className="font-semibold text-xs text-slate-800 dark:text-white">{selectedSite.site_name}</h3>
                                         </div>
 
                                         <div className="flex bg-slate-100 dark:bg-[#161b22] p-0.5 rounded-lg select-none border border-slate-250 dark:border-github-dark-border">
                                             {[
                                                 { id: 'attendance', label: 'Checklist' },
-                                                { id: 'grid', label: 'Matrix' },
                                                 { id: 'finances', label: 'Ledger' }
                                             ].map((tab) => (
                                                 <button
                                                     key={tab.id}
                                                     onClick={() => setSubTab(tab.id)}
-                                                    className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${subTab === tab.id
-                                                            ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-[#f0f6fc] shadow-sm'
-                                                            : 'text-slate-500 dark:text-slate-400'
+                                                    className={`flex-1 py-1 text-[10px] rounded-md transition-all cursor-pointer ${subTab === tab.id
+                                                            ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-[#f0f6fc] shadow-sm font-medium'
+                                                            : 'text-slate-500 dark:text-slate-400 font-normal'
                                                         }`}
                                                 >
                                                     {tab.label}
@@ -1011,7 +1015,7 @@ const MobileLabourManagement = () => {
 
                                              <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm">
                                                  <div className="p-3 border-b border-slate-105 dark:border-github-dark-border flex justify-between items-center bg-slate-50 dark:bg-github-dark-border/40 gap-2">
-                                                     <span className="font-bold text-[11px] truncate">Roster ({attendanceRoster.filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase()).length})</span>
+                                                     <span className="font-semibold text-[11px] truncate">Roster ({attendanceRoster.filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase()).length})</span>
                                                      <div className="flex gap-1.5 shrink-0">
                                                          <button
                                                              type="button"
@@ -1021,21 +1025,21 @@ const MobileLabourManagement = () => {
                                                                  setBulkDestinationSiteId(selectedSite ? String(selectedSite.site_id) : '');
                                                                  setShowBulkTransferModal(true);
                                                              }}
-                                                             className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg font-bold flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
+                                                             className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg font-medium flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
                                                          >
                                                              <Building size={10} /> Bulk Move
                                                          </button>
                                                          <button
                                                              type="button"
                                                              onClick={() => setShowBorrowModal(true)}
-                                                             className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg font-bold flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
+                                                             className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg font-medium flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
                                                          >
                                                              <Plus size={10} /> Add Worker
                                                          </button>
                                                          <button
                                                               disabled={attendanceRoster.length === 0 || savingRoster}
                                                               onClick={handleSaveAttendance}
-                                                              className="px-2 py-1 bg-indigo-600 text-white rounded-lg font-bold flex items-center gap-1 shadow-sm disabled:opacity-50 text-[9px] min-w-[55px] justify-center"
+                                                              className="px-2 py-1 bg-indigo-600 text-white rounded-lg font-medium flex items-center gap-1 shadow-sm disabled:opacity-50 text-[9px] min-w-[55px] justify-center"
                                                           >
                                                               {savingRoster ? (
                                                                   <>
@@ -1050,86 +1054,88 @@ const MobileLabourManagement = () => {
                                                      </div>
                                                  </div>
 
-                                                 {attendanceLoading ? (
-                                                     <div className="py-10 flex justify-center"><Clock className="animate-spin text-indigo-500" size={20} /></div>
-                                                 ) : attendanceRoster.length === 0 ? (
-                                                     <div className="p-8 text-center text-slate-400 italic">No labours on this site. Assign them in Directory.</div>
-                                                 ) : attendanceRoster.filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase()).length === 0 ? (
-                                                     <div className="p-8 text-center text-slate-400 italic">No labours match the selected role filter.</div>
-                                                 ) : (
-                                                     <div className="divide-y divide-slate-100 dark:divide-github-dark-border/50 bg-slate-50/30 dark:bg-transparent">
-                                                         {attendanceRoster
-                                                             .filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase())
-                                                             .map(item => (
-                                                             <div key={item.labour_id} className="p-4 flex flex-col gap-3 hover:bg-slate-50/50 dark:hover:bg-[#161b22]/20 transition-colors">
-                                                                 <div className="flex items-center justify-between gap-3">
-                                                                     <div>
-                                                                         <div className="flex items-center gap-2">
-                                                                             <h4 className="font-bold text-slate-800 dark:text-white text-xs truncate">{item.name}</h4>
-                                                                             {item.is_borrowed && (
-                                                                                 <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-extrabold text-[8px] uppercase tracking-wider">Added</span>
-                                                                             )}
-                                                                         </div>
-                                                                         {item.already_marked_at && (
-                                                                             <p className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5">
-                                                                                 <AlertTriangle size={10} className="shrink-0" />
-                                                                                 <span>Marked {item.already_marked_at.status} at {item.already_marked_at.site_name}</span>
-                                                                             </p>
-                                                                         )}
-                                                                         <div className="flex items-center gap-1.5 mt-1 text-[9px] text-slate-400 dark:text-github-dark-muted font-mono uppercase">
-                                                                             <span>{item.role}</span>
-                                                                         </div>
-                                                                     </div>
-                                                                 </div>
+                                                  {attendanceLoading ? (
+                                                      <div className="py-8">
+                                                          <LoadingScreen size="sm" message="Loading roll call roster..." fullScreen={false} />
+                                                      </div>
+                                                  ) : attendanceRoster.length === 0 ? (
+                                                      <div className="p-8 text-center text-slate-400 dark:text-[#8b949e] italic">No labours on this site. Assign them in Directory.</div>
+                                                  ) : attendanceRoster.filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase()).length === 0 ? (
+                                                      <div className="p-8 text-center text-slate-400 dark:text-[#8b949e] italic">No labours match the selected role filter.</div>
+                                                  ) : (
+                                                      <div className="divide-y divide-slate-100 dark:divide-[#21262d] bg-slate-50/30 dark:bg-transparent">
+                                                          {attendanceRoster
+                                                              .filter(item => !attendanceRoleFilter || item.role.toLowerCase() === attendanceRoleFilter.toLowerCase())
+                                                              .map(item => (
+                                                              <div key={item.labour_id} className="p-4 flex flex-col gap-3 hover:bg-slate-50/50 dark:hover:bg-[#161b22]/40 transition-colors">
+                                                                  <div className="flex items-center justify-between gap-3">
+                                                                      <div>
+                                                                          <div className="flex items-center gap-2">
+                                                                              <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-xs truncate">{item.name}</h4>
+                                                                              {item.is_borrowed && (
+                                                                                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold text-[8px] uppercase tracking-wider">Added</span>
+                                                                              )}
+                                                                          </div>
+                                                                          {item.already_marked_at && (
+                                                                              <p className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
+                                                                                  <AlertTriangle size={10} className="shrink-0" />
+                                                                                  <span>Marked {item.already_marked_at.status} at {item.already_marked_at.site_name}</span>
+                                                                              </p>
+                                                                          )}
+                                                                          <div className="flex items-center gap-1.5 mt-1 text-[9px] text-slate-400 dark:text-[#8b949e] font-mono uppercase">
+                                                                              <span>{item.role}</span>
+                                                                          </div>
+                                                                      </div>
+                                                                  </div>
 
-                                                                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                                                                     {[
-                                                                         { id: 'Present', label: 'Present (Full Day)', activeColor: 'bg-emerald-500 text-white dark:bg-emerald-600', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
-                                                                         { id: 'Half Day', label: 'Half Day', activeColor: 'bg-amber-500 text-white dark:bg-amber-600', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' },
-                                                                         { id: 'Absent', label: 'Absent', activeColor: 'bg-rose-500 text-white dark:bg-rose-600', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-github-dark-border/60 hover:bg-slate-100' }
-                                                                     ].map(statusOpt => {
-                                                                         const isSelected = item.status === statusOpt.id;
-                                                                         const isButtonDisabled = (statusOpt.id === 'Present' || statusOpt.id === 'Half Day' || statusOpt.id === 'Paid Leave') &&
-                                                                             item.already_marked_at && !item.is_scheduled_multi_site;
-                                                                         return (
-                                                                             <button
-                                                                                 key={statusOpt.id}
-                                                                                 onClick={() => handleStatusChange(item.labour_id, statusOpt.id)}
-                                                                                 disabled={isButtonDisabled}
-                                                                                 className={`px-3 py-1.5 rounded-lg text-[9px] font-bold transition-all duration-150 whitespace-nowrap ${
-                                                                                     isButtonDisabled
-                                                                                         ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-850/40 dark:text-slate-600 border border-slate-200/50 dark:border-[#30363d]/50'
-                                                                                         : isSelected
-                                                                                             ? statusOpt.activeColor + ' shadow-sm cursor-pointer'
-                                                                                             : statusOpt.inactiveColor + ' cursor-pointer'
-                                                                                 }`}
-                                                                             >
-                                                                                 {statusOpt.label}
-                                                                             </button>
-                                                                         );
-                                                                     })}
-                                                                 </div>
+                                                                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                                                                      {[
+                                                                          { id: 'Present', label: 'Present (Full Day)', activeColor: 'bg-emerald-500 text-white dark:bg-emerald-600 shadow-sm ring-1 ring-emerald-400/50', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-[#30363d] hover:bg-slate-100 dark:hover:bg-[#21262d] dark:hover:text-white' },
+                                                                          { id: 'Half Day', label: 'Half Day', activeColor: 'bg-amber-500 text-white dark:bg-amber-600 shadow-sm ring-1 ring-amber-400/50', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-[#30363d] hover:bg-slate-100 dark:hover:bg-[#21262d] dark:hover:text-white' },
+                                                                          { id: 'Absent', label: 'Absent', activeColor: 'bg-rose-500 text-white dark:bg-rose-600 shadow-sm ring-1 ring-rose-400/50', inactiveColor: 'bg-slate-50 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] border border-slate-200 dark:border-[#30363d] hover:bg-slate-100 dark:hover:bg-[#21262d] dark:hover:text-white' }
+                                                                      ].map(statusOpt => {
+                                                                          const isSelected = item.status === statusOpt.id;
+                                                                          const isButtonDisabled = (statusOpt.id === 'Present' || statusOpt.id === 'Half Day' || statusOpt.id === 'Paid Leave') &&
+                                                                              item.already_marked_at && !item.is_scheduled_multi_site;
+                                                                          return (
+                                                                              <button
+                                                                                  key={statusOpt.id}
+                                                                                  onClick={() => handleStatusChange(item.labour_id, statusOpt.id)}
+                                                                                  disabled={isButtonDisabled}
+                                                                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-medium transition-all duration-150 whitespace-nowrap ${
+                                                                                      isButtonDisabled
+                                                                                          ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-850/40 dark:text-[#8b949e] border border-slate-200/50 dark:border-[#30363d]/50'
+                                                                                          : isSelected
+                                                                                              ? statusOpt.activeColor + ' shadow-sm cursor-pointer'
+                                                                                              : statusOpt.inactiveColor + ' cursor-pointer'
+                                                                                  }`}
+                                                                              >
+                                                                                  {statusOpt.label}
+                                                                              </button>
+                                                                          );
+                                                                      })}
+                                                                  </div>
 
                                                                   {item.status === 'Present' && (
                                                                       <div className="flex items-center justify-between mt-1 bg-slate-100/50 dark:bg-[#161b22]/40 rounded-xl p-2 px-3 border border-slate-200/30 dark:border-github-dark-border/20">
-                                                                          <span className="text-[10px] text-slate-500 dark:text-github-dark-muted font-bold uppercase">Overtime Hours:</span>
+                                                                          <span className="text-[10px] text-slate-500 dark:text-github-dark-muted font-medium uppercase">Overtime Hours:</span>
                                                                           <div className="flex items-center gap-1.5">
                                                                               <button
                                                                                   type="button"
                                                                                   disabled={(item.overtime_hours || 0) <= 0}
                                                                                   onClick={() => handleOvertimeChange(item.labour_id, Math.max(0, (item.overtime_hours || 0) - 1))}
-                                                                                  className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-bold cursor-pointer"
+                                                                                  className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-medium cursor-pointer"
                                                                               >
                                                                                   -
                                                                               </button>
-                                                                              <span className="w-8 text-center text-xs font-extrabold text-slate-800 dark:text-white font-mono">
+                                                                              <span className="w-8 text-center text-xs font-semibold text-slate-800 dark:text-white font-mono">
                                                                                   {item.overtime_hours || 0}
                                                                               </span>
                                                                               <button
                                                                                   type="button"
                                                                                   disabled={(item.overtime_hours || 0) >= 12}
                                                                                   onClick={() => handleOvertimeChange(item.labour_id, Math.min(12, (item.overtime_hours || 0) + 1))}
-                                                                                  className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-bold cursor-pointer"
+                                                                                  className="w-6 h-6 flex items-center justify-center rounded bg-slate-200 dark:bg-[#30363d] text-slate-700 dark:text-white disabled:opacity-40 text-xs font-medium cursor-pointer"
                                                                               >
                                                                                   +
                                                                               </button>
@@ -1144,121 +1150,6 @@ const MobileLabourManagement = () => {
                                          </div>
                                      )}
 
-                                     {subTab === 'grid' && (
-                                         <div className="space-y-3 animate-in fade-in duration-100">
-                                            <div className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm flex flex-col gap-2.5">
-                                                 <MinimalSelect
-                                                     options={[
-                                                         { value: '', label: 'All Roles' },
-                                                         ...((() => {
-                                                             const seen = new Map();
-                                                             labours.forEach(l => {
-                                                                 const r = (l.role || '').trim();
-                                                                 if (r) {
-                                                                     const key = r.toLowerCase();
-                                                                     if (!seen.has(key)) seen.set(key, r);
-                                                                 }
-                                                             });
-                                                             return [...seen.values()].sort();
-                                                         })().map(r => ({ value: r, label: r })))
-                                                     ]}
-                                                     value={gridRoleFilter}
-                                                     onChange={(val) => setGridRoleFilter(val)}
-                                                     variant="input"
-                                                     size="sm"
-                                                     triggerClassName="w-full justify-between py-1.5 px-3 rounded-xl font-medium"
-                                                 />
-                                                 <MonthPicker
-                                                     label="Month"
-                                                     value={gridMonth}
-                                                     onChange={(val) => setGridMonth(val)}
-                                                     compact={true}
-                                                 />
-                                            </div>
-
-                                            {gridLoading ? (
-                                                <div className="py-10 flex justify-center"><Clock className="animate-spin text-indigo-500" size={20} /></div>
-                                            ) : (
-                                                <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden shadow-sm">
-                                                    <div className="p-3 border-b border-slate-105 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-border/40 flex justify-between items-center">
-                                                        <span className="font-bold text-xs">Attendance Matrix</span>
-                                                    </div>
-
-                                                    <div className="overflow-x-auto no-scrollbar" style={{ isolation: 'isolate' }}>
-                                                        <table className="w-full text-left border-collapse text-xs whitespace-nowrap" style={{ minWidth: 'max-content' }}>
-                                                            <thead className="sticky top-0 z-30">
-                                                                <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
-                                                                    <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-[#161b22] z-40 w-[130px] min-w-[130px] max-w-[130px] border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.10)' }}>Worker Name / Role</th>
-                                                                    {getDaysInMonthArray().map(day => {
-                                                                        const d = new Date(day.dateStr + 'T00:00:00Z');
-                                                                        return (
-                                                                            <th key={day.dateStr} className="py-2 px-1 text-center min-w-[46px]">
-                                                                                <div className="text-[7px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { month: 'short' })}</div>
-                                                                                <div className="text-[12px] font-black text-slate-700 dark:text-white leading-tight">{d.getUTCDate()}</div>
-                                                                                <div className="text-[7px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
-                                                                            </th>
-                                                                        );
-                                                                    })}
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-slate-100 dark:divide-github-dark-border">
-                                                                {gridData.filter(row => !gridRoleFilter || row.role.toLowerCase() === gridRoleFilter.toLowerCase()).length === 0 ? (
-                                                                     <tr>
-                                                                         <td colSpan={getDaysInMonthArray().length + 1} className="p-8 text-center text-slate-400 italic bg-white dark:bg-dark-card">No matrix records matching filter.</td>
-                                                                     </tr>
-                                                                 ) : (
-                                                                     gridData
-                                                                         .filter(row => !gridRoleFilter || row.role.toLowerCase() === gridRoleFilter.toLowerCase())
-                                                                         .map(row => {
-                                                                        const initials = row.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-                                                                        return (
-                                                                            <tr key={row.labour_id} className="hover:bg-slate-50 dark:hover:bg-[#1c2128] transition-colors group">
-                                                                                <td className="px-3 py-2.5 sticky left-0 bg-white dark:bg-[#0d1117] group-hover:bg-slate-50 dark:group-hover:bg-[#1c2128] transition-colors z-10 w-[130px] min-w-[130px] max-w-[130px] border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.08)' }}>
-                                                                                     <div className="flex items-center gap-2 overflow-hidden">
-                                                                                         <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-[10px] shadow-inner shrink-0">
-                                                                                             {initials || <User size={12} />}
-                                                                                         </div>
-                                                                                         <div className="min-w-0 flex-1">
-                                                                                             <span className="block font-bold text-slate-800 dark:text-github-dark-text text-[10px] leading-tight truncate">{row.name}</span>
-                                                                                             <span className="block text-[8px] font-medium text-slate-400 dark:text-github-dark-muted mt-0.5 truncate">{row.role}</span>
-                                                                                         </div>
-                                                                                     </div>
-                                                                                </td>
-                                                                                {getDaysInMonthArray().map(day => {
-                                                                                    const attObj = row.attendance[day.dateStr];
-                                                                                    let status = attObj && typeof attObj === 'object' ? attObj.status : (attObj || '-');
-
-                                                                                    if (status === '-' || !status) {
-                                                                                        const dateObj = new Date(day.dateStr);
-                                                                                        const dayNum = dateObj.getDay();
-                                                                                        if (dayNum === 6) status = 'Sat';
-                                                                                        else if (dayNum === 0) status = 'Sun';
-                                                                                    }
-
-                                                                                    return (
-                                                                                        <td key={day.dateStr} className="px-1 py-2 text-center align-middle">
-                                                                                            <div className="flex justify-center items-center">
-                                                                                                <span
-                                                                                                    className={`w-7 h-7 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${getStatusColor(status)}`}
-                                                                                                    title={status !== '-' ? status : undefined}
-                                                                                                >
-                                                                                                    {getStatusLabel(status)}
-                                                                                                </span>
-                                                                                            </div>
-                                                                                        </td>
-                                                                                    );
-                                                                                })}
-                                                                            </tr>
-                                                                        );
-                                                                    })
-                                                                )}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
 
                                     {subTab === 'finances' && (
                                         <div className="space-y-3 animate-in fade-in duration-100">
@@ -1267,10 +1158,10 @@ const MobileLabourManagement = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => setLedgerViewMode('matrix')}
-                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
+                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
                                                         ledgerViewMode === 'matrix'
-                                                            ? 'bg-indigo-600 text-white shadow-xs'
-                                                            : 'text-slate-500 dark:text-slate-400'
+                                                            ? 'bg-indigo-600 text-white shadow-xs font-medium'
+                                                            : 'text-slate-500 dark:text-slate-400 font-normal'
                                                     }`}
                                                 >
                                                     <Calendar size={12} />
@@ -1279,10 +1170,10 @@ const MobileLabourManagement = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => setLedgerViewMode('summary')}
-                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
+                                                    className={`flex-1 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
                                                         ledgerViewMode === 'summary'
-                                                            ? 'bg-indigo-600 text-white shadow-xs'
-                                                            : 'text-slate-500 dark:text-slate-400'
+                                                            ? 'bg-indigo-600 text-white shadow-xs font-medium'
+                                                            : 'text-slate-500 dark:text-slate-400 font-normal'
                                                     }`}
                                                 >
                                                     <DollarSign size={12} />
@@ -1345,54 +1236,53 @@ const MobileLabourManagement = () => {
                                                         .filter(row => row.site_id === selectedSite.site_id && (!financeRoleFilter || row.role.toLowerCase() === financeRoleFilter.toLowerCase()))
                                                         .map(row => {
                                                             const advanceAlert = row.advances_taken > row.accrued_credit;
-                                                            return (
-                                                                <div key={row.labour_id} className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm space-y-3">
+                                                            return (                                                                 <div key={row.labour_id} className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm space-y-3">
                                                                     <div className="flex justify-between items-start">
                                                                         <div className="cursor-pointer" onClick={() => handleViewHistory(row)}>
-                                                                            <h4 className="font-bold text-slate-800 dark:text-white text-xs">{row.name}</h4>
+                                                                            <h4 className="font-semibold text-slate-800 dark:text-white text-xs">{row.name}</h4>
                                                                             <span className="text-[9px] text-slate-450 dark:text-github-dark-muted block font-mono">{row.role}</span>
                                                                         </div>
                                                                     </div>
                                                                     <div className="grid grid-cols-4 gap-1 bg-slate-50 dark:bg-github-dark-border/20 p-2 rounded-lg text-center text-[9px]">
                                                                         <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Earned</span>
-                                                                            <span className="font-bold text-slate-750 dark:text-github-dark-text">₹{row.accrued_credit}</span>
+                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase font-normal">Earned</span>
+                                                                            <span className="font-semibold text-slate-750 dark:text-github-dark-text">₹{row.accrued_credit}</span>
                                                                         </div>
                                                                         <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Advances</span>
-                                                                            <span className="font-bold text-amber-600 dark:text-amber-500">₹{row.advances_taken}</span>
+                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase font-normal">Advances</span>
+                                                                            <span className="font-semibold text-amber-600 dark:text-amber-500">₹{row.advances_taken}</span>
                                                                         </div>
                                                                         <div>
-                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase">Paid</span>
-                                                                            <span className="font-bold text-slate-750 dark:text-github-dark-text">₹{row.total_paid}</span>
+                                                                            <span className="block text-slate-400 dark:text-github-dark-muted text-[8px] uppercase font-normal">Paid</span>
+                                                                            <span className="font-semibold text-slate-750 dark:text-github-dark-text">₹{row.total_paid}</span>
                                                                         </div>
                                                                         <div>
-                                                                            <span className="block text-slate-400 dark:text-[#58a6ff] text-[8px] uppercase font-bold">Net Pay</span>
-                                                                            <span className={`font-black ${row.net_payable < 0 ? 'text-rose-500' : 'text-indigo-600 dark:text-[#58a6ff]'}`}>₹{row.net_payable}</span>
+                                                                            <span className="block text-slate-400 dark:text-[#58a6ff] text-[8px] uppercase font-medium">Net Pay</span>
+                                                                            <span className={`font-semibold ${row.net_payable < 0 ? 'text-rose-500' : 'text-indigo-600 dark:text-[#58a6ff]'}`}>₹{row.net_payable}</span>
                                                                         </div>
                                                                     </div>
 
                                                                     <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-github-dark-border/40 mt-1">
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="text-[9px] text-slate-550 dark:text-github-dark-muted font-semibold">
+                                                                            <span className="text-[9px] text-slate-550 dark:text-github-dark-muted font-medium">
                                                                                 ₹{row.monthly_salary}/day • ₹{Number(row.overtime_pay_per_hour || 0)}/hr OT
                                                                             </span>
                                                                             {row.net_payable <= 0 ? (
-                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50">
+                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50">
                                                                                     Settled
                                                                                 </span>
                                                                             ) : (
-                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200/50">
+                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200/50">
                                                                                     Pending
                                                                                 </span>
                                                                             )}
                                                                         </div>
                                                                         <div className="flex gap-1.5">
-                                                                            <button onClick={() => handleOpenAdvance(row)} className="px-2 py-1 text-[9px] font-bold bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors">Advance</button>
+                                                                            <button onClick={() => handleOpenAdvance(row)} className="px-2 py-1 text-[9px] font-medium bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors">Advance</button>
                                                                             <button
                                                                                 onClick={() => handleOpenPayout(row)}
                                                                                 disabled={row.net_payable <= 0}
-                                                                                className={`px-2 py-1 text-[9px] font-bold border rounded-lg transition-colors ${row.net_payable <= 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-50' : 'bg-indigo-600 text-white border-transparent'}`}
+                                                                                className={`px-2 py-1 text-[9px] font-medium border rounded-lg transition-colors ${row.net_payable <= 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-50' : 'bg-indigo-600 text-white border-transparent'}`}
                                                                             >
                                                                                 Release
                                                                             </button>
@@ -1417,7 +1307,7 @@ const MobileLabourManagement = () => {
                         {activeTab === 'directory' && (
                             <div className="space-y-3 animate-in fade-in duration-150">
                                 <div className="flex flex-col gap-2.5 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm">
-                                    <span className="font-bold text-slate-700 dark:text-white block">Labour Directory</span>
+                                    <span className="font-semibold text-slate-700 dark:text-white block">Labour Directory</span>
                                     <div className="relative">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                         <input
@@ -1471,7 +1361,7 @@ const MobileLabourManagement = () => {
                                                 setBulkDestinationSiteId('');
                                                 setShowBulkTransferModal(true);
                                             }}
-                                            className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl font-bold flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
+                                            className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl font-medium flex items-center gap-1 border border-slate-200 dark:border-github-dark-border text-[9px]"
                                         >
                                             <Building size={12} /> Bulk Move
                                         </button>
@@ -1481,13 +1371,13 @@ const MobileLabourManagement = () => {
                                                 setCsvPreviewError('');
                                                 setShowBulkLabourModal(true);
                                             }}
-                                            className="px-2.5 py-1.5 bg-emerald-600 text-white rounded-xl font-bold flex items-center gap-1 text-[9px] shrink-0"
+                                            className="px-2.5 py-1.5 bg-emerald-600 text-white rounded-xl font-medium flex items-center gap-1 text-[9px] shrink-0"
                                         >
                                             <Upload size={12} /> Bulk Add
                                         </button>
                                         <button
                                             onClick={() => { setEditingLabour(null); setLabourForm({ name: '', phone: '', sex: 'Male', role: '', wage_type: 'Daily Wage', monthly_salary: '', allowed_leaves: '0', site_id: '' }); setShowLabourModal(true); }}
-                                            className="px-2.5 py-1.5 bg-indigo-600 text-white rounded-xl font-bold flex items-center gap-1 text-[9px] shrink-0"
+                                            className="px-2.5 py-1.5 bg-indigo-600 text-white rounded-xl font-medium flex items-center gap-1 text-[9px] shrink-0"
                                         >
                                             <Plus size={12} /> Add Worker
                                         </button>
@@ -1508,13 +1398,13 @@ const MobileLabourManagement = () => {
                                         .map(lab => (
                                             <div key={lab.labour_id} className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-sm flex items-center justify-between">
                                                 <div className="cursor-pointer" onClick={() => handleViewHistory(lab)}>
-                                                    <h4 className="font-bold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
+                                                    <h4 className="font-semibold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
                                                         <span>{lab.name}</span>
-                                                        <span className="text-[8px] text-indigo-500 font-bold uppercase bg-indigo-50 dark:bg-indigo-950/20 px-1 rounded">History</span>
+                                                        <span className="text-[8px] text-indigo-500 font-medium uppercase bg-indigo-50 dark:bg-indigo-950/20 px-1 rounded">History</span>
                                                     </h4>
                                                     <p className="text-[9px] text-slate-500 dark:text-github-dark-muted mt-0.5">{lab.role} | ₹{lab.monthly_salary}/day • ₹{Number(lab.overtime_pay_per_hour || 0)}/hr OT</p>
                                                     <p className="text-[9px] text-slate-500 dark:text-github-dark-muted mt-0.5">{lab.phone || 'No phone'} | {lab.sex}</p>
-                                                    <p className="text-[9px] text-slate-500 dark:text-github-dark-muted mt-1 uppercase flex items-center gap-1 font-semibold">
+                                                    <p className="text-[9px] text-slate-500 dark:text-github-dark-muted mt-1 uppercase flex items-center gap-1 font-medium">
                                                         <Building size={10} /> {lab.site_name || 'Unassigned'}
                                                     </p>
                                                 </div>
@@ -1553,10 +1443,10 @@ const MobileLabourManagement = () => {
                                     <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
                                     <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                         <div>
-                                            <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-sm">
+                                            <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">
                                                 Daily Site Schedule
                                             </h4>
-                                            <span className="text-[9px] text-indigo-500 font-bold uppercase tracking-wider">
+                                            <span className="text-[9px] text-indigo-500 font-medium uppercase tracking-wider">
                                                 Plan Shift for {selectedScheduleLabour.name}
                                             </span>
                                         </div>
@@ -1564,7 +1454,7 @@ const MobileLabourManagement = () => {
                                     </div>
                                     <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
                                         <div>
-                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1.5 uppercase tracking-wide text-[9px]">Select Target Date</label>
+                                            <label className="block text-slate-500 dark:text-slate-300 font-medium mb-1.5 uppercase tracking-wide text-[9px]">Select Target Date</label>
                                             <DatePicker
                                                 value={scheduleDate}
                                                 onChange={handleScheduleDateChange}
@@ -1573,12 +1463,12 @@ const MobileLabourManagement = () => {
                                         </div>
 
                                         <div>
-                                            <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-2 uppercase tracking-wide text-[9px]">
+                                            <label className="block text-slate-500 dark:text-slate-300 font-medium mb-2 uppercase tracking-wide text-[9px]">
                                                 Assign Sites for this Day ({scheduleSites.length} selected)
                                             </label>
                                             {scheduleLoading ? (
-                                                <div className="flex justify-center py-6">
-                                                    <Clock className="animate-spin text-indigo-500" size={20} />
+                                                <div className="py-6">
+                                                    <LoadingScreen size="sm" message="Loading site schedules..." fullScreen={false} />
                                                 </div>
                                             ) : (
                                                 <div className="space-y-2 border border-slate-100 dark:border-[#30363d] rounded-xl p-3 bg-slate-50/30 dark:bg-[#161b22]/30 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
@@ -1605,7 +1495,7 @@ const MobileLabourManagement = () => {
                                                                     <span className="text-xs">{site.site_name}</span>
                                                                 </div>
                                                                 {isPrimary && (
-                                                                    <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-extrabold text-[8px] uppercase tracking-wider">
+                                                                    <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-semibold text-[8px] uppercase tracking-wider">
                                                                         Primary
                                                                     </span>
                                                                 )}
@@ -1619,8 +1509,8 @@ const MobileLabourManagement = () => {
                                             Note: If no daily schedule is configured for a date, the worker will automatically default to their primary site checklist.
                                         </p>
                                         <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                            <button type="button" onClick={() => setShowScheduleModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
-                                            <button type="button" onClick={handleSaveSchedule} disabled={scheduleLoading} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold disabled:opacity-50">Save</button>
+                                            <button type="button" onClick={() => setShowScheduleModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
+                                            <button type="button" onClick={handleSaveSchedule} disabled={scheduleLoading} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium disabled:opacity-50">Save</button>
                                         </div>
                                     </div>
                                 </motion.div>
@@ -1653,10 +1543,10 @@ const MobileLabourManagement = () => {
                                 <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
                                 <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                     <div>
-                                        <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-sm">
+                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">
                                             {editingSite ? 'Edit Construction Site' : 'Create Construction Site'}
                                         </h4>
-                                        <span className="text-[9px] text-slate-500 dark:text-github-dark-muted font-bold uppercase tracking-wider">Site Configuration Profile</span>
+                                        <span className="text-[9px] text-slate-500 dark:text-github-dark-muted font-medium uppercase tracking-wider">Site Configuration Profile</span>
                                     </div>
                                     <button onClick={() => setShowSiteModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d]"><X size={16} /></button>
                                 </div>
@@ -1691,8 +1581,8 @@ const MobileLabourManagement = () => {
                                         />
                                     )}
                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowSiteModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold">Save</button>
+                                        <button type="button" onClick={() => setShowSiteModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
+                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">Save</button>
                                     </div>
                                 </form>
                                 </motion.div>
@@ -1724,10 +1614,10 @@ const MobileLabourManagement = () => {
                                 <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
                                 <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                     <div>
-                                        <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-sm">
+                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">
                                             {editingLabour ? 'Edit Worker Profile' : 'Add Labour Worker'}
                                         </h4>
-                                        <span className="text-[9px] text-slate-500 dark:text-github-dark-muted font-bold uppercase tracking-wider">Worker Configuration Profile</span>
+                                        <span className="text-[9px] text-slate-500 dark:text-github-dark-muted font-medium uppercase tracking-wider">Worker Configuration Profile</span>
                                     </div>
                                     <button onClick={() => setShowLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d]"><X size={16} /></button>
                                 </div>
@@ -1809,8 +1699,8 @@ const MobileLabourManagement = () => {
                                         />
                                     )}
                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowLabourModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold">Save</button>
+                                        <button type="button" onClick={() => setShowLabourModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
+                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">Save</button>
                                     </div>
                                 </form>
                                 </motion.div>
@@ -1843,7 +1733,7 @@ const MobileLabourManagement = () => {
                                 <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                     <div className="flex items-center gap-1">
                                         <DollarSign size={16} className="text-amber-500" />
-                                        <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-sm">Log Salary Advance ({advanceForm.name})</h4>
+                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">Log Salary Advance ({advanceForm.name})</h4>
                                     </div>
                                     <button onClick={() => setShowAdvanceModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
                                 </div>
@@ -1860,7 +1750,7 @@ const MobileLabourManagement = () => {
                                         onChange={(val) => setAdvanceForm({ ...advanceForm, site_id: val })}
                                         variant="input"
                                         size="sm"
-                                        triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-bold"
+                                        triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-medium"
                                     />
                                     {(() => {
                                         const targetM = financeMonth || new Date().toISOString().slice(0, 7);
@@ -1886,7 +1776,7 @@ const MobileLabourManagement = () => {
                                         placeholder="Advance Amount (INR)"
                                     />
                                     {advanceForm.amount && Number(advanceForm.amount) > Number(advanceForm.net_payable || 0) && (
-                                        <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-2.5 rounded-xl text-rose-700 dark:text-rose-455 font-bold text-[10px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm">
+                                        <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-2.5 rounded-xl text-rose-700 dark:text-rose-455 font-medium text-[10px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm">
                                             <AlertTriangle size={12} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
                                             <span>
                                                 Warning: Advance exceeds net payable balance (₹{Number(advanceForm.net_payable || 0).toLocaleString()}).
@@ -1901,8 +1791,8 @@ const MobileLabourManagement = () => {
                                         placeholder="Notes (e.g. medical / festival)"
                                     />
                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowAdvanceModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all cursor-pointer">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition-all cursor-pointer">Record</button>
+                                        <button type="button" onClick={() => setShowAdvanceModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all cursor-pointer">Cancel</button>
+                                        <button type="submit" className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-medium transition-all cursor-pointer">Record</button>
                                     </div>
 
                                     {/* ADVANCE HISTORY & SETTLEMENT CYCLE TIMELINE */}
@@ -1962,7 +1852,7 @@ const MobileLabourManagement = () => {
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex items-center gap-1.5">
                                                         <Clock size={13} className="text-amber-500" />
-                                                        <span className="font-bold text-xs text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
+                                                        <span className="font-medium text-xs text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
                                                             Advance Timeline
                                                         </span>
                                                     </div>
@@ -1973,10 +1863,10 @@ const MobileLabourManagement = () => {
                                                                 setAdvanceHistoryView('month');
                                                                 loadAdvanceHistory(advanceForm.labour_id, financeMonth);
                                                             }}
-                                                            className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                                                            className={`px-2 py-0.5 rounded text-[9px] transition-all cursor-pointer ${
                                                                 advanceHistoryView === 'month'
-                                                                    ? 'bg-amber-500 text-white shadow-xs'
-                                                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                                                                    ? 'bg-amber-500 text-white shadow-xs font-medium'
+                                                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-normal'
                                                             }`}
                                                         >
                                                             This Month ({advanceHistory.length})
@@ -1987,10 +1877,10 @@ const MobileLabourManagement = () => {
                                                                 setAdvanceHistoryView('all');
                                                                 loadAdvanceHistory(advanceForm.labour_id, null);
                                                             }}
-                                                            className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                                                            className={`px-2 py-0.5 rounded text-[9px] transition-all cursor-pointer ${
                                                                 advanceHistoryView === 'all'
-                                                                    ? 'bg-amber-500 text-white shadow-xs'
-                                                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                                                                    ? 'bg-amber-500 text-white shadow-xs font-medium'
+                                                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-normal'
                                                             }`}
                                                         >
                                                             All Time
@@ -2001,7 +1891,7 @@ const MobileLabourManagement = () => {
                                                 {/* Summary Badge */}
                                                 <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40 p-2.5 rounded-xl text-[10px] flex justify-between items-center">
                                                     <div>
-                                                        <span className="text-amber-900 dark:text-amber-300 font-bold block">
+                                                        <span className="text-amber-900 dark:text-amber-300 font-medium block">
                                                             {advanceHistoryView === 'month' ? `Advances in ${getMonthNameAndYear(financeMonth + '-01')}` : 'All-Time Advances Log'}
                                                         </span>
                                                         <span className="text-[9px] text-amber-700/80 dark:text-amber-400/70 block mt-0.5">
@@ -2010,19 +1900,19 @@ const MobileLabourManagement = () => {
                                                                 : `${advancePayouts.length} past settlement${advancePayouts.length !== 1 ? 's' : ''} recorded across all months`}
                                                         </span>
                                                     </div>
-                                                    <span className="font-extrabold text-amber-600 dark:text-amber-400 text-xs shrink-0 ml-2">
+                                                    <span className="font-semibold text-amber-600 dark:text-amber-400 text-xs shrink-0 ml-2">
                                                         {`${advanceHistory.length} • ₹${allAdvancesTotalAmount.toLocaleString()}`}
                                                     </span>
                                                 </div>
 
                                                 {advanceHistoryLoading ? (
-                                                    <div className="flex justify-center py-4">
-                                                        <Clock className="animate-spin text-amber-500" size={18} />
+                                                    <div className="py-4">
+                                                        <LoadingScreen size="sm" message="Loading advance history..." fullScreen={false} />
                                                     </div>
                                                 ) : allTimelineEvents.length === 0 ? (
                                                     <div className="text-center py-4 border border-dashed border-slate-200 dark:border-[#30363d] rounded-xl bg-slate-50/50 dark:bg-[#161b22]/30 p-3">
                                                         <DollarSign size={20} className="mx-auto text-slate-400 dark:text-slate-600 mb-1 opacity-50" />
-                                                        <p className="text-slate-500 dark:text-github-dark-muted text-[10px] font-semibold">
+                                                        <p className="text-slate-500 dark:text-github-dark-muted text-[10px] font-normal">
                                                             {advanceHistoryView === 'month'
                                                                 ? `No advances or settlements recorded in ${getMonthNameAndYear(financeMonth + '-01')}`
                                                                 : 'No advances or payments recorded'}
@@ -2040,10 +1930,10 @@ const MobileLabourManagement = () => {
                                                                                 <div className="flex justify-between items-start">
                                                                                     <div>
                                                                                         <div className="flex items-center gap-1.5">
-                                                                                            <span className="font-extrabold text-xs text-emerald-700 dark:text-emerald-400">
+                                                                                            <span className="font-semibold text-xs text-emerald-700 dark:text-emerald-400">
                                                                                                 Salary Settled: ₹{evt.amount.toLocaleString()} Paid
                                                                                             </span>
-                                                                                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[7px] font-extrabold uppercase">
+                                                                                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[7px] font-medium uppercase">
                                                                                                 Settled
                                                                                             </span>
                                                                                         </div>
@@ -2051,7 +1941,7 @@ const MobileLabourManagement = () => {
                                                                                             Paid on {formatAdvanceDate(evt.date)}
                                                                                         </div>
                                                                                         {evt.site_name && (
-                                                                                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white/80 dark:bg-[#161b22] text-slate-600 dark:text-slate-300 text-[8px] font-bold border border-emerald-200/50 dark:border-emerald-900/40">
+                                                                                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white/80 dark:bg-[#161b22] text-slate-600 dark:text-slate-300 text-[8px] font-medium border border-emerald-200/50 dark:border-emerald-900/40">
                                                                                                 {evt.site_name}
                                                                                             </span>
                                                                                         )}
@@ -2078,15 +1968,15 @@ const MobileLabourManagement = () => {
                                                                                 <div className="flex justify-between items-start">
                                                                                     <div>
                                                                                         <div className="flex items-center gap-1.5">
-                                                                                            <span className={`font-extrabold text-xs ${
+                                                                                            <span className={`font-semibold text-xs ${
                                                                                                 evt.is_unsettled ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-400'
                                                                                             }`}>
                                                                                                 ₹{evt.amount.toLocaleString()}
                                                                                             </span>
-                                                                                            <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-semibold">
+                                                                                            <span className="text-[9px] text-slate-400 dark:text-github-dark-muted font-medium">
                                                                                                 on {formatAdvanceDate(evt.date)}
                                                                                             </span>
-                                                                                            <span className={`px-1.5 py-0.2 rounded text-[7px] font-extrabold uppercase ${
+                                                                                            <span className={`px-1.5 py-0.2 rounded text-[7px] font-medium uppercase ${
                                                                                                 evt.is_unsettled
                                                                                                     ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
                                                                                                     : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
@@ -2095,7 +1985,7 @@ const MobileLabourManagement = () => {
                                                                                             </span>
                                                                                         </div>
                                                                                         {evt.site_name && (
-                                                                                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-[8px] font-bold">
+                                                                                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-[8px] font-medium">
                                                                                                 {evt.site_name}
                                                                                             </span>
                                                                                         )}
@@ -2157,7 +2047,7 @@ const MobileLabourManagement = () => {
                                 <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                     <div className="flex items-center gap-1">
                                         <DollarSign size={16} className="text-indigo-500" />
-                                        <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-sm">
+                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">
                                             {payoutForm.payout_id ? 'Update Payout' : 'Process Payout'}
                                         </h4>
                                     </div>
@@ -2165,34 +2055,34 @@ const MobileLabourManagement = () => {
                                 </div>
                                 <form onSubmit={handleSavePayout} className="flex-1 overflow-y-auto px-5 pt-4 pb-12 space-y-4 text-xs custom-scrollbar">
                                     <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-xl border border-slate-200 dark:border-indigo-900/35 text-[11px]">
-                                        <div className="font-extrabold text-slate-800 dark:text-white">Worker: {payoutForm.name}</div>
-                                        <div className="text-slate-500 dark:text-github-dark-muted font-mono mt-0.5 font-semibold">{payoutForm.wage_type} | Month: {payoutForm.month}</div>
+                                        <div className="font-semibold text-slate-800 dark:text-white">Worker: {payoutForm.name}</div>
+                                        <div className="text-slate-500 dark:text-github-dark-muted font-mono mt-0.5 font-normal">{payoutForm.wage_type} | Month: {payoutForm.month}</div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2.5 bg-slate-50 dark:bg-[#161b22]/60 p-3 rounded-xl border border-slate-200 dark:border-github-dark-border text-[10px]">
                                         <div className="space-y-0.5">
-                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-bold">Attendance:</span>
-                                            <span className="font-extrabold text-slate-800 dark:text-white text-xs">
+                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-medium">Attendance:</span>
+                                            <span className="font-semibold text-slate-800 dark:text-white text-xs">
                                                 {payoutForm.present_days}P / {payoutForm.half_days}HD / {payoutForm.absent_days}A
                                             </span>
                                         </div>
                                         <div className="space-y-0.5">
-                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-bold">Accrued Credit:</span>
-                                            <span className="font-extrabold text-slate-800 dark:text-white text-xs">₹{payoutForm.accrued_credit}</span>
+                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-medium">Accrued Credit:</span>
+                                            <span className="font-semibold text-slate-800 dark:text-white text-xs">₹{payoutForm.accrued_credit}</span>
                                         </div>
                                         <div className="space-y-0.5">
-                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-bold">Advances Taken:</span>
-                                            <span className="font-extrabold text-amber-500 text-xs">-₹{payoutForm.advances_taken}</span>
+                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-medium">Advances Taken:</span>
+                                            <span className="font-semibold text-amber-500 text-xs">-₹{payoutForm.advances_taken}</span>
                                         </div>
                                         <div className="space-y-0.5">
-                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-bold">Net Payable:</span>
-                                            <span className="font-extrabold text-slate-800 dark:text-white text-xs">₹{payoutForm.net_payable}</span>
+                                            <span className="text-slate-400 dark:text-github-dark-muted block uppercase tracking-wider text-[8px] font-medium">Net Payable:</span>
+                                            <span className="font-semibold text-slate-800 dark:text-white text-xs">₹{payoutForm.net_payable}</span>
                                         </div>
                                     </div>
 
                                     {/* Target Site Dropdown */}
                                     <div>
-                                        <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">Target Site</label>
+                                        <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">Target Site</label>
                                         <MinimalSelect
                                             options={[
                                                 { value: 'All', label: 'All Sites (Auto-Distribute)' },
@@ -2202,7 +2092,7 @@ const MobileLabourManagement = () => {
                                             onChange={(val) => setPayoutForm({ ...payoutForm, site_id: val })}
                                             variant="input"
                                             size="sm"
-                                            triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-bold"
+                                            triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-medium"
                                         />
                                     </div>
 
@@ -2210,24 +2100,24 @@ const MobileLabourManagement = () => {
                                     <div className="rounded-xl border border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-[#161b22] p-3.5 space-y-3">
                                         <div className="flex justify-between items-center text-[10px]">
                                             <div>
-                                                <span className="font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider block">Paid Amount</span>
+                                                <span className="font-medium text-slate-500 dark:text-github-dark-muted uppercase tracking-wider block">Paid Amount</span>
                                                 <span className="text-[9px] text-slate-400 dark:text-github-dark-muted mt-0.5 block">Remaining Balance: ₹{Math.max(0, payoutForm.net_payable - Number(payoutForm.paid_amount || 0)).toLocaleString()}</span>
                                             </div>
                                             <button
                                                 type="button"
                                                 onClick={() => setPayoutForm({ ...payoutForm, paid_amount: payoutForm.net_payable })}
-                                                className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer bg-transparent border-none"
+                                                className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer bg-transparent border-none"
                                             >
                                                 Use Full Payout
                                             </button>
                                         </div>
                                         <div className="relative flex items-center">
-                                            <span className="absolute left-3.5 text-slate-400 dark:text-slate-500 font-bold text-sm">₹</span>
+                                            <span className="absolute left-3.5 text-slate-400 dark:text-slate-500 font-medium text-sm">₹</span>
                                             <input
                                                 type="number"
                                                 value={payoutForm.paid_amount}
                                                 onChange={(e) => setPayoutForm({ ...payoutForm, paid_amount: e.target.value })}
-                                                className="w-full pl-6.5 pr-3 py-2 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-[#f0f6fc] text-xs font-bold rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
+                                                className="w-full pl-6.5 pr-3 py-2 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border text-slate-800 dark:text-[#f0f6fc] text-xs font-semibold rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
                                                 required
                                                 min="0"
                                                 placeholder="Enter release amount"
@@ -2236,7 +2126,7 @@ const MobileLabourManagement = () => {
                                     </div>
 
                                     <div>
-                                        <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">Status</label>
+                                        <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">Status</label>
                                         <MinimalSelect
                                             options={[
                                                 { value: 'Paid', label: 'Paid' },
@@ -2246,35 +2136,35 @@ const MobileLabourManagement = () => {
                                             onChange={(val) => setPayoutForm({ ...payoutForm, status: val })}
                                             variant="input"
                                             size="sm"
-                                            triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-bold"
+                                            triggerClassName="w-full justify-between py-2 px-3 rounded-lg font-medium"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">Payment Date</label>
+                                        <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">Payment Date</label>
                                         <input
                                             type="date"
                                             value={payoutForm.payment_date}
                                             onChange={(e) => setPayoutForm({ ...payoutForm, payment_date: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs font-bold focus:outline-none"
+                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs font-medium focus:outline-none"
                                             required
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">Notes</label>
+                                        <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">Notes</label>
                                         <input
                                             type="text"
                                             value={payoutForm.notes}
                                             onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })}
-                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs font-semibold focus:outline-none placeholder-slate-400 dark:placeholder-slate-500"
+                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] rounded-lg text-xs font-normal focus:outline-none placeholder-slate-400 dark:placeholder-slate-500"
                                             placeholder="Payment method or Ref#"
                                         />
                                     </div>
 
                                     <div className="flex gap-3 pt-3 border-t border-slate-100 dark:border-[#30363d] mt-2">
-                                        <button type="button" onClick={() => setShowPayoutModal(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-505 dark:text-[#c9d1d9] rounded-xl text-xs font-bold uppercase tracking-wider transition-all border border-slate-200 dark:border-github-dark-border">Cancel</button>
-                                        <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm">
+                                        <button type="button" onClick={() => setShowPayoutModal(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-505 dark:text-[#c9d1d9] rounded-xl text-xs font-medium uppercase tracking-wider transition-all border border-slate-200 dark:border-github-dark-border">Cancel</button>
+                                        <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-medium uppercase tracking-wider transition-all shadow-sm">
                                             {payoutForm.payout_id ? 'Update' : 'Release'}
                                         </button>
                                     </div>
@@ -2309,14 +2199,14 @@ const MobileLabourManagement = () => {
                                 <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                     <div className="flex items-center gap-1.5">
                                         <Building size={16} className="text-indigo-500" />
-                                        <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-sm">Bulk Move Workers</h4>
+                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">Bulk Move Workers</h4>
                                     </div>
                                     <button onClick={() => setShowBulkTransferModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
                                 </div>
                                 <form onSubmit={handleExecuteBulkTransfer} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">From Site</label>
+                                            <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">From Site</label>
                                             <MinimalSelect
                                                 options={[
                                                     { value: 'All', label: 'All Sites' },
@@ -2334,7 +2224,7 @@ const MobileLabourManagement = () => {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-slate-500 dark:text-github-dark-muted font-semibold mb-1 text-[10px]">To Site</label>
+                                            <label className="block text-slate-500 dark:text-github-dark-muted font-medium mb-1 text-[10px]">To Site</label>
                                             <MinimalSelect
                                                 options={[
                                                     { value: '', label: '-- Choose New Project --' },
@@ -2351,7 +2241,7 @@ const MobileLabourManagement = () => {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <div className="flex justify-between items-center text-slate-500 dark:text-github-dark-muted font-bold">
+                                        <div className="flex justify-between items-center text-slate-500 dark:text-github-dark-muted font-medium">
                                             <span>Select Workers ({selectedLabourIds.length})</span>
                                             <button
                                                 type="button"
@@ -2367,7 +2257,7 @@ const MobileLabourManagement = () => {
                                                         setSelectedLabourIds(filtered.map(l => l.labour_id));
                                                     }
                                                 }}
-                                                className="text-indigo-600 dark:text-indigo-400 font-black text-[10px]"
+                                                className="text-indigo-600 dark:text-indigo-400 font-medium text-[10px]"
                                             >
                                                 Select All
                                             </button>
@@ -2395,7 +2285,7 @@ const MobileLabourManagement = () => {
                                                             className="rounded text-indigo-600 cursor-pointer"
                                                         />
                                                         <div className="truncate">
-                                                            <span className="font-bold text-slate-800 dark:text-github-dark-text text-xs">{lab.name}</span>
+                                                            <span className="font-semibold text-slate-800 dark:text-github-dark-text text-xs">{lab.name}</span>
                                                             <span className="ml-1.5 text-[9px] text-slate-500 dark:text-github-dark-muted">({lab.role})</span>
                                                         </div>
                                                     </label>
@@ -2404,11 +2294,11 @@ const MobileLabourManagement = () => {
                                     </div>
 
                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                        <button type="button" onClick={() => setShowBulkTransferModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
+                                        <button type="button" onClick={() => setShowBulkTransferModal(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
                                         <button
                                             type="submit"
                                             disabled={selectedLabourIds.length === 0}
-                                            className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50"
+                                            className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-medium disabled:opacity-50"
                                         >
                                             Transfer {selectedLabourIds.length}
                                         </button>
@@ -2444,7 +2334,7 @@ const MobileLabourManagement = () => {
                                 <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                     <div className="flex items-center gap-1.5">
                                         <Plus size={16} className="text-indigo-500" />
-                                        <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-sm">Add Worker from Master Data</h4>
+                                        <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">Add Worker from Master Data</h4>
                                     </div>
                                     <button onClick={() => setShowBorrowModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
                                 </div>
@@ -2475,10 +2365,10 @@ const MobileLabourManagement = () => {
                                                     className="flex justify-between items-center p-3 cursor-pointer hover:bg-indigo-50 dark:hover:bg-slate-800/30"
                                                 >
                                                     <div>
-                                                        <span className="font-bold text-slate-800 dark:text-[#f0f6fc] block">{lab.name}</span>
+                                                        <span className="font-semibold text-slate-800 dark:text-[#f0f6fc] block">{lab.name}</span>
                                                         <span className="text-[9px] text-slate-500 dark:text-github-dark-muted font-mono">{lab.role} | Base: {lab.site_name || 'Independent'}</span>
                                                     </div>
-                                                    <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 rounded text-[9px] font-bold">Select</span>
+                                                    <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 rounded text-[9px] font-medium">Select</span>
                                                 </div>
                                             ))}
                                     </div>
@@ -2513,7 +2403,7 @@ const MobileLabourManagement = () => {
                                 <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d] bg-amber-500/10 text-amber-800 dark:text-amber-400">
                                     <div className="flex items-center gap-1">
                                         <AlertTriangle size={16} />
-                                        <span className="font-bold text-xs uppercase">Site Closure</span>
+                                        <span className="font-semibold text-xs uppercase">Site Closure</span>
                                     </div>
                                     <button onClick={() => setShowSiteClosurePrompt(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
                                 </div>
@@ -2535,13 +2425,13 @@ const MobileLabourManagement = () => {
                                         triggerClassName="w-full justify-between py-2 px-3 rounded-xl font-medium"
                                     />
                                     <div className="border border-slate-200 dark:border-github-dark-border rounded-xl max-h-32 overflow-y-auto p-2 bg-slate-50 dark:bg-[#161b22]/40">
-                                        <ul className="list-disc pl-4 space-y-1 font-semibold text-[10px]">
+                                        <ul className="list-disc pl-4 space-y-1 font-medium text-[10px]">
                                             {closureLabours.map(l => <li key={l.labour_id} className="text-slate-700 dark:text-slate-300">{l.name} ({l.role})</li>)}
                                         </ul>
                                     </div>
                                     <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-github-dark-border">
-                                        <button type="button" onClick={() => setShowSiteClosurePrompt(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
-                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold">Transfer & Save</button>
+                                        <button type="button" onClick={() => setShowSiteClosurePrompt(false)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
+                                        <button type="submit" className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">Transfer & Save</button>
                                     </div>
                                 </form>
                                 </motion.div>
@@ -2573,14 +2463,16 @@ const MobileLabourManagement = () => {
                                         <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-3 shrink-0" />
                                         <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                             <div>
-                                                <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-xs">{selectedHistoryLabour.name}</h4>
-                                                <span className="text-[8px] text-slate-500 dark:text-github-dark-muted block font-mono font-semibold">Work History Timeline | {selectedHistoryLabour.role}</span>
+                                                <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-xs">{selectedHistoryLabour.name}</h4>
+                                                <span className="text-[8px] text-slate-500 dark:text-github-dark-muted block font-mono font-normal">Work History Timeline | {selectedHistoryLabour.role}</span>
                                             </div>
                                             <button onClick={() => setSelectedHistoryLabour(null)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
                                         </div>
                                         <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar text-[10px]">
                                             {historyLoading ? (
-                                                <div className="py-10 flex justify-center"><Clock className="animate-spin text-indigo-500" size={20} /></div>
+                                                <div className="py-8">
+                                                    <LoadingScreen size="sm" message="Loading work history..." fullScreen={false} />
+                                                </div>
                                             ) : (
                                                 <>
                                                     {/* Global Ledger Card */}
@@ -2588,20 +2480,20 @@ const MobileLabourManagement = () => {
                                                         <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-3 rounded-xl shadow-md border border-indigo-950/40 space-y-2 mb-3">
                                                             <div className="flex justify-between items-center">
                                                                 <div>
-                                                                    <span className="block text-[8px] uppercase font-bold text-indigo-300 tracking-wider">All-Time Global Balance</span>
-                                                                    <span className="text-base font-black">₹{selectedHistoryLabourDetails.global_net_payable.toLocaleString()}</span>
+                                                                    <span className="block text-[8px] uppercase font-medium text-indigo-300 tracking-wider">All-Time Global Balance</span>
+                                                                    <span className="text-base font-semibold">₹{selectedHistoryLabourDetails.global_net_payable.toLocaleString()}</span>
                                                                 </div>
                                                                 <div className="flex gap-1">
                                                                     <button
                                                                         onClick={handleOpenGlobalAdvance}
-                                                                        className="px-2 py-0.5 text-[9px] font-bold bg-amber-500 hover:bg-amber-600 text-white rounded transition-all"
+                                                                        className="px-2 py-0.5 text-[9px] font-medium bg-amber-500 hover:bg-amber-600 text-white rounded transition-all"
                                                                     >
                                                                         Advance
                                                                     </button>
                                                                     <button
                                                                         onClick={handleOpenGlobalPayout}
                                                                         disabled={selectedHistoryLabourDetails.global_net_payable <= 0}
-                                                                        className="px-2 py-0.5 text-[9px] font-bold bg-white text-indigo-950 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
+                                                                        className="px-2 py-0.5 text-[9px] font-medium bg-white text-indigo-950 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-all"
                                                                     >
                                                                         Release
                                                                     </button>
@@ -2625,8 +2517,8 @@ const MobileLabourManagement = () => {
                                                     )}
 
                                                     <div className="flex bg-slate-100 dark:bg-[#161b22] p-0.5 rounded-lg border border-slate-200 dark:border-github-dark-border">
-                                                        <button type="button" onClick={() => setHistoryTab('sites')} className={`flex-1 py-1 text-center font-bold rounded-md transition-all ${historyTab === 'sites' ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>Timeline</button>
-                                                        <button type="button" onClick={() => setHistoryTab('payouts')} className={`flex-1 py-1 text-center font-bold rounded-md transition-all ${historyTab === 'payouts' ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>Payouts</button>
+                                                        <button type="button" onClick={() => setHistoryTab('sites')} className={`flex-1 py-1 text-center font-medium rounded-md transition-all ${historyTab === 'sites' ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>Timeline</button>
+                                                        <button type="button" onClick={() => setHistoryTab('payouts')} className={`flex-1 py-1 text-center font-medium rounded-md transition-all ${historyTab === 'payouts' ? 'bg-white dark:bg-slate-850 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}>Payouts</button>
                                                     </div>
 
                                                     {historyTab === 'sites' ? (
@@ -2636,8 +2528,8 @@ const MobileLabourManagement = () => {
                                                                 return (
                                                                     <div key={siteLog.site_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm">
                                                                         <div className="flex justify-between items-center">
-                                                                            <span className="font-bold text-slate-800 dark:text-github-dark-text text-xs">{siteLog.site_name || 'Unassigned'}</span>
-                                                                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-1.5 rounded">{rate}% Active</span>
+                                                                            <span className="font-semibold text-slate-800 dark:text-github-dark-text text-xs">{siteLog.site_name || 'Unassigned'}</span>
+                                                                            <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-1.5 rounded">{rate}% Active</span>
                                                                         </div>
                                                                         <span className="text-[8px] text-slate-400 dark:text-[#8b949e] block mt-0.5">{new Date(siteLog.first_date).toLocaleDateString()} to {new Date(siteLog.last_date).toLocaleDateString()} ({siteLog.total_days} Days logged)</span>
                                                                     </div>
@@ -2651,7 +2543,7 @@ const MobileLabourManagement = () => {
                                                             ) : (
                                                                 labourPayoutHistory.map((payout) => (
                                                                     <div key={payout.payout_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-3 rounded-xl shadow-sm space-y-1.5 text-[10px]">
-                                                                        <div className="flex justify-between items-center font-bold">
+                                                                        <div className="flex justify-between items-center font-semibold">
                                                                             <span className="text-indigo-600 dark:text-indigo-400">{getMonthNameAndYear(payout.month + "-01")}</span>
                                                                             <span className="text-slate-700 dark:text-slate-300">₹{payout.paid_amount}</span>
                                                                         </div>
@@ -2671,7 +2563,7 @@ const MobileLabourManagement = () => {
                                             )}
                                         </div>
                                         <div className="p-4 border-t border-slate-100 dark:border-github-dark-border flex justify-end">
-                                            <button onClick={() => setSelectedHistoryLabour(null)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all">Close</button>
+                                            <button onClick={() => setSelectedHistoryLabour(null)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-all">Close</button>
                                         </div>
                                     </motion.div>
                                 </div>
@@ -2703,7 +2595,7 @@ const MobileLabourManagement = () => {
                                         <div className="flex justify-between items-center px-5 pb-4 border-b border-slate-100 dark:border-[#30363d]">
                                             <div className="flex items-center gap-1">
                                                 <Upload size={16} className="text-indigo-500" />
-                                                <h4 className="font-bold text-slate-800 dark:text-[#f0f6fc] text-sm">Bulk Add Labours</h4>
+                                                <h4 className="font-semibold text-slate-800 dark:text-[#f0f6fc] text-sm">Bulk Add Labours</h4>
                                             </div>
                                             <button onClick={() => setShowBulkLabourModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={16} /></button>
                                         </div>
@@ -2711,14 +2603,14 @@ const MobileLabourManagement = () => {
                                             {parsedLabours.length === 0 ? (
                                                 <div className="space-y-3">
                                                     <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 p-3.5 rounded-xl text-slate-600 dark:text-slate-300">
-                                                        <h5 className="font-bold text-slate-800 dark:text-white mb-1">Excel & CSV Bulk Upload Template</h5>
+                                                        <h5 className="font-semibold text-slate-800 dark:text-white mb-1">Excel & CSV Bulk Upload Template</h5>
                                                         <p className="text-[10px] text-slate-500 dark:text-github-dark-muted leading-relaxed mb-2.5">
                                                             Ensure columns: Name, Role, Monthly Salary, Phone, Sex, Wage Type, Site Name.
                                                         </p>
                                                         <button
                                                             type="button"
                                                             onClick={downloadCSVTemplate}
-                                                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-all text-[10px]"
+                                                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-all text-[10px]"
                                                         >
                                                             Download Template
                                                         </button>
@@ -2726,7 +2618,7 @@ const MobileLabourManagement = () => {
 
                                                     <div className="border-2 border-dashed border-slate-200 dark:border-github-dark-border rounded-xl p-6 text-center bg-slate-50 dark:bg-[#161b22]/30 flex flex-col items-center justify-center gap-2">
                                                         <Upload className="text-slate-400" size={24} />
-                                                        <label className="cursor-pointer text-indigo-600 dark:text-indigo-400 hover:underline font-bold">
+                                                        <label className="cursor-pointer text-indigo-600 dark:text-indigo-400 hover:underline font-medium">
                                                             Upload Excel or CSV File
                                                             <input
                                                                 type="file"
@@ -2741,16 +2633,16 @@ const MobileLabourManagement = () => {
                                                 <div className="space-y-3">
                                                     <div className="flex justify-between items-center bg-slate-50 dark:bg-[#161b22] p-2.5 rounded-lg border border-slate-200 dark:border-github-dark-border text-[10px]">
                                                         <div>
-                                                            <span className="font-bold text-slate-800 dark:text-github-dark-text">Preview parsed rows</span>
+                                                            <span className="font-semibold text-slate-800 dark:text-github-dark-text">Preview parsed rows</span>
                                                             <p className="text-slate-400 dark:text-github-dark-muted">{parsedLabours.filter(l => l.isValid).length} of {parsedLabours.length} valid.</p>
                                                         </div>
-                                                        <button type="button" onClick={() => setParsedLabours([])} className="text-slate-500 hover:text-red-500 font-bold">Clear</button>
+                                                        <button type="button" onClick={() => setParsedLabours([])} className="text-slate-500 hover:text-red-500 font-medium">Clear</button>
                                                     </div>
 
                                                     <div className="border border-slate-200 dark:border-github-dark-border rounded-xl overflow-hidden max-h-60 overflow-y-auto custom-scrollbar">
                                                         <table className="w-full text-left border-collapse text-[10px]">
                                                             <thead>
-                                                                <tr className="bg-slate-50 dark:bg-[#161b22] text-slate-400 dark:text-github-dark-muted font-bold border-b border-slate-200 dark:border-[#30363d]">
+                                                                <tr className="bg-slate-50 dark:bg-[#161b22] text-slate-400 dark:text-github-dark-muted font-medium border-b border-slate-200 dark:border-[#30363d]">
                                                                     <th className="p-2">Name</th>
                                                                     <th className="p-2">Role</th>
                                                                     <th className="p-2">Salary</th>
@@ -2760,7 +2652,7 @@ const MobileLabourManagement = () => {
                                                             <tbody>
                                                                 {parsedLabours.map((row, idx) => (
                                                                     <tr key={idx} className="border-b border-slate-100 dark:border-github-dark-border/50">
-                                                                        <td className={`p-2 font-bold ${row.isValid ? 'text-slate-800 dark:text-white' : 'text-slate-400 line-through'}`}>{row.name || 'Unnamed'}</td>
+                                                                        <td className={`p-2 font-semibold ${row.isValid ? 'text-slate-800 dark:text-white' : 'text-slate-400 line-through'}`}>{row.name || 'Unnamed'}</td>
                                                                         <td className="p-2 text-slate-500 dark:text-github-dark-muted">{row.role || 'Missing'}</td>
                                                                         <td className="p-2 text-slate-500 dark:text-github-dark-muted">{isNaN(row.monthly_salary) ? 'Missing' : `₹${row.monthly_salary}`}</td>
                                                                         <td className="p-2 text-slate-500 dark:text-github-dark-muted">{row.site_name || 'Unassigned'}</td>
@@ -2771,12 +2663,12 @@ const MobileLabourManagement = () => {
                                                     </div>
 
                                                     <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-[#30363d]">
-                                                        <button type="button" onClick={() => setParsedLabours([])} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-bold transition-all">Cancel</button>
+                                                        <button type="button" onClick={() => setParsedLabours([])} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-500 dark:text-[#c9d1d9] rounded-xl font-medium transition-all">Cancel</button>
                                                         <button
                                                             type="button"
                                                             onClick={handleSaveBulkLabours}
                                                             disabled={isUploadingBulk || parsedLabours.filter(l => l.isValid).length === 0}
-                                                            className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all"
+                                                            className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-all"
                                                         >
                                                             {isUploadingBulk ? 'Importing...' : `Import (${parsedLabours.filter(l => l.isValid).length})`}
                                                         </button>
@@ -2812,7 +2704,7 @@ const MobileLabourManagement = () => {
                                         <div className="p-6">
                                             <div className="flex items-center gap-3 mb-3 text-red-500">
                                                 <AlertTriangle size={20} />
-                                                <h4 className="font-bold text-slate-900 dark:text-[#f0f6fc] text-sm">
+                                                <h4 className="font-semibold text-slate-900 dark:text-[#f0f6fc] text-sm">
                                                     {confirmDialog.title}
                                                 </h4>
                                             </div>
@@ -2824,7 +2716,7 @@ const MobileLabourManagement = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-                                                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-505 dark:text-[#c9d1d9] rounded-xl font-bold transition-all text-xs border border-slate-200 dark:border-github-dark-border"
+                                                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] dark:hover:bg-[#30363d] text-slate-505 dark:text-[#c9d1d9] rounded-xl font-medium transition-all text-xs border border-slate-200 dark:border-github-dark-border"
                                             >
                                                 Cancel
                                             </button>
@@ -2834,7 +2726,7 @@ const MobileLabourManagement = () => {
                                                     if (confirmDialog.onConfirm) confirmDialog.onConfirm();
                                                     setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                                                 }}
-                                                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition-all text-xs shadow-sm"
+                                                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-medium transition-all text-xs shadow-sm"
                                             >
                                                 Confirm
                                             </button>
