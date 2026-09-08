@@ -33,7 +33,7 @@ const BorrowWorkerModal = ({
                         <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
                             <div className="flex items-center gap-1.5">
                                 <Plus size={16} className="text-indigo-500" />
-                                <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Add Worker from Master Data</h4>
+                                <h4 className="font-semibold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Add Worker from Master Data</h4>
                             </div>
                             <button onClick={() => setShowBorrowModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
                         </div>
@@ -64,10 +64,10 @@ const BorrowWorkerModal = ({
                                             className="flex justify-between items-center p-3 cursor-pointer hover:bg-indigo-50 dark:hover:bg-[#161b22] transition-colors"
                                         >
                                             <div>
-                                                <span className="font-bold text-slate-800 dark:text-github-dark-text dark:text-[#f0f6fc] block">{lab.name}</span>
+                                                <span className="font-semibold text-slate-800 dark:text-github-dark-text dark:text-[#f0f6fc] block">{lab.name}</span>
                                                 <span className="text-[10px] text-slate-400 font-mono">{lab.role} | Default: {lab.site_name || 'Independent'}</span>
                                             </div>
-                                            <button className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded text-[10px] font-black cursor-pointer">
+                                            <button className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded text-[10px] font-medium cursor-pointer">
                                                 Select
                                             </button>
                                         </div>

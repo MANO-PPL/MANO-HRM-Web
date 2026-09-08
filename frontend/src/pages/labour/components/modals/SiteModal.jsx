@@ -32,16 +32,16 @@ const SiteModal = ({
                     >
                         <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
                             <div>
-                                <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
+                                <h4 className="font-semibold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
                                     {editingSite ? 'Edit Construction Site' : 'Create Construction Site'}
                                 </h4>
-                                <p className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted mt-0.5 tracking-wider uppercase">Site Configuration Profile</p>
+                                <p className="text-[9px] font-medium text-slate-400 dark:text-github-dark-muted mt-0.5 tracking-wider uppercase">Site Configuration Profile</p>
                             </div>
                             <button onClick={() => setShowSiteModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
                         </div>
                         <form onSubmit={handleSaveSite} className="flex-1 overflow-y-auto p-6 space-y-6 text-xs custom-scrollbar">
                             <div>
-                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-2">Site Name</label>
+                                <label className="block text-slate-500 dark:text-slate-300 font-medium mb-2">Site Name</label>
                                 <input
                                     type="text"
                                     value={siteForm.site_name}
@@ -52,7 +52,7 @@ const SiteModal = ({
                                 />
                             </div>
                             <div>
-                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-2">Location Details / Address</label>
+                                <label className="block text-slate-500 dark:text-slate-300 font-medium mb-2">Location Details / Address</label>
                                 <textarea
                                     value={siteForm.location_details}
                                     onChange={(e) => setSiteForm({ ...siteForm, location_details: e.target.value })}
@@ -63,7 +63,7 @@ const SiteModal = ({
                             </div>
                             {editingSite && (
                                 <div>
-                                    <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-2">Status</label>
+                                    <label className="block text-slate-500 dark:text-slate-300 font-medium mb-2">Status</label>
                                     <MinimalSelect
                                         value={siteForm.status}
                                         onChange={(val) => setSiteForm({ ...siteForm, status: val })}
@@ -72,7 +72,7 @@ const SiteModal = ({
                                             { value: 'Completed', label: 'Completed' },
                                             { value: 'Inactive', label: 'Inactive' }
                                         ]}
-                                        triggerClassName="w-full justify-between"
+                                        triggerClassName="w-full justify-between font-medium"
                                         variant="input"
                                     />
                                 </div>
@@ -82,13 +82,13 @@ const SiteModal = ({
                                 <button
                                     type="button"
                                     onClick={() => setShowSiteModal(false)}
-                                    className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-bold transition-all"
+                                    className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 rounded-lg font-medium transition-all"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all"
+                                    className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium shadow-sm transition-all"
                                 >
                                     Save
                                 </button>

@@ -41,7 +41,7 @@ const BulkLabourUploadModal = ({
                                     <Upload size={16} />
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc]">Bulk Add Labours</h4>
+                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-[#f0f6fc]">Bulk Add Labours</h4>
                                     <p className="text-[11px] text-slate-400 dark:text-slate-500">Live preview & import worker profiles</p>
                                 </div>
                             </div>
@@ -67,7 +67,7 @@ const BulkLabourUploadModal = ({
                                     type="button"
                                     onClick={() => bulkFileInputRef.current?.click()}
                                     disabled={isUploadingBulk}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-2xs transition-all cursor-pointer"
                                 >
                                     <Upload size={13} />
                                     <span>{isUploadingBulk ? 'Parsing File...' : 'Upload File (Excel/CSV)'}</span>
@@ -75,7 +75,7 @@ const BulkLabourUploadModal = ({
                                 <button
                                     type="button"
                                     onClick={downloadCSVTemplate}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#21262d] hover:bg-slate-100 dark:hover:bg-[#30363d] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#30363d] rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#21262d] hover:bg-slate-100 dark:hover:bg-[#30363d] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#30363d] rounded-lg text-xs font-medium shadow-2xs transition-all cursor-pointer"
                                 >
                                     <FileSpreadsheet size={13} className="text-emerald-500" />
                                     <span>Template</span>
@@ -98,7 +98,7 @@ const BulkLabourUploadModal = ({
                                         };
                                         setParsedLabours(prev => [newRow, ...prev]);
                                     }}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#21262d] hover:bg-slate-100 dark:hover:bg-[#30363d] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#30363d] rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#21262d] hover:bg-slate-100 dark:hover:bg-[#30363d] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#30363d] rounded-lg text-xs font-medium shadow-2xs transition-all cursor-pointer"
                                 >
                                     <Plus size={13} className="text-indigo-500" />
                                     <span>Add Row</span>
@@ -109,7 +109,7 @@ const BulkLabourUploadModal = ({
                                 <button
                                     type="button"
                                     onClick={() => setParsedLabours(DEFAULT_PREVIEW_WORKERS)}
-                                    className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+                                    className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
                                 >
                                     Reset to Sample
                                 </button>
@@ -117,7 +117,7 @@ const BulkLabourUploadModal = ({
                                 <button
                                     type="button"
                                     onClick={() => setParsedLabours([])}
-                                    className="text-[11px] text-rose-500 hover:underline font-semibold cursor-pointer"
+                                    className="text-[11px] text-rose-500 hover:underline font-medium cursor-pointer"
                                 >
                                     Clear
                                 </button>
@@ -128,8 +128,8 @@ const BulkLabourUploadModal = ({
                         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-3">
                             <div className="flex items-center justify-between text-xs">
                                 <div className="flex items-center gap-2">
-                                    <span className="font-bold text-slate-800 dark:text-[#f0f6fc]">Instant Preview</span>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900/50">
+                                    <span className="font-semibold text-slate-800 dark:text-[#f0f6fc]">Instant Preview</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900/50">
                                         {parsedLabours.length} rows
                                     </span>
                                 </div>
@@ -141,12 +141,12 @@ const BulkLabourUploadModal = ({
                             {parsedLabours.length === 0 ? (
                                 <div className="border border-dashed border-slate-200 dark:border-[#30363d] rounded-xl p-10 text-center">
                                     <Upload className="mx-auto text-slate-400 mb-2" size={28} />
-                                    <h5 className="font-bold text-xs text-slate-700 dark:text-slate-300">No workers in preview</h5>
+                                    <h5 className="font-semibold text-xs text-slate-700 dark:text-slate-300">No workers in preview</h5>
                                     <p className="text-[11px] text-slate-400 mt-1">Upload a file or click "Reset to Sample" to preview rows.</p>
                                     <button
                                         type="button"
                                         onClick={() => setParsedLabours(DEFAULT_PREVIEW_WORKERS)}
-                                        className="mt-3 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-bold border border-indigo-200 dark:border-indigo-900/40 hover:bg-indigo-100 cursor-pointer"
+                                        className="mt-3 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-medium border border-indigo-200 dark:border-indigo-900/40 hover:bg-indigo-100 cursor-pointer"
                                     >
                                         Load Sample Preview
                                     </button>
@@ -156,7 +156,7 @@ const BulkLabourUploadModal = ({
                                     <div className="overflow-x-auto max-h-[50vh] custom-scrollbar">
                                         <table className="w-full text-left border-collapse text-[11px]">
                                             <thead>
-                                                <tr className="bg-slate-50 dark:bg-[#161b22] text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-[#30363d]">
+                                                <tr className="bg-slate-50 dark:bg-[#161b22] text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-[#30363d]">
                                                     <th className="p-2.5 w-10 text-center">
                                                         <div
                                                             onClick={() => {
@@ -208,20 +208,20 @@ const BulkLabourUploadModal = ({
                                                             </td>
                                                             <td className="p-2.5">
                                                                 {row.isValid ? (
-                                                                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold text-[10px]">
+                                                                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium text-[10px]">
                                                                         <CheckCircle size={12} /> Ready
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="inline-flex items-center gap-1 text-rose-500 font-semibold text-[10px]" title={row.error}>
+                                                                    <span className="inline-flex items-center gap-1 text-rose-500 font-medium text-[10px]" title={row.error}>
                                                                         <AlertTriangle size={12} /> Error
                                                                     </span>
                                                                 )}
                                                             </td>
-                                                            <td className="p-2.5 font-bold text-slate-800 dark:text-[#f0f6fc]">
+                                                            <td className="p-2.5 font-semibold text-slate-800 dark:text-[#f0f6fc]">
                                                                 {row.name}
                                                             </td>
                                                             <td className="p-2.5">
-                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/40 dark:border-indigo-900/40">
+                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/40 dark:border-indigo-900/40">
                                                                     {row.role || 'Unspecified'}
                                                                 </span>
                                                             </td>
@@ -267,7 +267,7 @@ const BulkLabourUploadModal = ({
                                 <button
                                     type="button"
                                     onClick={() => setShowBulkLabourModal(false)}
-                                    className="px-4 py-2 rounded-lg border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-[#30363d] transition-all cursor-pointer"
+                                    className="px-4 py-2 rounded-lg border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-50 dark:hover:bg-[#30363d] transition-all cursor-pointer"
                                 >
                                     Cancel
                                 </button>
@@ -275,7 +275,7 @@ const BulkLabourUploadModal = ({
                                     type="button"
                                     onClick={handleSaveBulkLabours}
                                     disabled={isUploadingBulk || parsedLabours.filter(l => l.isValid && l.selected !== false).length === 0}
-                                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center gap-2 cursor-pointer"
+                                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center gap-2 cursor-pointer"
                                 >
                                     {isUploadingBulk ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                                     <span>Import {parsedLabours.filter(l => l.isValid && l.selected !== false).length} Workers</span>

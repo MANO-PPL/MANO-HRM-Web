@@ -42,7 +42,7 @@ const BulkTransferModal = ({
                         <div className="flex-shrink-0">
                             <div className="flex justify-between items-center px-5 py-4 border-b border-slate-100 dark:border-[#21262d]">
                                 <div>
-                                    <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc]">Move Workers</h4>
+                                    <h4 className="font-semibold text-sm text-slate-800 dark:text-[#f0f6fc]">Move Workers</h4>
                                     <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Reassign workers to a different site</p>
                                 </div>
                                 <button
@@ -64,7 +64,7 @@ const BulkTransferModal = ({
                                             <div className="w-4 h-4 rounded-full bg-slate-400/20 dark:bg-slate-600/40 flex items-center justify-center">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
                                             </div>
-                                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">From Site</span>
+                                            <span className="text-[10px] font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500">From Site</span>
                                         </div>
                                         <MinimalSelect
                                             value={bulkSourceSiteId}
@@ -79,7 +79,7 @@ const BulkTransferModal = ({
                                                     .filter(s => !selectedSite || s.site_id !== selectedSite.site_id)
                                                     .map(s => ({ value: String(s.site_id), label: s.site_name }))
                                             ]}
-                                            triggerClassName="w-full justify-between text-[11px]"
+                                            triggerClassName="w-full justify-between text-[11px] font-medium"
                                             variant="input"
                                         />
                                     </div>
@@ -90,16 +90,16 @@ const BulkTransferModal = ({
                                                 <div className="w-4 h-4 rounded-full bg-indigo-400/20 dark:bg-indigo-600/30 flex items-center justify-center">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
                                                 </div>
-                                                <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400">Move To</span>
+                                                <span className="text-[10px] font-medium uppercase tracking-widest text-indigo-500 dark:text-indigo-400">Move To</span>
                                             </div>
                                             {selectedSite && (
-                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-500 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50">Locked</span>
+                                                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-500 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50">Locked</span>
                                             )}
                                         </div>
                                         {selectedSite ? (
                                             <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-indigo-100/60 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/40">
                                                 <Building size={11} className="text-indigo-500 flex-shrink-0" />
-                                                <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 truncate">{selectedSite.site_name}</span>
+                                                <span className="text-[11px] font-medium text-indigo-700 dark:text-indigo-300 truncate">{selectedSite.site_name}</span>
                                             </div>
                                         ) : (
                                             <MinimalSelect
@@ -110,7 +110,7 @@ const BulkTransferModal = ({
                                                     { value: 'Unassigned', label: 'No Site (Independent)' },
                                                     ...sites.map(s => ({ value: String(s.site_id), label: s.site_name }))
                                                 ]}
-                                                triggerClassName="w-full justify-between text-[11px]"
+                                                triggerClassName="w-full justify-between text-[11px] font-medium"
                                                 variant="input"
                                             />
                                         )}
@@ -136,7 +136,7 @@ const BulkTransferModal = ({
                                             <button
                                                 type="button"
                                                 onClick={() => setBulkRoleFilter('All')}
-                                                className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${bulkRoleFilter === 'All'
+                                                className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-all ${bulkRoleFilter === 'All'
                                                         ? 'bg-indigo-600 text-white border-transparent shadow-sm shadow-indigo-500/30'
                                                         : 'bg-white dark:bg-[#21262d] text-slate-500 dark:text-slate-400 border-slate-200 dark:border-[#30363d] hover:border-indigo-300 dark:hover:border-indigo-700'
                                                     }`}
@@ -151,7 +151,7 @@ const BulkTransferModal = ({
                                                         key={role}
                                                         type="button"
                                                         onClick={() => setBulkRoleFilter(isActive ? 'All' : role)}
-                                                        className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${isActive
+                                                        className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-all ${isActive
                                                                 ? 'bg-indigo-600 text-white border-transparent shadow-sm shadow-indigo-500/30'
                                                                 : 'bg-white dark:bg-[#21262d] text-slate-500 dark:text-slate-400 border-slate-200 dark:border-[#30363d] hover:border-indigo-300 dark:hover:border-indigo-700'
                                                             }`}
@@ -166,7 +166,7 @@ const BulkTransferModal = ({
 
                                 {/* List header */}
                                 <div className="flex justify-between items-center">
-                                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Choose workers to move</span>
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Choose workers to move</span>
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -184,7 +184,7 @@ const BulkTransferModal = ({
                                                 setSelectedLabourIds(prev => [...new Set([...prev, ...filtered.map(l => l.labour_id)])]);
                                             }
                                         }}
-                                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold"
+                                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
                                     >
                                         {bulkRoleFilter === 'All' ? 'Select / Remove All' : `Select All ${bulkRoleFilter}s`}
                                     </button>
@@ -273,11 +273,11 @@ const BulkTransferModal = ({
                                                                 <div className="flex items-center gap-1.5">
                                                                     <div className={`w-1.5 h-1.5 rounded-full ${clr.dot}`} />
                                                                     <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{role}</span>
-                                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${clr.badge}`}>{workers.length}</span>
+                                                                    <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${clr.badge}`}>{workers.length}</span>
                                                                 </div>
                                                             </label>
                                                             {selectedCount > 0 && (
-                                                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white">
+                                                                <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-indigo-600 text-white">
                                                                     {selectedCount} chosen
                                                                 </span>
                                                             )}
@@ -316,7 +316,7 @@ const BulkTransferModal = ({
                                                                             )}
                                                                         </div>
                                                                         {/* Avatar */}
-                                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0 ${clr.avatar}`}>
+                                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-semibold flex-shrink-0 ${clr.avatar}`}>
                                                                             {initials}
                                                                         </div>
                                                                         {/* Info */}
@@ -346,7 +346,7 @@ const BulkTransferModal = ({
                             {selectedLabourIds.length > 0 && (
                                 <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
                                     <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
-                                        <span className="text-[9px] font-black text-white">{selectedLabourIds.length}</span>
+                                        <span className="text-[9px] font-semibold text-white">{selectedLabourIds.length}</span>
                                     </div>
                                     <p className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
                                         {selectedLabourIds.length} worker{selectedLabourIds.length !== 1 ? 's' : ''} selected to move
@@ -357,7 +357,7 @@ const BulkTransferModal = ({
                                 <button
                                     type="button"
                                     onClick={() => setShowBulkTransferModal(false)}
-                                    className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-[#30363d] transition-all"
+                                    className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-[#30363d] bg-white dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-50 dark:hover:bg-[#30363d] transition-all"
                                 >
                                     Cancel
                                 </button>
@@ -365,7 +365,7 @@ const BulkTransferModal = ({
                                     type="submit"
                                     disabled={selectedLabourIds.length === 0}
                                     onClick={handleExecuteBulkTransfer}
-                                    className="flex-[2] px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2"
+                                    className="flex-[2] px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2"
                                 >
                                     <Building size={13} />
                                     Move {selectedLabourIds.length > 0 ? `${selectedLabourIds.length} ` : ''}Workers

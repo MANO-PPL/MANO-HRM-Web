@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, DollarSign, Clock, AlertTriangle, Trash2 } from 'lucide-react';
 import MinimalSelect from '../../../../components/MinimalSelect';
 import DatePicker from '../../../../components/DatePicker';
+import LoadingScreen from '../../../../components/LoadingScreen';
 import { formatAdvanceDate, getMonthNameAndYear } from '../../utils/labourUtils';
 
 const AdvanceModal = ({
@@ -40,19 +41,19 @@ const AdvanceModal = ({
                         transition={{ type: 'spring', damping: 25, stiffness: 220 }}
                         className="relative w-full max-w-md h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d] z-10"
                     >
-                        <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
+                        <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#161b22]/50">
                             <div className="flex items-center gap-1.5">
                                 <DollarSign size={16} className="text-amber-500" />
-                                <h4 className="font-bold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Log Salary Advance</h4>
+                                <h4 className="font-semibold text-sm text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">Log Salary Advance</h4>
                             </div>
                             <button onClick={() => setShowAdvanceModal(false)} className="p-1.5 rounded-full text-slate-400 hover:text-[#58a6ff] hover:bg-slate-100 dark:hover:bg-[#30363d] transition-all"><X size={18} /></button>
                         </div>
                         <form onSubmit={handleSaveAdvance} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-                            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/40 p-3 rounded-lg text-slate-600 dark:text-slate-350">
+                            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/40 p-3 rounded-lg text-slate-600 dark:text-[#c9d1d9]">
                                 Logging salary advance for <strong>{advanceForm.name}</strong>. This amount will be automatically deducted from their next payroll payroll payout credit.
                             </div>
                             <div>
-                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Target Site</label>
+                                <label className="block text-slate-500 dark:text-[#8b949e] font-medium mb-1">Target Site</label>
                                 <MinimalSelect
                                     value={advanceForm.site_id}
                                     onChange={(val) => setAdvanceForm({ ...advanceForm, site_id: val })}
@@ -60,12 +61,12 @@ const AdvanceModal = ({
                                         { value: 'All', label: 'All Sites (Global / Unallocated)' },
                                         ...sites.map(s => ({ value: s.site_id.toString(), label: s.site_name }))
                                     ]}
-                                    triggerClassName="w-full justify-between"
+                                    triggerClassName="w-full justify-between font-medium bg-white dark:bg-[#161b22] border-slate-200 dark:border-[#30363d] text-slate-800 dark:text-[#f0f6fc]"
                                     variant="input"
                                 />
                             </div>
                             <div>
-                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Logging Date</label>
+                                <label className="block text-slate-500 dark:text-[#8b949e] font-medium mb-1">Logging Date</label>
                                 {(() => {
                                     const targetM = financeMonth || new Date().toISOString().slice(0, 7);
                                     const [y, m] = targetM.split('-').map(Number);
@@ -84,9 +85,9 @@ const AdvanceModal = ({
                                 })()}
                             </div>
                             <div>
-                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Advance Amount (INR)</label>
+                                <label className="block text-slate-500 dark:text-[#8b949e] font-medium mb-1">Advance Amount (INR)</label>
                                 {advanceForm.amount && Number(advanceForm.amount) > Number(advanceForm.net_payable || 0) && (
-                                    <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-3 rounded-lg text-rose-700 dark:text-rose-400 font-bold text-[11px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm mb-2">
+                                    <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 p-3 rounded-lg text-rose-700 dark:text-rose-400 font-medium text-[11px] animate-in fade-in duration-200 flex items-start gap-1.5 shadow-sm mb-2">
                                         <AlertTriangle size={14} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
                                         <span>
                                             Warning: Advance amount (₹{Number(advanceForm.amount).toLocaleString()}) exceeds the worker's net payable balance (₹{Number(advanceForm.net_payable || 0).toLocaleString()}).
@@ -97,19 +98,19 @@ const AdvanceModal = ({
                                     type="number"
                                     value={advanceForm.amount}
                                     onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-[#8b949e] rounded-lg focus:outline-none focus:border-indigo-500 font-normal"
                                     required
                                     min="1"
                                     placeholder="e.g., 2000"
                                 />
                             </div>
                             <div>
-                                <label className="block text-slate-500 dark:text-slate-300 font-semibold mb-1">Notes / Description</label>
+                                <label className="block text-slate-500 dark:text-[#8b949e] font-medium mb-1">Notes / Description</label>
                                 <input
                                     type="text"
                                     value={advanceForm.notes}
                                     onChange={(e) => setAdvanceForm({ ...advanceForm, notes: e.target.value })}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] text-slate-900 dark:text-[#f0f6fc] placeholder-slate-400 dark:placeholder-[#8b949e] rounded-lg focus:outline-none focus:border-indigo-500 font-normal"
                                     placeholder="e.g., Festival Advance, Medical emergency"
                                 />
                             </div>
@@ -118,13 +119,13 @@ const AdvanceModal = ({
                                 <button
                                     type="button"
                                     onClick={() => setShowAdvanceModal(false)}
-                                    className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-lg font-bold transition-all cursor-pointer"
+                                    className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#21262d] text-slate-500 dark:text-[#8b949e] hover:dark:text-[#f0f6fc] border border-transparent dark:border-[#30363d] rounded-lg font-medium transition-all cursor-pointer"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-sm transition-all cursor-pointer"
+                                    className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium shadow-sm transition-all cursor-pointer"
                                 >
                                     Record Payment
                                 </button>
@@ -187,7 +188,7 @@ const AdvanceModal = ({
                                         <div className="flex justify-between items-center">
                                             <div className="flex items-center gap-1.5">
                                                 <Clock size={14} className="text-amber-500" />
-                                                <span className="font-bold text-xs text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
+                                                <span className="font-semibold text-xs text-slate-800 dark:text-[#f0f6fc] uppercase tracking-wider">
                                                     Advance History & Timeline
                                                 </span>
                                             </div>
@@ -198,7 +199,7 @@ const AdvanceModal = ({
                                                         setAdvanceHistoryView('month');
                                                         loadAdvanceHistory(advanceForm.labour_id, financeMonth);
                                                     }}
-                                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer ${
                                                         advanceHistoryView === 'month'
                                                             ? 'bg-amber-500 text-white shadow-xs'
                                                             : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
@@ -212,7 +213,7 @@ const AdvanceModal = ({
                                                         setAdvanceHistoryView('all');
                                                         loadAdvanceHistory(advanceForm.labour_id, null);
                                                     }}
-                                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer ${
                                                         advanceHistoryView === 'all'
                                                             ? 'bg-amber-500 text-white shadow-xs'
                                                             : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
@@ -226,7 +227,7 @@ const AdvanceModal = ({
                                         {/* Summary Badge */}
                                         <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40 p-2.5 rounded-xl text-[11px] flex justify-between items-center">
                                             <div>
-                                                <span className="text-amber-900 dark:text-amber-300 font-bold block">
+                                                <span className="text-amber-900 dark:text-amber-300 font-semibold block">
                                                     {advanceHistoryView === 'month' ? `Advances in ${getMonthNameAndYear(financeMonth + '-01')}` : 'All-Time Historical Advance Log'}
                                                 </span>
                                                 <span className="text-[10px] text-amber-700/80 dark:text-amber-400/70 block mt-0.5">
@@ -235,19 +236,19 @@ const AdvanceModal = ({
                                                         : `${advancePayouts.length} past settlement${advancePayouts.length !== 1 ? 's' : ''} recorded across all months`}
                                                 </span>
                                             </div>
-                                            <span className="font-extrabold text-amber-600 dark:text-amber-400 text-xs shrink-0 ml-2">
+                                            <span className="font-semibold text-amber-600 dark:text-amber-400 text-xs shrink-0 ml-2">
                                                 {`${advanceHistory.length} advance${advanceHistory.length !== 1 ? 's' : ''} • ₹${allAdvancesTotalAmount.toLocaleString()}`}
                                             </span>
                                         </div>
 
                                         {advanceHistoryLoading ? (
-                                            <div className="flex justify-center py-6">
-                                                <Clock className="animate-spin text-amber-500" size={20} />
+                                            <div className="py-6">
+                                                <LoadingScreen size="sm" message="Loading advance history..." fullScreen={false} />
                                             </div>
                                         ) : allTimelineEvents.length === 0 ? (
                                             <div className="text-center py-6 border border-dashed border-slate-200 dark:border-[#30363d] rounded-xl bg-slate-50/50 dark:bg-[#161b22]/30 p-4">
-                                                <DollarSign size={22} className="mx-auto text-slate-400 dark:text-slate-600 mb-1 opacity-50" />
-                                                <p className="text-slate-500 dark:text-github-dark-muted text-[11px] font-semibold">
+                                                <DollarSign size={22} className="mx-auto text-slate-400 dark:text-[#8b949e] mb-1 opacity-50" />
+                                                <p className="text-slate-500 dark:text-[#8b949e] text-[11px] font-normal">
                                                     {advanceHistoryView === 'month'
                                                         ? `No advances or settlements recorded for this worker in ${getMonthNameAndYear(financeMonth + '-01')}`
                                                         : 'No advances or payments recorded for this worker'}
@@ -265,30 +266,30 @@ const AdvanceModal = ({
                                                                     <div className="flex justify-between items-start">
                                                                         <div>
                                                                             <div className="flex items-center gap-1.5">
-                                                                                <span className="font-extrabold text-xs text-emerald-700 dark:text-emerald-400">
+                                                                                <span className="font-semibold text-xs text-emerald-700 dark:text-emerald-400">
                                                                                     Salary Settled: ₹{evt.amount.toLocaleString()} Paid
                                                                                 </span>
-                                                                                <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[8px] font-extrabold uppercase">
+                                                                                <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[8px] font-medium uppercase">
                                                                                     Settled
                                                                                 </span>
                                                                             </div>
-                                                                            <div className="text-[10px] text-slate-500 dark:text-github-dark-muted font-medium mt-0.5">
+                                                                            <div className="text-[10px] text-slate-500 dark:text-[#8b949e] font-normal mt-0.5">
                                                                                 Paid on {formatAdvanceDate(evt.date)}
                                                                             </div>
                                                                             {evt.site_name && (
-                                                                                <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white/80 dark:bg-[#161b22] text-slate-600 dark:text-slate-300 text-[9px] font-bold border border-emerald-200/50 dark:border-emerald-900/40">
+                                                                                <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-white/80 dark:bg-[#161b22] text-slate-600 dark:text-[#c9d1d9] text-[9px] font-medium border border-emerald-200/50 dark:border-emerald-900/40">
                                                                                     {evt.site_name}
                                                                                 </span>
                                                                             )}
                                                                         </div>
                                                                     </div>
                                                                     {evt.notes && (
-                                                                        <p className="mt-1.5 text-[10px] text-slate-600 dark:text-slate-300 bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+                                                                        <p className="mt-1.5 text-[10px] text-slate-600 dark:text-[#c9d1d9] bg-white dark:bg-[#0d1117] p-1.5 px-2 rounded-lg border border-emerald-100 dark:border-emerald-900/30 font-normal">
                                                                             {evt.notes}
                                                                         </p>
                                                                     )}
                                                                 </div>
-                                                            </>
+                              </>
                                                         ) : (
                                                             <>
                                                                 {/* Advance Event */}
@@ -297,30 +298,30 @@ const AdvanceModal = ({
                                                                 }`} />
                                                                 <div className={`border rounded-xl p-2.5 transition-all shadow-xs ${
                                                                     evt.is_unsettled
-                                                                        ? 'bg-slate-50 dark:bg-[#161b22] border-slate-200/80 dark:border-github-dark-border/80 hover:border-amber-500/40'
-                                                                        : 'bg-slate-50/40 dark:bg-[#161b22]/40 border-slate-200/40 dark:border-github-dark-border/40 opacity-80'
+                                                                        ? 'bg-slate-50 dark:bg-[#161b22] border-slate-200/80 dark:border-[#30363d] hover:border-amber-500/40'
+                                                                        : 'bg-slate-50/40 dark:bg-[#161b22]/40 border-slate-200/40 dark:border-[#30363d]/40 opacity-80'
                                                                 }`}>
                                                                     <div className="flex justify-between items-start">
                                                                         <div>
                                                                             <div className="flex items-center gap-1.5">
-                                                                                <span className={`font-extrabold text-xs ${
-                                                                                    evt.is_unsettled ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-400'
+                                                                                <span className={`font-semibold text-xs ${
+                                                                                    evt.is_unsettled ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-[#8b949e]'
                                                                                 }`}>
                                                                                     ₹{evt.amount.toLocaleString()}
                                                                                 </span>
-                                                                                <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-semibold">
+                                                                                <span className="text-[10px] text-slate-400 dark:text-[#8b949e] font-normal">
                                                                                     on {formatAdvanceDate(evt.date)}
                                                                                 </span>
-                                                                                <span className={`px-1.5 py-0.2 rounded text-[8px] font-extrabold uppercase ${
+                                                                                <span className={`px-1.5 py-0.2 rounded text-[8px] font-medium uppercase ${
                                                                                     evt.is_unsettled
                                                                                         ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                                                                        : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                                                                                        : 'bg-slate-200 dark:bg-[#21262d] text-slate-500 dark:text-[#8b949e]'
                                                                                 }`}>
                                                                                     {evt.is_unsettled ? 'Unsettled' : 'Settled in Payout'}
                                                                                 </span>
                                                                             </div>
                                                                             {evt.site_name && (
-                                                                                <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-[#21262d] text-slate-600 dark:text-slate-300 text-[9px] font-bold">
+                                                                                <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-[#21262d] text-slate-600 dark:text-[#c9d1d9] text-[9px] font-medium">
                                                                                     {evt.site_name}
                                                                                 </span>
                                                                             )}
