@@ -80,18 +80,18 @@ const EmployeeReportCard = ({ row, columns }) => {
         <div className="bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all space-y-4">
             <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400 text-sm shadow-inner shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center font-medium text-indigo-600 dark:text-indigo-400 text-sm shadow-inner shrink-0">
                         {initials || <User size={16} />}
                     </div>
                     <div>
-                        <h4 className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{name}</h4>
-                        <p className="text-[11px] font-medium text-slate-400 dark:text-github-dark-muted mt-0.5">
+                        <h4 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{name}</h4>
+                        <p className="text-[11px] font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">
                             {designation ? `${designation} • ` : ''}{dept}
                         </p>
                     </div>
                 </div>
                 {status && (
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${statusColor}`}>
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-medium uppercase tracking-wider ${statusColor}`}>
                         {status}
                     </span>
                 )}
@@ -101,7 +101,7 @@ const EmployeeReportCard = ({ row, columns }) => {
                 <div className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-github-dark-bg/60 p-3 rounded-xl">
                     {metrics.map((m, idx) => (
                         <div key={idx} className="space-y-0.5">
-                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-github-dark-muted block">
+                            <span className="text-[9px] font-medium uppercase tracking-wider text-slate-400 dark:text-github-dark-muted block">
                                 {m.label}
                             </span>
                             <span className="text-xs font-semibold text-slate-700 dark:text-github-dark-text block truncate" title={m.value}>
@@ -114,7 +114,7 @@ const EmployeeReportCard = ({ row, columns }) => {
 
             {keys.length > 0 && isTimelineOnly && (
                 <div className="pt-1">
-                    <h5 className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-github-dark-muted mb-2 px-1">
+                    <h5 className="text-[9px] font-medium uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-2 px-1">
                         Attendance Timeline
                     </h5>
                     <div className="flex flex-wrap gap-1 bg-slate-50/50 dark:bg-black/10 p-2 rounded-xl">
@@ -142,7 +142,7 @@ const EmployeeReportCard = ({ row, columns }) => {
                             return (
                                 <div
                                     key={dateKey}
-                                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold cursor-help transition-all hover:scale-105 shadow-sm ${colorClass}`}
+                                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-medium cursor-help transition-all hover:scale-105 shadow-sm ${colorClass}`}
                                     title={`${dateKey}: ${statusVal}`}
                                 >
                                     {dayDisplay}
@@ -158,7 +158,7 @@ const EmployeeReportCard = ({ row, columns }) => {
                     <button
                         type="button"
                         onClick={() => setIsExpanded(!isExpanded)}
-                        className="w-full py-2 px-3 border border-slate-200 dark:border-github-dark-border hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center justify-between cursor-pointer transition-all active:scale-[0.98]"
+                        className="w-full py-2 px-3 border border-slate-200 dark:border-github-dark-border hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-medium text-indigo-600 dark:text-indigo-400 flex items-center justify-between cursor-pointer transition-all active:scale-[0.98]"
                     >
                         <span>{isExpanded ? 'Hide Daily Details' : 'View Daily Details'}</span>
                         <ChevronDown size={14} className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -173,8 +173,8 @@ const EmployeeReportCard = ({ row, columns }) => {
                                 return (
                                     <div key={dateKey} className="bg-slate-50 dark:bg-[#161b22] border border-slate-100 dark:border-[#30363d] p-3 rounded-xl space-y-1.5">
                                         <div className="flex justify-between items-center">
-                                            <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase">{dateKey}</span>
-                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${hasPunch
+                                            <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 uppercase">{dateKey}</span>
+                                            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded uppercase ${hasPunch
                                                 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20'
                                                 : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                                                 }`}>

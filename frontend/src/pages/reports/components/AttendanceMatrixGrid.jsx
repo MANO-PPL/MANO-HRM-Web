@@ -35,42 +35,42 @@ const AttendanceMatrixGrid = ({
             <table className="w-full text-left border-collapse" style={{ minWidth: 'max-content' }}>
                 <thead className="sticky top-0 z-30">
                     <tr className="bg-slate-50 dark:bg-[#161b22] border-b border-slate-200 dark:border-github-dark-border">
-                        <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-[#161b22] z-40 min-w-[230px] border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.10)' }}>
+                        <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-github-dark-muted sticky left-0 bg-slate-50 dark:bg-[#161b22] z-40 min-w-[230px] border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.10)' }}>
                             Employee
                         </th>
                         {matrixData.dates.map(rawDate => {
                             const d = new Date(rawDate + 'T00:00:00Z');
                             return (
                                 <th key={rawDate} className="py-2 px-1 text-center min-w-[52px]">
-                                    <div className="text-[8px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { month: 'short' })}</div>
-                                    <div className="text-sm font-black text-slate-700 dark:text-white leading-tight">{d.getUTCDate()}</div>
-                                    <div className="text-[8px] uppercase text-slate-400 leading-none tracking-wider">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
+                                    <div className="text-[9px] uppercase text-slate-400 font-normal leading-none tracking-wider">{d.toLocaleString('en-US', { month: 'short' })}</div>
+                                    <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 leading-tight my-0.5">{d.getUTCDate()}</div>
+                                    <div className="text-[9px] uppercase text-slate-400 font-normal leading-none tracking-wider">{d.toLocaleString('en-US', { weekday: 'short' })}</div>
                                 </th>
                             );
                         })}
                         <th className="py-2 px-2 text-center min-w-[50px] border-l border-slate-200 dark:border-github-dark-border bg-emerald-50/50 dark:bg-emerald-950/20">
-                            <div className="text-[8px] uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
-                            <div className="text-sm font-black text-emerald-700 dark:text-emerald-400 leading-tight">P</div>
+                            <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
+                            <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 leading-tight mt-0.5">P</div>
                         </th>
                         <th className="py-2 px-2 text-center min-w-[50px] bg-rose-50/50 dark:bg-rose-950/20">
-                            <div className="text-[8px] uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
-                            <div className="text-sm font-black text-rose-700 dark:text-rose-400 leading-tight">A</div>
+                            <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
+                            <div className="text-xs font-semibold text-rose-700 dark:text-rose-400 leading-tight mt-0.5">A</div>
                         </th>
                         <th className="py-2 px-2 text-center min-w-[50px] bg-sky-50/50 dark:bg-sky-950/20">
-                            <div className="text-[8px] uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
-                            <div className="text-sm font-black text-sky-700 dark:text-sky-400 leading-tight">L</div>
+                            <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
+                            <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 leading-tight mt-0.5">L</div>
                         </th>
                         <th className="py-2 px-2 text-center min-w-[50px] bg-indigo-50/50 dark:bg-indigo-950/20">
-                            <div className="text-[8px] uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
-                            <div className="text-sm font-black text-indigo-700 dark:text-indigo-400 leading-tight">HD</div>
+                            <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
+                            <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 leading-tight mt-0.5">HD</div>
                         </th>
                         <th className="py-2 px-2 text-center min-w-[50px] bg-slate-100/50 dark:bg-slate-800/40">
-                            <div className="text-[8px] uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
-                            <div className="text-sm font-black text-slate-600 dark:text-slate-400 leading-tight">WO</div>
+                            <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
+                            <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 leading-tight mt-0.5">WO</div>
                         </th>
                         <th className="py-2 px-2 text-center min-w-[60px] bg-purple-50/50 dark:bg-purple-950/20">
-                            <div className="text-[8px] uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
-                            <div className="text-sm font-black text-purple-700 dark:text-purple-400 leading-tight">OT (h)</div>
+                            <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
+                            <div className="text-xs font-semibold text-purple-700 dark:text-purple-400 leading-tight mt-0.5">OT (h)</div>
                         </th>
                     </tr>
                 </thead>
@@ -81,12 +81,12 @@ const AttendanceMatrixGrid = ({
                             <tr key={emp.user_id} className="hover:bg-slate-50 dark:hover:bg-[#1c2128] transition-colors group">
                                 <td className="px-5 py-3.5 sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-[#1c2128] transition-colors z-10 border-r border-slate-200 dark:border-github-dark-border" style={{ boxShadow: '4px 0 8px rgba(0,0,0,0.08)' }}>
                                     <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shadow-inner shrink-0">
+                                        <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-medium text-xs shadow-inner shrink-0">
                                             {initials || <User size={14} />}
                                         </div>
                                         <div>
-                                            <span className="block font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{emp.user_name}</span>
-                                            <span className="block text-[10px] font-medium text-slate-400 dark:text-github-dark-muted mt-0.5">{emp.designation} · {emp.department}</span>
+                                            <span className="block font-semibold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{emp.user_name}</span>
+                                            <span className="block text-[10px] font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">{emp.designation} · {emp.department}</span>
                                         </div>
                                     </div>
                                 </td>
@@ -107,29 +107,29 @@ const AttendanceMatrixGrid = ({
                                                     }
                                                 }}
                                                 title={!record ? 'No data' : undefined}
-                                                className={`w-9 h-9 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-sm ${getStatusColor(status)} ${isClickable ? 'cursor-pointer hover:brightness-95 hover:shadow-md active:scale-95' : 'cursor-default'}`}
+                                                className={`w-9 h-9 rounded-xl text-[10px] font-semibold uppercase tracking-wider transition-all inline-flex items-center justify-center shadow-xs ${getStatusColor(status)} ${isClickable ? 'cursor-pointer hover:brightness-95 hover:shadow-md active:scale-95' : 'cursor-default'}`}
                                             >
                                                 {getStatusLabel(status)}
                                             </button>
                                         </td>
                                     );
                                 })}
-                                <td className="px-2 py-3 text-center border-l border-slate-200 dark:border-github-dark-border bg-emerald-50/20 dark:bg-emerald-950/10 font-bold text-xs text-emerald-700 dark:text-emerald-400">
+                                <td className="px-2 py-3 text-center border-l border-slate-200 dark:border-github-dark-border bg-emerald-50/20 dark:bg-emerald-950/10 font-medium text-xs text-emerald-700 dark:text-emerald-400">
                                     {emp.stats?.present || 0}
                                 </td>
-                                <td className="px-2 py-3 text-center bg-rose-50/20 dark:bg-rose-950/10 font-bold text-xs text-rose-700 dark:text-rose-400">
+                                <td className="px-2 py-3 text-center bg-rose-50/20 dark:bg-rose-950/10 font-medium text-xs text-rose-700 dark:text-rose-400">
                                     {emp.stats?.absent || 0}
                                 </td>
-                                <td className="px-2 py-3 text-center bg-sky-50/20 dark:bg-sky-950/10 font-bold text-xs text-sky-700 dark:text-sky-400">
+                                <td className="px-2 py-3 text-center bg-sky-50/20 dark:bg-sky-950/10 font-medium text-xs text-sky-700 dark:text-sky-400">
                                     {emp.stats?.leave || 0}
                                 </td>
-                                <td className="px-2 py-3 text-center bg-indigo-50/20 dark:bg-indigo-950/10 font-bold text-xs text-indigo-700 dark:text-indigo-400">
+                                <td className="px-2 py-3 text-center bg-indigo-50/20 dark:bg-indigo-950/10 font-medium text-xs text-indigo-700 dark:text-indigo-400">
                                     {emp.stats?.halfDay || 0}
                                 </td>
-                                <td className="px-2 py-3 text-center bg-slate-50 dark:bg-slate-800/20 font-bold text-xs text-slate-500 dark:text-slate-400">
+                                <td className="px-2 py-3 text-center bg-slate-50 dark:bg-slate-800/20 font-medium text-xs text-slate-500 dark:text-slate-400">
                                     {emp.stats?.weeklyOff || 0}
                                 </td>
-                                <td className="px-2 py-3 text-center bg-purple-50/20 dark:bg-purple-950/10 font-bold text-xs text-purple-700 dark:text-purple-400">
+                                <td className="px-2 py-3 text-center bg-purple-50/20 dark:bg-purple-950/10 font-medium text-xs text-purple-700 dark:text-purple-400">
                                     {emp.stats?.overtimeHrs ? emp.stats.overtimeHrs.toFixed(1) : '0.0'}
                                 </td>
                             </tr>

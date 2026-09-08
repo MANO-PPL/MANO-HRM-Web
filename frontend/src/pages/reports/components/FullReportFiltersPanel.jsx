@@ -1,9 +1,11 @@
 import React from 'react';
-import { ChevronDown, Search, Download, History } from 'lucide-react';
+import { ChevronDown, Search, Download, History, User } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import DatePicker from '../../../components/DatePicker';
 
 const FullReportFiltersPanel = ({
+    isEmployee = false,
+    currentUser = null,
     reportTypeOptions,
     tableReportType,
     setTableReportType,
@@ -89,7 +91,7 @@ const FullReportFiltersPanel = ({
             {/* Row 1: Parameters Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-3 items-end">
                 {/* Custom Report Type Dropdown */}
-                <div className="relative xl:col-span-2" ref={tableTypeDropdownRef}>
+                <div className={`relative ${isEmployee ? 'xl:col-span-3' : 'xl:col-span-2'}`} ref={tableTypeDropdownRef}>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Report Type</label>
                     <button
                         type="button"
@@ -122,8 +124,18 @@ const FullReportFiltersPanel = ({
                     )}
                 </div>
 
-                {/* Custom Searchable Department Selector */}
-                <div className="relative xl:col-span-2" ref={tableDeptDropdownRef}>
+                {isEmployee ? (
+                    <div className="relative xl:col-span-3">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Employee</label>
+                        <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 h-[38px]">
+                            <User size={14} className="text-indigo-500 shrink-0" />
+                            <span className="truncate">{currentUser?.user_name || 'My Reports'}</span>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        {/* Custom Searchable Department Selector */}
+                        <div className="relative xl:col-span-2" ref={tableDeptDropdownRef}>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted mb-1 ml-0.5">Department</label>
                     <button
                         type="button"
@@ -416,10 +428,12 @@ const FullReportFiltersPanel = ({
                         </div>
                     )}
                 </div>
+                </>
+            )}
 
                 {/* Date Picker Grid Item */}
                 {tableReportType !== 'employee_master' && (
-                    <div className="xl:col-span-2">
+                    <div className={isEmployee ? 'xl:col-span-3' : 'xl:col-span-2'}>
                         {tableUseCustomRange ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                 <DatePicker

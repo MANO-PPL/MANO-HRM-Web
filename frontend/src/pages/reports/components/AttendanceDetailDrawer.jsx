@@ -37,7 +37,7 @@ const AttendanceDetailDrawer = ({
                                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
                                     <Clock size={20} />
                                 </div>
-                                <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-800 dark:text-github-dark-text">Attendance Details</h3>
+                                <h3 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text">Attendance Details</h3>
                             </div>
                             <button
                                 onClick={onClose}
@@ -55,17 +55,17 @@ const AttendanceDetailDrawer = ({
                             <div className="flex flex-col items-center gap-4 text-center">
                                 <div className="relative">
                                     <div className="absolute inset-0 bg-indigo-500 blur-2xl opacity-10 rounded-full" />
-                                    <div className="relative w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-3xl overflow-hidden border-4 border-white dark:border-github-dark-border shadow-lg">
-                                        {(selectedRecord.user_name || '').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || <User size={30} />}
+                                    <div className="relative w-20 h-20 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-medium text-2xl overflow-hidden border-4 border-white dark:border-github-dark-border shadow-md">
+                                        {(selectedRecord.user_name || '').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || <User size={28} />}
                                     </div>
                                 </div>
                                 <div>
-                                    <h4 className="text-xl font-black text-slate-900 dark:text-github-dark-text tracking-tight">{selectedRecord.user_name || 'Employee'}</h4>
-                                    <p className="text-sm font-medium text-slate-500 dark:text-github-dark-muted mt-1">{selectedRecord.date}</p>
+                                    <h4 className="text-lg font-semibold text-slate-900 dark:text-github-dark-text tracking-tight">{selectedRecord.user_name || 'Employee'}</h4>
+                                    <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted mt-1">{selectedRecord.date}</p>
                                     {selectedRecord.designation && (
-                                        <p className="text-xs font-semibold text-slate-400 dark:text-github-dark-muted mt-1">{selectedRecord.designation} · {selectedRecord.department}</p>
+                                        <p className="text-xs font-normal text-slate-400 dark:text-github-dark-muted mt-0.5">{selectedRecord.designation} · {selectedRecord.department}</p>
                                     )}
-                                    <div className={`mt-3 inline-flex items-center px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border shadow-sm ${getStatusColor(selectedRecord.status)}`}>
+                                    <div className={`mt-3 inline-flex items-center px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-full border shadow-xs ${getStatusColor(selectedRecord.status)}`}>
                                         {selectedRecord.status}
                                     </div>
                                 </div>
@@ -74,13 +74,13 @@ const AttendanceDetailDrawer = ({
                             {/* Attendance Details */}
                             {selectedRecord.status === 'Absent' ? (
                                 <div className="p-5 bg-rose-50/50 dark:bg-rose-950/15 border border-rose-200/50 dark:border-rose-800/20 rounded-2xl space-y-1.5">
-                                    <p className="text-xs font-black uppercase tracking-widest text-rose-600 dark:text-rose-400">Absent Status</p>
-                                    <p className="text-xs font-semibold text-rose-500/80">No attendance recorded for this day. Employee was marked absent.</p>
+                                    <p className="text-xs font-medium uppercase tracking-wider text-rose-600 dark:text-rose-400">Absent Status</p>
+                                    <p className="text-xs font-normal text-rose-500/80">No attendance recorded for this day. Employee was marked absent.</p>
                                 </div>
                             ) : selectedRecord.status === 'On Leave' ? (
                                 <div className="p-5 bg-sky-50/50 dark:bg-sky-950/15 border border-sky-200/50 dark:border-sky-800/20 rounded-2xl space-y-1.5">
-                                    <p className="text-xs font-black uppercase tracking-widest text-sky-600 dark:text-sky-400">Leave Status</p>
-                                    <p className="text-xs font-semibold text-sky-500/80">On approved leave. Leave was approved for this day.</p>
+                                    <p className="text-xs font-medium uppercase tracking-wider text-sky-600 dark:text-sky-400">Leave Status</p>
+                                    <p className="text-xs font-normal text-sky-500/80">On approved leave. Leave was approved for this day.</p>
                                 </div>
                             ) : (
                                 <div className="space-y-6">
@@ -91,8 +91,8 @@ const AttendanceDetailDrawer = ({
                                             { label: 'Punch Out', value: selectedRecord.time_out || (selectedRecord.is_active ? 'In Progress' : 'N/A') },
                                         ].map((item, i) => (
                                             <div key={i} className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
-                                                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">{item.label}</span>
-                                                <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">{item.value}</span>
+                                                <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1.5 opacity-80">{item.label}</span>
+                                                <span className="text-sm font-semibold text-slate-700 dark:text-github-dark-text">{item.value}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -100,10 +100,10 @@ const AttendanceDetailDrawer = ({
                                     {/* Work Hours vs Required + Late Mins */}
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
-                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Work Hrs / Req Hrs</span>
-                                            <span className="text-sm font-bold text-slate-700 dark:text-github-dark-text">
+                                            <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1.5 opacity-80">Work Hrs / Req Hrs</span>
+                                            <span className="text-sm font-semibold text-slate-700 dark:text-github-dark-text">
                                                 {selectedRecord.worked_hours != null ? selectedRecord.worked_hours.toFixed(2) : '0.00'}
-                                                <span className="text-slate-400 font-medium mx-1">/</span>
+                                                <span className="text-slate-400 font-normal mx-1">/</span>
                                                 {selectedRecord.required_hours != null ? selectedRecord.required_hours.toFixed(2) : '0.00'} hrs
                                             </span>
                                             {selectedRecord.worked_hours != null && selectedRecord.required_hours != null && selectedRecord.required_hours > 0 && (
@@ -116,15 +116,15 @@ const AttendanceDetailDrawer = ({
                                             )}
                                         </div>
                                         <div className={`p-4 rounded-2xl border transition-colors ${selectedRecord.late_minutes > 0 ? 'bg-amber-50/60 dark:bg-amber-950/15 border-amber-200/50 dark:border-amber-800/20 hover:border-amber-400/40' : 'bg-slate-50/50 dark:bg-github-dark-subtle/40 border-slate-100 dark:border-github-dark-border/50 hover:border-indigo-500/30'}`}>
-                                            <span className="block text-[10px] font-black uppercase tracking-widest mb-1.5 opacity-60 text-slate-400">Late Mins</span>
-                                            <span className={`text-sm font-bold ${selectedRecord.late_minutes > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-github-dark-text'}`}>
+                                            <span className="block text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-80 text-slate-400">Late Mins</span>
+                                            <span className={`text-sm font-semibold ${selectedRecord.late_minutes > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-github-dark-text'}`}>
                                                 {selectedRecord.late_minutes != null ? `${selectedRecord.late_minutes} min` : '0 min'}
                                             </span>
                                             {selectedRecord.late_minutes > 0 && (
                                                 <>
-                                                    <span className="block text-[9px] text-amber-500 font-semibold mt-1">Arrived late</span>
+                                                    <span className="block text-[9px] text-amber-500 font-medium mt-1">Arrived late</span>
                                                     {selectedRecord.late_reason && selectedRecord.late_reason !== '-' && (
-                                                        <span className="block text-[9px] text-slate-500 dark:text-github-dark-muted font-medium mt-1 leading-snug">
+                                                        <span className="block text-[9px] text-slate-500 dark:text-github-dark-muted font-normal mt-1 leading-snug">
                                                             Message: <span className="italic">"{selectedRecord.late_reason}"</span>
                                                         </span>
                                                     )}
@@ -137,12 +137,12 @@ const AttendanceDetailDrawer = ({
                                     {selectedRecord.time_in_address && selectedRecord.time_in_address !== '-' && (
                                         <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 space-y-3">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-400/50" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 opacity-80">Punch In Location</span>
+                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-xs shadow-emerald-400/50" />
+                                                <span className="text-[10px] font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400 opacity-90">Punch In Location</span>
                                             </div>
                                             <div className="flex items-start gap-2">
                                                 <MapPin size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                                                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-relaxed">{selectedRecord.time_in_address}</p>
+                                                <p className="text-xs font-normal text-slate-700 dark:text-slate-300 leading-relaxed">{selectedRecord.time_in_address}</p>
                                             </div>
                                         </div>
                                     )}
@@ -152,7 +152,7 @@ const AttendanceDetailDrawer = ({
                                             <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 space-y-3">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-sm shadow-rose-400/50" />
-                                                    <span className="text-[10px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 opacity-80">Punch Out Location</span>
+                                                    <span className="text-[10px] font-medium uppercase tracking-widest text-rose-600 dark:text-rose-400 opacity-80">Punch Out Location</span>
                                                 </div>
                                                 <div className="flex items-start gap-2">
                                                     <MapPin size={14} className="text-rose-500 shrink-0 mt-0.5" />
@@ -162,7 +162,7 @@ const AttendanceDetailDrawer = ({
                                         )
                                     ) : (
                                         <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50">
-                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest opacity-60">Punch Out Info</span>
+                                            <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-widest opacity-60">Punch Out Info</span>
                                             <p className="text-xs font-semibold text-slate-400 mt-2 italic">Punch out not yet recorded.</p>
                                         </div>
                                     )}
@@ -170,7 +170,7 @@ const AttendanceDetailDrawer = ({
                                     {/* Selfie Previews */}
                                     {(selectedRecord.time_in_image || selectedRecord.time_out_image) && (
                                         <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-5 rounded-2xl border border-slate-100 dark:border-github-dark-border/50">
-                                            <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 opacity-60">Punch Selfies</span>
+                                            <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-widest mb-4 opacity-60">Punch Selfies</span>
                                             <div className="grid grid-cols-2 gap-4">
                                                 {[
                                                     { label: 'In', img: selectedRecord.time_in_image, color: 'text-emerald-600 dark:text-emerald-400' },
@@ -195,7 +195,7 @@ const AttendanceDetailDrawer = ({
                                                                 <span className="text-[9px] text-slate-400 font-medium">No Selfie {item.label}</span>
                                                             </div>
                                                         )}
-                                                        <span className={`text-[9px] font-black uppercase tracking-wider text-center mt-2.5 ${item.color}`}>
+                                                        <span className={`text-[9px] font-medium uppercase tracking-wider text-center mt-2.5 ${item.color}`}>
                                                             Punch {item.label}
                                                         </span>
                                                     </div>
