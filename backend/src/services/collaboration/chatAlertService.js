@@ -132,8 +132,8 @@ export async function sendSystemAlert({ org_id, sender_id, recipient_id, card_ty
                 status,
                 ...payload
             }),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            created_at: attendanceDB.fn.now(),
+            updated_at: attendanceDB.fn.now()
         });
 
         // Update conversation last_message_id

@@ -75,12 +75,12 @@ export async function processTimeIn(context) {
           await attendanceDB("attn_records")
             .where({ attendance_id: session.attendance_id })
             .update({
-              time_out: checkOutDate,
+              time_out: toMySQLDateTime(checkOutDate),
               status: "PRESENT",
               updated_at: attendanceDB.fn.now()
             });
           
-          const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
+          const sessionDate = toMySQLDate(session.time_in);
           await syncDailyAttendance(user_id, sessionDate, { status: "PRESENT" }).catch(console.error);
           continue;
         }
@@ -105,7 +105,7 @@ export async function processTimeIn(context) {
             updated_at: attendanceDB.fn.now()
           });
         
-        const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
+        const sessionDate = toMySQLDate(session.time_in);
         await syncDailyAttendance(user_id, sessionDate, { status: "MISSED_PUNCH" }).catch(console.error);
       }
     }
@@ -336,9 +336,9 @@ export async function processTimeOut(context) {
   // For overnight shifts the checkout date (e.g. 3:30 AM June 6) differs from the session's
   // time_in date (June 5). buildSessionContext queries by date, so we must pass the session's
   // time_in as the reference when the calendar date has rolled over.
-  const sessionDateStr  = new Date(openSession.time_in).toISOString().split('T')[0];
-  const checkoutDateStr = new Date(localTime).toISOString().split('T')[0];
-  const contextRefTime  = sessionDateStr !== checkoutDateStr ? new Date(openSession.time_in).toISOString() : new Date(localTime).toISOString();
+  const sessionDateStr  = toMySQLDate(openSession.time_in);
+  const checkoutDateStr = toMySQLDate(localTime);
+  const contextRefTime  = sessionDateStr !== checkoutDateStr ? toMySQLDateTime(openSession.time_in) : toMySQLDateTime(localTime);
   const currentSessionContext = await StatusService.buildSessionContext(user_id, contextRefTime, "time_out");
   currentSessionContext.total_hours = totalHours; // Pass session duration to engine
   currentSessionContext.minutes_late = minutesLate; // Ensure lateness is available
@@ -668,21 +668,25 @@ export async function createCorrectionRequest({
   }
 
   // ENFORCE SINGLE REQUEST PER DAY: Delete any existing request for this date
+  const cleanDate = toMySQLDate(request_date);
+
   await attendanceDB("attn_correction_requests")
-    .where({ user_id, request_date })
+    .where({ user_id, request_date: cleanDate })
     .del();
 
   const [id] = await attendanceDB("attn_correction_requests").insert({
     user_id,
     correction_type,
-    request_date,
+    request_date: cleanDate,
     original_data: JSON.stringify(original_data || []),
     proposed_data: JSON.stringify(proposed_data),
     reason,
     status: "pending",
     audit_trail: JSON.stringify([
       { action: "submitted", by: user_id, at: new Date() }
-    ])
+    ]),
+    created_at: attendanceDB.fn.now(),
+    updated_at: attendanceDB.fn.now()
   });
 
   return id;
@@ -1128,12 +1132,12 @@ export async function processTimeInSync(context) {
           await attendanceDB("attn_records")
             .where({ attendance_id: session.attendance_id })
             .update({
-              time_out: checkOutDate,
+              time_out: toMySQLDateTime(checkOutDate),
               status: "PRESENT",
               updated_at: attendanceDB.fn.now()
             });
           
-          const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
+          const sessionDate = toMySQLDate(session.time_in);
           await syncDailyAttendance(user_id, sessionDate, { status: "PRESENT" }).catch(console.error);
           continue;
         }
@@ -1158,7 +1162,7 @@ export async function processTimeInSync(context) {
             updated_at: attendanceDB.fn.now()
           });
         
-        const sessionDate = new Date(session.time_in).toISOString().split('T')[0];
+        const sessionDate = toMySQLDate(session.time_in);
         await syncDailyAttendance(user_id, sessionDate, { status: "MISSED_PUNCH" }).catch(console.error);
       }
     }
@@ -1316,7 +1320,7 @@ export async function processTimeOutSync(context) {
 
   const sessionDateStr  = toMySQLDate(openSession.time_in);
   const checkoutDateStr = toMySQLDate(localTime);
-  const contextRefTime  = sessionDateStr !== checkoutDateStr ? new Date(openSession.time_in).toISOString() : new Date(localTime).toISOString();
+  const contextRefTime  = sessionDateStr !== checkoutDateStr ? toMySQLDateTime(openSession.time_in) : toMySQLDateTime(localTime);
   const currentSessionContext = await StatusService.buildSessionContext(user_id, contextRefTime, "time_out");
   currentSessionContext.total_hours = totalHours;
   currentSessionContext.minutes_late = minutesLate;

@@ -187,8 +187,8 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
                             sender_id: Number(sender_id),
                             type: 'text',
                             content: encryptText(chatMessageText),
-                            created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
+                            created_at: trx.fn.now(),
+                            updated_at: trx.fn.now()
                         });
 
                         await trx('chat_conversations')

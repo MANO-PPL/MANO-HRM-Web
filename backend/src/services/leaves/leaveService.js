@@ -129,7 +129,7 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
         total_days: totalDays,
         reason,
         status: 'pending',
-        applied_at: new Date()
+        applied_at: attendanceDB.fn.now()
     });
 
     let responseAttachments = [];
@@ -198,7 +198,7 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
             const newUsed = Math.max(0, Number(balance.used) - leaveDays);
             await attendanceDB('leave_balances')
                 .where({ lb_id: balance.lb_id })
-                .update({ used: newUsed, updated_at: new Date() });
+                .update({ used: newUsed, updated_at: attendanceDB.fn.now() });
         }
     }
 
@@ -348,7 +348,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
         status: lowerStatus,
         admin_comment,
         reviewed_by,
-        reviewed_at: new Date()
+        reviewed_at: attendanceDB.fn.now()
     };
 
     if (lowerStatus === 'approved') {
@@ -390,7 +390,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
                 if (balance) {
                     await attendanceDB('leave_balances')
                         .where({ lb_id: balance.lb_id })
-                        .update({ used: Number(balance.used) + leaveDays, updated_at: new Date() });
+                        .update({ used: Number(balance.used) + leaveDays, updated_at: attendanceDB.fn.now() });
                 } else {
                     await attendanceDB('leave_balances').insert({
                         user_id: request.user_id,
@@ -399,7 +399,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
                         allocated: 0,
                         used: leaveDays,
                         carried_forward: 0,
-                        updated_at: new Date()
+                        updated_at: attendanceDB.fn.now()
                     });
                 }
             } else if (lowerStatus === 'rejected' && previousStatus === 'approved') {
@@ -407,7 +407,7 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
                     const newUsed = Math.max(0, Number(balance.used) - leaveDays);
                     await attendanceDB('leave_balances')
                         .where({ lb_id: balance.lb_id })
-                        .update({ used: newUsed, updated_at: new Date() });
+                        .update({ used: newUsed, updated_at: attendanceDB.fn.now() });
                 }
             }
         }
@@ -551,7 +551,7 @@ export async function setLeaveBalance({ org_id, user_id, rule_id, year, allocate
             .update({
                 allocated: allocated !== undefined ? allocated : existing.allocated,
                 carried_forward: carried_forward !== undefined ? carried_forward : existing.carried_forward,
-                updated_at: new Date()
+                updated_at: attendanceDB.fn.now()
             });
         return { ...existing, allocated: allocated ?? existing.allocated, carried_forward: carried_forward ?? existing.carried_forward };
     } else {
@@ -563,7 +563,7 @@ export async function setLeaveBalance({ org_id, user_id, rule_id, year, allocate
             allocated: allocated || 0,
             used: 0,
             carried_forward: carried_forward || 0,
-            updated_at: new Date()
+            updated_at: attendanceDB.fn.now()
         });
         return { lb_id, user_id, org_id, rule_id, year: targetYear, allocated: allocated || 0, used: 0, carried_forward: carried_forward || 0 };
     }
@@ -586,7 +586,7 @@ export async function updateLeaveBalance({ org_id, lb_id, allocated, carried_for
     if (allocated !== undefined) updateData.allocated = allocated;
     if (carried_forward !== undefined) updateData.carried_forward = carried_forward;
     if (used !== undefined) updateData.used = used;
-    updateData.updated_at = new Date();
+    updateData.updated_at = attendanceDB.fn.now();
 
     await attendanceDB('leave_balances').where({ lb_id }).update(updateData);
 
@@ -628,7 +628,7 @@ export async function createLeavePolicy({ org_id, name, description }) {
         name,
         description,
         is_active: 1,
-        created_at: new Date()
+        created_at: attendanceDB.fn.now()
     });
 
     return { lp_id, org_id, name, description, is_active: 1 };
@@ -856,7 +856,7 @@ export async function createLeavePolicyRule({ org_id, lp_id, ruleData }) {
         is_paid: is_paid !== undefined ? (is_paid ? 1 : 0) : 1,
         requires_doc: requires_doc ? 1 : 0,
         is_active: 1,
-        created_at: new Date()
+        created_at: attendanceDB.fn.now()
     });
 
     return { rule_id, lp_id, name, code: code.toUpperCase(), ...ruleData, is_active: 1 };
@@ -1027,7 +1027,7 @@ export async function assignPolicyToEmployees({ org_id, lp_id, user_ids, year })
                     .where({ lb_id: existing.lb_id })
                     .update({
                         allocated: rule.max_balance,
-                        updated_at: new Date()
+                        updated_at: attendanceDB.fn.now()
                     });
                 userResults.push({
                     lb_id: existing.lb_id,
@@ -1046,7 +1046,7 @@ export async function assignPolicyToEmployees({ org_id, lp_id, user_ids, year })
                     allocated: rule.max_balance,
                     used: 0,
                     carried_forward: 0,
-                    updated_at: new Date()
+                    updated_at: attendanceDB.fn.now()
                 });
                 userResults.push({
                     lb_id,

@@ -4,6 +4,8 @@
  * and supports multi-timezone conversions (e.g., India IST, Congo WAT, UTC).
  */
 
+const pad = (n) => String(n).padStart(2, '0');
+
 /**
  * Converts any Date object, ISO string, timestamp, or datetime string into
  * a strict MySQL DATETIME format: 'YYYY-MM-DD HH:mm:ss'.
@@ -20,11 +22,12 @@ export function toMySQLDateTime(dateOrStr) {
     }
 
     try {
-        let d;
         if (dateOrStr instanceof Date) {
-            return dateOrStr.toISOString().replace('T', ' ').split('.')[0];
-        } else if (typeof dateOrStr === 'string') {
-            // Handle ISO strings with 'T' and optional 'Z' or offset
+            if (isNaN(dateOrStr.getTime())) return null;
+            return `${dateOrStr.getFullYear()}-${pad(dateOrStr.getMonth() + 1)}-${pad(dateOrStr.getDate())} ${pad(dateOrStr.getHours())}:${pad(dateOrStr.getMinutes())}:${pad(dateOrStr.getSeconds())}`;
+        }
+
+        if (typeof dateOrStr === 'string') {
             const cleaned = dateOrStr.trim();
             // If it's an ISO string like '2026-08-31T20:43:54.000Z' or '2026-08-31T20:43:54'
             if (cleaned.includes('T')) {
@@ -33,13 +36,15 @@ export function toMySQLDateTime(dateOrStr) {
                 const timePart = parts[1].split('.')[0]; // remove milliseconds
                 return `${datePart} ${timePart.length === 5 ? timePart + ':00' : timePart}`;
             }
-            d = new Date(cleaned);
-        } else {
-            d = new Date(dateOrStr);
+            const d = new Date(cleaned);
+            if (!isNaN(d.getTime())) {
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+            }
         }
 
+        const d = new Date(dateOrStr);
         if (isNaN(d.getTime())) return null;
-        return d.toISOString().replace('T', ' ').split('.')[0];
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     } catch (e) {
         console.error('Error formatting MySQL datetime:', e);
         return null;
@@ -61,7 +66,8 @@ export function toMySQLDate(dateOrStr) {
 
     try {
         if (dateOrStr instanceof Date) {
-            return dateOrStr.toISOString().split('T')[0];
+            if (isNaN(dateOrStr.getTime())) return null;
+            return `${dateOrStr.getFullYear()}-${pad(dateOrStr.getMonth() + 1)}-${pad(dateOrStr.getDate())}`;
         }
 
         if (typeof dateOrStr === 'string') {
@@ -72,12 +78,16 @@ export function toMySQLDate(dateOrStr) {
             if (trimmed.includes(' ')) {
                 return trimmed.split(' ')[0];
             }
+            const d = new Date(trimmed);
+            if (!isNaN(d.getTime())) {
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+            }
         }
 
-        const d = dateOrStr instanceof Date ? dateOrStr : new Date(dateOrStr);
+        const d = new Date(dateOrStr);
         if (isNaN(d.getTime())) return null;
 
-        return d.toISOString().split('T')[0];
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     } catch (e) {
         console.error('Error formatting MySQL date:', e);
         return null;
