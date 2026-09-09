@@ -569,24 +569,24 @@ export const attendanceService = {
         return promise;
     },
     // Get Daily Summary (Admin single date)
-    async getDailySummaryAdmin(date) {
+    async getDailySummaryAdmin(date, forceRefresh = false) {
         const cacheKey = date || new Date().toISOString().split('T')[0];
         
         const now = Date.now();
         const cachedTime = cacheTimestamps.dailySummaryAdmin.get(cacheKey);
-        if (cache.dailySummaryAdmin.has(cacheKey)) {
-            if (cachedTime && (now - cachedTime < 15 * 60 * 1000)) {
+        if (!forceRefresh && cache.dailySummaryAdmin.has(cacheKey)) {
+            if (cachedTime && (now - cachedTime < 30 * 1000)) {
                 return cache.dailySummaryAdmin.get(cacheKey);
-            } else {
-                cache.dailySummaryAdmin.delete(cacheKey);
-                delete attendanceCacheData.dailySummaryAdmin[cacheKey];
-                cacheTimestamps.dailySummaryAdmin.delete(cacheKey);
             }
         }
 
+        cache.dailySummaryAdmin.delete(cacheKey);
+        delete attendanceCacheData.dailySummaryAdmin[cacheKey];
+        cacheTimestamps.dailySummaryAdmin.delete(cacheKey);
+
         const promise = (async () => {
             try {
-                const res = await api.get(`${API_BASE_URL}/daily-summary/admin?date=${cacheKey}`);
+                const res = await api.get(`${API_BASE_URL}/daily-summary/admin?date=${cacheKey}&_t=${Date.now()}`);
                 attendanceCacheData.dailySummaryAdmin[cacheKey] = res.data;
                 cacheTimestamps.dailySummaryAdmin.set(cacheKey, Date.now());
                 return res.data;

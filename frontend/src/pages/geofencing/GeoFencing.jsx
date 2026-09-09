@@ -32,6 +32,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTour } from '../../context/TourContext';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import { MAP_THEMES } from '../../config/mapConfig';
 
 const PAGE_KEY = 'admin_geofencing';
 const TOUR_STEPS = [
@@ -127,14 +128,6 @@ const GeoFencing = ({ embedded = false }) => {
 
     return () => observer.disconnect();
   }, []);
-
-  const MAP_THEMES = {
-    dark: { name: 'Night Mode', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' },
-    light: { name: 'Light Mode', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' },
-    voyager: { name: 'Day Mode', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png' },
-    satellite: { name: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
-    streets: { name: 'Streets', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' }
-  };
 
   const [mapPickEnabled, setMapPickEnabled] = useState(true);
   // Reverse geocoding helper

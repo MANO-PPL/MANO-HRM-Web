@@ -63,28 +63,30 @@ import {
 } from 'recharts';
 import { useTour } from '../../context/TourContext';
 import axios from 'axios';
+import { MAP_THEMES } from '../../config/mapConfig';
 
 
+
+export const isValidCoord = (lat, lng) => {
+    if (lat === null || lat === undefined || lng === null || lng === undefined) return false;
+    const nLat = Number(lat);
+    const nLng = Number(lng);
+    return !isNaN(nLat) && !isNaN(nLng) && Math.abs(nLat) > 0.001 && Math.abs(nLng) > 0.001;
+};
 
 // --- MAP HELPER COMPONENTS ---
 const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
     const map = useMap();
+    const hasInitialFit = React.useRef(false);
+    const prevFilterRef = React.useRef({ searchTerm, departmentFilter });
 
-    // Dynamically calculate and enforce minZoom to fit the panel width
+    // Dynamically calculate and enforce minZoom once on container mount
     useEffect(() => {
         const updateMinZoom = () => {
             const container = map.getContainer();
-            if (container) {
-                const containerWidth = container.clientWidth;
-                if (containerWidth) {
-                    // Min zoom is calculated so that the map width (256 * 2^zoom) is >= container width
-                    const calculatedMinZoom = Math.max(3, Math.ceil(Math.log2(containerWidth / 256)));
-                    map.setMinZoom(calculatedMinZoom);
-                    
-                    if (map.getZoom() < calculatedMinZoom) {
-                        map.setZoom(calculatedMinZoom);
-                    }
-                }
+            if (container && container.clientWidth) {
+                const calculatedMinZoom = Math.max(3, Math.ceil(Math.log2(container.clientWidth / 256)));
+                map.setMinZoom(calculatedMinZoom);
             }
         };
 
@@ -107,17 +109,27 @@ const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
     useEffect(() => {
         if (!data || data.length === 0) return;
 
-        // Find bounds for all markers
-        const points = [];
-        data.forEach(user => {
-            user.sessions.forEach(s => {
-                if (s.inLat && s.inLng) points.push([Number(s.inLat), Number(s.inLng)]);
-                if (s.outLat && s.outLng) points.push([Number(s.outLat), Number(s.outLng)]);
-            });
-        });
+        const filterChanged =
+            prevFilterRef.current.searchTerm !== searchTerm ||
+            prevFilterRef.current.departmentFilter !== departmentFilter;
 
-        if (points.length > 0) {
-            map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
+        // ONLY auto-fit bounds on initial load OR when search/filter actively changes
+        if (!hasInitialFit.current || filterChanged) {
+            prevFilterRef.current = { searchTerm, departmentFilter };
+
+            // Find bounds for valid markers only
+            const points = [];
+            data.forEach(user => {
+                user.sessions.forEach(s => {
+                    if (isValidCoord(s.inLat, s.inLng)) points.push([Number(s.inLat), Number(s.inLng)]);
+                    if (isValidCoord(s.outLat, s.outLng)) points.push([Number(s.outLat), Number(s.outLng)]);
+                });
+            });
+
+            if (points.length > 0) {
+                map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
+                hasInitialFit.current = true;
+            }
         }
     }, [searchTerm, departmentFilter, data, map]);
 
@@ -708,14 +720,6 @@ const AttendanceMonitoring = () => {
             setActiveTab(tab);
         }
     }, [window.location.search]);
-
-    const MAP_THEMES = {
-        dark: { name: 'Night Mode', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png' },
-        light: { name: 'Light Mode', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png' },
-        voyager: { name: 'Day Mode', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png' },
-        satellite: { name: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
-        streets: { name: 'Streets', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' }
-    };
     const [selectedRequest, setSelectedRequest] = useState(1); // For Detail View
     const [selectedLiveUser, setSelectedLiveUser] = useState(null); // For Live Attendance Detail Modal
     const [selectedCluster, setSelectedCluster] = useState(null);
@@ -2277,6 +2281,10 @@ const AttendanceMonitoring = () => {
                                                     minZoom={3}
                                                     maxBounds={[[-90, -180], [90, 180]]}
                                                     maxBoundsViscosity={1.0}
+                                                    zoomAnimation={true}
+                                                    zoomDelta={0.5}
+                                                    zoomSnap={0.5}
+                                                    wheelDebounceTime={60}
                                                     className="h-full w-full z-0"
                                                     attributionControl={false}
                                                 >
@@ -2326,7 +2334,7 @@ const AttendanceMonitoring = () => {
 
                                                     {(() => {
                                                         const areCoordsSame = (lat1, lng1, lat2, lng2) => {
-                                                            if (!lat1 || !lng1 || !lat2 || !lng2) return false;
+                                                            if (!isValidCoord(lat1, lng1) || !isValidCoord(lat2, lng2)) return false;
                                                             return Math.abs(Number(lat1) - Number(lat2)) < 0.0001 &&
                                                                 Math.abs(Number(lng1) - Number(lng2)) < 0.0001;
                                                         };
@@ -2350,7 +2358,8 @@ const AttendanceMonitoring = () => {
                                                             <>
                                                                 <MarkerClusterGroup
                                                                     ref={setClusterGroupElement}
-                                                                    chunkedLoading
+                                                                    chunkedLoading={false}
+                                                                    removeOutsideVisibleBounds={false}
                                                                     iconCreateFunction={createClusterCustomIcon}
                                                                     maxClusterRadius={40}
                                                                     spiderfyOnMaxZoom={false}
@@ -2364,10 +2373,12 @@ const AttendanceMonitoring = () => {
                                                                             const markersToRender = [];
 
                                                                             if (isCombined) {
-                                                                                markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
+                                                                                if (isValidCoord(session.inLat, session.inLng)) {
+                                                                                    markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
+                                                                                }
                                                                             } else {
-                                                                                if (session.inLat && session.inLng) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
-                                                                                if (session.outLat && session.outLng) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
+                                                                                if (isValidCoord(session.inLat, session.inLng)) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
+                                                                                if (isValidCoord(session.outLat, session.outLng)) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
                                                                             }
 
                                                                             return markersToRender.map(m => {

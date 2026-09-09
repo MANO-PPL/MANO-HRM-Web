@@ -22,6 +22,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, Tooltip as MapT
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import { MAP_THEMES } from '../../config/mapConfig';
 
 // Fix for Leaflet default icon issues in React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -262,14 +263,6 @@ const MobileAttendanceMonitoring = () => {
     const [lastSynced, setLastSynced] = useState(new Date());
     const [activeTheme, setActiveTheme] = useState('voyager');
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
-
-    const MAP_THEMES = {
-        dark: { name: 'Night Mode', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' },
-        light: { name: 'Light Mode', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' },
-        voyager: { name: 'Day Mode', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png' },
-        satellite: { name: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
-        streets: { name: 'Streets', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' }
-    };
 
     // Data State
     const [attendanceData, setAttendanceData] = useState(() => {
@@ -1953,8 +1946,17 @@ const MobileClusterDrawer = ({ selectedCluster, onClose, avatarTimestamp }) => {
     );
 };
 
+const isValidCoord = (lat, lng) => {
+    if (lat === null || lat === undefined || lng === null || lng === undefined) return false;
+    const nLat = Number(lat);
+    const nLng = Number(lng);
+    return !isNaN(nLat) && !isNaN(nLng) && Math.abs(nLat) > 0.001 && Math.abs(nLng) > 0.001;
+};
+
 const MapRecenter = ({ data, searchTerm, selectedDept }) => {
     const map = useMap();
+    const hasInitialFit = React.useRef(false);
+    const prevFilterRef = React.useRef({ searchTerm, selectedDept });
 
     // Dynamically calculate and enforce minZoom to fit the panel width
     useEffect(() => {
@@ -1963,13 +1965,8 @@ const MapRecenter = ({ data, searchTerm, selectedDept }) => {
             if (container) {
                 const containerWidth = container.clientWidth;
                 if (containerWidth) {
-                    // Min zoom is calculated so that the map width (256 * 2^zoom) is >= container width
                     const calculatedMinZoom = Math.max(3, Math.ceil(Math.log2(containerWidth / 256)));
                     map.setMinZoom(calculatedMinZoom);
-                    
-                    if (map.getZoom() < calculatedMinZoom) {
-                        map.setZoom(calculatedMinZoom);
-                    }
                 }
             }
         };
@@ -1993,17 +1990,27 @@ const MapRecenter = ({ data, searchTerm, selectedDept }) => {
     useEffect(() => {
         if (!data || data.length === 0) return;
 
-        // Find bounds for all markers
-        const points = [];
-        data.forEach(user => {
-            user.sessions.forEach(s => {
-                if (s.inLat && s.inLng) points.push([Number(s.inLat), Number(s.inLng)]);
-                if (s.outLat && s.outLng) points.push([Number(s.outLat), Number(s.outLng)]);
-            });
-        });
+        const filterChanged =
+            prevFilterRef.current.searchTerm !== searchTerm ||
+            prevFilterRef.current.selectedDept !== selectedDept;
 
-        if (points.length > 0) {
-            map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
+        // ONLY auto-fit bounds on initial load OR when search/filter actively changes
+        if (!hasInitialFit.current || filterChanged) {
+            prevFilterRef.current = { searchTerm, selectedDept };
+
+            // Find bounds for valid markers only
+            const points = [];
+            data.forEach(user => {
+                user.sessions.forEach(s => {
+                    if (isValidCoord(s.inLat, s.inLng)) points.push([Number(s.inLat), Number(s.inLng)]);
+                    if (isValidCoord(s.outLat, s.outLng)) points.push([Number(s.outLat), Number(s.outLng)]);
+                });
+            });
+
+            if (points.length > 0) {
+                map.fitBounds(points, { padding: [50, 50], maxZoom: 15 });
+                hasInitialFit.current = true;
+            }
         }
     }, [searchTerm, selectedDept, data, map]);
 
@@ -2050,7 +2057,7 @@ const MapView = ({ data, searchTerm, selectedDept, activeTheme, MAP_THEMES, isTh
     }, [clusterGroupElement]);
 
     const areCoordsSame = (lat1, lng1, lat2, lng2) => {
-        if (!lat1 || !lng1 || !lat2 || !lng2) return false;
+        if (!isValidCoord(lat1, lng1) || !isValidCoord(lat2, lng2)) return false;
         return Math.abs(Number(lat1) - Number(lat2)) < 0.0001 &&
             Math.abs(Number(lng1) - Number(lng2)) < 0.0001;
     };
@@ -2112,6 +2119,10 @@ const MapView = ({ data, searchTerm, selectedDept, activeTheme, MAP_THEMES, isTh
                     minZoom={3}
                     maxBounds={[[-90, -180], [90, 180]]}
                     maxBoundsViscosity={1.0}
+                    zoomAnimation={true}
+                    zoomDelta={0.5}
+                    zoomSnap={0.5}
+                    wheelDebounceTime={60}
                     className="h-full w-full z-0"
                     attributionControl={false}
                 >
@@ -2160,7 +2171,8 @@ const MapView = ({ data, searchTerm, selectedDept, activeTheme, MAP_THEMES, isTh
 
                     <MarkerClusterGroup
                         ref={setClusterGroupElement}
-                        chunkedLoading
+                        chunkedLoading={false}
+                        removeOutsideVisibleBounds={false}
                         maxClusterRadius={50}
                         iconCreateFunction={createClusterCustomIcon}
                         showCoverageOnHover={false}
@@ -2171,7 +2183,7 @@ const MapView = ({ data, searchTerm, selectedDept, activeTheme, MAP_THEMES, isTh
                             user.sessions.map((session, sIdx) => {
                                 const isSameLoc = areCoordsSame(session.inLat, session.inLng, session.outLat, session.outLng);
 
-                                if (isSameLoc) {
+                                if (isSameLoc && isValidCoord(session.inLat, session.inLng)) {
                                     return (
                                         <Marker
                                             key={`${user.id}-${sIdx}-combined`}
@@ -2209,7 +2221,7 @@ const MapView = ({ data, searchTerm, selectedDept, activeTheme, MAP_THEMES, isTh
 
                                 return (
                                     <React.Fragment key={`${user.id}-${sIdx}`}>
-                                        {session.inLat && session.inLng && (
+                                        {isValidCoord(session.inLat, session.inLng) && (
                                             <Marker
                                                 position={[Number(session.inLat), Number(session.inLng)]}
                                                 customSessionData={{ user, session, type: 'in' }}
@@ -2239,7 +2251,7 @@ const MapView = ({ data, searchTerm, selectedDept, activeTheme, MAP_THEMES, isTh
                                                 })}
                                             />
                                         )}
-                                        {session.outLat && session.outLng && (
+                                        {isValidCoord(session.outLat, session.outLng) && (
                                             <Marker
                                                 position={[Number(session.outLat), Number(session.outLng)]}
                                                 customSessionData={{ user, session, type: 'out' }}
