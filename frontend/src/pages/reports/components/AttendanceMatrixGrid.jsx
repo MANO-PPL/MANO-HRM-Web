@@ -85,13 +85,13 @@ const AttendanceMatrixGrid = ({
                                             {initials || <User size={14} />}
                                         </div>
                                         <div>
-                                            <span className="block font-semibold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{emp.user_name}</span>
+                                            <span className="block font-semibold text-slate-800 dark:text-github-dark-text text-sm leading-tight">{emp.user_name || emp.name || 'Unknown'}</span>
                                             <span className="block text-[10px] font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">{emp.designation} · {emp.department}</span>
                                         </div>
                                     </div>
                                 </td>
                                 {matrixData.dates.map(rawDate => {
-                                    const record = emp.records[rawDate];
+                                    const record = emp?.records?.[rawDate] || emp?.attendance?.[rawDate];
                                     const status = record?.status || '-';
                                     const isNonClickableStatus = ['Sun', 'Sat', 'WEEK_OFF', 'Not Recorded', '-'].includes(status);
                                     const isClickable = !!record && !isNonClickableStatus;

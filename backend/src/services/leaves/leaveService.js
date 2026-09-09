@@ -251,6 +251,12 @@ export async function getPendingRequests({ org_id }) {
             'lp.name as policy_name'
         )
         .where('u.org_id', org_id)
+        .where(function () {
+            this.where('u.is_active', 1).orWhere('u.is_active', true);
+        })
+        .where(function () {
+            this.where('u.is_deleted', 0).orWhere('u.is_deleted', false).orWhereNull('u.is_deleted');
+        })
         .where('lr.status', 'pending')
         .orderBy('lr.applied_at', 'asc');
 

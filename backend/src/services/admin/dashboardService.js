@@ -1,56 +1,59 @@
 import { attendanceDB } from '../../config/database.js';
+const pad = (n) => String(n).padStart(2, '0');
+const formatLocalDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 /**
  * Calculate date ranges for the given period.
  */
 function getDateRanges(range, year, month) {
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = formatLocalDate(now);
     let currentStartStr, currentEndStr, prevStartStr, prevEndStr, daysInPeriod;
 
     if (year && month) {
-        const selectedMonth = parseInt(month);
-        const selectedYear = parseInt(year);
+        const selectedMonth = parseInt(month, 10);
+        const selectedYear = parseInt(year, 10);
+        daysInPeriod = new Date(selectedYear, selectedMonth, 0).getDate();
 
-        const startDate = new Date(selectedYear, selectedMonth - 1, 1);
-        const endDate = new Date(selectedYear, selectedMonth, 0);
-
-        currentStartStr = startDate.toISOString().split('T')[0];
-        currentEndStr = endDate.toISOString().split('T')[0];
-        daysInPeriod = endDate.getDate();
+        currentStartStr = `${selectedYear}-${pad(selectedMonth)}-01`;
+        currentEndStr = `${selectedYear}-${pad(selectedMonth)}-${pad(daysInPeriod)}`;
 
         const prevMonthDate = new Date(selectedYear, selectedMonth - 2, 1);
-        const prevMonthEndDate = new Date(selectedYear, selectedMonth - 1, 0);
-        prevStartStr = prevMonthDate.toISOString().split('T')[0];
-        prevEndStr = prevMonthEndDate.toISOString().split('T')[0];
+        const prevYear = prevMonthDate.getFullYear();
+        const prevMonth = prevMonthDate.getMonth() + 1;
+        const prevDays = new Date(prevYear, prevMonth, 0).getDate();
+
+        prevStartStr = `${prevYear}-${pad(prevMonth)}-01`;
+        prevEndStr = `${prevYear}-${pad(prevMonth)}-${pad(prevDays)}`;
     } else if (range === 'daily') {
         currentStartStr = today;
         currentEndStr = today;
-        const yesterday = new Date();
+        const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
-        prevStartStr = yesterday.toISOString().split('T')[0];
+        prevStartStr = formatLocalDate(yesterday);
         prevEndStr = today;
         daysInPeriod = 1;
     } else if (range === 'monthly') {
-        const currentStart = new Date();
+        const currentStart = new Date(now);
         currentStart.setDate(currentStart.getDate() - 29);
-        currentStartStr = currentStart.toISOString().split('T')[0];
+        currentStartStr = formatLocalDate(currentStart);
         currentEndStr = today;
 
-        const prevStart = new Date();
+        const prevStart = new Date(now);
         prevStart.setDate(prevStart.getDate() - 59);
-        prevStartStr = prevStart.toISOString().split('T')[0];
+        prevStartStr = formatLocalDate(prevStart);
         prevEndStr = currentStartStr;
         daysInPeriod = 30;
     } else {
         // default: weekly
-        const currentStart = new Date();
+        const currentStart = new Date(now);
         currentStart.setDate(currentStart.getDate() - 6);
-        currentStartStr = currentStart.toISOString().split('T')[0];
+        currentStartStr = formatLocalDate(currentStart);
         currentEndStr = today;
 
-        const prevStart = new Date();
+        const prevStart = new Date(now);
         prevStart.setDate(prevStart.getDate() - 13);
-        prevStartStr = prevStart.toISOString().split('T')[0];
+        prevStartStr = formatLocalDate(prevStart);
         prevEndStr = currentStartStr;
         daysInPeriod = 7;
     }
@@ -70,47 +73,51 @@ function calculateTrend(current, previous) {
 export async function getDashboardStats(org_id, { range = 'weekly', year, month }) {
     const { today, currentStartStr, currentEndStr, prevStartStr, prevEndStr, daysInPeriod } = getDateRanges(range, year, month);
 
-    const orgUserIds = attendanceDB("core_users").select("user_id").where("org_id", org_id);
+    const activeUserQuery = () => attendanceDB("core_users")
+        .where("org_id", org_id)
+        .where("user_type", "employee")
+        .where(function () {
+            this.where("is_active", 1).orWhere("is_active", true);
+        })
+        .where(function () {
+            this.where("is_deleted", 0).orWhere("is_deleted", false).orWhereNull("is_deleted");
+        });
 
-    // Execute all queries in parallel
+    const activeUserIds = activeUserQuery().select("user_id");
+
+    // Single query per period: counts present + late together via conditional aggregation
+    const periodStatsQuery = (startStr, endStr) =>
+        attendanceDB("attn_records")
+            .whereIn("user_id", activeUserIds)
+            .whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [startStr, endStr])
+            .select(
+                attendanceDB.raw("COUNT(DISTINCT user_id) as present"),
+                attendanceDB.raw("COUNT(DISTINCT CASE WHEN late_minutes > 0 THEN user_id END) as late")
+            )
+            .first();
+
     const [
         totalEmployeesRes,
-        todaySummary,
-        periodSummary,
-        prevPeriodSummary,
+        todayStatsRes,
+        currentPeriodRes,
+        prevPeriodRes,
+        rangeChartRes,
         activities
     ] = await Promise.all([
-        attendanceDB("core_users").where("org_id", org_id).where("user_type", "employee").count("user_id as count").first(),
-        attendanceDB("attn_daily_summary")
-            .whereIn("user_id", orgUserIds)
-            .where("date", today)
-            .whereIn("status", ["PRESENT", "HALF_DAY"])
+        activeUserQuery().count("user_id as count").first(),
+        periodStatsQuery(today, today),
+        periodStatsQuery(currentStartStr, currentEndStr),
+        periodStatsQuery(prevStartStr, prevEndStr),
+        // one grouped query covering the whole chart range, instead of a query per day
+        attendanceDB("attn_records")
+            .whereIn("user_id", activeUserIds)
+            .whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [currentStartStr, currentEndStr])
+            .select(attendanceDB.raw("DATE_FORMAT(time_in, '%Y-%m-%d') as day"))
             .select(
-                attendanceDB.raw("COUNT(DISTINCT user_id) as present_count"),
-                attendanceDB.raw("COUNT(DISTINCT CASE WHEN late_minutes > 0 THEN user_id END) as late_count")
+                attendanceDB.raw("COUNT(DISTINCT user_id) as present"),
+                attendanceDB.raw("COUNT(DISTINCT CASE WHEN late_minutes > 0 THEN user_id END) as late")
             )
-            .first()
-            .catch(() => ({ present_count: 0, late_count: 0 })),
-        attendanceDB("attn_daily_summary")
-            .whereIn("user_id", orgUserIds)
-            .whereRaw("date >= ? AND date <= ?", [currentStartStr, currentEndStr])
-            .whereIn("status", ["PRESENT", "HALF_DAY"])
-            .select(
-                attendanceDB.raw("COUNT(user_id) as present_count"),
-                attendanceDB.raw("COUNT(CASE WHEN late_minutes > 0 THEN user_id END) as late_count")
-            )
-            .first()
-            .catch(() => ({ present_count: 0, late_count: 0 })),
-        attendanceDB("attn_daily_summary")
-            .whereIn("user_id", orgUserIds)
-            .whereRaw("date >= ? AND date <= ?", [prevStartStr, prevEndStr])
-            .whereIn("status", ["PRESENT", "HALF_DAY"])
-            .select(
-                attendanceDB.raw("COUNT(user_id) as present_count"),
-                attendanceDB.raw("COUNT(CASE WHEN late_minutes > 0 THEN user_id END) as late_count")
-            )
-            .first()
-            .catch(() => ({ present_count: 0, late_count: 0 })),
+            .groupBy(attendanceDB.raw("DATE_FORMAT(time_in, '%Y-%m-%d')")),
         attendanceDB("sys_activity_logs as al")
             .leftJoin("core_users as u", "al.user_id", "u.user_id")
             .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
@@ -122,15 +129,15 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
             .limit(20)
     ]);
 
-    const totalEmployees = totalEmployeesRes?.count || 0;
-    const presentToday = Number(todaySummary?.present_count || 0);
-    const lateCheckins = Number(todaySummary?.late_count || 0);
+    const totalEmployees = Number(totalEmployeesRes.count || 0);
+    const presentToday = Number(todayStatsRes.present || 0);
+    const lateCheckins = Number(todayStatsRes.late || 0);
     const absentToday = Math.max(0, totalEmployees - presentToday);
 
-    const periodPresentAvg = Number(periodSummary?.present_count || 0) / daysInPeriod;
-    const prevPeriodPresentAvg = Number(prevPeriodSummary?.present_count || 0) / daysInPeriod;
-    const periodLateAvg = Number(periodSummary?.late_count || 0) / daysInPeriod;
-    const prevPeriodLateAvg = Number(prevPeriodSummary?.late_count || 0) / daysInPeriod;
+    const periodPresentAvg = Number(currentPeriodRes.present || 0) / daysInPeriod;
+    const prevPeriodPresentAvg = Number(prevPeriodRes.present || 0) / daysInPeriod;
+    const periodLateAvg = Number(currentPeriodRes.late || 0) / daysInPeriod;
+    const prevPeriodLateAvg = Number(prevPeriodRes.late || 0) / daysInPeriod;
 
     const periodAbsentAvg = Math.max(0, totalEmployees - periodPresentAvg);
     const prevPeriodAbsentAvg = Math.max(0, totalEmployees - prevPeriodPresentAvg);
@@ -141,53 +148,36 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         late: calculateTrend(periodLateAvg, prevPeriodLateAvg)
     };
 
-    // Chart Data
+    // Build the day list for the chart
     const chartDaysCount = range === 'monthly' ? 30 : 7;
     const chartDays = [];
     if (year && month) {
         for (let d = 1; d <= daysInPeriod; d++) {
-            const date = new Date(year, month - 1, d);
-            chartDays.push(date.toISOString().split('T')[0]);
+            chartDays.push(`${year}-${pad(month)}-${pad(d)}`);
         }
     } else {
         for (let i = chartDaysCount - 1; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            chartDays.push(d.toISOString().split('T')[0]);
+            chartDays.push(formatLocalDate(d));
         }
     }
 
-    const chartData = await Promise.all(
-        chartDays.map(async (dayStr) => {
-            const dayName = new Date(dayStr).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
-            let dayRes = await attendanceDB("attn_daily_summary")
-                .whereIn("user_id", orgUserIds)
-                .where("date", dayStr)
-                .whereIn("status", ["PRESENT", "HALF_DAY"])
-                .select(
-                    attendanceDB.raw("COUNT(DISTINCT user_id) as present_count"),
-                    attendanceDB.raw("COUNT(DISTINCT CASE WHEN late_minutes > 0 THEN user_id END) as late_count")
-                )
-                .first()
-                .catch(() => null);
+    // Map grouped results by day for O(1) lookup directly matching DB date string
+    const byDay = new Map(rangeChartRes.map(r => [
+        (typeof r.day === 'string' ? r.day : formatLocalDate(new Date(r.day))),
+        r
+    ]));
 
-            let present = Number(dayRes?.present_count || 0);
-            let late = Number(dayRes?.late_count || 0);
-
-            if (present === 0) {
-                // Check legacy table
-                const [pRes, lRes] = await Promise.all([
-                    attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [dayStr]).countDistinct("user_id as count").first().catch(() => ({})),
-                    attendanceDB("attn_records").whereIn("user_id", orgUserIds).whereRaw("DATE(time_in) = ?", [dayStr]).where("late_minutes", ">", 0).countDistinct("user_id as count").first().catch(() => ({}))
-                ]);
-                present = Number(pRes?.count || 0);
-                late = Number(lRes?.count || 0);
-            }
-
-            const absent = Math.max(0, Number(totalEmployees) - present);
-            return { name: dayName, present, late, absent };
-        })
-    );
+    const chartData = chartDays.map(dayStr => {
+        const [y, m, d] = dayStr.split('-').map(Number);
+        const dayName = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+        const row = byDay.get(dayStr);
+        const present = Number(row?.present || 0);
+        const late = Number(row?.late || 0);
+        const absent = Math.max(0, totalEmployees - present);
+        return { name: dayName, present, late, absent };
+    });
 
     const formattedActivities = activities.map(a => ({
         ...a,

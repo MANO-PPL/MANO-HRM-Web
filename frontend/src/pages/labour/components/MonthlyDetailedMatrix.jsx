@@ -11,7 +11,9 @@ import {
     Clock,
     RefreshCw,
     Info,
-    ChevronRight
+    ChevronRight,
+    Download,
+    Loader2
 } from 'lucide-react';
 import { labourService } from '../../../services/labourService';
 import MinimalSelect from '../../../components/MinimalSelect';
@@ -30,11 +32,25 @@ const MonthlyDetailedMatrix = ({
     selectedSite = null
 }) => {
     const [loading, setLoading] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const [data, setData] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState('');
 
     const activeMonth = month || new Date().toISOString().slice(0, 7);
+
+    const handleExportExcel = async () => {
+        if (exporting) return;
+        setExporting(true);
+        try {
+            await labourService.exportMonthlyWageExcel(siteId, activeMonth);
+            toast.success('Excel ledger downloaded successfully!');
+        } catch (err) {
+            toast.error(err.message || 'Failed to export Excel ledger');
+        } finally {
+            setExporting(false);
+        }
+    };
 
     const loadMatrixData = async () => {
         if (!siteId) return;
@@ -163,6 +179,26 @@ const MonthlyDetailedMatrix = ({
                             title="Refresh Data"
                         >
                             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleExportExcel}
+                            disabled={exporting || loading}
+                            className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                            title="Export Detailed Excel Ledger"
+                        >
+                            {exporting ? (
+                                <>
+                                    <Loader2 size={13} className="animate-spin" />
+                                    <span>Exporting...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Download size={13} />
+                                    <span>Export Excel</span>
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>
@@ -434,8 +470,11 @@ const MonthlyDetailedMatrix = ({
                                                                     P
                                                                 </span>
                                                             ) : status === 'Half Day' ? (
-                                                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[8px] font-semibold bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40">
-                                                                    HD
+                                                                <span 
+                                                                    className="inline-flex items-center justify-center px-1 h-5 rounded-md text-[8px] font-semibold bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40 whitespace-nowrap"
+                                                                    title={dayData?.working_hours && Number(dayData.working_hours) !== 4 ? `Half Day (${dayData.working_hours} hrs)` : 'Half Day (4 hrs)'}
+                                                                >
+                                                                    {dayData?.working_hours && Number(dayData.working_hours) !== 4 ? `HD (${dayData.working_hours}h)` : 'HD'}
                                                                 </span>
                                                             ) : status === 'Absent' ? (
                                                                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-md text-[9px] font-semibold bg-rose-500/20 text-rose-500 dark:text-rose-300 border border-rose-500/30">
@@ -452,7 +491,7 @@ const MonthlyDetailedMatrix = ({
 
                                                 {/* Right Summary Row 1: Total Present Days */}
                                                 <td className="p-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 border-l border-slate-200 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#161b22]/30">
-                                                    {totals.present_days} d
+                                                    {typeof totals.present_days === 'number' ? Number(totals.present_days.toFixed(2)).toString() : totals.present_days} d
                                                 </td>
                                                 <td className="p-2 text-right font-medium text-slate-400 dark:text-[#8b949e]">
                                                     -

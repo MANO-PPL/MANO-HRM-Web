@@ -97,7 +97,7 @@ const BulkUpload = () => {
         try {
             const usersData = await adminService.getAllUsers();
             const currentUsers = usersData.users || [];
-            const currentCount = currentUsers.length;
+            const currentCount = currentUsers.filter(u => u.is_active && !u.is_deleted).length;
             const maxUsersLimit = currentUser?.org_max_users || Infinity;
             const availableSlots = Math.max(0, maxUsersLimit - currentCount);
 

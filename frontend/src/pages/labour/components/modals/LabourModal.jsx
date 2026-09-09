@@ -11,7 +11,8 @@ const LabourModal = ({
     labourForm,
     setLabourForm,
     handleSaveLabour,
-    sites
+    sites,
+    onOpenWageHistory
 }) => {
     return createPortal(
         <AnimatePresence>
@@ -101,7 +102,18 @@ const LabourModal = ({
                                 />
                             </div>
                             <div>
-                                <label className="block text-slate-500 dark:text-slate-300 font-medium mb-1">Daily Wage (INR)</label>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-slate-500 dark:text-slate-300 font-medium">Daily Wage (INR)</label>
+                                    {editingLabour && onOpenWageHistory && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenWageHistory(editingLabour)}
+                                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                        >
+                                            View Wage History
+                                        </button>
+                                    )}
+                                </div>
                                 <input
                                     type="number"
                                     value={labourForm.monthly_salary}

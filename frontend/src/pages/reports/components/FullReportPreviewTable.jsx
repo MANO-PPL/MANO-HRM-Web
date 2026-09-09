@@ -61,8 +61,9 @@ const FullReportPreviewTable = ({
                                         <>
                                             {/* Row 1 - group headers */}
                                             <tr>
-                                                {/* Row # column */}
-                                                <th style={{ backgroundColor: '#1F4E78', color: '#FFFFFF', border: '1px solid #2563EB', width: '36px', minWidth: '36px' }}
+                                                <th 
+                                                    rowSpan={2}
+                                                    style={{ backgroundColor: '#1F4E78', color: '#FFFFFF', border: '1px solid #2563EB', width: '36px', minWidth: '36px' }}
                                                     className="px-2 py-2 text-center text-[9px] font-bold uppercase tracking-wider">#</th>
                                                 {previewData.headers[0].map((cell, idx) => (
                                                     <th

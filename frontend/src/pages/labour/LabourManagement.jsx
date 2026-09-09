@@ -15,8 +15,8 @@ import BulkTransferModal from './components/modals/BulkTransferModal';
 import BorrowWorkerModal from './components/modals/BorrowWorkerModal';
 import SiteClosurePromptModal from './components/modals/SiteClosurePromptModal';
 import WorkerHistoryDrawer from './components/modals/WorkerHistoryDrawer';
-import BulkLabourUploadModal from './components/modals/BulkLabourUploadModal';
 import ConfirmDialogModal from './components/modals/ConfirmDialogModal';
+import WageRevisionModal from './components/WageRevisionModal';
 
 // Views & Header
 import LoadingScreen from '../../components/LoadingScreen';
@@ -35,6 +35,7 @@ const LabourManagement = () => {
     const [selectedSite, setSelectedSite] = useState(null);
     const [subTab, setSubTab] = useState('attendance'); // 'attendance', 'finances'
     const [ledgerViewMode, setLedgerViewMode] = useState('matrix'); // 'matrix' (3-Row Spreadsheet Matrix) or 'summary' (Summary Cards/Table)
+    const [selectedWageHistoryLabour, setSelectedWageHistoryLabour] = useState(null);
 
     // Fallback if subTab is set to legacy 'grid'
     useEffect(() => {
@@ -1246,6 +1247,7 @@ const LabourManagement = () => {
                     setLabourForm={setLabourForm}
                     handleSaveLabour={handleSaveLabour}
                     sites={sites}
+                    onOpenWageHistory={(l) => setSelectedWageHistoryLabour(l || editingLabour)}
                 />
 
                 <AdvanceModal
@@ -1343,6 +1345,16 @@ const LabourManagement = () => {
                 <ConfirmDialogModal
                     confirmDialog={confirmDialog}
                     setConfirmDialog={setConfirmDialog}
+                />
+
+                {/* MODAL: WAGE REVISION HISTORY */}
+                <WageRevisionModal
+                    isOpen={Boolean(selectedWageHistoryLabour)}
+                    labour={selectedWageHistoryLabour}
+                    onClose={() => setSelectedWageHistoryLabour(null)}
+                    onRevisionUpdated={() => {
+                        fetchLabours();
+                    }}
                 />
             </div>
         </DashboardLayout>

@@ -7,6 +7,8 @@ import * as StatusService from "./statusEvaluationService.js";
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 import { toMySQLDateTime, toMySQLDate, toMySQLTime } from "../../utils/dateUtils.js";
 import * as MapsService from "../google_api_services/maps.js";
+import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttendanceCorrectionApprovedHook } from "../darServices/darReconciliationService.js";
+
 
 /**
  * Fetch User Shift
@@ -158,6 +160,15 @@ export async function processTimeIn(context) {
     } catch (_) {}
   }
 
+  // DAR Reconciliation Hook on Checkin
+  if (result.ok) {
+    try {
+      await handleAttendanceCheckinHook(context.user_id, context.localTime);
+    } catch (darErr) {
+      console.warn("DAR Checkin Reconciliation Hook warning:", darErr);
+    }
+  }
+
   return result;
 }
 
@@ -182,6 +193,15 @@ export async function processTimeOut(context) {
         });
       }
     } catch (_) {}
+  }
+
+  // DAR Reconciliation Hook on Checkout
+  if (result.ok) {
+    try {
+      await handleAttendanceCheckoutHook(context.user_id, context.localTime);
+    } catch (darErr) {
+      console.warn("DAR Checkout Reconciliation Hook warning:", darErr);
+    }
   }
 
   return result;
@@ -1246,7 +1266,24 @@ export async function reviewCorrectionRequest({
       }
 
       // Sync Daily Summary (Now uses the combined state of the punches)
-      await syncDailyAttendance(correction.user_id, finalDateStr);
+      const manualBase = {
+        is_manual_adjustment: true,
+        adjusted_by: reviewer_id,
+        updated_at: attendanceDB.fn.now()
+      };
+
+      await syncDailyAttendance(correction.user_id, finalDateStr, {
+        ...manualBase,
+        is_altered: true,
+        adjustment_reason: `Correction Request #${acr_id}`
+      });
+
+      // DAR Auto-Healing Hook on Attendance Correction Approval
+      try {
+        await handleAttendanceCorrectionApprovedHook(correction.user_id, finalDateStr);
+      } catch (darErr) {
+        console.warn("DAR Correction Reconciliation Hook warning:", darErr);
+      }
     }
   }
 }

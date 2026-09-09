@@ -200,6 +200,38 @@ export const labourService = {
         }
     },
 
+    async exportMonthlyWageExcel(siteId, month = null) {
+        try {
+            let url = `/labour/finances/export-excel?site_id=${siteId || 'All'}`;
+            if (month) url += `&month=${month}`;
+            const res = await api.get(url, { responseType: 'blob' });
+            
+            // Extract filename from Content-Disposition header if available
+            let filename = `Labour_Wage_Ledger_${siteId || 'All'}_${month || 'current'}.xlsx`;
+            const disposition = res.headers['content-disposition'];
+            if (disposition && disposition.indexOf('filename=') !== -1) {
+                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+                if (matches != null && matches[1]) {
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+
+            const blob = new Blob([res.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(link.href);
+            return true;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to export monthly wage excel');
+        }
+    },
+
     async logLabourAdvance(advanceData) {
         try {
             const res = await api.post('/labour/finances/advance', advanceData);
@@ -236,6 +268,45 @@ export const labourService = {
             return res.data;
         } catch (error) {
             throw new Error(error.response?.data?.message || 'Failed to log labour payout');
+        }
+    },
+
+    // ==========================================
+    // 5. WAGE HISTORY SERVICES
+    // ==========================================
+    async getLabourWageHistory(labourId) {
+        try {
+            const res = await api.get(`/labour/labours/${labourId}/wage-history`);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to fetch wage history');
+        }
+    },
+
+    async addLabourWageRevision(labourId, revisionData) {
+        try {
+            const res = await api.post(`/labour/labours/${labourId}/wage-history`, revisionData);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to add wage revision');
+        }
+    },
+
+    async updateLabourWageRevision(revisionId, revisionData) {
+        try {
+            const res = await api.put(`/labour/wage-history/${revisionId}`, revisionData);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to update wage revision');
+        }
+    },
+
+    async deleteLabourWageRevision(revisionId) {
+        try {
+            const res = await api.delete(`/labour/wage-history/${revisionId}`);
+            return res.data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || 'Failed to delete wage revision');
         }
     }
 };
