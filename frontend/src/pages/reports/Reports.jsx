@@ -741,6 +741,7 @@ const Reports = () => {
                 leave: 0,
                 halfDay: 0,
                 weeklyOff: 0,
+                missedPunch: 0,
                 overtimeHrs: 0
             };
 
@@ -751,7 +752,9 @@ const Reports = () => {
                 const status = record.status || '';
                 const statusLower = status.toLowerCase();
 
-                if (status === 'Present' || statusLower.includes('present')) {
+                if (statusLower.includes('missed') || status === 'MP') {
+                    stats.missedPunch += 1;
+                } else if (status === 'Present' || statusLower.includes('present')) {
                     stats.present += 1;
                 } else if (status === 'Absent' || statusLower.includes('absent')) {
                     stats.absent += 1;

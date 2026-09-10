@@ -52,7 +52,7 @@ import {
     ShieldCheck,
     MessageSquare,
     CheckCheck,
-    Send
+    Send,
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { useAuth } from '../../context/AuthContext';
@@ -753,16 +753,14 @@ const Attendance = () => {
         return [];
     }, []);
 
-    // Shift deadline & allowed date bounds
+    // Shift deadline & allowed date bounds (temporarily unlimited for testing)
     const correctionDeadlineDays = useMemo(() => {
-        return myShift?.rules?.correction_deadline ?? 2;
+        return 3650; // Unlimited for testing
     }, [myShift]);
 
     const minAllowedCorrectionDate = useMemo(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - correctionDeadlineDays);
-        return getLocalDateString(d);
-    }, [correctionDeadlineDays]);
+        return '2000-01-01'; // Unlimited for testing
+    }, []);
 
     const maxAllowedCorrectionDate = useMemo(() => {
         return getLocalDateString();
@@ -818,9 +816,13 @@ const Attendance = () => {
     const handleAutoFillMissingOut = () => {
         const shiftEnd = myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00';
         setCorrSessions(prev => {
-            if (prev.length === 0) return [{ id: Date.now(), time_in: '09:00', time_out: shiftEnd, punch_type: 'regular' }];
+            if (prev.length === 0) {
+                const defaultIn = originalSessions[0]?.time_in || '09:00';
+                return [{ id: Date.now(), time_in: defaultIn, time_out: shiftEnd, punch_type: 'regular' }];
+            }
             const updated = [...prev];
-            updated[0] = { ...updated[0], time_out: shiftEnd };
+            const lastIdx = updated.length - 1;
+            updated[lastIdx] = { ...updated[lastIdx], time_out: shiftEnd };
             return updated;
         });
         toast.info(`Auto-filled Punch Out to standard shift end (${shiftEnd})`);
@@ -1240,10 +1242,15 @@ const Attendance = () => {
                     raw_session: s.raw_session
                 })));
 
-                // Proposed sessions start empty so user can construct timeline with their own mindset
-                setCorrSessions([]);
-                setCorrIn('');
-                setCorrOut('');
+                // Pre-populate proposed sessions with existing logged sessions so user can edit or add punches directly
+                setCorrSessions(loadedSessions.map((s, idx) => ({
+                    id: Date.now() + idx,
+                    time_in: s.time_in || '',
+                    time_out: s.time_out || '',
+                    punch_type: s.punch_type || 'regular'
+                })));
+                setCorrIn(loadedSessions[0]?.time_in || '');
+                setCorrOut(loadedSessions[loadedSessions.length - 1]?.time_out || '');
 
                 // Smart default for corrType: Missed Punch vs Missed Day
                 if (loadedSessions.length === 0) {
@@ -1739,7 +1746,8 @@ const Attendance = () => {
             return;
         }
 
-        // ENFORCE DYNAMIC CORRECTION DEADLINE
+        // ENFORCE DYNAMIC CORRECTION DEADLINE (Bypassed / unlimited for testing)
+        /*
         const deadlineDays = myShift?.rules?.correction_deadline ?? 2;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -1751,6 +1759,7 @@ const Attendance = () => {
             toast.error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
             return;
         }
+        */
 
         // Validation for sessions (optional: only checked if user customized punches on timeline)
         let validSessions = corrSessions.filter(s => s.time_in || s.time_out);

@@ -256,16 +256,16 @@ const ShiftFormDrawer = ({
         const halfDays = shiftForm.halfDayRules || [];
 
         if (working.length === 5 && !working.includes('Sat') && !working.includes('Sun') && altOffs.length === 0 && halfDays.length === 0) {
-            return '5-Day Week: Works Mon to Fri. Sat & Sun are weekly offs.';
+            return '5-Day Week: Works Mon to Fri. Saturday is weekly off, Sunday is holiday.';
         }
         if (working.length === 6 && !working.includes('Sun') && altOffs.length === 0 && halfDays.length === 0) {
-            return '6-Day Week: Works Mon to Sat. Sunday is weekly off.';
+            return '6-Day Week: Works Mon to Sat. Sunday is holiday.';
         }
         if (working.length === 7 && altOffs.length === 0 && halfDays.length === 0) {
             return '7-Day Operations: Works every day (Mon to Sun).';
         }
         if (working.length === 5 && !working.includes('Sat') && !working.includes('Sun') && altOffs.some(r => r.day === 'Sat' && r.weeks?.length === 2 && r.weeks.includes(2) && r.weeks.includes(4))) {
-            return 'Corporate Schedule: Mon–Fri work, 2nd & 4th Saturday off, Sundays off.';
+            return 'Corporate Schedule: Mon–Fri work, 2nd & 4th Saturday off, Sunday is holiday.';
         }
 
         const parts = [];

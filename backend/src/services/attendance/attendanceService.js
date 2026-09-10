@@ -214,6 +214,7 @@ export async function processTimeOut(context) {
  */
 export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
   try {
+    const { skipPayroll, ...dbOverrides } = overrides;
     const sanitizedDate = dateStr.split('T')[0];
 
     // Calculate next date for overnight out-punch matching
@@ -239,7 +240,51 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     // 2. Pair punches into sessions (only in-punches from target date start sessions)
     const sessions = pairPunchesForDate(punches, sanitizedDate);
 
-    if (sessions.length === 0 && !overrides.status) {
+    // Separate column overrides safely for v2 vs legacy schema
+    const v2ValidColumns = new Set([
+      'shift_id', 'session_count', 'total_hours', 'late_minutes', 'late_reason',
+      'overtime_hours', 'status', 'remarks', 'updated_at'
+    ]);
+    const legacyValidColumns = new Set([
+      'shift_id', 'first_in', 'last_out', 'total_hours', 'late_minutes', 'late_reason',
+      'overtime_hours', 'status', 'remarks', 'is_finalized', 'is_manual_adjustment',
+      'adjusted_by', 'adjustment_reason', 'created_at', 'updated_at', 'is_altered'
+    ]);
+
+    const v2Overrides = {};
+    const legacyOverrides = {};
+
+    for (const [key, val] of Object.entries(dbOverrides)) {
+      if (v2ValidColumns.has(key)) v2Overrides[key] = val;
+      if (legacyValidColumns.has(key)) legacyOverrides[key] = val;
+    }
+
+    if (sessions.length === 0 && !dbOverrides.status) {
+      // Check if user has an approved leave covering this date
+      const approvedLeave = await attendanceDB("leave_request")
+        .where("user_id", user_id)
+        .whereRaw("LOWER(status) = 'approved'")
+        .where("start_date", "<=", sanitizedDate)
+        .where("end_date", ">=", sanitizedDate)
+        .first()
+        .catch(() => null);
+
+      const defaultStatus = approvedLeave ? "ON_LEAVE" : "ABSENT";
+      const defaultRemarks = approvedLeave ? (approvedLeave.reason || "Approved Leave") : null;
+      if (defaultRemarks && !v2Overrides.remarks) v2Overrides.remarks = defaultRemarks;
+
+      const existingV2 = await attendanceDB("attn_daily_summary_v2")
+        .where({ user_id, date: sanitizedDate })
+        .first();
+      if (existingV2) {
+        await attendanceDB("attn_daily_summary_v2")
+          .where({ user_id, date: sanitizedDate })
+          .update({
+            session_count: 0, total_hours: 0, late_minutes: 0, overtime_hours: 0,
+            status: defaultStatus, updated_at: attendanceDB.fn.now(), ...v2Overrides
+          });
+      }
+
       const existing = await attendanceDB("attn_daily_summary")
         .where({ user_id, date: sanitizedDate })
         .first();
@@ -248,7 +293,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
           .where({ user_id, date: sanitizedDate })
           .update({
             first_in: null, last_out: null, total_hours: 0, late_minutes: 0, overtime_hours: 0,
-            status: "ABSENT", updated_at: attendanceDB.fn.now(), ...overrides
+            status: defaultStatus, updated_at: attendanceDB.fn.now(), ...legacyOverrides
           });
       }
       return;
@@ -277,7 +322,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       const lateCheck = StatusService.calculateLateArrival(
         formatLocalDatetime(firstIn.punch_time), rules
       );
-      lateMinutes = lateCheck.minutesLate;
+      lateMinutes = lateCheck.isLate ? lateCheck.minutesLate : 0;
 
       const firstMeta = safeParseJSON(firstIn.metadata);
       lateReason = firstMeta?.late_reason || null;
@@ -309,6 +354,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     const remarks = [];
     if (sessions.some(s => !s.out_punch)) remarks.push("Open Session");
     if (punches.some(p => p.punch_nature === "fabricated")) remarks.push("Manual Entry");
+    if (dbOverrides.adjustment_reason) remarks.push(dbOverrides.adjustment_reason);
     for (const s of sessions) {
       const inLoc = safeParseJSON(s.in_punch.location);
       if (inLoc.is_geofence_violation) { remarks.push("Geofence Violation"); break; }
@@ -329,7 +375,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       shift_id: shift ? shift.shift_id : null,
       remarks: [...new Set(remarks)].join("; ") || null,
       updated_at: attendanceDB.fn.now(),
-      ...overrides
+      ...v2Overrides
     };
 
     try {
@@ -351,6 +397,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       }
     } catch (v2Err) {
       console.error("attn_daily_summary_v2 sync error:", v2Err);
+      throw v2Err;
     }
 
     // Also sync legacy attn_daily_summary if it exists
@@ -366,7 +413,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       status: finalStatus,
       shift_id: shift ? shift.shift_id : null,
       updated_at: attendanceDB.fn.now(),
-      ...overrides
+      ...legacyOverrides
     };
 
     try {
@@ -389,9 +436,11 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     } catch (_) {}
 
     // 10. Trigger payroll recalculation
-    PayrollCalculationService.triggerRecalculation(user_id, sanitizedDate).catch(err => {
-      console.error("Failed to trigger background payroll recalculation in syncDailyAttendance:", err);
-    });
+    if (!skipPayroll) {
+      PayrollCalculationService.triggerRecalculation(user_id, sanitizedDate).catch(err => {
+        console.error("Failed to trigger background payroll recalculation in syncDailyAttendance:", err);
+      });
+    }
 
   } catch (err) {
     console.error("Sync Daily Attendance Error:", err);
@@ -754,6 +803,7 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
 export async function createCorrectionRequest({
   org_id,
   user_id,
+  user_type,
   correction_type,
   request_date,
   original_data,
@@ -762,32 +812,38 @@ export async function createCorrectionRequest({
   attachmentMeta,
   existing_request_id
 }) {
-  // FETCH DYNAMIC DEADLINE FROM SHIFT RULES
-  const userShift = await getUserShift(user_id);
-  const rules = ShiftService.getShiftRules(userShift || {});
-  const deadlineDays = rules.correction_deadline || 2;
+  const isAdminOrHr = ["admin", "hr", "superadmin"].includes(String(user_type || "").toLowerCase());
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const reqDate = new Date(request_date);
-  reqDate.setHours(0, 0, 0, 0);
+  // DYNAMIC DEADLINE FROM SHIFT RULES (Bypassed / unlimited for testing)
+  /*
+  if (!isAdminOrHr) {
+    const userShift = await getUserShift(user_id);
+    const rules = ShiftService.getShiftRules(userShift || {});
+    const deadlineDays = rules.correction_deadline || 2;
 
-  const diffTime = today - reqDate;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const reqDate = new Date(request_date);
+    reqDate.setHours(0, 0, 0, 0);
 
-  if (diffDays > deadlineDays) {
-    throw new Error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
+    const diffTime = today - reqDate;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays > deadlineDays) {
+      throw new Error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
+    }
   }
+  */
 
-  // Resolve target_id: for 'summary', find daily_id in attn_daily_summary
+  // Resolve target_id: for 'summary', find id in attn_daily_summary_v2
   const normType = correction_type === "summary" ? "summary" : "punch";
   let targetId = null;
   if (normType === "summary") {
-    const summaryRow = await attendanceDB("attn_daily_summary")
+    const summaryRow = await attendanceDB("attn_daily_summary_v2")
       .where({ user_id, date: request_date })
-      .select("daily_id")
+      .select("id")
       .first();
-    targetId = summaryRow ? summaryRow.daily_id : null;
+    targetId = summaryRow ? summaryRow.id : null;
   }
 
   // Merge attachment into proposed_data JSON if provided
@@ -810,13 +866,23 @@ export async function createCorrectionRequest({
   let pendingRecord = null;
   if (existing_request_id) {
     const existing = await attendanceDB("attn_corrections")
-      .where({ id: existing_request_id, user_id })
+      .where({ id: existing_request_id })
       .first();
 
     if (!existing) {
       const err = new Error("Correction request not found.");
       err.status = 404;
       throw err;
+    }
+
+    // Verify permission: caller must be owner or belong to the same organization
+    if (existing.user_id !== user_id) {
+      const targetUser = await attendanceDB("core_users").where({ user_id: existing.user_id }).first();
+      if (!targetUser || (org_id && Number(targetUser.org_id) !== Number(org_id))) {
+        const err = new Error("Correction request not found or access denied.");
+        err.status = 403;
+        throw err;
+      }
     }
 
     if (existing.status !== "pending") {
@@ -915,6 +981,11 @@ export async function fetchCorrectionRequests({
     if (date) qb.where("c.request_date", date);
     if (month) qb.whereRaw('MONTH(c.request_date) = ?', [month]);
     if (year) qb.whereRaw('YEAR(c.request_date) = ?', [year]);
+    qb.where(function () {
+      this.where("u.is_active", 1).orWhere("u.is_active", true);
+    }).where(function () {
+      this.where("u.is_deleted", 0).orWhere("u.is_deleted", false).orWhereNull("u.is_deleted");
+    });
   };
 
   const data = await attendanceDB("attn_corrections as c")
@@ -1174,7 +1245,7 @@ export async function reviewCorrectionRequest({
       if (summaryData.total_hours !== undefined) updatePayload.total_hours = Number(summaryData.total_hours);
       if (summaryData.overtime_hours !== undefined) updatePayload.overtime_hours = Number(summaryData.overtime_hours);
 
-      await attendanceDB('attn_daily_summary')
+      await attendanceDB('attn_daily_summary_v2')
         .where({ user_id: correction.user_id, date: finalDateStr })
         .update(updatePayload);
     } else if (sessionsToApply.length > 0) {
@@ -1235,47 +1306,9 @@ export async function reviewCorrectionRequest({
         await attendanceDB("attn_punches").insert(newPunches);
       }
 
-      // Delete all existing records for the day in legacy attn_records
-      await attendanceDB("attn_records")
-        .where({ user_id: correction.user_id })
-        .whereRaw("DATE(time_in) = ?", [finalDateStr])
-        .del().catch(() => {});
-
-      // Insert the approved sessions into legacy attn_records
-      const newRecords = sessionsToApply.map(s => {
-        const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
-        const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
-        const isOvernight = Boolean(tIn && tOut && tOut.slice(0, 5) <= tIn.slice(0, 5));
-        const outDateStr = isOvernight ? nextDateStr : finalDateStr;
-
-        return {
-          user_id: correction.user_id,
-          time_in: `${finalDateStr} ${tIn}`,
-          time_out: tOut ? `${outDateStr} ${tOut}` : null,
-          status: 'CLOSED',
-          created_at: attendanceDB.fn.now(),
-          updated_at: attendanceDB.fn.now(),
-          time_in_address: 'Manual Correction',
-          time_out_address: 'Manual Correction',
-          altered_by: reviewer_id
-        };
-      });
-
-      if (newRecords.length > 0) {
-        await attendanceDB("attn_records").insert(newRecords).catch(() => {});
-      }
-
-      // Sync Daily Summary (Now uses the combined state of the punches)
-      const manualBase = {
-        is_manual_adjustment: true,
-        adjusted_by: reviewer_id,
-        updated_at: attendanceDB.fn.now()
-      };
-
+      // Sync Daily Summary (Uses the combined state of attn_punches into attn_daily_summary_v2)
       await syncDailyAttendance(correction.user_id, finalDateStr, {
-        ...manualBase,
-        is_altered: true,
-        adjustment_reason: `Correction Request #${acr_id}`
+        remarks: `Correction Request #${acr_id}`
       });
 
       // DAR Auto-Healing Hook on Attendance Correction Approval

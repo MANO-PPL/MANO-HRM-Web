@@ -56,6 +56,10 @@ const AttendanceMatrixGrid = ({
                             <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
                             <div className="text-xs font-semibold text-rose-700 dark:text-rose-400 leading-tight mt-0.5">A</div>
                         </th>
+                        <th className="py-2 px-2 text-center min-w-[50px] bg-amber-50/50 dark:bg-amber-950/20">
+                            <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
+                            <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 leading-tight mt-0.5">MP</div>
+                        </th>
                         <th className="py-2 px-2 text-center min-w-[50px] bg-sky-50/50 dark:bg-sky-950/20">
                             <div className="text-[8px] font-normal uppercase text-slate-400 dark:text-github-dark-muted leading-none tracking-wider">Total</div>
                             <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 leading-tight mt-0.5">L</div>
@@ -93,7 +97,7 @@ const AttendanceMatrixGrid = ({
                                 {matrixData.dates.map(rawDate => {
                                     const record = emp?.records?.[rawDate] || emp?.attendance?.[rawDate];
                                     const status = record?.status || '-';
-                                    const isNonClickableStatus = ['Sun', 'Sat', 'WEEK_OFF', 'Not Recorded', '-'].includes(status);
+                                    const isNonClickableStatus = ['Sun', 'Sat', 'WEEK_OFF', 'Week Off', 'Holiday', 'HOLIDAY', 'Not Recorded', '-'].includes(status);
                                     const isClickable = !!record && !isNonClickableStatus;
                                     return (
                                         <td key={rawDate} className="px-1 py-3 text-center">
@@ -119,6 +123,9 @@ const AttendanceMatrixGrid = ({
                                 </td>
                                 <td className="px-2 py-3 text-center bg-rose-50/20 dark:bg-rose-950/10 font-medium text-xs text-rose-700 dark:text-rose-400">
                                     {emp.stats?.absent || 0}
+                                </td>
+                                <td className="px-2 py-3 text-center bg-amber-50/20 dark:bg-amber-950/10 font-medium text-xs text-amber-700 dark:text-amber-400">
+                                    {emp.stats?.missedPunch || 0}
                                 </td>
                                 <td className="px-2 py-3 text-center bg-sky-50/20 dark:bg-sky-950/10 font-medium text-xs text-sky-700 dark:text-sky-400">
                                     {emp.stats?.leave || 0}

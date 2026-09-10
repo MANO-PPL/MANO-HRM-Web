@@ -176,7 +176,9 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
         return leaves.filter(leaf => {
             const matchesSearch = (leaf.user_name || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesStatus = statusFilter === 'all' || leaf.status === statusFilter;
-            return matchesSearch && matchesStatus;
+            const isUserActive = leaf.is_active === undefined ? true : (leaf.is_active === 1 || leaf.is_active === true || leaf.is_active === '1');
+            const isUserDeleted = leaf.is_deleted === undefined ? false : (leaf.is_deleted === 1 || leaf.is_deleted === true || leaf.is_deleted === '1');
+            return matchesSearch && matchesStatus && isUserActive && !isUserDeleted;
         });
     }, [leaves, isAdmin, searchTerm, statusFilter]);
 
@@ -228,9 +230,17 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
             if (res.ok) {
                 // Admin endpoint returns 'history', User endpoint returns 'leaves'
                 // Pending endpoint (old) returned 'requests'
-                const fetched = isAdmin
+                const fetchedRaw = isAdmin
                     ? (res.history || res.requests || [])
                     : (res.leaves || []);
+
+                const fetched = isAdmin
+                    ? fetchedRaw.filter(l => {
+                        const isUserActive = l.is_active === undefined ? true : (l.is_active === 1 || l.is_active === true || l.is_active === '1');
+                        const isUserDeleted = l.is_deleted === undefined ? false : (l.is_deleted === 1 || l.is_deleted === true || l.is_deleted === '1');
+                        return isUserActive && !isUserDeleted;
+                    })
+                    : fetchedRaw;
 
                 setLeaves(fetched);
                 if (onLeavesChange) {

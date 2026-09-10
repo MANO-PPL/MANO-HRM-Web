@@ -165,9 +165,13 @@ export class PayrollCalculationService {
                 return dateStr >= start && dateStr <= end;
             });
 
-            // Determine if week off
+            // Determine if week off or Sunday holiday
             const dayType = getDayType(dateStr, weekOffPolicy);
             const isWeekOff = dayType === 'week_off';
+            const dayIdx = new Date(dateStr + 'T12:00:00').getDay();
+            const isSunday = dayIdx === 0;
+            const isWorkingSunday = Array.isArray(shiftRules?.working_days || shiftRules?.workingDays)
+                && (shiftRules.working_days || shiftRules.workingDays).includes('Sun');
 
             if (record) {
                 const status = String(record.status).toUpperCase();
@@ -209,7 +213,7 @@ export class PayrollCalculationService {
                 }
             } else {
                 // No record exists
-                if (isHoliday) {
+                if (isHoliday || (isSunday && !isWorkingSunday)) {
                     holiday_days += 1;
                 } else if (isWeekOff) {
                     weekly_off_days += 1;

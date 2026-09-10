@@ -283,19 +283,34 @@ export async function getPendingRequests({ org_id }) {
     return requests;
 }
 
-export async function getAdminHistory({ org_id, user_id, status, start_date, end_date }) {
+export async function getAdminHistory({ org_id, user_id, status, start_date, end_date, include_inactive }) {
     let query = attendanceDB('leave_request as lr')
         .join('core_users as u', 'lr.user_id', 'u.user_id')
         .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
         .leftJoin('leave_policies as lp', 'lpr.lp_id', 'lp.lp_id')
         .select(
             'lr.*',
-            'u.user_name', 'u.profile_image_url',
+            'u.user_name',
+            'u.email',
+            'u.phone_no',
+            'u.profile_image_url',
+            'u.is_active',
+            'u.is_deleted',
             'lpr.name as leave_type',
             'lpr.code as leave_code',
             'lp.name as policy_name'
         )
         .where('u.org_id', org_id);
+
+    if (!include_inactive || include_inactive === 'false') {
+        query = query
+            .where(function () {
+                this.where('u.is_active', 1).orWhere('u.is_active', true);
+            })
+            .where(function () {
+                this.where('u.is_deleted', 0).orWhere('u.is_deleted', false).orWhereNull('u.is_deleted');
+            });
+    }
 
     if (user_id) query = query.where('lr.user_id', user_id);
     if (status) query = query.where('lr.status', status);
@@ -490,7 +505,7 @@ export async function getEmployeeLeaveBalance({ org_id, user_id, year }) {
     }));
 }
 
-export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id }) {
+export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id, include_inactive }) {
     const targetYear = year || new Date().getFullYear();
 
     let query = attendanceDB('leave_balances as lb')
@@ -505,9 +520,21 @@ export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id }) {
             'lp.name as policy_name',
             'u.user_name',
             'u.profile_image_url',
-            'u.user_type'
+            'u.user_type',
+            'u.is_active',
+            'u.is_deleted'
         )
         .where({ 'u.org_id': org_id, 'lb.year': targetYear });
+
+    if (!include_inactive || include_inactive === 'false') {
+        query = query
+            .where(function () {
+                this.where('u.is_active', 1).orWhere('u.is_active', true);
+            })
+            .where(function () {
+                this.where('u.is_deleted', 0).orWhere('u.is_deleted', false).orWhereNull('u.is_deleted');
+            });
+    }
 
     if (rule_id) {
         query = query.where('lb.rule_id', rule_id);

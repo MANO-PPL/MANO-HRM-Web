@@ -16,6 +16,7 @@ import BorrowWorkerModal from './components/modals/BorrowWorkerModal';
 import SiteClosurePromptModal from './components/modals/SiteClosurePromptModal';
 import WorkerHistoryDrawer from './components/modals/WorkerHistoryDrawer';
 import ConfirmDialogModal from './components/modals/ConfirmDialogModal';
+import BulkLabourUploadModal from './components/modals/BulkLabourUploadModal';
 import WageRevisionModal from './components/WageRevisionModal';
 
 // Views & Header

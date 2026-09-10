@@ -225,9 +225,17 @@ const LeaveApplication = () => {
             // Admin: Fetch ALL history to allow filtering
             const res = isAdmin ? await leaveService.getAdminLeaves() : await leaveService.getMyLeaves();
             if (res.ok) {
-                const fetched = isAdmin
+                const fetchedRaw = isAdmin
                     ? (res.history || res.requests || [])
                     : (res.leaves || []);
+
+                const fetched = isAdmin
+                    ? fetchedRaw.filter(l => {
+                        const isUserActive = l.is_active === undefined ? true : (l.is_active === 1 || l.is_active === true || l.is_active === '1');
+                        const isUserDeleted = l.is_deleted === undefined ? false : (l.is_deleted === 1 || l.is_deleted === true || l.is_deleted === '1');
+                        return isUserActive && !isUserDeleted;
+                    })
+                    : fetchedRaw;
 
                 setLeaves(fetched);
                 // For mobile, do NOT select first item by default to keep list view clean

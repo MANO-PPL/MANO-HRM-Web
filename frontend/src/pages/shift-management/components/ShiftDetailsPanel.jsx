@@ -140,15 +140,18 @@ const ShiftDetailsPanel = ({
                                     {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => {
                                         const isWork = activeDays.includes(d);
                                         const isHalf = parsedRules.halfDayRules.some(r => r.day === d);
+                                        const isSundayHoliday = d === 'Sun' && !isWork;
                                         return (
                                             <div key={d} className={`px-3 py-2 rounded-xl border flex flex-col items-center min-w-[56px] transition-all ${
                                                 isWork 
                                                     ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-400' 
+                                                    : isSundayHoliday
+                                                    ? 'bg-sky-50/40 dark:bg-sky-950/20 border-sky-100 dark:border-sky-900/40 text-sky-600 dark:text-sky-400'
                                                     : 'bg-slate-50 dark:bg-slate-800/30 border-slate-150 dark:border-slate-800 text-slate-400 dark:text-slate-600'
                                             }`}>
                                                 <span className="text-xs font-semibold">{d}</span>
                                                 <span className="text-[8px] font-medium uppercase tracking-widest mt-1">
-                                                    {isHalf ? 'Half' : isWork ? 'Work' : 'Off'}
+                                                    {isHalf ? 'Half' : isWork ? 'Work' : (d === 'Sun' ? 'Holiday' : 'Off')}
                                                 </span>
                                             </div>
                                         );

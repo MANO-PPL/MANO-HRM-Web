@@ -5,6 +5,11 @@ import { getStatusColor } from './reportsUtils';
 const AttendanceRecordTooltip = ({ hoveredRecord, hoveredPosition }) => {
     if (!hoveredRecord) return null;
 
+    const rawStatus = hoveredRecord.status || '';
+    const displayStatus = (rawStatus.toLowerCase().includes('late') && rawStatus.toLowerCase().includes('overtime'))
+        ? 'Overtime'
+        : rawStatus;
+
     return (
         <div
             className="fixed z-[9999] pointer-events-none -translate-x-1/2 -translate-y-full mb-2 bg-slate-950/95 dark:bg-[#161b22]/95 backdrop-blur-xs text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-slate-800 dark:border-[#30363d] w-64 space-y-2 text-left"
@@ -23,8 +28,8 @@ const AttendanceRecordTooltip = ({ hoveredRecord, hoveredPosition }) => {
                         {hoveredRecord.date}
                     </p>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[9px] font-medium uppercase tracking-wider ${getStatusColor(hoveredRecord.status)}`}>
-                    {hoveredRecord.status}
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-medium uppercase tracking-wider ${getStatusColor(displayStatus)}`}>
+                    {displayStatus}
                 </span>
             </div>
 

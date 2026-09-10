@@ -197,39 +197,48 @@ export const aggregateDayRecords = (dayRecs, userPolicyRules) => {
     const last = sorted[sorted.length - 1];
 
     const worked_hours = sorted.reduce((sum, r) => sum + parseFloat(calculateWorkHours(r.time_in, r.time_out)), 0);
-    const late_minutes = first.late_minutes || 0;
+    let effectiveLateMinutes = first.late_minutes || 0;
     let overtime_hours = 0;
 
     let status = "Present";
-    const hasLeave = sorted.some(r => r.status === 'ON_LEAVE');
-    const hasHalfDay = sorted.some(r => r.status === 'HALF_DAY');
-    const hasAbsent = sorted.every(r => r.status === 'ABSENT');
+    const hasLeave = sorted.some(r => r.status === 'ON_LEAVE' || r.status === 'On Leave');
+    const hasHalfDay = sorted.some(r => r.status === 'HALF_DAY' || r.status === 'Half Day');
+    const hasMissedPunch = sorted.some(r => r.status === 'MISSED_PUNCH' || r.status === 'missed_punch' || r.status === 'Missed Punch' || (r.time_in && !r.time_out));
+    const hasAbsent = sorted.every(r => r.status === 'ABSENT' || r.status === 'Absent');
 
     if (hasLeave) status = "On Leave";
     else if (hasHalfDay) status = "Half Day";
+    else if (hasMissedPunch) status = "Missed Punch";
     else if (hasAbsent) status = "Absent";
     else {
-        let statusParts = [];
-        if (late_minutes > 0) statusParts.push("Late");
-
+        let graceMins = 0;
         if (userPolicyRules) {
             const rules = safeParseRules(userPolicyRules);
+            graceMins = Number(rules?.grace_period?.minutes || 0);
             overtime_hours = calculateOvertime(worked_hours, rules);
         } else {
             overtime_hours = sorted.reduce((sum, r) => sum + parseFloat(r.overtime_hours || 0), 0);
         }
 
-        if (overtime_hours > 0) statusParts.push("Overtime");
-        if (statusParts.length > 0) status = statusParts.join(" & ");
+        // If punch was within the allowed grace period, employee is not late
+        if (effectiveLateMinutes <= graceMins) {
+            effectiveLateMinutes = 0;
+        }
+
+        if (overtime_hours > 0) {
+            status = "Overtime";
+        } else if (effectiveLateMinutes > 0) {
+            status = "Late";
+        }
     }
 
     return {
         time_in: first.time_in,
         time_out: last.time_out,
         worked_hours,
-        late_minutes,
+        late_minutes: effectiveLateMinutes,
         overtime_hours,
-        late_reason: first.late_reason || null,
+        late_reason: effectiveLateMinutes > 0 ? (first.late_reason || null) : null,
         status,
         time_in_address: first.time_in_address || "-",
         time_out_address: last.time_out_address || "-"
@@ -249,16 +258,13 @@ export const safeParseRules = (policyRules) => {
 
 // Helper: Derive Status dynamically
 export const deriveStatus = (r) => {
-    if (!r.time_in) return "Absent";
-    if (r.status === 'ON_LEAVE') return "On Leave";
-    if (r.status === 'HALF_DAY') return "Half Day";
-    if (r.status === 'ABSENT') return "Absent";
+    if (r.status === 'ON_LEAVE' || r.status === 'On Leave') return "On Leave";
+    if (r.status === 'HALF_DAY' || r.status === 'Half Day') return "Half Day";
+    if (r.status === 'MISSED_PUNCH' || r.status === 'missed_punch' || r.status === 'Missed Punch' || (r.time_in && !r.time_out)) return "Missed Punch";
+    if (!r.time_in || r.status === 'ABSENT' || r.status === 'Absent') return "Absent";
 
-    let statusParts = [];
-    if (r.late_minutes > 0) statusParts.push("Late");
-    if (r.overtime_hours > 0) statusParts.push("Overtime");
-
-    if (statusParts.length > 0) return statusParts.join(" & ");
+    if (r.overtime_hours > 0) return "Overtime";
+    if (r.late_minutes > 0) return "Late";
 
     return "Present";
 };
@@ -402,7 +408,7 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
 }
 
 export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
-    return attendanceDB("attn_records as ar")
+    let records = await attendanceDB("attn_records as ar")
         .join("core_users as u", "ar.user_id", "u.user_id")
         .select("ar.*", attendanceDB.raw("DATE_FORMAT(ar.time_in, '%Y-%m-%d') as record_date"))
         .where("u.org_id", org_id)
@@ -423,7 +429,87 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
             }
         })
         .whereRaw("DATE(ar.time_in) >= ?", [startDate])
-        .whereRaw("DATE(ar.time_in) <= ?", [endDate]);
+        .whereRaw("DATE(ar.time_in) <= ?", [endDate])
+        .catch(() => []);
+
+    // Also supplement from attn_punches for any dates/users not represented in attn_records (e.g. missed punches or unmigrated punches)
+    try {
+        const existingKeys = new Set(records.map(r => `${r.user_id}_${r.record_date}`));
+
+        const punchRows = await attendanceDB("attn_punches as ap")
+            .join("core_users as u", "ap.user_id", "u.user_id")
+            .select(
+                "ap.id as attendance_id",
+                "ap.user_id",
+                "ap.punch_time",
+                "ap.punch_type",
+                "ap.location",
+                "ap.metadata",
+                "ap.status as punch_status",
+                attendanceDB.raw("DATE_FORMAT(ap.punch_time, '%Y-%m-%d') as record_date")
+            )
+            .where("u.org_id", org_id)
+            .whereNull("ap.deleted_at")
+            .whereIn("ap.punch_type", ["in", "out"])
+            .modify(qb => {
+                if (targetUserId) qb.where("ap.user_id", targetUserId);
+                if (isValidDeptId(dept_id)) qb.where("u.dept_id", dept_id);
+                if (isValidDesgId(desg_id)) qb.where("u.desg_id", desg_id);
+                if (shift_id === 'open_shift') qb.whereNull("u.shift_id");
+                else if (isValidShiftId(shift_id)) qb.where("u.shift_id", shift_id);
+            })
+            .whereRaw("DATE(ap.punch_time) >= ?", [startDate])
+            .whereRaw("DATE(ap.punch_time) <= DATE_ADD(?, INTERVAL 1 DAY)", [endDate])
+            .orderBy("ap.punch_time", "asc")
+            .catch(() => []);
+
+        if (punchRows && punchRows.length > 0) {
+            const punchesByUserDate = {};
+            for (const p of punchRows) {
+                const key = `${p.user_id}_${p.record_date}`;
+                if (!punchesByUserDate[key]) punchesByUserDate[key] = [];
+                punchesByUserDate[key].push(p);
+            }
+
+            for (const [key, userDatePunches] of Object.entries(punchesByUserDate)) {
+                if (!existingKeys.has(key)) {
+                    const inPunch = userDatePunches.find(p => p.punch_type === 'in') || userDatePunches[0];
+                    const outPunch = userDatePunches.filter(p => p.punch_type === 'out').pop() || null;
+
+                    let inLoc = {};
+                    let inMeta = {};
+                    try { inLoc = typeof inPunch.location === 'string' ? JSON.parse(inPunch.location) : (inPunch.location || {}); } catch (_) {}
+                    try { inMeta = typeof inPunch.metadata === 'string' ? JSON.parse(inPunch.metadata) : (inPunch.metadata || {}); } catch (_) {}
+
+                    let outLoc = {};
+                    let outMeta = {};
+                    if (outPunch) {
+                        try { outLoc = typeof outPunch.location === 'string' ? JSON.parse(outPunch.location) : (outPunch.location || {}); } catch (_) {}
+                        try { outMeta = typeof outPunch.metadata === 'string' ? JSON.parse(outPunch.metadata) : (outPunch.metadata || {}); } catch (_) {}
+                    }
+
+                    records.push({
+                        attendance_id: inPunch.attendance_id,
+                        user_id: inPunch.user_id,
+                        time_in: inPunch.punch_time,
+                        time_out: outPunch ? outPunch.punch_time : null,
+                        status: outPunch ? 'PRESENT' : 'MISSED_PUNCH',
+                        time_in_address: inLoc.address && inLoc.address !== 'Locating...' ? inLoc.address : '-',
+                        time_out_address: outLoc.address && outLoc.address !== 'Locating...' ? outLoc.address : '-',
+                        time_in_image_key: inMeta.image_key || null,
+                        time_out_image_key: outMeta.image_key || null,
+                        late_minutes: inMeta.late_minutes || 0,
+                        overtime_hours: 0,
+                        record_date: inPunch.record_date
+                    });
+                }
+            }
+        }
+    } catch (suppErr) {
+        console.warn("Failed to supplement attendance records from punches in reports:", suppErr);
+    }
+
+    return records;
 }
 
 export async function getApprovedLeaves({ org_id, startDate, endDate, targetUserId }) {
@@ -694,10 +780,13 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 const dayOfWeek = new Date(startDate + 'T00:00:00Z').getUTCDay();
                 const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
                 const leaveOnDate = isDateInApprovedLeave(userLeaves, startDate);
-                const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' ? 1 : 0;
+                const isMissedPunch = aggregated.status === 'Missed Punch';
+                const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' && !isMissedPunch ? 1 : 0;
 
                 let attendanceStatus = isPresent.toString() + ".0";
-                if (!isPresent) {
+                if (isMissedPunch) {
+                    attendanceStatus = "Missed Punch";
+                } else if (!isPresent) {
                     if (leaveOnDate) {
                         attendanceStatus = "On Leave";
                     } else if (startDate > todayStr && dayType !== 'week_off') {
@@ -707,7 +796,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     }
                 }
 
-                const isAbsent = !isPresent && !leaveOnDate && dayType !== 'week_off' && attendanceStatus !== "Not Recorded" ? 1 : 0;
+                const isAbsent = !isPresent && !isMissedPunch && !leaveOnDate && dayType !== 'week_off' && attendanceStatus !== "Not Recorded" ? 1 : 0;
 
                 const reqHrs = getExpectedHours(startDate, rules.week_off_policy, rules);
                 const workedHrs = aggregated.worked_hours;
@@ -815,8 +904,12 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
 
                     if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
-                        dateCells.push("1.0");
-                        presentDays++;
+                        if (aggregated.status === 'Missed Punch') {
+                            dateCells.push("MP");
+                        } else {
+                            dateCells.push("1.0");
+                            presentDays++;
+                        }
                         totalWorkedHrs += aggregated.worked_hours;
                         if (aggregated.late_minutes > 0) {
                             totalLateMins += aggregated.late_minutes;
@@ -857,8 +950,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     const rules = getShiftRules(u);
                     const dayType = getDayType(dateStr, rules.week_off_policy);
                     const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
-                    const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave';
-                    if (!isPresent && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
+                    const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' && aggregated.status !== 'Missed Punch';
+                    const isMissedPunch = aggregated.status === 'Missed Punch';
+                    if (!isPresent && !isMissedPunch && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
                         calculatedAbsentDays++;
                     }
                 });

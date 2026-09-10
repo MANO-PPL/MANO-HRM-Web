@@ -135,3 +135,56 @@ export function getStatusColorClasses(status) {
   const { bg, text } = getStatusStyle(status);
   return `${bg} ${text}`;
 }
+
+/**
+ * Parses correction category and cleaned reason from a correction request.
+ * E.g., extracts "[Missed Punch] Forgot to punch out" into:
+ *   category: "Missed Punch"
+ *   cleanReason: "Forgot to punch out"
+ */
+export function parseCorrectionDetails(req) {
+  if (!req) return { category: 'Punch Correction', cleanReason: '' };
+
+  const rawReason = String(req.reason || '').trim();
+  // Match prefix [Category] or ['Category'] or ["Category"]
+  const match = rawReason.match(/^\[['"]?(.*?)['"]?\]\s*(.*)$/s);
+
+  let category = '';
+  let cleanReason = rawReason;
+
+  if (match) {
+    category = match[1].trim();
+    cleanReason = match[2].trim();
+  }
+
+  if (!category) {
+    if (req.correction_type === 'summary') {
+      category = 'Summary Adjustment';
+    } else if (/missed\s*punch/i.test(rawReason)) {
+      category = 'Missed Punch';
+    } else if (/missed\s*day/i.test(rawReason)) {
+      category = 'Missed Day';
+    } else if (/overtime/i.test(rawReason)) {
+      category = 'Overtime';
+    } else if (/biometric|finger|sensor|scanner/i.test(rawReason)) {
+      category = 'Biometric Issue';
+    } else if (/late|delay/i.test(rawReason)) {
+      category = 'Late Arrival';
+    } else if (/early/i.test(rawReason)) {
+      category = 'Early Departure';
+    } else if (req.correction_type === 'punch') {
+      category = 'Missed Punch';
+    } else {
+      category = req.correction_type ? String(req.correction_type).replace(/_/g, ' ') : 'Punch Correction';
+    }
+  }
+
+  // Capitalize neatly
+  category = category.charAt(0).toUpperCase() + category.slice(1);
+
+  return {
+    category,
+    cleanReason: cleanReason || rawReason
+  };
+}
+

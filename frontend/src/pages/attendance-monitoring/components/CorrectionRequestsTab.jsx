@@ -24,6 +24,7 @@ import VisualCorrectionTimeline from '../../../components/attendance/VisualCorre
 import CorrectionDocumentCard from '../../../components/attendance/CorrectionDocumentCard';
 import { attendanceService } from '../../../services/attendanceService';
 import { toast } from 'react-toastify';
+import { parseCorrectionDetails } from '../../../utils/attendanceStatus';
 
 const CorrectionRequestsTab = ({
     correctionRequests = [],
@@ -246,19 +247,10 @@ const CorrectionRequestsTab = ({
                 (overrideReason && overrideReason.trim() !== (selectedRequestData.reason || '').trim())
             );
 
-            // If override mode edited the punches, update the request data
-            if (isModified && currentSessions.length > 0) {
-                const formData = new FormData();
-                formData.append('correction_type', 'punch');
-                formData.append('request_date', selectedRequestData.request_date);
-                formData.append('reason', overrideReason.trim() || selectedRequestData.reason || 'Attendance adjustment');
-                formData.append('original_data', JSON.stringify(selectedRequestData.original_data || []));
-                formData.append('proposed_data', JSON.stringify(currentSessions));
-                formData.append('existing_request_id', reqId);
-                await attendanceService.submitCorrectionRequest(formData);
-            }
+            const comment = reviewComment.trim()
+                ? (overrideReason.trim() ? `${reviewComment.trim()} (Override: ${overrideReason.trim()})` : reviewComment.trim())
+                : (overrideReason.trim() ? `Override: ${overrideReason.trim()}` : (isModified ? 'Approved with manual override' : 'Approved by administrator'));
 
-            const comment = reviewComment.trim() || (isModified ? 'Approved with manual override' : 'Approved by administrator');
             await attendanceService.updateCorrectionStatus(reqId, 'approved', comment, isModified ? { sessions: currentSessions } : {});
 
             toast.success(isModified ? "Request updated with manual override and approved!" : "Request approved successfully!");
@@ -358,10 +350,7 @@ const CorrectionRequestsTab = ({
                             const duration = proposed.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
                             const statusLower = (request.status || 'pending').toLowerCase();
                             const attInfo = getAttachmentInfo(request);
-                            const rawReason = String(request.reason || '').trim();
-                            const cleanReasonText = rawReason.startsWith("['") || rawReason.startsWith('["')
-                                ? rawReason.replace(/^\[['"](.*?)['"]\]\s*/, '$1: ')
-                                : rawReason;
+                            const { category: reqCategory, cleanReason: reqCleanReason } = parseCorrectionDetails(request);
 
                             return (
                                 <div
@@ -412,9 +401,9 @@ const CorrectionRequestsTab = ({
                                         )}
                                     </div>
 
-                                    {cleanReasonText && (
+                                    {reqCleanReason && (
                                         <p className="text-[10px] text-slate-500 dark:text-github-dark-muted font-normal italic line-clamp-1 pl-1.5 border-l-2 border-slate-300 dark:border-github-dark-border my-1">
-                                            "{cleanReasonText}"
+                                            "{reqCleanReason}"
                                         </p>
                                     )}
 
@@ -431,8 +420,8 @@ const CorrectionRequestsTab = ({
 
                                     <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1.5 font-mono border-t border-slate-100 dark:border-github-dark-border/40 pt-1.5 font-normal">
                                         <span>Sub. {request.submitted_at ? new Date(request.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : 'N/A'}</span>
-                                        <span className="font-normal px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                                            {(request.correction_type || 'punch').replace('_', ' ')}
+                                        <span className="font-medium text-[10px] px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/40">
+                                            {reqCategory}
                                         </span>
                                     </div>
                                 </div>
@@ -625,10 +614,8 @@ const CorrectionRequestsTab = ({
                                 ) : (
                                     <p className="text-xs text-slate-700 dark:text-slate-200 font-normal leading-relaxed pl-2.5 border-l-2 border-indigo-500/60">
                                         "{(() => {
-                                            const r = String(selectedRequestData.reason || '').trim();
-                                            return r.startsWith("['") || r.startsWith('["')
-                                                ? r.replace(/^\[['"](.*?)['"]\]\s*/, '$1: ')
-                                                : (r || 'No specific reason provided.');
+                                            const { cleanReason } = parseCorrectionDetails(selectedRequestData);
+                                            return cleanReason || 'No specific reason provided.';
                                         })()}"
                                     </p>
                                 )}

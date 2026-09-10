@@ -125,7 +125,8 @@ const formatTotalTime = (totalMin, fallbackHours) => {
     }
 };
 
-const processAttendanceData = (staff) => {
+const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
+    const isSelectedSunday = selectedDateStr ? new Date(selectedDateStr + 'T12:00:00').getDay() === 0 : false;
     const mergedData = staff.map(u => {
         const daySessions = u.sessions || [];
         let totalMin = 0;
@@ -178,19 +179,34 @@ const processAttendanceData = (staff) => {
         // Standardize Status String to match frontend layout colors
         const statusMap = {
             'WEEK_OFF': 'Week Off',
+            'Week Off': 'Week Off',
             'HOLIDAY': 'Holiday',
+            'Holiday': 'Holiday',
             'LEAVE': 'Leave',
+            'ON_LEAVE': 'Leave',
+            'On Leave': 'Leave',
+            'Leave': 'Leave',
             'ABSENT': 'Absent',
+            'Absent': 'Absent',
             'PRESENT': 'Present',
+            'Present': 'Present',
             'LATE': 'Late',
+            'Late': 'Late',
             'OVERTIME': 'Overtime',
+            'Overtime': 'Overtime',
             'MISSED_PUNCH': 'Missed Punch',
+            'Missed Punch': 'Missed Punch',
             'Active': 'Active',
             'Late Active': 'Late Active'
         };
-        const status = statusMap[u.status] || u.status || 'Absent';
+        let status = statusMap[u.status] || (u.status && String(u.status).toUpperCase().includes('LEAVE') ? 'Leave' : (u.status || 'Absent'));
+        
+        // Sunday comes under Holiday (not Week Off)
+        if (isSelectedSunday && status === 'Week Off') {
+            status = 'Holiday';
+        }
 
-        const totalHrs = (status === 'Missed Punch' || status === 'Absent')
+        const totalHrs = (status === 'Missed Punch' || status === 'Absent' || status === 'Leave' || status === 'Week Off' || status === 'Holiday')
             ? '0.0 hrs'
             : formatTotalTime(totalMin, u.total_hours > 0 ? Number(u.total_hours) : 0);
         const expectedHrs = u.expected_hours !== undefined && u.expected_hours !== null && u.expected_hours > 0 ? `${Number(u.expected_hours).toFixed(1)} hrs` : 'N/A';
@@ -208,7 +224,7 @@ const processAttendanceData = (staff) => {
         else if (status === 'Missed Punch') { allStatuses.push('Missed Punch'); }
         else if (status === 'Week Off') { allStatuses.push('Week Off'); }
         else if (status === 'Holiday') { allStatuses.push('Holiday'); }
-        else if (status === 'Leave') { allStatuses.push('Leave'); }
+        else if (status === 'Leave' || status === 'On Leave' || status === 'ON_LEAVE') { allStatuses.push('Leave'); }
         else { allStatuses.push('Absent'); }
 
         return {
@@ -331,13 +347,13 @@ const AttendanceMonitoring = () => {
     const [loading, setLoading] = useState(() => !cachedResponse);
     const [attendanceData, setAttendanceData] = useState(() => {
         if (cachedResponse?.data) {
-            return processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC');
+            return processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC', initialDate);
         }
         return [];
     });
     const [stats, setStats] = useState(() => {
         if (cachedResponse?.data) {
-            const merged = processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC');
+            const merged = processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC', initialDate);
             return {
                 present: merged.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
                 late: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : d.status.includes('Late')).length,
@@ -723,7 +739,7 @@ const AttendanceMonitoring = () => {
             setOrgTimezone(resolvedTz);
 
             // 2. Map Data using helper
-            const mergedData = processAttendanceData(staff, resolvedTz);
+            const mergedData = processAttendanceData(staff, resolvedTz, selectedDate);
 
             setAttendanceData(mergedData);
 

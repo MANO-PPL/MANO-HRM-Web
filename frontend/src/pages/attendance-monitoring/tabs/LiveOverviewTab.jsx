@@ -28,7 +28,8 @@ const LiveOverviewTab = ({
     filteredData = [],
     setSelectedLiveUser,
     avatarTimestamp = '',
-    getStatusStyle = defaultGetStatusStyle
+    getStatusStyle = defaultGetStatusStyle,
+    selectedDate = null
 }) => {
     const resolveStatusStyle = getStatusStyle || defaultGetStatusStyle;
     return (
@@ -110,6 +111,23 @@ const LiveOverviewTab = ({
                                             <Clock size={20} className="mb-2 opacity-30" />
                                             <span className="text-xs">No activity yet</span>
                                         </div>
+                                    ) : item.status === 'Leave' ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-purple-600 dark:text-purple-400 py-4 font-normal">
+                                            <div className="w-8 h-8 rounded-full bg-purple-50 dark:bg-purple-950/30 flex items-center justify-center mb-1.5">
+                                                <Clock size={16} className="text-purple-500 dark:text-purple-400" />
+                                            </div>
+                                            <span className="text-xs font-medium">On Approved Leave</span>
+                                        </div>
+                                    ) : item.status === 'Week Off' ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-slate-400 py-4 font-normal">
+                                            <span className="text-xs font-medium">Scheduled Week Off</span>
+                                        </div>
+                                    ) : item.status === 'Holiday' ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-sky-500 py-4 font-normal">
+                                            <span className="text-xs font-medium text-sky-600 dark:text-sky-400">
+                                                {selectedDate && new Date(selectedDate + 'T12:00:00').getDay() === 0 ? 'Sunday Holiday' : 'Holiday'}
+                                            </span>
+                                        </div>
                                     ) : item.sessions.length > 0 ? (
                                         <div className="relative pl-4 border-l-2 border-indigo-500">
                                             {/* Session Indicator Dot */}
@@ -173,7 +191,7 @@ const LiveOverviewTab = ({
                                 </div>
 
                                 {/* Card Footer (Duration) */}
-                                {item.status !== 'Absent' && (
+                                {item.status !== 'Absent' && item.status !== 'Leave' && item.status !== 'Week Off' && item.status !== 'Holiday' && (
                                     <div className="bg-slate-50 dark:bg-github-dark-subtle/50 px-5 py-3 border-t border-slate-100 dark:border-github-dark-border flex items-center justify-between">
                                         <div className="flex flex-col">
                                             <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500">Total Daily Time</span>

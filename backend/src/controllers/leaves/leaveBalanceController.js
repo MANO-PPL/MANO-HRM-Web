@@ -32,12 +32,13 @@ export const getEmployeeLeaveBalance = catchAsync(async (req, res) => {
 // Admin: Get all employees' leave balances for the org
 export const getAllEmployeesLeaveBalances = catchAsync(async (req, res) => {
     const { org_id } = req.user;
-    const { year, rule_id } = req.query;
+    const { year, rule_id, include_inactive } = req.query;
 
     const balances = await LeaveService.getAllEmployeesLeaveBalances({
         org_id,
         year: year ? Number(year) : null,
-        rule_id: rule_id ? Number(rule_id) : null
+        rule_id: rule_id ? Number(rule_id) : null,
+        include_inactive
     });
     res.json({ ok: true, balances });
 });

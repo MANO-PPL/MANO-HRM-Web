@@ -41,6 +41,9 @@ export const getCellStyle = (cellValue, colHeader, isTotalsRow, isEven, rowIdx) 
     if (val === 'Absent' || val === '0.0' || val === '0') {
         return { ...baseFont, backgroundColor: '#FEE2E2', color: '#B91C1C', fontWeight: '700', border: defaultBorder };
     }
+    if (val.toLowerCase().includes('missed') || val === 'MP') {
+        return { ...baseFont, backgroundColor: '#FEF3C7', color: '#B45309', fontWeight: '700', border: defaultBorder };
+    }
     if (val.toLowerCase() === 'half day') {
         return { ...baseFont, backgroundColor: '#FEF9C3', color: '#854D0E', fontWeight: '700', border: defaultBorder };
     }
@@ -114,16 +117,26 @@ export const isDateColumn = (colName) => {
     return /^\d+/.test(cleanName) || ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].some(m => cleanName.toLowerCase().includes(m));
 };
 
+// Normalize attendance status: prioritize Overtime over Late & Overtime
+export const normalizeAttendanceStatus = (status) => {
+    const s = status || '';
+    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) {
+        return 'Overtime';
+    }
+    return s;
+};
+
 // Returns badge background/text classes for attendance statuses
 export const getStatusColor = (status) => {
     const s = status || '';
     if (!s || s === '-' || s === 'Not Recorded') return 'bg-slate-50 text-slate-300 dark:bg-slate-900/50 dark:text-slate-700 border border-slate-200 dark:border-slate-800 opacity-60';
     if (s === 'Present' || s.includes('Present')) return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-800/50';
+    if (s.toLowerCase().includes('missed') || s === 'MP') return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 ring-1 ring-amber-200 dark:ring-amber-800/50';
     if (s === 'Absent') return 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400 ring-1 ring-rose-200 dark:ring-rose-800/50';
-    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) return 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-800/50';
-    if (s.toLowerCase().includes('late')) return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 ring-1 ring-amber-200 dark:ring-amber-800/50';
     if (s.toLowerCase().includes('overtime')) return 'bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400 ring-1 ring-purple-200 dark:ring-purple-800/50';
-    if (s === 'Sun' || s === 'Sat' || s === 'WEEK_OFF') return 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500';
+    if (s.toLowerCase().includes('late')) return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 ring-1 ring-amber-200 dark:ring-amber-800/50';
+    if (s === 'Holiday' || s === 'HOLIDAY') return 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400 ring-1 ring-sky-200 dark:ring-sky-800/50';
+    if (s === 'Sun' || s === 'Sat' || s === 'WEEK_OFF' || s === 'Week Off') return 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500';
     if (s.toLowerCase() === 'on leave') return 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400 ring-1 ring-sky-200 dark:ring-sky-800/50';
     if (s.toLowerCase() === 'half day') return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800/50';
     return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
@@ -133,15 +146,16 @@ export const getStatusColor = (status) => {
 export const getStatusLabel = (status) => {
     const s = status || '';
     if (!s || s === '-' || s === 'Not Recorded') return '·';
+    if (s.toLowerCase().includes('missed') || s === 'MP') return 'MP';
     if (s === 'Present') return 'P';
     if (s === 'Absent') return 'A';
+    if (s === 'Holiday' || s === 'HOLIDAY') return 'H';
     if (s === 'Sun') return 'Su';
     if (s === 'Sat') return 'Sa';
-    if (s === 'WEEK_OFF') return 'WO';
+    if (s === 'WEEK_OFF' || s === 'Week Off') return 'WO';
     if (s.toLowerCase() === 'on leave') return 'L';
     if (s.toLowerCase() === 'half day') return 'HD';
-    if (s.toLowerCase().includes('late') && s.toLowerCase().includes('overtime')) return 'LO';
-    if (s.toLowerCase().includes('late')) return 'Lt';
     if (s.toLowerCase().includes('overtime')) return 'OT';
+    if (s.toLowerCase().includes('late')) return 'Lt';
     return s.slice(0, 2);
 };

@@ -10,6 +10,11 @@ const AttendanceDetailDrawer = ({
     onClose,
     onPreviewImage
 }) => {
+    const rawStatus = selectedRecord?.status || '';
+    const displayStatus = (rawStatus.toLowerCase().includes('late') && rawStatus.toLowerCase().includes('overtime'))
+        ? 'Overtime'
+        : rawStatus;
+
     return createPortal(
         <AnimatePresence>
             {isOpen && selectedRecord && (
@@ -65,8 +70,8 @@ const AttendanceDetailDrawer = ({
                                     {selectedRecord.designation && (
                                         <p className="text-xs font-normal text-slate-400 dark:text-github-dark-muted mt-0.5">{selectedRecord.designation} · {selectedRecord.department}</p>
                                     )}
-                                    <div className={`mt-3 inline-flex items-center px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-full border shadow-xs ${getStatusColor(selectedRecord.status)}`}>
-                                        {selectedRecord.status}
+                                    <div className={`mt-3 inline-flex items-center px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-full border shadow-xs ${getStatusColor(displayStatus)}`}>
+                                        {displayStatus}
                                     </div>
                                 </div>
                             </div>

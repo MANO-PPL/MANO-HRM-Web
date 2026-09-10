@@ -78,13 +78,14 @@ export const getAdminHistory = catchAsync(async (req, res) => {
         return res.status(403).json({ ok: false, message: "Access denied" });
     }
 
-    const { user_id, status, start_date, end_date } = req.query;
+    const { user_id, status, start_date, end_date, include_inactive } = req.query;
     const history = await LeaveService.getAdminHistory({
         org_id: req.user.org_id,
         user_id,
         status,
         start_date,
-        end_date
+        end_date,
+        include_inactive
     });
 
     res.json({ ok: true, history });

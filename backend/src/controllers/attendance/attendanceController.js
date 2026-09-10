@@ -502,6 +502,7 @@ export const submitCorrectionRequest = catchAsync(async (req, res) => {
   const result = await AttendanceService.createCorrectionRequest({
     org_id,
     user_id,
+    user_type: req.user?.user_type,
     correction_type,
     request_date,
     original_data: parsedOriginalData,

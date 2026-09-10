@@ -11,11 +11,13 @@ import {
     Maximize2,
     Download,
     Paperclip,
-    Plus
+    Plus,
+    Clock
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
 import CorrectionDocumentCard from '../../../components/attendance/CorrectionDocumentCard';
+import { parseCorrectionDetails } from '../../../utils/attendanceStatus';
 
 const AttendanceCorrectionTab = ({
     filteredCorrectionHistory,
@@ -128,9 +130,6 @@ const AttendanceCorrectionTab = ({
                         <div className="flex items-center gap-2 min-w-0">
                             <FileClock size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                             <h3 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate">Correction Requests</h3>
-                            <span className="text-xs font-mono font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-800 shrink-0">
-                                {filteredCorrectionHistory.length}
-                            </span>
                         </div>
                         {setIsCorrectionDrawerOpen && (
                             <button
@@ -207,6 +206,7 @@ const AttendanceCorrectionTab = ({
                                 const proposedList = Array.isArray(req.proposed_data) ? req.proposed_data : [];
                                 const totalHours = proposedList.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
                                 const statusLower = (req.status || 'pending').toLowerCase();
+                                const { category, cleanReason } = parseCorrectionDetails(req);
                                 return (
                                     <div
                                         key={req.acr_id}
@@ -249,16 +249,16 @@ const AttendanceCorrectionTab = ({
                                             )}
                                         </div>
 
-                                        {req.reason && (
+                                        {cleanReason ? (
                                             <p className="text-xs text-slate-500 dark:text-slate-400 font-normal italic line-clamp-1 mb-2">
-                                                "{req.reason}"
+                                                "{cleanReason}"
                                             </p>
-                                        )}
+                                        ) : null}
 
                                         <div className="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-slate-100 dark:border-github-dark-border/40">
                                             <span>Sub: {req.submitted_at ? formatDateDisplay(req.submitted_at) : 'N/A'}</span>
-                                            <span className="font-normal text-indigo-600 dark:text-indigo-400">
-                                                {req.correction_type === 'summary' ? 'Summary Adjustment' : 'Punch Sync'}
+                                            <span className="font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800/40">
+                                                {category}
                                             </span>
                                         </div>
                                     </div>
@@ -372,11 +372,13 @@ const AttendanceCorrectionTab = ({
                                                 <div className="bg-slate-50/70 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-xl p-4 space-y-2">
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                                                            Requested Work Sessions ({proposedList.length})
+                                                            Requested Work Sessions
                                                         </span>
-                                                        <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                                                            Total: {proposedList.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0).toFixed(2)} hrs
-                                                        </span>
+                                                        {proposedList.length > 1 && (
+                                                            <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                                                                Total: {proposedList.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0).toFixed(2)} hrs
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                                                         {proposedList.map((session, idx) => {
@@ -422,42 +424,52 @@ const AttendanceCorrectionTab = ({
                                 />
 
                                 {/* Details & Reason Grid */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-4 shadow-2xs space-y-2">
-                                        <span className="text-[10px] font-normal text-slate-400 uppercase tracking-wider block">
-                                            Request Information
-                                        </span>
-                                        <div className="space-y-1.5 text-xs">
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Category:</span>
-                                                <span className="font-medium text-slate-800 dark:text-slate-200 capitalize">
-                                                    {selectedRequest.correction_type === 'summary' ? 'Summary Adjustment' : 'Punch Attendance'}
+                                {(() => {
+                                    const { category: detailCategory, cleanReason: detailCleanReason } = parseCorrectionDetails(selectedRequest);
+                                    const proposedList = normalizeCorrectionSessions(selectedRequest.proposed_data, selectedRequest);
+                                    const totalProposedHours = proposedList.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
+
+                                    return (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-4 shadow-2xs space-y-2">
+                                                <span className="text-[10px] font-normal text-slate-400 uppercase tracking-wider block">
+                                                    Request Information
                                                 </span>
+                                                <div className="space-y-2 text-xs">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-slate-500">Category:</span>
+                                                        <span className="font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800/40">
+                                                            {detailCategory}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-slate-500">Submitted:</span>
+                                                        <span className="font-normal text-slate-700 dark:text-slate-300">
+                                                            {selectedRequest.submitted_at ? formatDateDisplay(selectedRequest.submitted_at) : 'N/A'}
+                                                        </span>
+                                                    </div>
+                                                    {totalProposedHours > 0 && (
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-slate-500">Proposed Work Time:</span>
+                                                            <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                                                                {totalProposedHours.toFixed(2)} hrs
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Submitted:</span>
-                                                <span className="font-normal text-slate-700 dark:text-slate-300">
-                                                    {selectedRequest.submitted_at ? formatDateDisplay(selectedRequest.submitted_at) : 'N/A'}
+
+                                            <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-4 shadow-2xs space-y-2">
+                                                <span className="text-[10px] font-normal text-slate-400 uppercase tracking-wider block">
+                                                    Employee Stated Reason
                                                 </span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Attendance Date:</span>
-                                                <span className="font-normal text-slate-700 dark:text-slate-300">
-                                                    {formatCorrectionDate(selectedRequest.request_date)}
-                                                </span>
+                                                <p className="text-xs text-slate-700 dark:text-slate-300 font-normal italic leading-relaxed pl-2 border-l-2 border-indigo-500/60">
+                                                    "{detailCleanReason || 'No additional remarks provided.'}"
+                                                </p>
                                             </div>
                                         </div>
-                                    </div>
-
-                                    <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-4 shadow-2xs space-y-2">
-                                        <span className="text-[10px] font-normal text-slate-400 uppercase tracking-wider block">
-                                            Employee Stated Reason
-                                        </span>
-                                        <p className="text-xs text-slate-700 dark:text-slate-300 font-normal italic leading-relaxed pl-2 border-l-2 border-indigo-500/60">
-                                            "{selectedRequest.reason || 'No reason provided.'}"
-                                        </p>
-                                    </div>
-                                </div>
+                                    );
+                                })()}
 
                                 {/* Reviewer Decision Card */}
                                 {(selectedRequest.status || '').toLowerCase() !== 'pending' && (

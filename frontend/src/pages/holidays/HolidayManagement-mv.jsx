@@ -245,7 +245,13 @@ const HolidayManagement = () => {
             if (user?.user_type === 'admin' || user?.user_type === 'hr') {
                 const requestsRes = await api.get('/leaves/admin/history');
                 if (requestsRes.data.ok) {
-                    setRequests(requestsRes.data.history || requestsRes.data.requests || []);
+                    const rawList = requestsRes.data.history || requestsRes.data.requests || [];
+                    const activeList = rawList.filter(l => {
+                        const isUserActive = l.is_active === undefined ? true : (l.is_active === 1 || l.is_active === true || l.is_active === '1');
+                        const isUserDeleted = l.is_deleted === undefined ? false : (l.is_deleted === 1 || l.is_deleted === true || l.is_deleted === '1');
+                        return isUserActive && !isUserDeleted;
+                    });
+                    setRequests(activeList);
                 }
             }
 

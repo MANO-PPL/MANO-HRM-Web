@@ -255,7 +255,7 @@ export function evaluateSessionList(rules, sessions, dateStr) {
         let lateMins = 0;
         if (idx === 0) {
             const lateCheck = calculateLateArrival(`${dateStr}T${tIn}`, rules);
-            lateMins = lateCheck.minutesLate;
+            lateMins = lateCheck.isLate ? lateCheck.minutesLate : 0;
         }
 
         // Determine Session Status
@@ -406,6 +406,12 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
     if (dailyRecord && dateStr < todayStr) {
         // ── Past date already processed by cron ──
         status = dailyRecord.status;
+        // If past date was recorded as ABSENT (or empty), but employee has an approved leave, respect the leave
+        if ((status === 'ABSENT' || !status) && leave) {
+            status = 'ON_LEAVE';
+        } else if ((status === 'ABSENT' || !status) && holiday) {
+            status = 'HOLIDAY';
+        }
         totalHours = Number(dailyRecord.total_hours) || 0;
         firstIn = dailyRecord.first_in || null;
         lastOut = dailyRecord.last_out || null;
@@ -457,11 +463,20 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
     } else {
         // ── No punch records - determine from shift policies ──
         const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
+        const dayIdx = new Date(dateStr + 'T12:00:00').getDay();
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayName = dayNames[dayIdx];
+        const isWorkingSunday = Array.isArray(rules?.working_days || rules?.workingDays)
+            && (rules.working_days || rules.workingDays).includes('Sun');
 
         if (holiday) {
-            // National holidays take precedence over week-off (e.g. holiday on a Sunday)
+            // National / org holidays take precedence over week-off
+            status = 'HOLIDAY';
+        } else if (dayName === 'Sun' && !isWorkingSunday) {
+            // Sunday is statutory / standard weekly Holiday unless shift explicitly mandates working on Sundays
             status = 'HOLIDAY';
         } else if (dayType === 'week_off') {
+            // Week Off is used when a shift policy designates days off (e.g. Saturday or scheduled weekday off)
             status = 'WEEK_OFF';
         } else if (leave) {
             status = 'ON_LEAVE';
@@ -527,30 +542,35 @@ export function resolveNoShowStatus({ dateStr, rules, holiday, leave }) {
     let status = 'ABSENT';
     let remarks = 'No show';
 
-    const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
+    const dayType = ShiftService.getDayType(dateStr, rules?.week_off_policy);
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const dayName = dayNames[new Date(dateStr).getDay()];
+    const dayIdx = new Date(dateStr + 'T12:00:00').getDay();
+    const dayName = dayNames[dayIdx];
+    const isWorkingSunday = Array.isArray(rules?.working_days || rules?.workingDays)
+        && (rules.working_days || rules.workingDays).includes('Sun');
 
     // 1. Holiday takes highest priority (overrides even week-off)
     if (holiday) {
-        return { status: 'HOLIDAY', remarks: holiday.holiday_name };
+        return { status: 'HOLIDAY', remarks: holiday.holiday_name || 'Organization Holiday' };
     }
 
-    // 2. Week-off policy
+    // 2. Sunday is classified under Holiday (not Week Off)
+    if (dayName === 'Sun' && !isWorkingSunday) {
+        return { status: 'HOLIDAY', remarks: 'Sunday - Holiday' };
+    }
+
+    // 3. Shift Week-off policy (for Saturday or scheduled weekdays off)
     if (dayType === 'week_off') {
-        if (dayName === 'Sun') {
-            return { status: 'HOLIDAY', remarks: 'Sunday - Holiday' };
-        }
         return { status: 'WEEK_OFF', remarks: `${dayName} - Weekly Off` };
     }
 
-    // 3. Half-day week-off - employee was still expected; treat as absent
+    // 4. Half-day week-off - employee was still expected; treat as absent
     if (dayType === 'half_day') {
         status = 'ABSENT';
         remarks = `${dayName} - Half Day (No show)`;
     }
 
-    // 4. Approved leave (only overrides ABSENT, not WEEK_OFF / HOLIDAY)
+    // 5. Approved leave (only overrides ABSENT, not WEEK_OFF / HOLIDAY)
     if (status === 'ABSENT' && leave) {
         return { status: 'LEAVE', remarks: `${leave.leave_type} (${leave.pay_type})` };
     }
@@ -640,7 +660,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
         attendanceDB('leave_request as lr')
             .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
             .select('lr.*', 'lpr.name as leave_type')
-            .where('lr.status', 'Approved')
+            .whereRaw('LOWER(lr.status) = ?', ['approved'])
             .where('lr.start_date', '<=', date_to)
             .where('lr.end_date', '>=', date_from)
             .modify(qb => {
