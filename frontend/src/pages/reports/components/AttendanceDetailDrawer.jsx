@@ -70,8 +70,20 @@ const AttendanceDetailDrawer = ({
                                     {selectedRecord.designation && (
                                         <p className="text-xs font-normal text-slate-400 dark:text-github-dark-muted mt-0.5">{selectedRecord.designation} · {selectedRecord.department}</p>
                                     )}
-                                    <div className={`mt-3 inline-flex items-center px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-full border shadow-xs ${getStatusColor(displayStatus)}`}>
-                                        {displayStatus}
+                                    <div className="mt-3 flex items-center justify-center gap-1.5 flex-wrap">
+                                        <div className={`inline-flex items-center px-3 py-1 text-[10px] font-medium uppercase tracking-wider rounded-full border shadow-xs ${getStatusColor(displayStatus)}`}>
+                                            {displayStatus}
+                                        </div>
+                                        {selectedRecord.overtime_hours > 0 && displayStatus !== 'Overtime' && (
+                                            <span className="inline-flex items-center px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider rounded-full border shadow-xs bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-300 border-purple-200 dark:border-purple-800">
+                                                Overtime ({selectedRecord.overtime_hours}h)
+                                            </span>
+                                        )}
+                                        {selectedRecord.late_minutes > 0 && displayStatus !== 'Late' && (
+                                            <span className="inline-flex items-center px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider rounded-full border shadow-xs bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+                                                Late ({selectedRecord.late_minutes}m)
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -102,14 +114,14 @@ const AttendanceDetailDrawer = ({
                                         ))}
                                     </div>
 
-                                    {/* Work Hours vs Required + Late Mins */}
-                                    <div className="grid grid-cols-2 gap-4">
+                                    {/* Work Hours vs Required + Late Mins + Overtime */}
+                                    <div className={`grid ${selectedRecord.overtime_hours > 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
                                         <div className="bg-slate-50/50 dark:bg-github-dark-subtle/40 p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border/50 group hover:border-indigo-500/30 transition-colors">
-                                            <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1.5 opacity-80">Work Hrs / Req Hrs</span>
+                                            <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1.5 opacity-80">Work / Req</span>
                                             <span className="text-sm font-semibold text-slate-700 dark:text-github-dark-text">
                                                 {selectedRecord.worked_hours != null ? selectedRecord.worked_hours.toFixed(2) : '0.00'}
                                                 <span className="text-slate-400 font-normal mx-1">/</span>
-                                                {selectedRecord.required_hours != null ? selectedRecord.required_hours.toFixed(2) : '0.00'} hrs
+                                                {selectedRecord.required_hours != null ? selectedRecord.required_hours.toFixed(2) : '0.00'}h
                                             </span>
                                             {selectedRecord.worked_hours != null && selectedRecord.required_hours != null && selectedRecord.required_hours > 0 && (
                                                 <div className="mt-2 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -123,19 +135,28 @@ const AttendanceDetailDrawer = ({
                                         <div className={`p-4 rounded-2xl border transition-colors ${selectedRecord.late_minutes > 0 ? 'bg-amber-50/60 dark:bg-amber-950/15 border-amber-200/50 dark:border-amber-800/20 hover:border-amber-400/40' : 'bg-slate-50/50 dark:bg-github-dark-subtle/40 border-slate-100 dark:border-github-dark-border/50 hover:border-indigo-500/30'}`}>
                                             <span className="block text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-80 text-slate-400">Late Mins</span>
                                             <span className={`text-sm font-semibold ${selectedRecord.late_minutes > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-github-dark-text'}`}>
-                                                {selectedRecord.late_minutes != null ? `${selectedRecord.late_minutes} min` : '0 min'}
+                                                {selectedRecord.late_minutes != null ? `${selectedRecord.late_minutes}m` : '0m'}
                                             </span>
                                             {selectedRecord.late_minutes > 0 && (
                                                 <>
                                                     <span className="block text-[9px] text-amber-500 font-medium mt-1">Arrived late</span>
                                                     {selectedRecord.late_reason && selectedRecord.late_reason !== '-' && (
                                                         <span className="block text-[9px] text-slate-500 dark:text-github-dark-muted font-normal mt-1 leading-snug">
-                                                            Message: <span className="italic">"{selectedRecord.late_reason}"</span>
+                                                            "{selectedRecord.late_reason}"
                                                         </span>
                                                     )}
                                                 </>
                                             )}
                                         </div>
+                                        {selectedRecord.overtime_hours > 0 && (
+                                            <div className="bg-purple-50/60 dark:bg-purple-950/15 p-4 rounded-2xl border border-purple-200/50 dark:border-purple-800/20">
+                                                <span className="block text-[10px] font-medium uppercase tracking-wider mb-1.5 opacity-80 text-purple-600 dark:text-purple-400">Overtime</span>
+                                                <span className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                                                    {selectedRecord.overtime_hours}h
+                                                </span>
+                                                <span className="block text-[9px] text-purple-500 font-medium mt-1">Extra worked</span>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Punch Locations */}

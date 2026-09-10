@@ -403,6 +403,8 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
     let lateReason = '';
     let overtimeHours = 0;
 
+    const graceMins = Number(rules?.grace_period?.minutes || 0);
+
     if (dailyRecord && dateStr < todayStr) {
         // ── Past date already processed by cron ──
         status = dailyRecord.status;
@@ -416,9 +418,26 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         firstIn = dailyRecord.first_in || null;
         lastOut = dailyRecord.last_out || null;
         overtimeHours = Number(dailyRecord.overtime_hours) || 0;
-        if (dayRecords.length > 0) {
-            lateMinutes = dayRecords[0].late_minutes || 0;
-            lateReason = dayRecords[0].late_reason || '';
+        
+        lateMinutes = Number(dailyRecord.late_minutes || 0);
+        if (!lateMinutes && dayRecords.length > 0) {
+            lateMinutes = Number(dayRecords[0].late_minutes || 0);
+        }
+        if (!lateMinutes && firstIn && rules) {
+            const lateCheck = calculateLateArrival(firstIn, rules);
+            if (lateCheck.isLate) {
+                lateMinutes = lateCheck.minutesLate;
+            }
+        }
+        lateReason = (dayRecords.length > 0 ? dayRecords[0].late_reason : '') || dailyRecord.late_reason || '';
+
+        // If stored as PRESENT, check if overtime or late according to shift rules
+        if (status === 'PRESENT' || status === 'present') {
+            if (overtimeHours > 0) {
+                status = 'OVERTIME';
+            } else if (lateMinutes > graceMins) {
+                status = 'LATE';
+            }
         }
     } else if (dayRecords.length > 0) {
         // ── Has punch records - derive status dynamically ──
@@ -439,11 +458,21 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
 
         firstIn = dayRecords[0].time_in;
         lastOut = dayRecords[dayRecords.length - 1].time_out;
-        lateMinutes = dayRecords[0].late_minutes || 0;
-        lateReason = dayRecords[0].late_reason || '';
-        overtimeHours = calculateOvertime(totalHours, rules);
 
-        const graceMins = Number(rules.grace_period?.minutes || 0);
+        // Calculate dynamic late arrival from firstIn and shift rules
+        let dynamicLateMinutes = 0;
+        if (firstIn && rules) {
+            const lateCheck = calculateLateArrival(firstIn, rules);
+            if (lateCheck.isLate) {
+                dynamicLateMinutes = lateCheck.minutesLate;
+            }
+        }
+
+        lateMinutes = Number(dailyRecord?.late_minutes || 0) || dynamicLateMinutes || Number(dayRecords[0].late_minutes || 0);
+        lateReason = dayRecords[0].late_reason || dailyRecord?.late_reason || '';
+
+        const calculatedOT = calculateOvertime(totalHours, rules);
+        overtimeHours = Math.max(calculatedOT, Number(dailyRecord?.overtime_hours || 0));
 
         if (hasOpenSession) {
             status = lateMinutes > graceMins ? 'Late Active' : 'Active';
@@ -509,6 +538,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         late_minutes: lateMinutes,
         late_reason: lateReason,
         overtime_hours: overtimeHours,
+        overtime_minutes: Math.round(overtimeHours * 60),
         expected_hours: expectedHours
     };
 }
@@ -686,8 +716,14 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
             punchesByUser[p.user_id].push(p);
         }
 
+        const userMap = {};
+        for (const u of users) userMap[u.user_id] = u;
+        const firstPunchSeenByDay = {};
+
         for (const uid of Object.keys(punchesByUser)) {
             const uPunches = punchesByUser[uid];
+            const userObj = userMap[uid];
+            const userRules = userObj ? ShiftService.getShiftRules(userObj) : null;
             let i = 0;
             while (i < uPunches.length) {
                 const inP = uPunches[i];
@@ -730,6 +766,17 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                     const timeInLocal = toPlainIso(inP.punch_time);
                     const timeOutLocal = outP?.punch_time ? toPlainIso(outP.punch_time) : null;
 
+                    const userDayKey = `${uid}_${ds}`;
+                    let lateMins = Number(inMeta.late_minutes || 0);
+                    let lateReason = inMeta.late_reason || null;
+                    if (!lateMins && !firstPunchSeenByDay[userDayKey] && userRules) {
+                        const lateCheck = calculateLateArrival(inP.punch_time, userRules);
+                        if (lateCheck.isLate) {
+                            lateMins = lateCheck.minutesLate;
+                        }
+                    }
+                    firstPunchSeenByDay[userDayKey] = true;
+
                     const session = {
                         attendance_id: inP.id,
                         user_id: inP.user_id,
@@ -743,8 +790,8 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                         time_out_address: (outLoc.address && outLoc.address !== 'Locating...' && outLoc.address !== 'Pending...') ? outLoc.address : null,
                         time_in_image_key: inMeta.image_key || null,
                         time_out_image_key: outMeta.image_key || null,
-                        late_minutes: inMeta.late_minutes || 0,
-                        late_reason: inMeta.late_reason || null,
+                        late_minutes: lateMins,
+                        late_reason: lateReason,
                         status: sessionStatus,
                         metadata: JSON.stringify({
                             time_in: { timezone: inMeta.timezone || 'Asia/Kolkata' },

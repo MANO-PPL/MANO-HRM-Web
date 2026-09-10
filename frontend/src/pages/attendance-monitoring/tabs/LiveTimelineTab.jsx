@@ -76,10 +76,24 @@ const LiveTimelineTab = ({
                                                 </div>
                                                 <div className="min-w-0">
                                                     <p className="font-medium text-sm text-slate-800 dark:text-github-dark-text truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{item.name}</p>
-                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30'}`}>
-                                                            {item.status ? item.status.split(' ')[0] : 'Unknown'}
-                                                        </span>
+                                                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                                        {item.allStatuses && item.allStatuses.length > 0 ? (
+                                                            item.allStatuses.map(s => (
+                                                                <span key={s} className={`text-[9px] font-medium px-1.5 py-0.5 rounded border ${
+                                                                    s === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle border-slate-200 dark:border-slate-700' :
+                                                                    s === 'Active' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border-blue-100 dark:border-blue-800/30' :
+                                                                    s === 'Late' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border-amber-200 dark:border-amber-800/30' :
+                                                                    s === 'Overtime' ? 'bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400 border-violet-200 dark:border-violet-800/30' :
+                                                                    'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/30'
+                                                                }`}>
+                                                                    {s}
+                                                                </span>
+                                                            ))
+                                                        ) : (
+                                                            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30'}`}>
+                                                                {item.status ? item.status.split(' ')[0] : 'Unknown'}
+                                                            </span>
+                                                        )}
 
                                                         <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-mono font-normal">
                                                             {item.totalHours ? (String(item.totalHours).toLowerCase().includes('hr') || String(item.totalHours).toLowerCase().includes('min') || String(item.totalHours) === '-' ? String(item.totalHours) : `${item.totalHours} Hrs`) : '-'}

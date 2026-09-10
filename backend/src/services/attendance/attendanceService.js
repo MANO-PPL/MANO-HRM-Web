@@ -214,7 +214,7 @@ export async function processTimeOut(context) {
  */
 export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
   try {
-    const { skipPayroll, ...dbOverrides } = overrides;
+    const { skipPayroll, v2Only, ...dbOverrides } = overrides;
     const sanitizedDate = dateStr.split('T')[0];
 
     // Calculate next date for overnight out-punch matching
@@ -285,16 +285,18 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
           });
       }
 
-      const existing = await attendanceDB("attn_daily_summary")
-        .where({ user_id, date: sanitizedDate })
-        .first();
-      if (existing) {
-        await attendanceDB("attn_daily_summary")
+      if (!v2Only) {
+        const existing = await attendanceDB("attn_daily_summary")
           .where({ user_id, date: sanitizedDate })
-          .update({
-            first_in: null, last_out: null, total_hours: 0, late_minutes: 0, overtime_hours: 0,
-            status: defaultStatus, updated_at: attendanceDB.fn.now(), ...legacyOverrides
-          });
+          .first();
+        if (existing) {
+          await attendanceDB("attn_daily_summary")
+            .where({ user_id, date: sanitizedDate })
+            .update({
+              first_in: null, last_out: null, total_hours: 0, late_minutes: 0, overtime_hours: 0,
+              status: defaultStatus, updated_at: attendanceDB.fn.now(), ...legacyOverrides
+            });
+        }
       }
       return;
     }
@@ -400,40 +402,42 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       throw v2Err;
     }
 
-    // Also sync legacy attn_daily_summary if it exists
-    const firstIn = sessions.length > 0 ? sessions[0].in_punch : null;
-    const lastOut = sessions.length > 0 && sessions[sessions.length - 1].out_punch ? sessions[sessions.length - 1].out_punch : null;
-    const summaryDataLegacy = {
-      first_in: firstIn ? getTimeStr(firstIn.punch_time) : null,
-      last_out: lastOut ? getTimeStr(lastOut.punch_time) : null,
-      total_hours: totalHours,
-      late_minutes: lateMinutes,
-      late_reason: lateReason,
-      overtime_hours: overtimeHours,
-      status: finalStatus,
-      shift_id: shift ? shift.shift_id : null,
-      updated_at: attendanceDB.fn.now(),
-      ...legacyOverrides
-    };
+    // Also sync legacy attn_daily_summary if it exists and v2Only is false
+    if (!v2Only) {
+      const firstIn = sessions.length > 0 ? sessions[0].in_punch : null;
+      const lastOut = sessions.length > 0 && sessions[sessions.length - 1].out_punch ? sessions[sessions.length - 1].out_punch : null;
+      const summaryDataLegacy = {
+        first_in: firstIn ? getTimeStr(firstIn.punch_time) : null,
+        last_out: lastOut ? getTimeStr(lastOut.punch_time) : null,
+        total_hours: totalHours,
+        late_minutes: lateMinutes,
+        late_reason: lateReason,
+        overtime_hours: overtimeHours,
+        status: finalStatus,
+        shift_id: shift ? shift.shift_id : null,
+        updated_at: attendanceDB.fn.now(),
+        ...legacyOverrides
+      };
 
-    try {
-      const existingLegacy = await attendanceDB("attn_daily_summary")
-        .where({ user_id, date: sanitizedDate })
-        .first();
-
-      if (existingLegacy) {
-        await attendanceDB("attn_daily_summary")
+      try {
+        const existingLegacy = await attendanceDB("attn_daily_summary")
           .where({ user_id, date: sanitizedDate })
-          .update(summaryDataLegacy);
-      } else {
-        await attendanceDB("attn_daily_summary").insert({
-          user_id,
-          date: sanitizedDate,
-          ...summaryDataLegacy,
-          created_at: attendanceDB.fn.now()
-        });
-      }
-    } catch (_) {}
+          .first();
+
+        if (existingLegacy) {
+          await attendanceDB("attn_daily_summary")
+            .where({ user_id, date: sanitizedDate })
+            .update(summaryDataLegacy);
+        } else {
+          await attendanceDB("attn_daily_summary").insert({
+            user_id,
+            date: sanitizedDate,
+            ...summaryDataLegacy,
+            created_at: attendanceDB.fn.now()
+          });
+        }
+      } catch (_) {}
+    }
 
     // 10. Trigger payroll recalculation
     if (!skipPayroll) {

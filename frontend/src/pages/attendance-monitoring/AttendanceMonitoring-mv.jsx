@@ -7,7 +7,7 @@ import {
     ChevronDown, FileText, CheckCircle, XCircle, AlertCircle, X, LogIn,
     LogOut, History, PieChart as PieChartIcon, BarChart as BarChartIcon,
     RefreshCcw, MoreVertical, LayoutGrid, ArrowRight, Eye, Info,
-    ChevronRight, ChevronLeft, Map, Camera, Users, Check, Briefcase
+    ChevronRight, ChevronLeft, Map, Camera, Users, Check, Briefcase, TrendingUp
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
@@ -182,18 +182,38 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
             ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : 'N/A')
             : 'N/A';
 
-        // Recreate allStatuses to retain compatibility with stats counts
+        const userLateMinutes = Number(u.late_minutes || 0);
+        const userOvertimeHours = Number(u.overtime_hours || 0);
+        const userOvertimeMinutes = Number(u.overtime_minutes || Math.round(userOvertimeHours * 60));
+
+        const isLate = userLateMinutes > 0 || (u.status && String(u.status).toLowerCase().includes('late')) || sessions.some(s => s.isLate || s.lateMinutes > 0);
+        const isOvertime = userOvertimeHours > 0 || userOvertimeMinutes > 0 || (u.status && String(u.status).toLowerCase().includes('overtime'));
+
+        // Dynamic multi-status badges to support simultaneous Active/Present, Late, and Overtime
         let allStatuses = [];
-        if (status === 'Late Active') { allStatuses.push('Active', 'Late'); }
-        else if (status === 'Active') { allStatuses.push('Active'); }
-        else if (status === 'Present') { allStatuses.push('Present'); }
-        else if (status === 'Late') { allStatuses.push('Present', 'Late'); }
-        else if (status === 'Overtime') { allStatuses.push('Present', 'Overtime'); }
-        else if (status === 'Missed Punch') { allStatuses.push('Missed Punch'); }
-        else if (status === 'Week Off') { allStatuses.push('Week Off'); }
-        else if (status === 'Holiday') { allStatuses.push('Holiday'); }
-        else if (status === 'Leave' || status === 'On Leave' || status === 'ON_LEAVE') { allStatuses.push('Leave'); }
-        else { allStatuses.push('Absent'); }
+        const isNonWorking = ['Absent', 'Week Off', 'Holiday', 'Leave'].includes(status);
+
+        if (status === 'Late Active' || status === 'Active' || (sessions.some(s => s.isActive) && !isNonWorking)) {
+            allStatuses.push('Active');
+            if (isLate && !allStatuses.includes('Late')) allStatuses.push('Late');
+            if (isOvertime && !allStatuses.includes('Overtime')) allStatuses.push('Overtime');
+        } else if (status === 'Missed Punch') {
+            allStatuses.push('Missed Punch');
+            if (isLate && !allStatuses.includes('Late')) allStatuses.push('Late');
+            if (isOvertime && !allStatuses.includes('Overtime')) allStatuses.push('Overtime');
+        } else if (status === 'Week Off') {
+            allStatuses.push('Week Off');
+        } else if (status === 'Holiday') {
+            allStatuses.push('Holiday');
+        } else if (status === 'Leave' || status === 'On Leave' || status === 'ON_LEAVE') {
+            allStatuses.push('Leave');
+        } else if (status === 'Absent') {
+            allStatuses.push('Absent');
+        } else {
+            allStatuses.push('Present');
+            if (isLate && !allStatuses.includes('Late')) allStatuses.push('Late');
+            if (isOvertime && !allStatuses.includes('Overtime')) allStatuses.push('Overtime');
+        }
 
         return {
             id: u.user_id,
@@ -207,7 +227,12 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
             allStatuses,
             totalHours: totalHrs,
             location: lastLocation,
-            lateReason: u.late_reason || u.lateReason || sessions.find(s => s.lateReason)?.lateReason || ''
+            lateReason: u.late_reason || u.lateReason || sessions.find(s => s.lateReason)?.lateReason || '',
+            lateMinutes: userLateMinutes || (sessions.find(s => s.lateMinutes > 0)?.lateMinutes || 0),
+            overtimeHours: userOvertimeHours,
+            overtimeMinutes: userOvertimeMinutes,
+            isLate,
+            isOvertime
         };
     });
 
@@ -295,13 +320,14 @@ const MobileAttendanceMonitoring = () => {
             const merged = processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC', initialDate);
             return {
                 present: merged.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
-                late: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : d.status.includes('Late')).length,
+                late: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : (d.status.includes('Late') || d.isLate)).length,
+                overtime: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Overtime') : (d.status.includes('Overtime') || d.isOvertime)).length,
                 absent: merged.filter(d => d.status === 'Absent').length,
                 active: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
                 total: merged.length
             };
         }
-        return { present: 0, late: 0, absent: 0, active: 0, total: 0 };
+        return { present: 0, late: 0, overtime: 0, absent: 0, active: 0, total: 0 };
     });
     const [correctionRequests, setCorrectionRequests] = useState([]);
     const [requestCount, setRequestCount] = useState(0);
@@ -471,7 +497,8 @@ const MobileAttendanceMonitoring = () => {
             setAttendanceData(mergedData);
             setStats({
                 present: mergedData.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
-                late: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : d.status.includes('Late')).length,
+                late: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : (d.status.includes('Late') || d.isLate)).length,
+                overtime: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Overtime') : (d.status.includes('Overtime') || d.isOvertime)).length,
                 absent: mergedData.filter(d => d.status === 'Absent').length,
                 active: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
                 total: mergedData.length
@@ -613,7 +640,9 @@ const MobileAttendanceMonitoring = () => {
         if (statusFilter === 'present') {
             matchesStatus = e.status !== 'Absent' && e.status !== 'Week Off' && e.status !== 'Holiday' && e.status !== 'Leave';
         } else if (statusFilter === 'late') {
-            matchesStatus = e.allStatuses ? e.allStatuses.includes('Late') : e.status.includes('Late');
+            matchesStatus = e.allStatuses ? e.allStatuses.includes('Late') : (e.status.includes('Late') || e.isLate);
+        } else if (statusFilter === 'overtime') {
+            matchesStatus = e.allStatuses ? e.allStatuses.includes('Overtime') : (e.status.includes('Overtime') || e.isOvertime);
         } else if (statusFilter === 'absent') {
             matchesStatus = e.status === 'Absent';
         } else if (statusFilter === 'active') {
@@ -762,7 +791,7 @@ const MobileAttendanceMonitoring = () => {
                                     onClick={() => setStatusFilter('All')}
                                     className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/20 rounded text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-500/30 transition-colors"
                                 >
-                                    <span>{statusFilter === 'total' ? 'Total' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Active' : statusFilter}</span>
+                                    <span>{statusFilter === 'total' ? 'Total' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late' : statusFilter === 'overtime' ? 'Overtime' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Active' : statusFilter}</span>
                                     <span>×</span>
                                 </button>
                             )}
@@ -977,8 +1006,11 @@ const MobileAttendanceMonitoring = () => {
                                                 </div>
                                                 <CompactStatCard label="Present" value={stats.present} color="emerald" icon={UserCheck} isSelected={statusFilter === 'present'} onClick={() => setStatusFilter(statusFilter === 'present' ? 'All' : 'present')} />
                                                 <CompactStatCard label="Late" value={stats.late} color="amber" icon={Clock} isSelected={statusFilter === 'late'} onClick={() => setStatusFilter(statusFilter === 'late' ? 'All' : 'late')} />
+                                                <CompactStatCard label="Overtime" value={stats.overtime} color="violet" icon={TrendingUp} isSelected={statusFilter === 'overtime'} onClick={() => setStatusFilter(statusFilter === 'overtime' ? 'All' : 'overtime')} />
                                                 <CompactStatCard label="Active" value={stats.active} color="blue" icon={Activity} isSelected={statusFilter === 'active'} onClick={() => setStatusFilter(statusFilter === 'active' ? 'All' : 'active')} />
-                                                <CompactStatCard label="Absent" value={stats.absent} color="rose" icon={UserX} isSelected={statusFilter === 'absent'} onClick={() => setStatusFilter(statusFilter === 'absent' ? 'All' : 'absent')} />
+                                                <div className="col-span-2">
+                                                    <CompactStatCard label="Absent" value={stats.absent} color="rose" icon={UserX} isSelected={statusFilter === 'absent'} onClick={() => setStatusFilter(statusFilter === 'absent' ? 'All' : 'absent')} />
+                                                </div>
                                             </div>
 
                                             {/* List Section */}
@@ -1371,6 +1403,7 @@ const CompactStatCard = ({ label, value, color, icon: Icon, isSelected, onClick 
     const colors = {
         emerald: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600',
         amber: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600',
+        violet: 'bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400',
         rose: 'bg-rose-50 dark:bg-rose-500/10 text-rose-600',
         blue: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600',
         indigo: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
@@ -1412,18 +1445,36 @@ const CompactEmployeeCard = ({ employee, onClick, avatarTimestamp }) => {
             <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-center mb-0.5">
                     <h4 className="font-black text-[13px] text-slate-800 dark:text-white truncate pr-2 leading-none">{employee.name}</h4>
-                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${employee.status.includes('Active') ? 'bg-indigo-100 text-indigo-600 animate-pulse' :
-                        employee.status.includes('Late') ? 'bg-amber-100 text-amber-600' :
-                            employee.status === 'Present' ? 'bg-emerald-100 text-emerald-600' :
+                    <div className="flex items-center gap-1 flex-wrap justify-end">
+                        {employee.allStatuses && employee.allStatuses.length > 0 ? (
+                            employee.allStatuses.map(s => (
+                                <span key={s} className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                    s.includes('Active') ? 'bg-indigo-100 text-indigo-600 animate-pulse' :
+                                    s.includes('Late') ? 'bg-amber-100 text-amber-600' :
+                                    s === 'Present' ? 'bg-emerald-100 text-emerald-600' :
+                                    s === 'Overtime' ? 'bg-purple-100 text-purple-600' :
+                                    s === 'Missed Punch' ? 'bg-rose-100 text-rose-600' :
+                                    s === 'Week Off' ? 'bg-slate-100 text-slate-500 border border-dashed border-slate-200' :
+                                    s === 'Holiday' ? 'bg-sky-50 text-sky-600 border border-sky-100' :
+                                    s === 'Leave' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
+                                    'bg-slate-100 text-slate-500'
+                                }`}>
+                                    {s}
+                                </span>
+                            ))
+                        ) : (
+                            <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                employee.status.includes('Active') ? 'bg-indigo-100 text-indigo-600 animate-pulse' :
+                                employee.status.includes('Late') ? 'bg-amber-100 text-amber-600' :
+                                employee.status === 'Present' ? 'bg-emerald-100 text-emerald-600' :
                                 employee.status === 'Overtime' ? 'bg-purple-100 text-purple-600' :
-                                    employee.status === 'Missed Punch' ? 'bg-rose-100 text-rose-600' :
-                                        employee.status === 'Week Off' ? 'bg-slate-100 text-slate-500 border border-dashed border-slate-200' :
-                                            employee.status === 'Holiday' ? 'bg-sky-50 text-sky-600 border border-sky-100' :
-                                                employee.status === 'Leave' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
-                                                    'bg-slate-100 text-slate-500'
-                        }`}>
-                        {employee.status}
-                    </span>
+                                employee.status === 'Missed Punch' ? 'bg-rose-100 text-rose-600' :
+                                'bg-slate-100 text-slate-500'
+                            }`}>
+                                {employee.status}
+                            </span>
+                        )}
+                    </div>
                 </div>
                 <p className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-tighter truncate leading-none mb-2">{employee.role} • {employee.department}</p>
 
@@ -1488,13 +1539,24 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                     </div>
                 </div>
 
-                {employee.status.includes('Late') && (
+                {((employee.allStatuses && employee.allStatuses.includes('Late')) || (employee.lateMinutes > 0) || employee.status.includes('Late')) && (
                     <div className="p-3 mb-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
                         <h5 className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-500 tracking-widest mb-1 flex items-center gap-1.5">
-                            <AlertCircle size={10} /> Late Reason
+                            <AlertCircle size={10} /> Late Reason {employee.lateMinutes > 0 ? `(${employee.lateMinutes} mins)` : ''}
                         </h5>
                         <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">
                             {employee.lateReason ? `"${employee.lateReason}"` : "No reason provided."}
+                        </p>
+                    </div>
+                )}
+
+                {((employee.allStatuses && employee.allStatuses.includes('Overtime')) || (employee.overtimeHours > 0) || employee.status.includes('Overtime')) && (
+                    <div className="p-3 mb-6 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                        <h5 className="text-[9px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-widest mb-1 flex items-center gap-1.5">
+                            <TrendingUp size={10} /> Overtime Worked
+                        </h5>
+                        <p className="text-xs text-purple-800 dark:text-purple-200 leading-relaxed">
+                            {employee.overtimeHours ? `${employee.overtimeHours} hrs overtime` : 'Overtime detected according to shift policy.'}
                         </p>
                     </div>
                 )}

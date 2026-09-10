@@ -40,7 +40,8 @@ import {
     Paperclip,
     Eye,
     Edit3,
-    ArrowRight
+    ArrowRight,
+    TrendingUp
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
@@ -214,18 +215,38 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
             ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : 'N/A')
             : 'N/A';
 
-        // Recreate allStatuses to retain compatibility with stats counts
+        const userLateMinutes = Number(u.late_minutes || 0);
+        const userOvertimeHours = Number(u.overtime_hours || 0);
+        const userOvertimeMinutes = Number(u.overtime_minutes || Math.round(userOvertimeHours * 60));
+
+        const isLate = userLateMinutes > 0 || (u.status && String(u.status).toLowerCase().includes('late')) || sessions.some(s => s.isLate || s.lateMinutes > 0);
+        const isOvertime = userOvertimeHours > 0 || userOvertimeMinutes > 0 || (u.status && String(u.status).toLowerCase().includes('overtime'));
+
+        // Dynamic multi-status badges to support simultaneous Active/Present, Late, and Overtime
         let allStatuses = [];
-        if (status === 'Late Active') { allStatuses.push('Active', 'Late'); }
-        else if (status === 'Active') { allStatuses.push('Active'); }
-        else if (status === 'Present') { allStatuses.push('Present'); }
-        else if (status === 'Late') { allStatuses.push('Present', 'Late'); }
-        else if (status === 'Overtime') { allStatuses.push('Present', 'Overtime'); }
-        else if (status === 'Missed Punch') { allStatuses.push('Missed Punch'); }
-        else if (status === 'Week Off') { allStatuses.push('Week Off'); }
-        else if (status === 'Holiday') { allStatuses.push('Holiday'); }
-        else if (status === 'Leave' || status === 'On Leave' || status === 'ON_LEAVE') { allStatuses.push('Leave'); }
-        else { allStatuses.push('Absent'); }
+        const isNonWorking = ['Absent', 'Week Off', 'Holiday', 'Leave'].includes(status);
+
+        if (status === 'Late Active' || status === 'Active' || (sessions.some(s => s.isActive) && !isNonWorking)) {
+            allStatuses.push('Active');
+            if (isLate && !allStatuses.includes('Late')) allStatuses.push('Late');
+            if (isOvertime && !allStatuses.includes('Overtime')) allStatuses.push('Overtime');
+        } else if (status === 'Missed Punch') {
+            allStatuses.push('Missed Punch');
+            if (isLate && !allStatuses.includes('Late')) allStatuses.push('Late');
+            if (isOvertime && !allStatuses.includes('Overtime')) allStatuses.push('Overtime');
+        } else if (status === 'Week Off') {
+            allStatuses.push('Week Off');
+        } else if (status === 'Holiday') {
+            allStatuses.push('Holiday');
+        } else if (status === 'Leave' || status === 'On Leave' || status === 'ON_LEAVE') {
+            allStatuses.push('Leave');
+        } else if (status === 'Absent') {
+            allStatuses.push('Absent');
+        } else {
+            allStatuses.push('Present');
+            if (isLate && !allStatuses.includes('Late')) allStatuses.push('Late');
+            if (isOvertime && !allStatuses.includes('Overtime')) allStatuses.push('Overtime');
+        }
 
         return {
             id: u.user_id,
@@ -240,7 +261,12 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
             totalHours: totalHrs,
             expectedHours: expectedHrs,
             location: lastLocation,
-            lateReason: u.late_reason || u.lateReason || sessions.find(s => s.lateReason)?.lateReason || ''
+            lateReason: u.late_reason || u.lateReason || sessions.find(s => s.lateReason)?.lateReason || '',
+            lateMinutes: userLateMinutes || (sessions.find(s => s.lateMinutes > 0)?.lateMinutes || 0),
+            overtimeHours: userOvertimeHours,
+            overtimeMinutes: userOvertimeMinutes,
+            isLate,
+            isOvertime
         };
     });
 
@@ -356,7 +382,8 @@ const AttendanceMonitoring = () => {
             const merged = processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC', initialDate);
             return {
                 present: merged.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
-                late: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : d.status.includes('Late')).length,
+                late: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : (d.status.includes('Late') || d.isLate)).length,
+                overtime: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Overtime') : (d.status.includes('Overtime') || d.isOvertime)).length,
                 absent: merged.filter(d => d.status === 'Absent').length,
                 active: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
                 total: merged.length
@@ -365,6 +392,7 @@ const AttendanceMonitoring = () => {
         return {
             present: 0,
             late: 0,
+            overtime: 0,
             absent: 0,
             active: 0,
             total: 0
@@ -746,7 +774,8 @@ const AttendanceMonitoring = () => {
             // 3. Calculate Stats precisely from merged data for consistency
             setStats({
                 present: mergedData.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
-                late: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : d.status.includes('Late')).length,
+                late: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : (d.status.includes('Late') || d.isLate)).length,
+                overtime: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Overtime') : (d.status.includes('Overtime') || d.isOvertime)).length,
                 absent: mergedData.filter(d => d.status === 'Absent').length,
                 active: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
                 total: mergedData.length
@@ -914,6 +943,7 @@ const AttendanceMonitoring = () => {
         { id: 'total', label: 'Total Employees', value: stats.total, icon: <Users size={20} />, bg: 'bg-indigo-50 dark:bg-indigo-500/10', color: 'text-indigo-600 dark:text-indigo-400' },
         { id: 'present', label: 'Total Present', value: stats.present, icon: <UserCheck size={20} />, bg: 'bg-emerald-50 dark:bg-emerald-500/10', color: 'text-emerald-600 dark:text-emerald-400' },
         { id: 'late', label: 'Late Arrivals', value: stats.late, icon: <Clock size={20} />, bg: 'bg-amber-50 dark:bg-amber-500/10', color: 'text-amber-600 dark:text-amber-400' },
+        { id: 'overtime', label: 'Overtime', value: stats.overtime, icon: <TrendingUp size={20} />, bg: 'bg-violet-50 dark:bg-violet-500/10', color: 'text-violet-600 dark:text-violet-400' },
         { id: 'absent', label: 'Absent', value: stats.absent, icon: <UserX size={20} />, bg: 'bg-rose-50 dark:bg-rose-500/10', color: 'text-rose-600 dark:text-rose-400' },
         { id: 'active', label: 'Currently Active', value: stats.active, icon: <Activity size={20} />, bg: 'bg-blue-50 dark:bg-blue-500/10', color: 'text-blue-600 dark:text-blue-400' },
     ];
@@ -929,7 +959,9 @@ const AttendanceMonitoring = () => {
         if (statusFilter === 'present') {
             matchesStatus = item.status !== 'Absent' && item.status !== 'Week Off' && item.status !== 'Holiday' && item.status !== 'Leave';
         } else if (statusFilter === 'late') {
-            matchesStatus = item.allStatuses ? item.allStatuses.includes('Late') : item.status.includes('Late');
+            matchesStatus = item.allStatuses ? item.allStatuses.includes('Late') : (item.status.includes('Late') || item.isLate);
+        } else if (statusFilter === 'overtime') {
+            matchesStatus = item.allStatuses ? item.allStatuses.includes('Overtime') : (item.status.includes('Overtime') || item.isOvertime);
         } else if (statusFilter === 'absent') {
             matchesStatus = item.status === 'Absent';
         } else if (statusFilter === 'active') {
@@ -1367,7 +1399,7 @@ const AttendanceMonitoring = () => {
                                         className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/20 rounded-xl text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/30 transition-colors cursor-pointer"
                                         title="Clear status filter"
                                     >
-                                        <span>Filter: {statusFilter === 'total' ? 'Total Employees' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late Arrivals' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Currently Active' : statusFilter}</span>
+                                        <span>Filter: {statusFilter === 'total' ? 'Total Employees' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late Arrivals' : statusFilter === 'overtime' ? 'Overtime' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Currently Active' : statusFilter}</span>
                                         <span className="text-xs font-normal">×</span>
                                     </button>
                                 )}
@@ -1434,7 +1466,7 @@ const AttendanceMonitoring = () => {
                         {activeTab === 'live' ? (
                             <>
                                 {/* Stats Cards */}
-                                <div data-tour-id="attendance-live-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 shrink-0">
+                                <div data-tour-id="attendance-live-stats" className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 shrink-0">
                                     {statCards.map((stat, index) => {
                                         const isSelected = statusFilter === stat.id;
                                         return (

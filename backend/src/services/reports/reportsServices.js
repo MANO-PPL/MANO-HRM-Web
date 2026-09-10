@@ -2,6 +2,7 @@ import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../s3/s3Service.js';
 import { getShiftRules, getDayType, getExpectedHours } from '../attendance/shiftManagementService.js';
 import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { calculateLateArrival } from '../attendance/statusEvaluationService.js';
 
 export { getShiftRules, getDayType, getExpectedHours };
 
@@ -151,7 +152,7 @@ export const getDateRangeArray = (startDate, endDate) => {
     return dates;
 };
 
-export const calculateOvertime = (totalHours, rules) => {
+export const calculateOvertime = (totalHours, rules, allowHistorical = false) => {
     const timing = rules?.shift_timing || {};
     const [sH, sM] = (timing.start_time || '09:00:00').split(':').map(Number);
     const [eH, eM] = (timing.end_time || '18:00:00').split(':').map(Number);
@@ -162,7 +163,8 @@ export const calculateOvertime = (totalHours, rules) => {
     threshold = Math.max(threshold, expectedHours);
 
     const buffer = Number(rules?.overtime?.buffer ?? 0.5);
-    const isEnabled = rules?.overtime?.enabled !== false;
+    // If allowHistorical is true (e.g. for past dates like August), calculate overtime regardless of current toggle
+    const isEnabled = rules?.overtime?.enabled !== false || allowHistorical;
 
     if (isEnabled && totalHours >= (threshold + buffer)) {
         let overtime = parseFloat((totalHours - threshold).toFixed(2));
@@ -178,7 +180,7 @@ export const calculateOvertime = (totalHours, rules) => {
     return 0;
 };
 
-export const aggregateDayRecords = (dayRecs, userPolicyRules) => {
+export const aggregateDayRecords = (dayRecs, userPolicyRules, customTodayStr) => {
     if (!dayRecs || dayRecs.length === 0) {
         return {
             time_in: null,
@@ -196,14 +198,26 @@ export const aggregateDayRecords = (dayRecs, userPolicyRules) => {
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
 
+    const todayStr = customTodayStr || new Date().toISOString().slice(0, 10);
+    const recDate = getRecordDateStr(first);
+    const isPastDate = recDate && todayStr ? recDate < todayStr : false;
+
     const worked_hours = sorted.reduce((sum, r) => sum + parseFloat(calculateWorkHours(r.time_in, r.time_out)), 0);
-    let effectiveLateMinutes = first.late_minutes || 0;
-    let overtime_hours = 0;
+
+    // Retain original recorded values to ensure historical status/overtime/late are never lost
+    const originalOvertime = sorted.reduce((sum, r) => Math.max(sum, parseFloat(r.overtime_hours || 0)), 0);
+    const originalHasOvertimeStatus = sorted.some(r => String(r.status || '').toUpperCase() === 'OVERTIME');
+    const originalLateMinutes = sorted.reduce((sum, r) => Math.max(sum, Number(r.late_minutes || 0)), 0);
+    const originalHasLateStatus = sorted.some(r => String(r.status || '').toUpperCase().includes('LATE'));
+
+    let effectiveLateMinutes = originalLateMinutes;
+    let overtime_hours = originalOvertime;
 
     let status = "Present";
     const hasLeave = sorted.some(r => r.status === 'ON_LEAVE' || r.status === 'On Leave');
     const hasHalfDay = sorted.some(r => r.status === 'HALF_DAY' || r.status === 'Half Day');
-    const hasMissedPunch = sorted.some(r => r.status === 'MISSED_PUNCH' || r.status === 'missed_punch' || r.status === 'Missed Punch' || (r.time_in && !r.time_out));
+    // Only flag missed punch if it is a past day with missing checkout or explicit MISSED_PUNCH
+    const hasMissedPunch = isPastDate && sorted.some(r => r.status === 'MISSED_PUNCH' || r.status === 'missed_punch' || r.status === 'Missed Punch' || (r.time_in && !r.time_out));
     const hasAbsent = sorted.every(r => r.status === 'ABSENT' || r.status === 'Absent');
 
     if (hasLeave) status = "On Leave";
@@ -212,22 +226,35 @@ export const aggregateDayRecords = (dayRecs, userPolicyRules) => {
     else if (hasAbsent) status = "Absent";
     else {
         let graceMins = 0;
+        let rules = null;
         if (userPolicyRules) {
-            const rules = safeParseRules(userPolicyRules);
+            rules = safeParseRules(userPolicyRules);
             graceMins = Number(rules?.grace_period?.minutes || 0);
-            overtime_hours = calculateOvertime(worked_hours, rules);
-        } else {
-            overtime_hours = sorted.reduce((sum, r) => sum + parseFloat(r.overtime_hours || 0), 0);
+            const calculatedOT = calculateOvertime(worked_hours, rules, isPastDate);
+            overtime_hours = Math.max(originalOvertime, calculatedOT);
+
+            // If late_minutes was 0 in original record, dynamically evaluate against shift start time & grace
+            if (first.time_in && rules?.shift_timing?.start_time) {
+                const lateCheck = calculateLateArrival(first.time_in, rules);
+                if (lateCheck.isLate) {
+                    effectiveLateMinutes = Math.max(effectiveLateMinutes, lateCheck.minutesLate);
+                }
+            }
         }
 
-        // If punch was within the allowed grace period, employee is not late
-        if (effectiveLateMinutes <= graceMins) {
+        // If employee originally had LATE status, ensure effectiveLateMinutes > 0
+        if (originalHasLateStatus && effectiveLateMinutes === 0) {
+            effectiveLateMinutes = graceMins > 0 ? graceMins + 1 : 1;
+        }
+
+        // If punch was within the allowed grace period and not explicitly marked late in DB, employee is not late
+        if (!originalHasLateStatus && effectiveLateMinutes <= graceMins) {
             effectiveLateMinutes = 0;
         }
 
-        if (overtime_hours > 0) {
+        if (overtime_hours > 0 || originalHasOvertimeStatus) {
             status = "Overtime";
-        } else if (effectiveLateMinutes > 0) {
+        } else if (effectiveLateMinutes > 0 || originalHasLateStatus) {
             status = "Late";
         }
     }
@@ -257,14 +284,24 @@ export const safeParseRules = (policyRules) => {
 };
 
 // Helper: Derive Status dynamically
-export const deriveStatus = (r) => {
+export const deriveStatus = (r, customTodayStr) => {
+    const todayStr = customTodayStr || new Date().toISOString().slice(0, 10);
+    const recDate = getRecordDateStr(r);
+    const isPastDate = recDate && todayStr ? recDate < todayStr : false;
+
     if (r.status === 'ON_LEAVE' || r.status === 'On Leave') return "On Leave";
     if (r.status === 'HALF_DAY' || r.status === 'Half Day') return "Half Day";
-    if (r.status === 'MISSED_PUNCH' || r.status === 'missed_punch' || r.status === 'Missed Punch' || (r.time_in && !r.time_out)) return "Missed Punch";
+    if (r.status === 'MISSED_PUNCH' || r.status === 'missed_punch' || r.status === 'Missed Punch') {
+        if (!isPastDate && r.time_in && !r.time_out) {
+            return (Number(r.late_minutes || 0) > 0) ? "Late" : "Present";
+        }
+        return "Missed Punch";
+    }
+    if (isPastDate && r.time_in && !r.time_out) return "Missed Punch";
     if (!r.time_in || r.status === 'ABSENT' || r.status === 'Absent') return "Absent";
 
-    if (r.overtime_hours > 0) return "Overtime";
-    if (r.late_minutes > 0) return "Late";
+    if (parseFloat(r.overtime_hours || 0) > 0 || String(r.status || '').toUpperCase() === 'OVERTIME') return "Overtime";
+    if (Number(r.late_minutes || 0) > 0 || String(r.status || '').toUpperCase().includes('LATE')) return "Late";
 
     return "Present";
 };
@@ -434,6 +471,7 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
 
     // Also supplement from attn_punches for any dates/users not represented in attn_records (e.g. missed punches or unmigrated punches)
     try {
+        const todayStr = await getTodayStr(org_id);
         const existingKeys = new Set(records.map(r => `${r.user_id}_${r.record_date}`));
 
         const punchRows = await attendanceDB("attn_punches as ap")
@@ -461,6 +499,7 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
             .whereRaw("DATE(ap.punch_time) >= ?", [startDate])
             .whereRaw("DATE(ap.punch_time) <= DATE_ADD(?, INTERVAL 1 DAY)", [endDate])
             .orderBy("ap.punch_time", "asc")
+            .orderBy("ap.id", "asc")
             .catch(() => []);
 
         if (punchRows && punchRows.length > 0) {
@@ -488,12 +527,15 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
                         try { outMeta = typeof outPunch.metadata === 'string' ? JSON.parse(outPunch.metadata) : (outPunch.metadata || {}); } catch (_) {}
                     }
 
+                    const isPastPunch = inPunch.record_date && todayStr && inPunch.record_date < todayStr;
+                    const defaultStatus = outPunch ? 'PRESENT' : (isPastPunch ? 'MISSED_PUNCH' : 'PRESENT');
+
                     records.push({
                         attendance_id: inPunch.attendance_id,
                         user_id: inPunch.user_id,
                         time_in: inPunch.punch_time,
                         time_out: outPunch ? outPunch.punch_time : null,
-                        status: outPunch ? 'PRESENT' : 'MISSED_PUNCH',
+                        status: defaultStatus,
                         time_in_address: inLoc.address && inLoc.address !== 'Locating...' ? inLoc.address : '-',
                         time_out_address: outLoc.address && outLoc.address !== 'Locating...' ? outLoc.address : '-',
                         time_in_image_key: inMeta.image_key || null,
@@ -591,7 +633,7 @@ export async function getCardRecords({ org_id, targetUserId, startDate, endDate,
             const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
             const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
 
-            const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
+            const aggregated = aggregateDayRecords(dayRecs, u.policy_rules, todayStr);
             const [y, m, d] = dateStr.split('-').map(Number);
             const formattedDate = new Date(y, m - 1, d).toLocaleDateString('en-US', {
                 year: 'numeric',
@@ -716,7 +758,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             data.columns = cols;
             data.rows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
-                const aggregated = aggregateDayRecords(userRecs, u.policy_rules);
+                const aggregated = aggregateDayRecords(userRecs, u.policy_rules, todayStr);
                 const fullRow = [
                     u.user_name,
                     u.dept_name || "-",
@@ -774,7 +816,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             data.columns = cols;
             data.rows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
-                const aggregated = aggregateDayRecords(userRecs, u.policy_rules);
+                const aggregated = aggregateDayRecords(userRecs, u.policy_rules, todayStr);
                 const rules = getShiftRules(u);
                 const dayType = getDayType(startDate, rules.week_off_policy);
                 const dayOfWeek = new Date(startDate + 'T00:00:00Z').getUTCDay();
@@ -891,13 +933,14 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
 
                 let totalWorkedHrs = 0;
                 let totalLateMins = 0;
+                let lateCount = 0;
                 let presentDays = 0;
 
                 const dateCells = [];
                 dateHeaders.forEach((d, dIdx) => {
                     const dateStr = dateStrings[dIdx];
                     const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
-                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
+                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules, todayStr);
                     const rules = getShiftRules(u);
                     const dayType = getDayType(dateStr, rules.week_off_policy);
                     const userStartDate = getUserStartDate(u);
@@ -913,6 +956,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                         totalWorkedHrs += aggregated.worked_hours;
                         if (aggregated.late_minutes > 0) {
                             totalLateMins += aggregated.late_minutes;
+                            lateCount++;
                         }
                     } else if (leaveOnDate) {
                         dateCells.push("L");
@@ -938,7 +982,6 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 const reqHrs = getRequiredHoursForPeriod(u, dateStrings);
                 const workedHrs = totalWorkedHrs;
                 const lateHrs = totalLateMins / 60;
-                const lateCount = userRecs.filter(r => r.late_minutes > 0).length;
 
                 let calculatedAbsentDays = 0;
                 dateHeaders.forEach((d, dIdx) => {
@@ -1116,7 +1159,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 dateHeaders.forEach((d, dIdx) => {
                     const dateStr = dateStrings[dIdx];
                     const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
-                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
+                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules, todayStr);
                     const rules = getShiftRules(u);
                     const dayType = getDayType(dateStr, rules.week_off_policy);
                     const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
@@ -1209,7 +1252,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 formatLocalTimeStr(r.time_in, true),
                 formatLocalTimeStr(r.time_out, true),
                 calculateWorkHours(r.time_in, r.time_out),
-                deriveStatus(r),
+                deriveStatus(r, todayStr),
                 r.time_in_address || "-",
                 r.time_out_address || "-"
             ];
@@ -1282,7 +1325,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (dayRecs.length > 0) {
-                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules);
+                    const aggregated = aggregateDayRecords(dayRecs, u.policy_rules, todayStr);
 
                     if (aggregated.status === "On Leave" || leaveOnDate) {
                         leaveCount++;
@@ -1306,14 +1349,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
 
                     totalHrs += aggregated.worked_hours;
 
-                    let overtime_hours = 0;
-                    if (u.policy_rules) {
-                        const rules = safeParseRules(u.policy_rules);
-                        overtime_hours = calculateOvertime(aggregated.worked_hours, rules);
-                    } else {
-                        overtime_hours = dayRecs.reduce((sum, r) => sum + parseFloat(r.overtime_hours || 0), 0);
-                    }
-                    totalOvertimeHrs += overtime_hours;
+                    totalOvertimeHrs += (aggregated.overtime_hours || 0);
                 } else {
                     if (leaveOnDate) {
                         leaveCount++;

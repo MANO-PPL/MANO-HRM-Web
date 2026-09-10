@@ -850,6 +850,7 @@ export const getAdminDailySummary = catchAsync(async (req, res) => {
       late_minutes: 0,
       late_reason: "",
       overtime_hours: 0,
+      overtime_minutes: 0,
       expected_hours: 0,
       sessions: []
     };
@@ -868,6 +869,7 @@ export const getAdminDailySummary = catchAsync(async (req, res) => {
       late_minutes: dayData.late_minutes,
       late_reason: dayData.late_reason,
       overtime_hours: dayData.overtime_hours,
+      overtime_minutes: dayData.overtime_minutes !== undefined ? dayData.overtime_minutes : Math.round((dayData.overtime_hours || 0) * 60),
       expected_hours: dayData.expected_hours,
       sessions: dayData.sessions
     };

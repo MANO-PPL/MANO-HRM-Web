@@ -134,6 +134,7 @@ async function runMigration() {
           ip_address: timeInMeta.ip_address ?? null,
           user_agent: timeInMeta.user_agent ?? null,
           timezone: timeInMeta.timezone || 'Asia/Kolkata',
+          late_reason: rec.late_reason || timeInMeta.late_reason || legacyMeta.late_reason || null,
           // Traceability Provenance
           legacy_attendance_id: rec.attendance_id,
           migrated: true,

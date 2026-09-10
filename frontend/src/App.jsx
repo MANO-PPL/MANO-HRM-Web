@@ -330,6 +330,7 @@ function App() {
               <Route path="/apply-leave" element={<Navigate to="/holidays?tab=leaves&apply=true" replace />} />
               <Route path="/collaboration" element={<ResponsiveRoute DesktopComponent={ChatPage} MobileComponent={MobileChatPage} />} />
               <Route path="/documentation" element={<Documentation />} />
+              <Route path="/reports" element={<ResponsiveRoute DesktopComponent={Reports} MobileComponent={MobileReports} />} />
 
               {/* Mobile-Only Pages fallback */}
               <Route path="/notifications" element={<MobileNotifications />} />
@@ -339,7 +340,6 @@ function App() {
             {/* Admin & HR Only Routes */}
             <Route element={<ProtectedRoute allowedRoles={['admin', 'hr']} />}>
               <Route path="/attendance-monitoring" element={<ResponsiveRoute DesktopComponent={AttendanceMonitoring} MobileComponent={MobileAttendanceMonitoring} />} />
-              <Route path="/reports" element={<ResponsiveRoute DesktopComponent={Reports} MobileComponent={MobileReports} />} />
               <Route path="/payroll" element={<ResponsiveRoute DesktopComponent={Payroll} MobileComponent={MobilePayroll} />} />
               <Route path="/policies" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
               <Route path="/leave-management" element={<Navigate to="/holidays?tab=leaves" replace />} />

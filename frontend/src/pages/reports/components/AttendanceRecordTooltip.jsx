@@ -28,9 +28,21 @@ const AttendanceRecordTooltip = ({ hoveredRecord, hoveredPosition }) => {
                         {hoveredRecord.date}
                     </p>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[9px] font-medium uppercase tracking-wider ${getStatusColor(displayStatus)}`}>
-                    {displayStatus}
-                </span>
+                <div className="flex items-center gap-1 flex-wrap justify-end">
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-medium uppercase tracking-wider ${getStatusColor(displayStatus)}`}>
+                        {displayStatus}
+                    </span>
+                    {hoveredRecord.overtime_hours > 0 && displayStatus !== 'Overtime' && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[8px] font-medium uppercase tracking-wider bg-purple-950/80 text-purple-300 border border-purple-800">
+                            OT: {hoveredRecord.overtime_hours}h
+                        </span>
+                    )}
+                    {hoveredRecord.late_minutes > 0 && displayStatus !== 'Late' && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[8px] font-medium uppercase tracking-wider bg-amber-950/80 text-amber-300 border border-amber-800">
+                            Late: {hoveredRecord.late_minutes}m
+                        </span>
+                    )}
+                </div>
             </div>
 
             {/* Details based on status */}
@@ -52,10 +64,10 @@ const AttendanceRecordTooltip = ({ hoveredRecord, hoveredPosition }) => {
                         </div>
                     </div>
 
-                    {/* Work Hrs vs Req Hrs + Late */}
-                    <div className="grid grid-cols-2 gap-2 text-[10px] pt-1.5 border-t border-slate-800/60 dark:border-[#30363d]/60">
+                    {/* Work Hrs vs Req Hrs + Late / Overtime */}
+                    <div className={`grid ${hoveredRecord.overtime_hours > 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-2 text-[10px] pt-1.5 border-t border-slate-800/60 dark:border-[#30363d]/60`}>
                         <div>
-                            <span className="text-slate-400 dark:text-[#8b949e] block font-normal">Work / Req Hrs</span>
+                            <span className="text-slate-400 dark:text-[#8b949e] block font-normal">Work / Req</span>
                             <span className="font-semibold text-slate-200 dark:text-[#c9d1d9]">
                                 {hoveredRecord.worked_hours != null ? hoveredRecord.worked_hours.toFixed(2) : '0.00'}
                                 <span className="text-slate-500 mx-0.5 font-normal">/</span>
@@ -73,14 +85,22 @@ const AttendanceRecordTooltip = ({ hoveredRecord, hoveredPosition }) => {
                         <div>
                             <span className="text-slate-400 dark:text-[#8b949e] block font-normal">Late Mins</span>
                             <span className={`font-semibold ${hoveredRecord.late_minutes > 0 ? 'text-amber-400' : 'text-slate-200 dark:text-[#c9d1d9]'}`}>
-                                {hoveredRecord.late_minutes != null ? `${hoveredRecord.late_minutes} min` : '0 min'}
+                                {hoveredRecord.late_minutes != null ? `${hoveredRecord.late_minutes}m` : '0m'}
                             </span>
                             {hoveredRecord.late_minutes > 0 && hoveredRecord.late_reason && hoveredRecord.late_reason !== '-' && (
-                                <span className="block text-[8px] text-slate-400 dark:text-github-dark-muted italic truncate max-w-[120px] mt-0.5" title={hoveredRecord.late_reason}>
+                                <span className="block text-[8px] text-slate-400 dark:text-github-dark-muted italic truncate max-w-[100px] mt-0.5" title={hoveredRecord.late_reason}>
                                     "{hoveredRecord.late_reason}"
                                 </span>
                             )}
                         </div>
+                        {hoveredRecord.overtime_hours > 0 && (
+                            <div>
+                                <span className="text-purple-400 block font-normal">Overtime</span>
+                                <span className="font-semibold text-purple-300">
+                                    {hoveredRecord.overtime_hours}h
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Locations */}

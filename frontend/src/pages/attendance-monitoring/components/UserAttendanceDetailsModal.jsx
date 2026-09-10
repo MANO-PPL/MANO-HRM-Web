@@ -7,7 +7,8 @@ import {
     LogOut,
     MapPin,
     Search,
-    XCircle
+    XCircle,
+    TrendingUp
 } from 'lucide-react';
 
 const UserAttendanceDetailsModal = ({ user, onClose }) => {
@@ -65,22 +66,46 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                             <div className="h-6 w-1 bg-indigo-500 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)]"></div>
                             <h4 className="text-xs font-medium text-slate-500 dark:text-github-dark-muted">Today's Timeline</h4>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-xs ${
-                                user.status === 'Holiday'
-                                    ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-850'
-                                    : user.status === 'Week Off'
-                                    ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                                    : user.status === 'Absent'
-                                    ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-850'
-                                    : user.status === 'Leave'
-                                    ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-850'
-                                    : user.status.includes('Active')
-                                    ? 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800 animate-pulse'
-                                    : 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800'
-                            }`}>
-                                {user.status}
-                            </span>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            {user.allStatuses && user.allStatuses.length > 0 ? (
+                                user.allStatuses.map(s => (
+                                    <span key={s} className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-xs ${
+                                        s === 'Holiday'
+                                            ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-850'
+                                            : s === 'Week Off'
+                                            ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                                            : s === 'Absent'
+                                            ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-850'
+                                            : s === 'Leave'
+                                            ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-850'
+                                            : s === 'Late' || s.includes('Late')
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800'
+                                            : s === 'Overtime'
+                                            ? 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-800'
+                                            : s.includes('Active')
+                                            ? 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800 animate-pulse'
+                                            : 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800'
+                                    }`}>
+                                        {s}
+                                    </span>
+                                ))
+                            ) : (
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-xs ${
+                                    user.status === 'Holiday'
+                                        ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-850'
+                                        : user.status === 'Week Off'
+                                        ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                                        : user.status === 'Absent'
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-850'
+                                        : user.status === 'Leave'
+                                        ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-850'
+                                        : user.status.includes('Active')
+                                        ? 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800 animate-pulse'
+                                        : 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800'
+                                }`}>
+                                    {user.status}
+                                </span>
+                            )}
                             <span className="text-[10px] font-mono font-normal text-slate-500 dark:text-github-dark-muted bg-slate-100 dark:bg-github-dark-subtle/50 px-2 py-0.5 rounded border border-slate-200 dark:border-github-dark-border">
                                 {user.totalHours && (user.totalHours.toLowerCase().includes('hr') || user.totalHours.toLowerCase().includes('min') || user.totalHours === '-') ? user.totalHours : `${user.totalHours} Hrs`}
                                 {user.expectedHours && user.expectedHours !== '-' && ` / ${user.expectedHours}`}
@@ -88,13 +113,24 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                         </div>
                     </div>
 
-                    {user.allStatuses && user.allStatuses.includes('Late') && (
+                    {((user.allStatuses && user.allStatuses.includes('Late')) || (user.lateMinutes > 0)) && (
                         <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
                             <h5 className="text-[11px] font-semibold text-amber-600 dark:text-amber-500 mb-1 flex items-center gap-1.5">
-                                <AlertTriangle size={10} /> Late Reason
+                                <AlertTriangle size={10} /> Late Arrival {user.lateMinutes > 0 ? `(${user.lateMinutes} mins)` : ''}
                             </h5>
                             <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">
                                 {user.lateReason ? `"${user.lateReason}"` : "No reason provided."}
+                            </p>
+                        </div>
+                    )}
+
+                    {((user.allStatuses && user.allStatuses.includes('Overtime')) || (user.overtimeHours > 0)) && (
+                        <div className="p-3 bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                            <h5 className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 mb-0.5 flex items-center gap-1.5">
+                                <TrendingUp size={12} /> Overtime Worked
+                            </h5>
+                            <p className="text-xs text-violet-800 dark:text-violet-200">
+                                {user.overtimeHours ? `${user.overtimeHours} hrs overtime` : 'Overtime detected according to shift policy.'}
                             </p>
                         </div>
                     )}
@@ -119,6 +155,11 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                                                     <div className="flex items-center gap-1.5">
                                                         <Clock size={12} className="text-emerald-500" />
                                                         <span className="text-sm font-mono font-semibold text-slate-800 dark:text-github-dark-text">{session.in}</span>
+                                                        {session.lateMinutes > 0 && (
+                                                            <span className="text-[9px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200/60 dark:border-amber-800/40">
+                                                                +{session.lateMinutes}m late
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="w-8 h-px bg-slate-100 dark:bg-github-dark-subtle mt-4"></div>
