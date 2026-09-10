@@ -528,12 +528,14 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('sys_error_logs').where('user_id', userId).del();
 
         // Nullify reviewer/altered references where this user is referenced
-        await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null });
+        try { await trx('attn_corrections').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) {}
+        try { await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) {}
         await trx('attn_records').where('altered_by', userId).update({ altered_by: null });
         await trx('attn_daily_summary').where('adjusted_by', userId).update({ adjusted_by: null });
         await trx('leave_requests').where('reviewed_by', userId).update({ reviewed_by: null });
 
-        await trx('attn_correction_requests').where('user_id', userId).del();
+        try { await trx('attn_corrections').where('user_id', userId).del(); } catch (_) {}
+        try { await trx('attn_correction_requests').where('user_id', userId).del(); } catch (_) {}
         await trx('org_user_work_locations').where('user_id', userId).del();
         await trx('attn_daily_activities').where('user_id', userId).del();
         await trx('attn_daily_summary').where('user_id', userId).del();

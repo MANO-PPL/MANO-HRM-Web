@@ -61,20 +61,22 @@ export async function processAttendanceJob(jobData) {
         console.error(`Failed to update attn_punches address for #${attendance_id}:`, err);
     }
 
-    // Update legacy DB record with the resolved address
-    try {
-        const addressField = isTimeIn ? 'time_in_address' : 'time_out_address';
-        await attendanceDB('attn_records')
-            .where({ attendance_id })
-            .update({
-                [addressField]: address,
-                updated_at: attendanceDB.fn.now()
-            });
-    } catch (e) {}
 
     // 2. Compress Selfie Image and Upload to AWS S3 (Slow CPU & S3 Upload task)
     let imageKey = null;
-    let fileBuffer = jobData.fileBuffer || null;
+    let fileBuffer = null;
+
+    // Handle Buffer objects serialized over Redis BullMQ
+    if (jobData.fileBuffer) {
+        if (Buffer.isBuffer(jobData.fileBuffer)) {
+            fileBuffer = jobData.fileBuffer;
+        } else if (jobData.fileBuffer.type === 'Buffer' && Array.isArray(jobData.fileBuffer.data)) {
+            fileBuffer = Buffer.from(jobData.fileBuffer.data);
+        } else if (typeof jobData.fileBuffer === 'string') {
+            fileBuffer = Buffer.from(jobData.fileBuffer, 'base64');
+        }
+    }
+
     if (!fileBuffer && tempFilePath) {
         try {
             fileBuffer = await fs.readFile(tempFilePath);
@@ -83,7 +85,7 @@ export async function processAttendanceJob(jobData) {
         }
     }
 
-    if (fileBuffer) {
+    if (fileBuffer && fileBuffer.length > 0) {
         try {
             console.log(`[AttendanceWorker] Compressing and uploading selfie (${fileBuffer.length} bytes) to S3...`);
 
@@ -103,21 +105,14 @@ export async function processAttendanceJob(jobData) {
                     await attendanceDB('attn_punches').where({ id: attendance_id }).update({
                         metadata: JSON.stringify(meta)
                     });
+                    console.log(`✅ [AttendanceWorker] Updated attn_punches #${attendance_id} metadata.image_key = ${imageKey}`);
+                } else {
+                    console.warn(`⚠️ [AttendanceWorker] Punch #${attendance_id} not found in attn_punches`);
                 }
             } catch (pErr) {
                 console.error(`Failed to update attn_punches image_key for #${attendance_id}:`, pErr);
             }
 
-            // Update legacy DB record with the uploaded S3 image key
-            try {
-                const imageKeyField = isTimeIn ? 'time_in_image_key' : 'time_out_image_key';
-                await attendanceDB('attn_records')
-                    .where({ attendance_id })
-                    .update({
-                        [imageKeyField]: imageKey,
-                        updated_at: attendanceDB.fn.now()
-                    });
-            } catch (e) {}
 
             console.log(`✅ [AttendanceWorker] Successfully uploaded selfie to S3 with key: ${imageKey}`);
         } catch (err) {

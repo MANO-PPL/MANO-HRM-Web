@@ -613,6 +613,17 @@ const Attendance = () => {
 
     const [viewerImage, setViewerImage] = useState(null);
 
+    // Close preview modal on ESC key
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setViewerImage(null);
+        };
+        if (viewerImage) {
+            window.addEventListener('keydown', handleKeyDown);
+            return () => window.removeEventListener('keydown', handleKeyDown);
+        }
+    }, [viewerImage]);
+
     // Calendar State
     const [showCalendar, setShowCalendar] = useState(false);
     const calendarRef = useRef(null);
@@ -1312,7 +1323,7 @@ const Attendance = () => {
 
     const handlePunchClick = async (mode) => {
         const isSelfieRequired = mode === 'IN'
-            ? (myShift?.rules?.entry_requirements?.selfie ?? false)
+            ? (myShift?.rules?.entry_requirements?.selfie ?? true)
             : (myShift?.rules?.exit_requirements?.selfie ?? false);
 
         if (isSelfieRequired) {
@@ -1577,7 +1588,7 @@ const Attendance = () => {
 
     const confirmAttendance = async () => {
         const isSelfieRequired = cameraMode === 'IN'
-            ? (myShift?.rules?.entry_requirements?.selfie ?? false)
+            ? (myShift?.rules?.entry_requirements?.selfie ?? true)
             : (myShift?.rules?.exit_requirements?.selfie ?? false);
 
         const isGeoRequired = cameraMode === 'IN'
@@ -2370,21 +2381,68 @@ const Attendance = () => {
                 }
             });
 
+            // Check shift timing for lateness
+            let isLateByShift = false;
+            const shiftStartTime = myShift?.start_time || myShift?.rules?.shift_timing?.start_time;
+            const isOpenShift = myShift?.id === null || !shiftStartTime || myShift?.name?.toLowerCase().includes('open');
+            const graceMinutes = Number(myShift?.rules?.grace_period?.minutes ?? myShift?.grace_period ?? 0);
+
+            if (!isOpenShift && shiftStartTime && firstIn) {
+                try {
+                    const shiftParts = shiftStartTime.slice(0, 5).split(':').map(Number);
+                    const shiftStartMins = shiftParts[0] * 60 + shiftParts[1];
+
+                    let inMins = null;
+                    const str = String(firstIn).trim().replace('Z', '');
+                    const parts = str.split(/[- :T.]/);
+                    if (parts.length >= 5) {
+                        const inH = parseInt(parts[3], 10);
+                        const inM = parseInt(parts[4], 10);
+                        if (!isNaN(inH) && !isNaN(inM)) inMins = inH * 60 + inM;
+                    } else {
+                        const d = new Date(firstIn);
+                        if (!isNaN(d.getTime())) inMins = d.getHours() * 60 + d.getMinutes();
+                    }
+
+                    if (inMins !== null && !isNaN(shiftStartMins)) {
+                        let diff = inMins - shiftStartMins;
+                        if (shiftStartMins >= 1080 && inMins < 720) {
+                            diff += 1440;
+                        }
+                        if (diff > graceMinutes) {
+                            isLateByShift = true;
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Error evaluating shift lateness:", err);
+                }
+            }
+
+            const hasLateSession = day.sessions.some(s =>
+                Number(s.late_minutes || 0) > 0 ||
+                Boolean(s.late_reason) ||
+                Boolean(s.isLate) ||
+                Boolean(s.is_late) ||
+                (s.status && String(s.status).toUpperCase().includes('LATE'))
+            );
+
+            const isDayLate = isLateByShift || hasLateSession;
+
             // Derive overall day status
             let dayStatus = 'PRESENT';
             const sessionStatuses = day.sessions.map(s => (s.status || '').toUpperCase());
 
             if (sessionStatuses.includes('MISSED_PUNCH') || (isPastDay && hasOpenSession)) {
                 dayStatus = 'MISSED_PUNCH';
-            } else if (sessionStatuses.includes('OVERTIME')) {
-                dayStatus = 'OVERTIME';
-            } else if (sessionStatuses.includes('LATE')) {
-                dayStatus = 'LATE';
-            } else if (sessionStatuses.includes('HALF_DAY')) {
-                dayStatus = 'HALF_DAY';
             } else if (sessionStatuses.includes('ABSENT')) {
                 dayStatus = 'ABSENT';
-            } else if (sessionStatuses.includes('CLOSED') || sessionStatuses.includes('PRESENT')) {
+            } else if (sessionStatuses.includes('HALF_DAY')) {
+                dayStatus = 'HALF_DAY';
+            } else if (isDayLate) {
+                dayStatus = 'LATE';
+            } else if (sessionStatuses.includes('OVERTIME')) {
+                dayStatus = 'OVERTIME';
+            } else {
                 dayStatus = 'PRESENT';
             }
 
@@ -2396,6 +2454,7 @@ const Attendance = () => {
                 isPastDay,
                 totalDayHours: parseFloat(totalDayHours.toFixed(2)),
                 dayStatus,
+                isDayLate,
                 firstSession,
                 lastSession
             };
@@ -2416,7 +2475,7 @@ const Attendance = () => {
         });
 
         return Object.entries(weeksMap);
-    }, [monthlySessions]);
+    }, [monthlySessions, myShift]);
 
     return (
         <DashboardLayout title="Attendance" tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
@@ -2586,6 +2645,7 @@ const Attendance = () => {
                                     formatTime={formatTime}
                                     calculateDuration={calculateDuration}
                                     setPreviewImage={setPreviewImage}
+                                    setViewerImage={setViewerImage}
                                     myShift={myShift}
                                     setIsCorrectionDrawerOpen={setIsCorrectionDrawerOpen}
                                     setCorrDate={setCorrDate}
@@ -2759,49 +2819,35 @@ const Attendance = () => {
                     )}
 
 
-                    {/* --- IMAGE VIEWER MODAL --- */}
-                    <AnimatePresence>
-                        {viewerImage && (
+                    {/* --- Universal Image Viewer Modal (Exact Live Attendance Lightbox) --- */}
+                    {viewerImage && createPortal(
+                        <AnimatePresence>
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
                                 onClick={() => setViewerImage(null)}
-                                className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/30 backdrop-blur-md p-4 md:p-10 cursor-zoom-out"
                             >
-                                <motion.div
+                                <button
+                                    className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
+                                    onClick={() => setViewerImage(null)}
+                                >
+                                    <XCircle size={32} />
+                                </button>
+                                <motion.img
                                     initial={{ scale: 0.9, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
                                     exit={{ scale: 0.9, opacity: 0 }}
-                                    transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                                    className="relative max-w-5xl w-full h-full flex items-center justify-center"
+                                    src={typeof viewerImage === 'string' ? viewerImage : (viewerImage?.url || viewerImage)}
+                                    alt="Selfie Preview"
+                                    className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
                                     onClick={(e) => e.stopPropagation()}
-                                >
-                                    <div className="absolute -top-14 right-0 flex items-center gap-3">
-                                        <button
-                                            onClick={() => window.open(viewerImage, '_blank')}
-                                            className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl backdrop-blur-xl transition-all border border-white/20 shadow-lg group"
-                                            title="Open in new tab"
-                                        >
-                                            <Download size={18} className="group-hover:scale-110 transition-transform" />
-                                            <span className="text-xs font-bold uppercase tracking-widest">Open Original</span>
-                                        </button>
-                                        <button
-                                            onClick={() => setViewerImage(null)}
-                                            className="p-2.5 bg-white/10 hover:bg-rose-500 text-white rounded-xl backdrop-blur-xl transition-all border border-white/20 shadow-lg"
-                                        >
-                                            <X size={20} />
-                                        </button>
-                                    </div>
-                                    <img
-                                        src={viewerImage}
-                                        alt="Verification"
-                                        className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border border-white/10"
-                                    />
-                                </motion.div>
+                                />
                             </motion.div>
-                        )}
-                    </AnimatePresence>
+                        </AnimatePresence>,
+                        document.body
+                    )}
 
                     {/* --- CHECKPOINT MARKING MODAL --- */}
                     <CheckpointModal
@@ -3392,12 +3438,45 @@ const Attendance = () => {
                     </AnimatePresence>
 
                     {/* UNIVERSAL DOCUMENT & SELFIE PREVIEW LIGHTBOX MODAL (Image, Word, PowerPoint, PDF, Excel, etc.) */}
-                    {previewImage && (
-                        <CorrectionDocumentModal
-                            previewUrl={previewImage}
-                            onClose={() => setPreviewImage(null)}
-                        />
-                    )}
+                    {previewImage && (() => {
+                        const isDoc = typeof previewImage === 'string' && /\.(pdf|docx?|xlsx?|pptx?|csv|txt)/i.test(previewImage.split('?')[0]);
+                        if (isDoc) {
+                            return (
+                                <CorrectionDocumentModal
+                                    previewUrl={previewImage}
+                                    onClose={() => setPreviewImage(null)}
+                                />
+                            );
+                        }
+                        return createPortal(
+                            <AnimatePresence>
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+                                    onClick={() => setPreviewImage(null)}
+                                >
+                                    <button
+                                        className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
+                                        onClick={() => setPreviewImage(null)}
+                                    >
+                                        <XCircle size={32} />
+                                    </button>
+                                    <motion.img
+                                        initial={{ scale: 0.9, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0.9, opacity: 0 }}
+                                        src={typeof previewImage === 'string' ? previewImage : (previewImage?.url || previewImage)}
+                                        alt="Selfie Preview"
+                                        className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                </motion.div>
+                            </AnimatePresence>,
+                            document.body
+                        );
+                    })()}
                 </div>
             </div>
         </DashboardLayout>

@@ -158,7 +158,8 @@ async function cleanupDeletedOrganizations() {
                 await trx('comm_notifications').whereIn('user_id', orgUserIdsSubquery).del();
                 await trx('sys_activity_logs').where('org_id', org.org_id).del();
                 await trx('sys_error_logs').where('org_id', org.org_id).del();
-                await trx('attn_correction_requests').whereIn('user_id', orgUserIdsSubquery).del();
+                try { await trx('attn_corrections').whereIn('user_id', orgUserIdsSubquery).del(); } catch (_) {}
+                try { await trx('attn_correction_requests').whereIn('user_id', orgUserIdsSubquery).del(); } catch (_) {}
 
                 await trx('org_user_work_locations')
                     .whereIn('user_id', orgUserIdsSubquery)

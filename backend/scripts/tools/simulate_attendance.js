@@ -25,6 +25,7 @@ import { attendanceDB } from '../../src/config/database.js';
 import { syncDailyAttendance, getUserShift } from '../../src/services/attendance/attendanceService.js';
 import { getShiftRules, getDayType } from '../../src/services/attendance/shiftManagementService.js';
 import * as S3Service from '../../src/services/s3/s3Service.js';
+import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -143,40 +144,52 @@ function getTodayDateTime(timeStr, offsetMinutes = 0) {
  * Reads a random image from user's subdirectory, uploads to S3, and returns the S3 key.
  */
 async function uploadSimulatedSelfie(userId, orgId, punchType) {
-  const imagesDir = SIM_CONFIG?.config?.images_dir;
-  if (!imagesDir) return null;
-
   try {
-    const baseDir = path.isAbsolute(imagesDir) 
-      ? imagesDir 
-      : path.resolve(__dirname, imagesDir);
+    const imagesDir = SIM_CONFIG?.config?.images_dir;
+    let fileBuffer = null;
+    let fileName = '';
 
-    // Support both "123" and "user_123" folder names
-    let userDir = path.join(baseDir, String(userId));
-    if (!fs.existsSync(userDir)) {
-      userDir = path.join(baseDir, `user_${userId}`);
+    if (imagesDir) {
+      const baseDir = path.isAbsolute(imagesDir) 
+        ? imagesDir 
+        : path.resolve(__dirname, imagesDir);
+
+      let userDir = path.join(baseDir, String(userId));
+      if (!fs.existsSync(userDir)) {
+        userDir = path.join(baseDir, `user_${userId}`);
+      }
+
+      if (fs.existsSync(userDir)) {
+        const files = fs.readdirSync(userDir)
+          .filter(file => /\.(jpg|jpeg|png|webp|gif)$/i.test(file));
+
+        if (files.length > 0) {
+          const randomFile = files[Math.floor(Math.random() * files.length)];
+          const imgPath = path.join(userDir, randomFile);
+          fileBuffer = fs.readFileSync(imgPath);
+          fileName = randomFile;
+        }
+      }
     }
 
-    if (!fs.existsSync(userDir)) {
-      return null; // No directory for this user
+    if (!fileBuffer) {
+      // Dynamic fallback: Generate SVG avatar for simulated employee
+      const avatarSvg = `
+        <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+          <rect width="400" height="400" fill="#0f172a"/>
+          <circle cx="200" cy="150" r="70" fill="#38bdf8"/>
+          <ellipse cx="200" cy="330" rx="130" ry="90" fill="#38bdf8"/>
+          <text x="200" y="385" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#f8fafc" text-anchor="middle">Simulated User ${userId}</text>
+        </svg>
+      `;
+      fileBuffer = await sharp(Buffer.from(avatarSvg)).jpeg({ quality: 85 }).toBuffer();
+      fileName = 'simulated_avatar.jpg';
     }
-
-    const files = fs.readdirSync(userDir)
-      .filter(file => /\.(jpg|jpeg|png|webp|gif)$/i.test(file));
-
-    if (files.length === 0) {
-      return null; // No images in directory
-    }
-
-    // Pick random image
-    const randomFile = files[Math.floor(Math.random() * files.length)];
-    const imgPath = path.join(userDir, randomFile);
-    const fileBuffer = fs.readFileSync(imgPath);
 
     const s3Key = `${punchType}_${userId}_${Date.now()}.jpg`;
-    const directory = `attendance/org_${orgId}/user_${userId}`;
+    const directory = `attendance_images`;
 
-    log(`📤 Uploading simulated selfie for user ${userId} (${randomFile})...`);
+    log(`📤 Uploading simulated selfie for user ${userId} (${fileName})...`);
     const uploadResult = await S3Service.uploadCompressedImage({
       fileBuffer,
       key: s3Key,
@@ -465,19 +478,28 @@ async function performSimulationStep() {
               session_context: { is_first_session: i === 0 }
             };
 
-            const [recordId] = await attendanceDB("attn_records").insert({
+            const [punchId] = await attendanceDB("attn_punches").insert({
               user_id: userId,
-              org_id: userRow.org_id,
-              time_in: formattedTimeStr,
-              time_in_lat: localCoords.lat,
-              time_in_lng: localCoords.lng,
-              time_in_address: `Office Building, ${userState.baseCity.name}`,
-              status: "PRESENT",
-              time_in_image_key: rowImageKey || null,
-              metadata: JSON.stringify(metadata)
+              punch_time: formattedTimeStr,
+              punch_type: "in",
+              location: JSON.stringify({
+                lat: localCoords.lat,
+                lng: localCoords.lng,
+                address: `Office Building, ${userState.baseCity.name}`,
+                is_geofence_violation: false
+              }),
+              punch_nature: "simulated",
+              metadata: JSON.stringify({
+                image_key: rowImageKey || null,
+                accuracy: 10,
+                ip_address: "127.0.0.1",
+                user_agent: "Mozilla/5.0 (Simulated)",
+                timezone: "Asia/Kolkata"
+              }),
+              created_at: session.checkInTarget
             });
 
-            session.recordId = recordId;
+            session.recordId = punchId;
             session.hasCheckedIn = true;
 
             // Sync daily attendance calculations
@@ -507,32 +529,26 @@ async function performSimulationStep() {
             log(`⏰ Punching Out user: ${userState.userName} (ID: ${userId}) for Session ${i + 1}/${userState.sessions.length}`);
             const formattedTimeStr = session.checkOutTarget.toISOString().slice(0, 19).replace('T', ' ');
 
-            const existingRecord = await attendanceDB("attn_records")
-              .where({ attendance_id: session.recordId })
-              .first();
-
-            let meta = {};
-            if (existingRecord && existingRecord.metadata) {
-              meta = typeof existingRecord.metadata === 'string' ? JSON.parse(existingRecord.metadata) : existingRecord.metadata;
-            }
-
-            meta.time_out = {
-              accuracy: 10,
-              ip_address: "127.0.0.1",
-              user_agent: "Mozilla/5.0 (Simulated)",
-              timestamp_utc: session.checkOutTarget.toISOString(),
-              timezone: "Asia/Kolkata"
-            };
-
-            const rowImageKey = await uploadSimulatedSelfie(userId, userState.orgId || 1, "time_out");
-
-            await attendanceDB("attn_records")
-              .where({ attendance_id: session.recordId })
-              .update({
-                time_out: formattedTimeStr,
-                time_out_image_key: rowImageKey || null,
-                metadata: JSON.stringify(meta)
-              });
+            await attendanceDB("attn_punches").insert({
+              user_id: userId,
+              punch_time: formattedTimeStr,
+              punch_type: "out",
+              location: JSON.stringify({
+                lat: localCoords.lat,
+                lng: localCoords.lng,
+                address: `Office Building, ${userState.baseCity.name}`,
+                is_geofence_violation: false
+              }),
+              punch_nature: "simulated",
+              metadata: JSON.stringify({
+                image_key: rowImageKey || null,
+                accuracy: 10,
+                ip_address: "127.0.0.1",
+                user_agent: "Mozilla/5.0 (Simulated)",
+                timezone: "Asia/Kolkata"
+              }),
+              created_at: session.checkOutTarget
+            });
 
             session.hasCheckedOut = true;
 

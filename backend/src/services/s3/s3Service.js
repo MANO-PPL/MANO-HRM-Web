@@ -1,3 +1,4 @@
+import '../../config/config.js';
 import {
   S3Client,
   PutObjectCommand,
@@ -10,20 +11,27 @@ import fs from "fs";
 import path from "path";
 import sharp from "sharp";
 
-const s3 = new S3Client({
-  region: process.env.S3_REGION,
-  credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY_ID,
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-  },
-});
+let _s3 = null;
+function getS3() {
+  if (!_s3) {
+    _s3 = new S3Client({
+      region: process.env.S3_REGION || 'us-east-1',
+      credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+      },
+    });
+  }
+  return _s3;
+}
 
-const BUCKET = process.env.S3_BUCKET;
+const getBucket = () => process.env.S3_BUCKET;
 
 // 1. Upload File (buffer or local file)
 export async function uploadFile({ fileBuffer, filePath, key, directory = "", contentType = "application/octet-stream" }) {
   try {
     const finalKey = directory ? `${directory}/${key}` : key;
+    const bucket = getBucket();
 
     let Body = fileBuffer;
     if (!fileBuffer && filePath) {
@@ -31,18 +39,18 @@ export async function uploadFile({ fileBuffer, filePath, key, directory = "", co
     }
 
     const cmd = new PutObjectCommand({
-      Bucket: BUCKET,
+      Bucket: bucket,
       Key: finalKey,
       Body,
       ContentType: contentType,
     });
 
-    await s3.send(cmd);
+    await getS3().send(cmd);
 
     return {
       success: true,
       key: finalKey,
-      url: `https://${BUCKET}.s3.amazonaws.com/${finalKey}`,
+      url: `https://${bucket}.s3.amazonaws.com/${finalKey}`,
     };
   } catch (error) {
     console.error("S3 Upload Error:", error);
@@ -54,14 +62,15 @@ export async function uploadFile({ fileBuffer, filePath, key, directory = "", co
 export async function getFileUrl({ key, directory = "", expiresIn = 3600, filename = "" }) {
   try {
     const finalKey = directory ? `${directory}/${key}` : key;
+    const bucket = getBucket();
 
     const cmd = new GetObjectCommand({
-      Bucket: BUCKET,
+      Bucket: bucket,
       Key: finalKey,
       ResponseContentDisposition: filename ? `attachment; filename="${filename}"` : undefined,
     });
 
-    const url = await getSignedUrl(s3, cmd, { expiresIn });
+    const url = await getSignedUrl(getS3(), cmd, { expiresIn });
 
     return { success: true, url };
   } catch (error) {
@@ -73,12 +82,13 @@ export async function getFileUrl({ key, directory = "", expiresIn = 3600, filena
 // 3. List Files (supports folders)
 export async function listFiles(prefix = "") {
   try {
+    const bucket = getBucket();
     const cmd = new ListObjectsV2Command({
-      Bucket: BUCKET,
+      Bucket: bucket,
       Prefix: prefix,  // directory like "uploads/" or ""
     });
 
-    const result = await s3.send(cmd);
+    const result = await getS3().send(cmd);
 
     const files = (result.Contents || []).map((item) => ({
       key: item.Key,
@@ -97,13 +107,14 @@ export async function listFiles(prefix = "") {
 export async function deleteFile({ key, directory = "" }) {
   try {
     const finalKey = directory ? `${directory}/${key}` : key;
+    const bucket = getBucket();
 
     const cmd = new DeleteObjectCommand({
-      Bucket: BUCKET,
+      Bucket: bucket,
       Key: finalKey,
     });
 
-    await s3.send(cmd);
+    await getS3().send(cmd);
 
     return { success: true, deletedKey: finalKey };
   } catch (error) {

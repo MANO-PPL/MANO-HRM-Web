@@ -442,6 +442,27 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
             }
         })
         .orderBy("u.user_name", "asc");
+
+    const users = await usersQuery;
+    let openShift = null;
+    try {
+        openShift = await attendanceDB("org_shifts")
+            .where({ org_id })
+            .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
+            .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
+            .first();
+    } catch (_) {}
+
+    return users.map(u => {
+        if (!u.shift_id) {
+            return {
+                ...u,
+                shift_name: openShift?.shift_name || "Open Shift",
+                policy_rules: u.policy_rules || openShift?.policy_rules || null
+            };
+        }
+        return u;
+    });
 }
 
 export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {

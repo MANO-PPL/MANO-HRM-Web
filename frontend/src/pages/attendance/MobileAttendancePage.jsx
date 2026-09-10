@@ -654,7 +654,7 @@ const MobileAttendancePage = () => {
 
     const handlePunchClick = async (mode) => {
         const isSelfieRequired = mode === 'IN'
-            ? (myShift?.rules?.entry_requirements?.selfie ?? false)
+            ? (myShift?.rules?.entry_requirements?.selfie ?? true)
             : (myShift?.rules?.exit_requirements?.selfie ?? false);
 
         if (isSelfieRequired) {
@@ -2991,55 +2991,35 @@ const MobileAttendancePage = () => {
                 )}
             </AnimatePresence>
 
-            {/* Image Preview Modal */}
-            <AnimatePresence>
-                {previewImage && (
-                    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6">
-                        <motion.div 
-                            initial={{ opacity: 0 }} 
-                            animate={{ opacity: 1 }} 
-                            exit={{ opacity: 0 }} 
-                            onClick={() => setPreviewImage(null)} 
-                            className="absolute inset-0 bg-black/90 backdrop-blur-xl cursor-pointer" 
+            {/* Image Preview Modal (Live Attendance Lightbox) */}
+            {previewImage && createPortal(
+                <AnimatePresence>
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setPreviewImage(null)}
+                    >
+                        <button
+                            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer"
+                            onClick={() => setPreviewImage(null)}
+                        >
+                            <XCircle size={32} />
+                        </button>
+                        <motion.img
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            src={typeof previewImage === 'string' ? previewImage : (previewImage?.url || previewImage)}
+                            alt="Selfie Preview"
+                            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
                         />
-                        {(() => {
-                            const imgUrl = typeof previewImage === 'string' ? previewImage : previewImage?.url;
-                            const title = typeof previewImage === 'object' && previewImage?.title ? previewImage.title : 'Attendance Photo';
-                            const subtitle = typeof previewImage === 'object' && previewImage?.subtitle ? previewImage.subtitle : 'Verification Image';
-                            return (
-                                <motion.div 
-                                    initial={{ scale: 0.9, opacity: 0 }} 
-                                    animate={{ scale: 1, opacity: 1 }} 
-                                    exit={{ scale: 0.9, opacity: 0 }} 
-                                    className="relative w-full max-w-lg max-h-[85vh] bg-slate-900 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-white/10 flex flex-col"
-                                >
-                                    <div className="relative flex-1 min-h-[280px] max-h-[65vh] bg-black flex items-center justify-center overflow-hidden">
-                                        <img src={imgUrl} alt={title} className="w-full h-full object-contain" />
-                                        <button 
-                                            onClick={() => setPreviewImage(null)} 
-                                            className="absolute top-4 right-4 w-10 h-10 bg-black/60 backdrop-blur-md text-white rounded-full flex items-center justify-center border border-white/20 active:scale-95 transition-all cursor-pointer shadow-lg"
-                                            aria-label="Close Preview"
-                                        >
-                                            <X size={20} />
-                                        </button>
-                                    </div>
-                                    <div className="p-4 sm:p-5 bg-slate-950 border-t border-white/10 shrink-0">
-                                        <div className="flex items-center gap-3 text-white">
-                                            <div className="w-9 h-9 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl flex items-center justify-center shrink-0">
-                                                <Camera size={18} />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <h4 className="font-black text-xs sm:text-sm uppercase tracking-wider truncate">{title}</h4>
-                                                <p className="text-[10px] font-bold text-slate-400 truncate mt-0.5">{subtitle}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            );
-                        })()}
-                    </div>
-                )}
-            </AnimatePresence>
+                    </motion.div>
+                </AnimatePresence>,
+                document.body
+            )}
 
         </MobileDashboardLayout>
     );

@@ -6,7 +6,6 @@ import {
     Calendar as CalendarIcon,
     Clock,
     ChevronDown,
-    AlertCircle,
     Plus,
     MapPin,
     ExternalLink,
@@ -27,6 +26,7 @@ const AttendanceHistoryTab = ({
     formatTime,
     calculateDuration,
     setPreviewImage,
+    setViewerImage,
     myShift,
     setIsCorrectionDrawerOpen,
     setCorrDate,
@@ -429,7 +429,7 @@ const AttendanceHistoryTab = ({
                                                                                         type="button"
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
-                                                                                            setPreviewImage(session.time_in_image);
+                                                                                            (setViewerImage || setPreviewImage)(session.time_in_image);
                                                                                         }}
                                                                                         className="text-[9px] font-bold text-indigo-500 hover:underline"
                                                                                     >
@@ -455,7 +455,7 @@ const AttendanceHistoryTab = ({
                                                                                         type="button"
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
-                                                                                            setPreviewImage(session.time_out_image);
+                                                                                            (setViewerImage || setPreviewImage)(session.time_out_image);
                                                                                         }}
                                                                                         className="text-[9px] font-bold text-indigo-500 hover:underline"
                                                                                     >
@@ -472,18 +472,6 @@ const AttendanceHistoryTab = ({
                                                                         </div>
                                                                     </div>
 
-                                                                    {(() => {
-                                                                        const lateMins = typeof session.late_minutes === 'object' && session.late_minutes !== null
-                                                                            ? (session.late_minutes.minutes || 0)
-                                                                            : (Number(session.late_minutes) || 0);
-                                                                        if (lateMins <= 0) return null;
-                                                                        return (
-                                                                            <div className="p-1.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200/50 dark:border-amber-500/20 rounded-lg flex items-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-300">
-                                                                                <AlertCircle size={12} className="shrink-0" />
-                                                                                <span>Late: {lateMins}m {session.late_reason ? `(${session.late_reason})` : ''}</span>
-                                                                            </div>
-                                                                        );
-                                                                    })()}
 
                                                                     {/* Session Checkpoints */}
                                                                     {Array.isArray(session.checkpoints) && session.checkpoints.length > 0 && (

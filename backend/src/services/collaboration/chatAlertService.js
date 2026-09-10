@@ -266,7 +266,7 @@ export async function notifyLeaveStatusUpdated({ org_id, reviewer_id, leave_id, 
         const atts = typeof leave.attachments === 'string' ? JSON.parse(leave.attachments) : (leave.attachments || []);
         const formatAttachments = (atts || []).map(a => ({
             name: a.file_key.split('/').pop() || 'Attachment',
-            url: `https://${process.env.S3_BUCKET_NAME || 'mano-attendance'}.s3.amazonaws.com/${a.file_key}`
+            url: `https://${process.env.S3_BUCKET || process.env.S3_BUCKET_NAME}.s3.amazonaws.com/${a.file_key}`
         }));
 
         const payload = {

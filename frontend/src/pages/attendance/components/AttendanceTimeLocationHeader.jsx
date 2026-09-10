@@ -16,9 +16,11 @@ const AttendanceTimeLocationHeader = ({
     const greeting = hours < 12 ? 'Morning' : hours < 17 ? 'Afternoon' : 'Evening';
     const userName = user?.user_name?.split(' ')[0] || 'User';
 
-    const shiftStart = myShift?.start_time ? myShift.start_time.slice(0, 5) : '09:30';
-    const shiftEnd = myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:30';
-    const shiftName = myShift?.name || 'General Shift';
+    const isOpenShift = myShift?.id === null || !myShift?.start_time || myShift?.name?.toLowerCase().includes('open');
+    const shiftStart = myShift?.start_time ? myShift.start_time.slice(0, 5) : null;
+    const shiftEnd = myShift?.end_time ? myShift.end_time.slice(0, 5) : null;
+    const shiftName = myShift?.name || (isOpenShift ? 'Open Shift' : 'General Shift');
+    const shiftTimingText = (shiftStart && shiftEnd) ? `${shiftStart} – ${shiftEnd}` : 'Flexible Hours';
 
     return (
         <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-2xl p-5 sm:p-6 border border-indigo-500/20 shadow-2xl">
@@ -89,7 +91,7 @@ const AttendanceTimeLocationHeader = ({
                                     )}
                                 </div>
                                 <p className="text-[11px] text-indigo-200/80 font-mono mt-0.5">
-                                    {shiftStart} – {shiftEnd}
+                                    {shiftTimingText}
                                 </p>
                             </div>
                         </div>

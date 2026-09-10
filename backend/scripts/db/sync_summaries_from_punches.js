@@ -68,34 +68,31 @@ function pairPunchesForDate(punches, dateStr) {
 }
 
 async function getUserShift(user_id) {
-  let userShift = await attendanceDB("core_users")
-    .join("org_shifts", "core_users.shift_id", "org_shifts.shift_id")
-    .where("core_users.user_id", user_id)
-    .select("org_shifts.*")
+  const user = await attendanceDB("core_users")
+    .where("user_id", user_id)
+    .select("shift_id", "org_id")
     .first();
 
-  if (!userShift) {
-    const userRecord = await attendanceDB("core_users")
-      .where("user_id", user_id)
-      .select("org_id")
+  if (!user) return null;
+
+  if (user.shift_id) {
+    const assignedShift = await attendanceDB("org_shifts")
+      .where({ shift_id: user.shift_id, org_id: user.org_id })
       .first();
-
-    if (userRecord?.org_id) {
-      userShift = await attendanceDB("org_shifts")
-        .where({ org_id: userRecord.org_id, is_active: 1 })
-        .orderBy("shift_id", "asc")
-        .first();
-
-      if (!userShift) {
-        userShift = await attendanceDB("org_shifts")
-          .where({ org_id: userRecord.org_id })
-          .orderBy("shift_id", "asc")
-          .first();
-      }
-    }
+    if (assignedShift) return assignedShift;
   }
 
-  return userShift;
+  const openShift = await attendanceDB("org_shifts")
+    .where({ org_id: user.org_id })
+    .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
+    .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
+    .first();
+
+  if (openShift) {
+    return openShift;
+  }
+
+  return null;
 }
 
 /**

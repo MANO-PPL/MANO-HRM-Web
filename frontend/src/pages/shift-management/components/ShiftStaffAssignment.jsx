@@ -47,7 +47,7 @@ const ShiftStaffAssignment = ({
                 {!loadingUsers && (() => {
                     const assignedUsers = filteredUsers.filter(user => selectedShift && user.shift_id === selectedShift.id);
                     const unassignedUsers = filteredUsers.filter(user => !selectedShift || user.shift_id !== selectedShift.id);
-                    
+
                     const renderUserCard = (user) => {
                         const isAssigned = selectedShift && user.shift_id === selectedShift.id;
                         const userShift = shifts.find(s => s.id === user.shift_id);
@@ -56,11 +56,10 @@ const ShiftStaffAssignment = ({
                             <div
                                 key={user.user_id}
                                 onClick={() => setSelectedUserId(prev => prev === user.user_id ? null : user.user_id)}
-                                className={`flex items-center justify-between p-3 rounded-lg transition-all cursor-pointer group ${
-                                    isSelected
+                                className={`flex items-center justify-between p-3 rounded-lg transition-all cursor-pointer group ${isSelected
                                         ? 'bg-indigo-50/80 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 ring-2 ring-indigo-500/10'
                                         : 'border border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                }`}
+                                    }`}
                             >
                                 <div className="flex items-center gap-2.5 min-w-0">
                                     <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-bold text-indigo-700 dark:text-indigo-400 overflow-hidden flex-shrink-0">
@@ -77,8 +76,8 @@ const ShiftStaffAssignment = ({
                                                     <Clock size={8} /> {userShift.name}
                                                 </span>
                                             ) : (
-                                                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200/50 dark:border-slate-700/50 flex items-center gap-1 w-max">
-                                                    No Shift
+                                                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/20 flex items-center gap-1 w-max">
+                                                    <Clock size={8} /> No Shift
                                                 </span>
                                             )}
                                         </div>

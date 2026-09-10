@@ -641,6 +641,22 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
     if (user_id) usersQuery = usersQuery.where('core_users.user_id', user_id);
     const users = await usersQuery;
 
+    let openShift = null;
+    try {
+        openShift = await attendanceDB("org_shifts")
+            .where({ org_id })
+            .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
+            .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
+            .first();
+    } catch (_) {}
+
+    for (const u of users) {
+        if (!u.shift_id) {
+            u.shift_name = openShift?.shift_name || "Open Shift";
+            u.policy_rules = u.policy_rules || openShift?.policy_rules || null;
+        }
+    }
+
     // Try to resolve department names (graceful if table missing)
     let deptMap = {};
     try {

@@ -14,35 +14,31 @@ import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttend
  * Fetch User Shift
  */
 export async function getUserShift(user_id) {
-  let userShift = await attendanceDB("core_users")
-    .join("org_shifts", "core_users.shift_id", "org_shifts.shift_id")
-    .where("core_users.user_id", user_id)
-    .select("org_shifts.*")
+  const user = await attendanceDB("core_users")
+    .where("user_id", user_id)
+    .select("shift_id", "org_id")
     .first();
 
-  if (!userShift) {
-    // If user has no explicit shift assigned, find the user's organization active shift
-    const userRecord = await attendanceDB("core_users")
-      .where("user_id", user_id)
-      .select("org_id")
+  if (!user) return null;
+
+  if (user.shift_id) {
+    const assignedShift = await attendanceDB("org_shifts")
+      .where({ shift_id: user.shift_id, org_id: user.org_id })
       .first();
-
-    if (userRecord?.org_id) {
-      userShift = await attendanceDB("org_shifts")
-        .where({ org_id: userRecord.org_id, is_active: 1 })
-        .orderBy("shift_id", "asc")
-        .first();
-
-      if (!userShift) {
-        userShift = await attendanceDB("org_shifts")
-          .where({ org_id: userRecord.org_id })
-          .orderBy("shift_id", "asc")
-          .first();
-      }
-    }
+    if (assignedShift) return assignedShift;
   }
 
-  return userShift;
+  const openShift = await attendanceDB("org_shifts")
+    .where({ org_id: user.org_id })
+    .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
+    .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
+    .first();
+
+  if (openShift) {
+    return openShift;
+  }
+
+  return null;
 }
 
 /**
@@ -489,6 +485,10 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
   const allSessions = [];
   for (const uid of Object.keys(byUser)) {
     const userPunches = byUser[uid];
+    const userShift = await getUserShift(uid).catch(() => null);
+    const shiftRules = ShiftService.getShiftRules(userShift);
+    const seenDaysForLate = new Set();
+
     // Sort punches within the same session/day window by ID to preserve strict chronological insertion order
     userPunches.sort((a, b) => {
       const timeA = new Date(a.punch_time).getTime();
@@ -549,13 +549,25 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
         const todayDateStr = formatLocalDate(new Date());
         const isPastDay = punchDateStr && todayDateStr && punchDateStr < todayDateStr;
 
+        // Evaluate lateness against shift rules only for the first punch-in of each day
+        const isFirstSessionOfDay = punchDateStr ? !seenDaysForLate.has(punchDateStr) : false;
+        if (punchDateStr && isFirstSessionOfDay) {
+          seenDaysForLate.add(punchDateStr);
+        }
+
+        const lateCheck = isFirstSessionOfDay
+          ? StatusService.calculateLateArrival(timeInStr, shiftRules)
+          : { isLate: false, minutesLate: 0 };
+        const lateMinutes = lateCheck.isLate ? lateCheck.minutesLate : Number(inMeta.late_minutes || 0);
+        const isLate = lateCheck.isLate || lateMinutes > 0 || Boolean(inMeta.late_reason);
+
         let sessionStatus = "PRESENT";
         if (inP.status === "closed" || outP) {
-          sessionStatus = "CLOSED";
+          sessionStatus = isLate ? "LATE" : "CLOSED";
         } else if (inP.status === "missed_punch" || isPastDay) {
           sessionStatus = "MISSED_PUNCH";
         } else {
-          sessionStatus = "ACTIVE";
+          sessionStatus = isLate ? "LATE" : "ACTIVE";
         }
 
         allSessions.push({
@@ -574,7 +586,8 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
           time_out_address: (outLoc.address && outLoc.address !== 'Locating...') ? outLoc.address : null,
           time_in_image_key: inMeta.image_key || null,
           time_out_image_key: outMeta.image_key || null,
-          late_minutes: inMeta.late_minutes || 0,
+          late_minutes: lateMinutes,
+          is_late: isLate,
           late_reason: inMeta.late_reason || null,
           total_hours: totalHours,
           status: sessionStatus,
@@ -1543,6 +1556,7 @@ export async function processTimeInSync(context) {
   // 6. Build metadata JSON
   const metadata = {
     image_key: null,
+    late_minutes: lateCheck.isLate ? minutesLate : 0,
     late_reason: isFirstSession ? (late_reason || (lateCheck.isLate ? "Late Entry" : null)) : null,
     accuracy: Math.round(accuracy),
     ip_address: ip,
