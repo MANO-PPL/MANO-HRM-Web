@@ -4,6 +4,8 @@
  * and supports multi-timezone conversions (e.g., India IST, Congo WAT, UTC).
  */
 
+const pad = (n) => String(n).padStart(2, '0');
+
 /**
  * Converts any Date object, ISO string, timestamp, or datetime string into
  * a strict MySQL DATETIME format: 'YYYY-MM-DD HH:mm:ss'.
@@ -20,26 +22,25 @@ export function toMySQLDateTime(dateOrStr) {
     }
 
     try {
-        let d;
         if (dateOrStr instanceof Date) {
+            if (isNaN(dateOrStr.getTime())) return null;
             return dateOrStr.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
         } else if (typeof dateOrStr === 'string') {
-            // Handle ISO strings with 'T' and optional 'Z' or offset
-            const cleaned = dateOrStr.trim();
-            // If it's an ISO string like '2026-08-31T20:43:54.000Z' or '2026-08-31T20:43:54'
+            const cleaned = dateOrStr.trim().replace('Z', '');
             if (cleaned.includes('T')) {
-                const parts = cleaned.replace('Z', '').split('T');
+                const parts = cleaned.split('T');
                 const datePart = parts[0];
-                const timePart = parts[1].split('.')[0]; // remove milliseconds
+                const timePart = parts[1].split('.')[0];
                 return `${datePart} ${timePart.length === 5 ? timePart + ':00' : timePart}`;
             }
-            d = new Date(cleaned);
-        } else {
-            d = new Date(dateOrStr);
+            if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(cleaned)) {
+                return cleaned.split('.')[0];
+            }
         }
 
+        const d = new Date(dateOrStr);
         if (isNaN(d.getTime())) return null;
-        return d.toISOString().replace('T', ' ').split('.')[0];
+        return d.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
     } catch (e) {
         console.error('Error formatting MySQL datetime:', e);
         return null;
@@ -61,24 +62,16 @@ export function toMySQLDate(dateOrStr) {
 
     try {
         if (dateOrStr instanceof Date) {
+            if (isNaN(dateOrStr.getTime())) return null;
             return dateOrStr.toISOString().split('T')[0];
         }
 
         if (typeof dateOrStr === 'string') {
-            const trimmed = dateOrStr.trim();
-            if (trimmed.includes('T')) {
-                return trimmed.split('T')[0];
-            }
-            if (trimmed.includes(' ')) {
-                return trimmed.split(' ')[0];
-            }
-        }
-
-        if (dateOrStr instanceof Date) {
-            return dateOrStr.toISOString().split('T')[0];
+            return dateOrStr.trim().split('T')[0].split(' ')[0];
         }
 
         const d = new Date(dateOrStr);
+        if (isNaN(d.getTime())) return null;
 
         return d.toISOString().split('T')[0];
     } catch (e) {
@@ -97,15 +90,16 @@ export function toMySQLTime(dateOrStr) {
     if (!dateOrStr) return null;
 
     if (dateOrStr instanceof Date) {
+        if (isNaN(dateOrStr.getTime())) return null;
         return dateOrStr.toISOString().split('T')[1]?.split('.')[0] || null;
     }
 
     if (typeof dateOrStr === 'string') {
-        const trimmed = dateOrStr.trim();
+        const trimmed = dateOrStr.trim().replace('Z', '');
         if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
         if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
         if (trimmed.includes('T')) {
-            const timePart = trimmed.split('T')[1]?.split('.')[0]?.replace('Z', '');
+            const timePart = trimmed.split('T')[1]?.split('.')[0];
             if (timePart) return timePart.length === 5 ? `${timePart}:00` : timePart;
         }
         if (trimmed.includes(' ')) {
@@ -115,10 +109,6 @@ export function toMySQLTime(dateOrStr) {
     }
 
     try {
-        if (dateOrStr instanceof Date) {
-            return dateOrStr.toISOString().split('T')[1]?.split('.')[0] || null;
-        }
-
         const d = new Date(dateOrStr);
         if (isNaN(d.getTime())) return null;
 

@@ -572,8 +572,8 @@ export const sendMessage = catchAsync(async (req, res, next) => {
             sender_id: userId,
             type: 'text',
             content: encryptText(message_text ? message_text.trim() : ''),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            created_at: trx.fn.now(),
+            updated_at: trx.fn.now()
         });
 
         insertedMsgId = msgId;
@@ -589,7 +589,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
                 storage_provider: 's3',
                 storage_key: attachment.key || '',
                 public_url: attachment.url || null,
-                created_at: new Date().toISOString()
+                created_at: trx.fn.now()
             });
         }
 
@@ -935,8 +935,8 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
         sender_id: 0,
         type: 'system',
         content: encryptText(`[SYSTEM_CARD:group_update:info] ${updateDescription}`),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: attendanceDB.fn.now(),
+        updated_at: attendanceDB.fn.now()
     });
 
     await attendanceDB('chat_conversations')

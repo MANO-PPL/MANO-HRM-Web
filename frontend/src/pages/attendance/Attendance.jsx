@@ -1511,13 +1511,13 @@ const Attendance = () => {
                         submitDirectData(latitude, longitude, accuracy);
                     },
                     (err) => {
-                        console.warn("Direct punch location fetch failed, proceeding with null location", err);
-                        submitDirectData(null, null, null);
+                        console.warn("Direct punch location fetch failed, using fallback location state", err);
+                        submitDirectData(location.lat || null, location.lng || null, 10);
                     },
                     { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
                 );
             } else {
-                submitDirectData(null, null, null);
+                submitDirectData(location.lat || null, location.lng || null, 10);
             }
         } else {
             if (!navigator.geolocation) {
@@ -1658,13 +1658,13 @@ const Attendance = () => {
                         submitData(latitude, longitude, accuracy);
                     },
                     (err) => {
-                        console.warn("Selfie punch location fetch failed, proceeding with null location", err);
-                        submitData(null, null, null);
+                        console.warn("Selfie punch location fetch failed, using fallback location state", err);
+                        submitData(location.lat || null, location.lng || null, 10);
                     },
                     { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
                 );
             } else {
-                submitData(null, null, null);
+                submitData(location.lat || null, location.lng || null, 10);
             }
         } else {
             if (!navigator.geolocation) {

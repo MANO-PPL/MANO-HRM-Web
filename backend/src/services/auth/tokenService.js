@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { attendanceDB } from '../../config/database.js';
+import { toMySQLDateTime } from '../../utils/dateUtils.js';
 
 /**
  * Generate a cryptographically strong random token
@@ -26,7 +27,7 @@ export async function saveRefreshToken(userId, token, ipAddress, userAgent, reme
     await attendanceDB('core_refresh_tokens').insert({
         user_id: userId,
         token: token,
-        expires_at: expiresAt,
+        expires_at: toMySQLDateTime(expiresAt),
         ip_address: ipAddress,
         user_agent: userAgent,
         remember_me: rememberMe ? 1 : 0

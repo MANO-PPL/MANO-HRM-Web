@@ -19,6 +19,7 @@ import {
     Camera,
     MapPin
 } from 'lucide-react';
+import { MAP_THEMES } from '../../../config/mapConfig';
 
 // Fix for Leaflet default icon issues in React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -28,12 +29,11 @@ L.Icon.Default.mergeOptions({
     shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-const MAP_THEMES = {
-    dark: { name: 'Night Mode', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png' },
-    light: { name: 'Light Mode', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png' },
-    voyager: { name: 'Day Mode', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png' },
-    satellite: { name: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' },
-    streets: { name: 'Streets', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' }
+const isValidCoord = (lat, lng) => {
+    if (lat === null || lat === undefined || lng === null || lng === undefined) return false;
+    const nLat = Number(lat);
+    const nLng = Number(lng);
+    return !isNaN(nLat) && !isNaN(nLng) && Math.abs(nLat) > 0.001 && Math.abs(nLng) > 0.001;
 };
 
 // --- MAP HELPER COMPONENTS ---
@@ -82,8 +82,8 @@ const MapRecenter = ({ data, searchTerm, departmentFilter }) => {
         data.forEach(user => {
             if (user.sessions) {
                 user.sessions.forEach(s => {
-                    if (s.inLat && s.inLng) points.push([Number(s.inLat), Number(s.inLng)]);
-                    if (s.outLat && s.outLng) points.push([Number(s.outLat), Number(s.outLng)]);
+                    if (isValidCoord(s.inLat, s.inLng)) points.push([Number(s.inLat), Number(s.inLng)]);
+                    if (isValidCoord(s.outLat, s.outLng)) points.push([Number(s.outLat), Number(s.outLng)]);
                 });
             }
         });
@@ -466,7 +466,7 @@ const LiveMapTab = ({
     }, [clusterGroupElement]);
 
     const areCoordsSame = (lat1, lng1, lat2, lng2) => {
-        if (!lat1 || !lng1 || !lat2 || !lng2) return false;
+        if (!isValidCoord(lat1, lng1) || !isValidCoord(lat2, lng2)) return false;
         return Math.abs(Number(lat1) - Number(lat2)) < 0.0001 &&
             Math.abs(Number(lng1) - Number(lng2)) < 0.0001;
     };
@@ -549,6 +549,10 @@ const LiveMapTab = ({
                     minZoom={3}
                     maxBounds={[[-90, -180], [90, 180]]}
                     maxBoundsViscosity={1.0}
+                    zoomAnimation={true}
+                    zoomDelta={0.5}
+                    zoomSnap={0.5}
+                    wheelDebounceTime={60}
                     className="h-full w-full z-0"
                     attributionControl={false}
                 >
@@ -598,7 +602,8 @@ const LiveMapTab = ({
 
                     <MarkerClusterGroup
                         ref={setClusterGroupElement}
-                        chunkedLoading
+                        chunkedLoading={false}
+                        removeOutsideVisibleBounds={false}
                         iconCreateFunction={createClusterCustomIcon}
                         maxClusterRadius={40}
                         spiderfyOnMaxZoom={false}
@@ -612,10 +617,12 @@ const LiveMapTab = ({
                                 const markersToRender = [];
 
                                 if (isCombined) {
-                                    markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
+                                    if (isValidCoord(session.inLat, session.inLng)) {
+                                        markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'combined' });
+                                    }
                                 } else {
-                                    if (session.inLat && session.inLng) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
-                                    if (session.outLat && session.outLng) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
+                                    if (isValidCoord(session.inLat, session.inLng)) markersToRender.push({ lat: session.inLat, lng: session.inLng, type: 'in' });
+                                    if (isValidCoord(session.outLat, session.outLng)) markersToRender.push({ lat: session.outLat, lng: session.outLng, type: 'out' });
                                 }
 
                                 return markersToRender.map(m => {

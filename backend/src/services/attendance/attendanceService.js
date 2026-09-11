@@ -41,12 +41,15 @@ export async function getUserShift(user_id) {
   return null;
 }
 
+const pad = (n) => String(n).padStart(2, '0');
+
 /**
- * Format timestamp to MySQL datetime string (YYYY-MM-DD HH:MM:SS)
+ * Format timestamp to MySQL date string (YYYY-MM-DD)
  */
 export function formatLocalDate(val) {
   if (!val) return null;
   if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
     return val.toISOString().split('T')[0];
   }
   return String(val).split('T')[0].split(' ')[0];
@@ -55,6 +58,7 @@ export function formatLocalDate(val) {
 export function formatLocalDatetime(val) {
   if (!val) return null;
   if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
     return val.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
   }
   return String(val).replace('T', ' ').replace('Z', '').split('.')[0];
@@ -63,13 +67,13 @@ export function formatLocalDatetime(val) {
 export function toSqlDatetime(val) {
   if (!val) {
     const d = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return d.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
   }
   if (typeof val === 'string') {
     return val.replace('T', ' ').replace('Z', '').split('.')[0];
   }
   if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
     return val.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
   }
   return String(val);
@@ -81,6 +85,7 @@ export function toSqlDatetime(val) {
 export function getTimeStr(d) {
   if (!d) return null;
   if (d instanceof Date) {
+    if (isNaN(d.getTime())) return null;
     return d.toISOString().split('T')[1].split('.')[0];
   }
   const str = String(d).trim().replace('Z', '');
@@ -852,12 +857,15 @@ export async function createCorrectionRequest({
   }
   */
 
+  // Sanitize request date
+  const cleanDate = toMySQLDate(request_date) || request_date;
+
   // Resolve target_id: for 'summary', find id in attn_daily_summary_v2
   const normType = correction_type === "summary" ? "summary" : "punch";
   let targetId = null;
   if (normType === "summary") {
     const summaryRow = await attendanceDB("attn_daily_summary_v2")
-      .where({ user_id, date: request_date })
+      .where({ user_id, date: cleanDate })
       .select("id")
       .first();
     targetId = summaryRow ? summaryRow.id : null;
@@ -913,7 +921,7 @@ export async function createCorrectionRequest({
   } else {
     // 2. Check if a pending request already exists for this (user_id, request_date)
     pendingRecord = await attendanceDB("attn_corrections")
-      .where({ user_id, request_date, status: "pending" })
+      .where({ user_id, request_date: cleanDate, status: "pending" })
       .first();
   }
 
@@ -959,7 +967,7 @@ export async function createCorrectionRequest({
     submitted_by: user_id,
     correction_type: normType,
     target_id: targetId,
-    request_date,
+    request_date: cleanDate,
     original_data: original_data ? JSON.stringify(original_data) : null,
     proposed_data: finalProposed ? JSON.stringify(finalProposed) : null,
     reason,
