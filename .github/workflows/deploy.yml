@@ -106,21 +106,12 @@ jobs:
           sudo mkdir -p /var/www/MANO-HRM-Web/frontend/dist
           sudo cp -r $GITHUB_WORKSPACE/frontend/dist/* /var/www/MANO-HRM-Web/frontend/dist/
 
-          # Also keep /var/www/attendance in sync if Nginx configuration references it
-          sudo mkdir -p /var/www/attendance
-          sudo cp -r $GITHUB_WORKSPACE/frontend/dist/* /var/www/attendance/
-
-          # Deploy the Nginx config with proper WebSocket upgrade headers.
-          echo "🔧 Deploying Nginx configuration with WebSocket proxy support..."
-          sudo cp $GITHUB_WORKSPACE/scripts/nginx.conf /etc/nginx/sites-available/attendance
-          sudo ln -sf /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/attendance
-
           # Validate and reload Nginx
           if sudo nginx -t; then
             sudo systemctl reload nginx
-            echo "✅ Nginx reloaded with WebSocket-enabled config."
+            echo "✅ Nginx reloaded successfully."
           else
-            echo "❌ Nginx config test failed. Keeping the previous config."
+            echo "❌ Nginx config test failed."
             exit 1
           fi
           echo "🎉 Deployment successfully completed!"
