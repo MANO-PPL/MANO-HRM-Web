@@ -5,35 +5,7 @@ import AppError from '../../utils/AppError.js';
 import { formatDateSafe, getMonthBounds, buildWageRateResolver } from './labourController.js';
 
 /**
- * Helper to convert 1-based column number into Excel column letter(s) (e.g. 1 -> 'A', 27 -> 'AA', 42 -> 'AP')
- */
-function getExcelCol(colNumber) {
-    let dividend = colNumber;
-    let columnName = '';
-    let modulo;
-    while (dividend > 0) {
-        modulo = (dividend - 1) % 26;
-        columnName = String.fromCharCode(65 + modulo) + columnName;
-        dividend = Math.floor((dividend - modulo) / 26);
-    }
-    return columnName;
-}
-
-/**
- * Constructs an Excel formula snippet to calculate total effective present days across an attendance range.
- * Supports:
- * - 'P' -> 1.0
- * - 'HD' -> 0.5 (Default 4 hours)
- * - Wildcard hours matching: 'HD*1*' -> 1/8 (0.125), 'HD*2*' -> 2/8 (0.25), 'HD*3*' -> 3/8 (0.375), 'HD*4*' -> 4/8 (0.5), 'HD*5*' -> 5/8 (0.625), 'HD*6*' -> 6/8 (0.75), 'HD*7*' -> 7/8 (0.875)
- * Handles any user-entered text variations in Excel like 'HD (3h)', 'HD(3h)', 'HD 3 hrs', 'HD (3.0)', etc.
- */
-function buildAttdFormulaSnippet(range) {
-    return `COUNTIF(${range},"P")+COUNTIF(${range},"HD")*0.5+COUNTIF(${range},"HD*4*")*0.5+COUNTIF(${range},"HD*1*")*0.125+COUNTIF(${range},"HD*2*")*0.25+COUNTIF(${range},"HD*3*")*0.375+COUNTIF(${range},"HD*5*")*0.625+COUNTIF(${range},"HD*6*")*0.75+COUNTIF(${range},"HD*7*")*0.875`;
-}
-
-/**
  * Controller to export the Complete 3-Row Daily Spreadsheet & Monthly Wage Ledger to styled Excel (.xlsx)
- * 100% Formula-Driven & Color-Reactive via native Excel COUNTIF/SUMIF/SUM and Conditional Formatting.
  * Balance Payable = Gross Amount (Base + OT) - Total Advances (independent of recorded payouts)
  */
 export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
@@ -198,7 +170,7 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
     // Rate resolver
     const rateResolver = await buildWageRateResolver(labourIds, org_id, end);
 
-    // Track daily totals for initial cached results
+    // Track daily totals
     const dailyPresentHeadcount = Array(totalDays).fill(0);
     const dailyOtHours = Array(totalDays).fill(0);
     const dailyAdvances = Array(totalDays).fill(0);
@@ -270,12 +242,13 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
             daysData.push({
                 day: dayInfo.day,
                 status: statusDisplay,
-                ot_hours: ot > 0 ? ot : null,
-                advance: advAmount > 0 ? advAmount : null
+                ot_hours: ot > 0 ? ot : '',
+                advance: advAmount > 0 ? advAmount : ''
             });
         });
 
         const grossEarned = Math.round(workerBaseCredit + workerOtCredit);
+        // Balance Payable = Gross Amount - Total Advance
         const balancePayable = grossEarned - workerAdvances;
 
         grandTotalPresentDays += workerPresentDaysCount;
@@ -284,7 +257,7 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
         grandTotalGrossAmount += grossEarned;
         grandTotalBalancePayable += balancePayable;
 
-        // Group effective rate segments
+        // Build human-readable effective rate string describing any mid-month changes
         const rateSegments = [];
         let curDaily = null;
         let curOt = null;
@@ -317,12 +290,22 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
             }
         });
 
+        let rateDescStr = '';
+        if (rateSegments.length <= 1) {
+            const seg = rateSegments[0] || { daily: Number(lab.monthly_salary || 0), ot: Number(lab.overtime_pay_per_hour || 0) };
+            rateDescStr = `₹${seg.daily.toLocaleString('en-IN')}/day (OT: ₹${seg.ot}/hr)`;
+        } else {
+            const dailyParts = rateSegments.map(s => `₹${s.daily} (${s.startDay}-${s.endDay} ${monthNameShort})`).join(' → ');
+            const otParts = rateSegments.map(s => `₹${s.ot}/hr`).join(' → ');
+            rateDescStr = `${dailyParts}\nOT: ${otParts}`;
+        }
+
         return {
             sr_no: index + 1,
             labour_id: lab.labour_id,
             name: lab.name,
             role: lab.role || 'Worker',
-            rate_segments: rateSegments,
+            rate_desc: rateDescStr,
             days: daysData,
             totals: {
                 present_days: workerPresentDaysCount,
@@ -349,7 +332,7 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
         views: [{ state: 'frozen', xSplit: 3, ySplit: 4 }]
     });
 
-    // Determine column mapping dynamically based on totalDays
+    // Determine column mapping
     const colSr = 1;
     const colWorker = 2;
     const colMetric = 3;
@@ -358,11 +341,10 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
     const colSubtotal = dayColEnd + 1;
     const colTotalAttd = dayColEnd + 2;
     const colTotalOt = dayColEnd + 3;
-    const colDailyWage = dayColEnd + 4;
-    const colOtRate = dayColEnd + 5;
-    const colGross = dayColEnd + 6;
-    const colAdv = dayColEnd + 7;
-    const colBal = dayColEnd + 8;
+    const colRate = dayColEnd + 4;
+    const colGross = dayColEnd + 5;
+    const colAdv = dayColEnd + 6;
+    const colBal = dayColEnd + 7;
     const totalColumnsCount = colBal;
 
     // Set column widths
@@ -375,8 +357,7 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
     worksheet.getColumn(colSubtotal).width = 15;
     worksheet.getColumn(colTotalAttd).width = 13;
     worksheet.getColumn(colTotalOt).width = 13;
-    worksheet.getColumn(colDailyWage).width = 15;
-    worksheet.getColumn(colOtRate).width = 15;
+    worksheet.getColumn(colRate).width = 32;
     worksheet.getColumn(colGross).width = 17;
     worksheet.getColumn(colAdv).width = 15;
     worksheet.getColumn(colBal).width = 19;
@@ -435,8 +416,7 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
         { col: colSubtotal, text: 'Month Subtotals' },
         { col: colTotalAttd, text: 'Total Attd' },
         { col: colTotalOt, text: 'Total OT (hrs)' },
-        { col: colDailyWage, text: 'Daily Wage (₹)' },
-        { col: colOtRate, text: 'OT Rate (₹/hr)' },
+        { col: colRate, text: 'Wage & OT Rate' },
         { col: colGross, text: 'Gross Amount (₹)' },
         { col: colAdv, text: 'Advance (₹)' },
         { col: colBal, text: 'Balance Payable (₹)' }
@@ -504,181 +484,96 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
         row3.getCell(colMetric).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
         row3.getCell(colMetric).alignment = { vertical: 'middle', horizontal: 'center' };
 
-        // Days 1..totalDays (Populate raw values; conditional formatting handles colors dynamically)
+        // Days 1..totalDays
         worker.days.forEach((dayObj, i) => {
             const col = dayColStart + i;
             const isWeekend = daysArray[i].isWeekend;
 
             // Row 1: Attendance
             const cell1 = row1.getCell(col);
-            cell1.value = dayObj.status || null;
-            cell1.font = { name: 'Calibri', size: 9.5, bold: true };
+            cell1.value = dayObj.status;
+            const isP = dayObj.status === 'P';
+            const isHD = typeof dayObj.status === 'string' && dayObj.status.startsWith('HD');
+            const isA = dayObj.status === 'A';
+            cell1.font = {
+                name: 'Calibri',
+                size: (typeof dayObj.status === 'string' && dayObj.status.length > 2) ? 8 : 9.5,
+                bold: true,
+                color: { argb: isP ? 'FF047857' : isHD ? 'FFB45309' : isA ? 'FFE11D48' : 'FF64748B' }
+            };
             cell1.alignment = { vertical: 'middle', horizontal: 'center' };
-            if (isWeekend) {
-                cell1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-            }
+            cell1.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: isP ? 'FFDCFCE7' : isHD ? 'FFFEF3C7' : isWeekend ? 'FFF8FAFC' : 'FFFFFFFF' }
+            };
 
             // Row 2: OT Hours
             const cell2 = row2.getCell(col);
-            cell2.value = dayObj.ot_hours;
+            cell2.value = dayObj.ot_hours !== '' ? dayObj.ot_hours : null;
             cell2.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF4338CA' } };
             cell2.alignment = { vertical: 'middle', horizontal: 'center' };
-            if (isWeekend) {
-                cell2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-            }
+            cell2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: dayObj.ot_hours ? 'FFEEF2FF' : isWeekend ? 'FFF8FAFC' : 'FFFFFFFF' } };
             if (typeof dayObj.ot_hours === 'number') cell2.numFmt = '0.0';
 
             // Row 3: Advance Amount
             const cell3 = row3.getCell(col);
-            cell3.value = dayObj.advance;
+            cell3.value = dayObj.advance !== '' ? dayObj.advance : null;
             cell3.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF92400E' } };
             cell3.alignment = { vertical: 'middle', horizontal: 'center' };
-            if (isWeekend) {
-                cell3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-            }
+            cell3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: dayObj.advance ? 'FFFEF3C7' : isWeekend ? 'FFF8FAFC' : 'FFFFFFFF' } };
             if (typeof dayObj.advance === 'number') cell3.numFmt = '₹#,##0';
         });
 
-        // -----------------------------------------------------------------
-        // FORMULAS: Month Subtotals Column
-        // -----------------------------------------------------------------
-        const attdRange = `${getExcelCol(dayColStart)}${r1}:${getExcelCol(dayColEnd)}${r1}`;
-        const otRange = `${getExcelCol(dayColStart)}${r2}:${getExcelCol(dayColEnd)}${r2}`;
-        const advRange = `${getExcelCol(dayColStart)}${r3}:${getExcelCol(dayColEnd)}${r3}`;
-
-        // Row 1: Attd Days Subtotal Formula (Pro-rata weighted count with wildcard support)
-        const attdFormula = buildAttdFormulaSnippet(attdRange);
-        row1.getCell(colSubtotal).value = { formula: attdFormula, result: Number(worker.totals.present_days.toFixed(2)) };
+        // Month Subtotals column
+        row1.getCell(colSubtotal).value = `${worker.totals.present_days.toFixed(1)} Days`;
         row1.getCell(colSubtotal).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF047857' } };
         row1.getCell(colSubtotal).alignment = { vertical: 'middle', horizontal: 'right' };
         row1.getCell(colSubtotal).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
-        row1.getCell(colSubtotal).numFmt = '0.0" Days"';
 
-        // Row 2: OT Hours Subtotal Formula
-        const otFormula = `SUM(${otRange})`;
-        row2.getCell(colSubtotal).value = { formula: otFormula, result: Number(worker.totals.ot_hours.toFixed(1)) };
+        row2.getCell(colSubtotal).value = `${worker.totals.ot_hours.toFixed(1)} hrs`;
         row2.getCell(colSubtotal).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF4338CA' } };
         row2.getCell(colSubtotal).alignment = { vertical: 'middle', horizontal: 'right' };
         row2.getCell(colSubtotal).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
-        row2.getCell(colSubtotal).numFmt = '0.0" hrs"';
 
-        // Row 3: Advance Amount Subtotal Formula
-        const advFormula = `SUM(${advRange})`;
-        row3.getCell(colSubtotal).value = { formula: advFormula, result: worker.totals.advances };
+        row3.getCell(colSubtotal).value = worker.totals.advances;
         row3.getCell(colSubtotal).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF92400E' } };
         row3.getCell(colSubtotal).alignment = { vertical: 'middle', horizontal: 'right' };
         row3.getCell(colSubtotal).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
         row3.getCell(colSubtotal).numFmt = '₹#,##0';
 
-        // -----------------------------------------------------------------
-        // FORMULAS: Summary Columns (Total Attd, Total OT, Rates, Gross, Adv, Bal)
-        // -----------------------------------------------------------------
-        const subtotalColLet = getExcelCol(colSubtotal);
-        const totalAttdColLet = getExcelCol(colTotalAttd);
-        const totalOtColLet = getExcelCol(colTotalOt);
-        const dailyWageColLet = getExcelCol(colDailyWage);
-        const otRateColLet = getExcelCol(colOtRate);
-        const grossColLet = getExcelCol(colGross);
-        const advColLet = getExcelCol(colAdv);
-        const balColLet = getExcelCol(colBal);
-
-        // Total Attd (Row 1, merged r1..r3)
-        row1.getCell(colTotalAttd).value = { formula: `${subtotalColLet}${r1}`, result: Number(worker.totals.present_days.toFixed(2)) };
+        // Summary Columns (Values on Row 1, merged across r1..r3)
+        // Total Attd
+        row1.getCell(colTotalAttd).value = worker.totals.present_days;
         row1.getCell(colTotalAttd).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
         row1.getCell(colTotalAttd).alignment = { vertical: 'middle', horizontal: 'center' };
         row1.getCell(colTotalAttd).numFmt = '0.0';
 
-        // Total OT (Row 1, merged r1..r3)
-        row1.getCell(colTotalOt).value = { formula: `${subtotalColLet}${r2}`, result: Number(worker.totals.ot_hours.toFixed(1)) };
+        // Total OT
+        row1.getCell(colTotalOt).value = worker.totals.ot_hours;
         row1.getCell(colTotalOt).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF4F46E5' } };
         row1.getCell(colTotalOt).alignment = { vertical: 'middle', horizontal: 'center' };
         row1.getCell(colTotalOt).numFmt = '0.0';
 
-        // Rate setup (Single vs Multi-Tier Wage Revision)
-        const segments = worker.rate_segments || [];
-        let grossFormula = '';
+        // Rate
+        row1.getCell(colRate).value = worker.rate_desc;
+        row1.getCell(colRate).font = { name: 'Calibri', size: 9, bold: false, color: { argb: 'FF334155' } };
+        row1.getCell(colRate).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
-        if (segments.length <= 1) {
-            const seg = segments[0] || { daily: 0, ot: 0 };
-            
-            // Row 1 Rate Cells (Numeric and editable)
-            row1.getCell(colDailyWage).value = seg.daily;
-            row1.getCell(colDailyWage).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E293B' } };
-            row1.getCell(colDailyWage).alignment = { vertical: 'middle', horizontal: 'right' };
-            row1.getCell(colDailyWage).numFmt = '₹#,##0';
-
-            row1.getCell(colOtRate).value = seg.ot;
-            row1.getCell(colOtRate).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF4338CA' } };
-            row1.getCell(colOtRate).alignment = { vertical: 'middle', horizontal: 'right' };
-            row1.getCell(colOtRate).numFmt = '₹#,##0';
-
-            // Direct formula multiplying Total Attd * Daily Wage + Total OT * OT Rate
-            grossFormula = `(${totalAttdColLet}${r1}*${dailyWageColLet}${r1})+(${totalOtColLet}${r1}*${otRateColLet}${r1})`;
-        } else {
-            // Multi-Tier Wage Revision: Assign rate tiers to Row 1 & Row 2
-            const segActive = segments[segments.length - 1]; // Active / Latest rate
-            const segPrev = segments[0]; // Previous rate
-
-            // Row 1: Active Rate Tier
-            row1.getCell(colDailyWage).value = segActive.daily;
-            row1.getCell(colDailyWage).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
-            row1.getCell(colDailyWage).alignment = { vertical: 'middle', horizontal: 'right' };
-            row1.getCell(colDailyWage).numFmt = '₹#,##0';
-
-            row1.getCell(colOtRate).value = segActive.ot;
-            row1.getCell(colOtRate).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF4338CA' } };
-            row1.getCell(colOtRate).alignment = { vertical: 'middle', horizontal: 'right' };
-            row1.getCell(colOtRate).numFmt = '₹#,##0';
-
-            // Row 2: Previous Rate Tier
-            row2.getCell(colDailyWage).value = segPrev.daily;
-            row2.getCell(colDailyWage).font = { name: 'Calibri', size: 9, bold: false, color: { argb: 'FF64748B' } };
-            row2.getCell(colDailyWage).alignment = { vertical: 'middle', horizontal: 'right' };
-            row2.getCell(colDailyWage).numFmt = '₹#,##0';
-
-            row2.getCell(colOtRate).value = segPrev.ot;
-            row2.getCell(colOtRate).font = { name: 'Calibri', size: 9, bold: false, color: { argb: 'FF64748B' } };
-            row2.getCell(colOtRate).alignment = { vertical: 'middle', horizontal: 'right' };
-            row2.getCell(colOtRate).numFmt = '₹#,##0';
-
-            // Row 3: Period note
-            row3.getCell(colDailyWage).value = `${segPrev.startDay}-${segPrev.endDay} ${monthNameShort}: ₹${segPrev.daily} → ${segActive.startDay}-${segActive.endDay} ${monthNameShort}: ₹${segActive.daily}`;
-            row3.getCell(colDailyWage).font = { name: 'Calibri', size: 7.5, italic: true, color: { argb: 'FF94A3B8' } };
-            row3.getCell(colDailyWage).alignment = { vertical: 'middle', horizontal: 'center' };
-
-            row3.getCell(colOtRate).value = `OT: ₹${segPrev.ot} → ₹${segActive.ot}`;
-            row3.getCell(colOtRate).font = { name: 'Calibri', size: 7.5, italic: true, color: { argb: 'FF94A3B8' } };
-            row3.getCell(colOtRate).alignment = { vertical: 'middle', horizontal: 'center' };
-
-            // Segmented date range formula for Gross Amount
-            const p1StartCol = getExcelCol(dayColStart + segPrev.startDay - 1);
-            const p1EndCol = getExcelCol(dayColStart + segPrev.endDay - 1);
-            const p2StartCol = getExcelCol(dayColStart + segActive.startDay - 1);
-            const p2EndCol = getExcelCol(dayColStart + segActive.endDay - 1);
-
-            const p1AttdRange = `${p1StartCol}${r1}:${p1EndCol}${r1}`;
-            const p2AttdRange = `${p2StartCol}${r1}:${p2EndCol}${r1}`;
-            const p1OtRange = `${p1StartCol}${r2}:${p1EndCol}${r2}`;
-            const p2OtRange = `${p2StartCol}${r2}:${p2EndCol}${r2}`;
-
-            grossFormula = `((` + buildAttdFormulaSnippet(p1AttdRange) + `)*${dailyWageColLet}${r2}+(` + buildAttdFormulaSnippet(p2AttdRange) + `)*${dailyWageColLet}${r1})+(SUM(${p1OtRange})*${otRateColLet}${r2}+SUM(${p2OtRange})*${otRateColLet}${r1})`;
-        }
-
-        // Gross Amount (Merged r1..r3)
-        row1.getCell(colGross).value = { formula: grossFormula, result: worker.totals.gross_earned };
+        // Gross Amount
+        row1.getCell(colGross).value = worker.totals.gross_earned;
         row1.getCell(colGross).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF047857' } };
         row1.getCell(colGross).alignment = { vertical: 'middle', horizontal: 'right' };
         row1.getCell(colGross).numFmt = '₹#,##0';
 
-        // Advance (Merged r1..r3) -> References Row 3 Advance Subtotal
-        row1.getCell(colAdv).value = { formula: `${subtotalColLet}${r3}`, result: worker.totals.advances };
+        // Advance
+        row1.getCell(colAdv).value = worker.totals.advances;
         row1.getCell(colAdv).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFD97706' } };
         row1.getCell(colAdv).alignment = { vertical: 'middle', horizontal: 'right' };
         row1.getCell(colAdv).numFmt = '₹#,##0';
 
-        // Balance Payable (Merged r1..r3) -> Formula: Gross Amount - Advance
-        const balFormula = `${grossColLet}${r1}-${advColLet}${r1}`;
-        row1.getCell(colBal).value = { formula: balFormula, result: worker.totals.balance_payable };
+        // Balance Payable (Gross - Advance)
+        row1.getCell(colBal).value = worker.totals.balance_payable;
         row1.getCell(colBal).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1E293B' } };
         row1.getCell(colBal).alignment = { vertical: 'middle', horizontal: 'right' };
         row1.getCell(colBal).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
@@ -699,15 +594,12 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
             }
         }
 
-        // Merge summary columns vertically
+        // Merge vertically
         worksheet.mergeCells(r1, colSr, r3, colSr);
         worksheet.mergeCells(r1, colWorker, r3, colWorker);
         worksheet.mergeCells(r1, colTotalAttd, r3, colTotalAttd);
         worksheet.mergeCells(r1, colTotalOt, r3, colTotalOt);
-        if (segments.length <= 1) {
-            worksheet.mergeCells(r1, colDailyWage, r3, colDailyWage);
-            worksheet.mergeCells(r1, colOtRate, r3, colOtRate);
-        }
+        worksheet.mergeCells(r1, colRate, r3, colRate);
         worksheet.mergeCells(r1, colGross, r3, colGross);
         worksheet.mergeCells(r1, colAdv, r3, colAdv);
         worksheet.mergeCells(r1, colBal, r3, colBal);
@@ -715,218 +607,106 @@ export const exportDetailedMonthlyLedgerExcel = catchAsync(async (req, res) => {
         currentRowIdx += 3;
     });
 
-    const lastWorkerRow = currentRowIdx - 1;
-
     // ==========================================
-    // NATIVE EXCEL CONDITIONAL FORMATTING
-    // Dynamic color pills on user edit across attendance cells
+    // BOTTOM SUMMARY ROWS (3 AGGREGATE ROWS)
     // ==========================================
-    if (processedWorkers.length > 0) {
-        const attdGridRef = `${getExcelCol(dayColStart)}5:${getExcelCol(dayColEnd)}${lastWorkerRow}`;
-        worksheet.addConditionalFormatting({
-            ref: attdGridRef,
-            rules: [
-                {
-                    priority: 1,
-                    type: 'cellIs',
-                    operator: 'equal',
-                    formulae: ['"P"'],
-                    style: {
-                        fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFDCFCE7' } },
-                        font: { color: { argb: 'FF047857' }, bold: true }
-                    }
-                },
-                {
-                    priority: 2,
-                    type: 'containsText',
-                    operator: 'containsText',
-                    text: 'HD',
-                    style: {
-                        fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEF3C7' } },
-                        font: { color: { argb: 'FFB45309' }, bold: true }
-                    }
-                },
-                {
-                    priority: 3,
-                    type: 'cellIs',
-                    operator: 'equal',
-                    formulae: ['"A"'],
-                    style: {
-                        fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFFE4E6' } },
-                        font: { color: { argb: 'FFE11D48' }, bold: true }
-                    }
-                }
-            ]
-        });
-    }
-
-    // ==========================================
-    // BOTTOM SUMMARY ROWS (3 AGGREGATE ROWS WITH LIVE SUMIF/COUNTIF FORMULAS)
-    // ==========================================
-
-    const subtotalColLet = getExcelCol(colSubtotal);
-    const totalAttdColLet = getExcelCol(colTotalAttd);
-    const totalOtColLet = getExcelCol(colTotalOt);
-    const grossColLet = getExcelCol(colGross);
-    const advColLet = getExcelCol(colAdv);
-    const balColLet = getExcelCol(colBal);
 
     // Summary Row 1: Daily Present Headcount
-    const sumRow1Idx = currentRowIdx;
-    const sumRow1 = worksheet.getRow(sumRow1Idx);
+    const sumRow1 = worksheet.getRow(currentRowIdx);
     sumRow1.height = 22;
     sumRow1.getCell(colSr).value = 'DAILY PRESENT HEADCOUNT';
     sumRow1.getCell(colSr).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF047857' } };
     sumRow1.getCell(colSr).alignment = { vertical: 'middle', horizontal: 'left' };
-    worksheet.mergeCells(sumRow1Idx, colSr, sumRow1Idx, colWorker);
+    worksheet.mergeCells(currentRowIdx, colSr, currentRowIdx, colWorker);
 
     sumRow1.getCell(colMetric).value = 'Headcount';
     sumRow1.getCell(colMetric).font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF047857' } };
     sumRow1.getCell(colMetric).alignment = { vertical: 'middle', horizontal: 'center' };
 
-    daysArray.forEach((dInfo, i) => {
-        const col = dayColStart + i;
-        const colLet = getExcelCol(col);
-        const cell = sumRow1.getCell(col);
-
-        if (processedWorkers.length > 0) {
-            const colRange = `${colLet}5:${colLet}${lastWorkerRow}`;
-            const hcFormula = buildAttdFormulaSnippet(colRange);
-            cell.value = { formula: hcFormula, result: Number(dailyPresentHeadcount[i].toFixed(2)) };
-        } else {
-            cell.value = 0;
-        }
-
+    dailyPresentHeadcount.forEach((cnt, i) => {
+        const cell = sumRow1.getCell(dayColStart + i);
+        cell.value = cnt > 0 ? cnt : '-';
         cell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF047857' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.numFmt = '0.0';
+        if (typeof cnt === 'number' && cnt > 0) cell.numFmt = '0.0';
     });
 
-    if (processedWorkers.length > 0) {
-        const totAttdSumFormula = `SUMIF($C$5:$C$${lastWorkerRow},"Attd",$${subtotalColLet}$5:$${subtotalColLet}$${lastWorkerRow})`;
-        sumRow1.getCell(colSubtotal).value = { formula: totAttdSumFormula, result: Number(grandTotalPresentDays.toFixed(2)) };
-        sumRow1.getCell(colTotalAttd).value = { formula: `${subtotalColLet}${sumRow1Idx}`, result: Number(grandTotalPresentDays.toFixed(2)) };
-    } else {
-        sumRow1.getCell(colSubtotal).value = 0;
-        sumRow1.getCell(colTotalAttd).value = 0;
-    }
-
+    sumRow1.getCell(colSubtotal).value = `${grandTotalPresentDays.toFixed(1)} Total Days`;
     sumRow1.getCell(colSubtotal).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF047857' } };
     sumRow1.getCell(colSubtotal).alignment = { vertical: 'middle', horizontal: 'right' };
-    sumRow1.getCell(colSubtotal).numFmt = '0.0" Total Days"';
 
+    sumRow1.getCell(colTotalAttd).value = grandTotalPresentDays;
     sumRow1.getCell(colTotalAttd).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF047857' } };
     sumRow1.getCell(colTotalAttd).alignment = { vertical: 'middle', horizontal: 'center' };
     sumRow1.getCell(colTotalAttd).numFmt = '0.0';
 
     // Summary Row 2: Daily Overtime Hours
     currentRowIdx += 1;
-    const sumRow2Idx = currentRowIdx;
-    const sumRow2 = worksheet.getRow(sumRow2Idx);
+    const sumRow2 = worksheet.getRow(currentRowIdx);
     sumRow2.height = 22;
     sumRow2.getCell(colSr).value = 'DAILY OVERTIME HOURS';
     sumRow2.getCell(colSr).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF4338CA' } };
     sumRow2.getCell(colSr).alignment = { vertical: 'middle', horizontal: 'left' };
-    worksheet.mergeCells(sumRow2Idx, colSr, sumRow2Idx, colWorker);
+    worksheet.mergeCells(currentRowIdx, colSr, currentRowIdx, colWorker);
 
     sumRow2.getCell(colMetric).value = 'Total OT';
     sumRow2.getCell(colMetric).font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF4338CA' } };
     sumRow2.getCell(colMetric).alignment = { vertical: 'middle', horizontal: 'center' };
 
-    daysArray.forEach((dInfo, i) => {
-        const col = dayColStart + i;
-        const colLet = getExcelCol(col);
-        const cell = sumRow2.getCell(col);
-
-        if (processedWorkers.length > 0) {
-            const otSumFormula = `SUMIF($C$5:$C$${lastWorkerRow},"OT (hrs)",${colLet}$5:${colLet}$${lastWorkerRow})`;
-            cell.value = { formula: otSumFormula, result: Number(dailyOtHours[i].toFixed(1)) };
-        } else {
-            cell.value = 0;
-        }
-
+    dailyOtHours.forEach((ot, i) => {
+        const cell = sumRow2.getCell(dayColStart + i);
+        cell.value = ot > 0 ? ot : '-';
         cell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF4338CA' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.numFmt = '0.0';
+        if (typeof ot === 'number' && ot > 0) cell.numFmt = '0.0';
     });
 
-    if (processedWorkers.length > 0) {
-        const totOtSumFormula = `SUMIF($C$5:$C$${lastWorkerRow},"OT (hrs)",$${subtotalColLet}$5:$${subtotalColLet}$${lastWorkerRow})`;
-        sumRow2.getCell(colSubtotal).value = { formula: totOtSumFormula, result: Number(grandTotalOtHours.toFixed(1)) };
-        sumRow2.getCell(colTotalOt).value = { formula: `${subtotalColLet}${sumRow2Idx}`, result: Number(grandTotalOtHours.toFixed(1)) };
-    } else {
-        sumRow2.getCell(colSubtotal).value = 0;
-        sumRow2.getCell(colTotalOt).value = 0;
-    }
-
+    sumRow2.getCell(colSubtotal).value = `${grandTotalOtHours.toFixed(1)} Total hrs`;
     sumRow2.getCell(colSubtotal).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF4338CA' } };
     sumRow2.getCell(colSubtotal).alignment = { vertical: 'middle', horizontal: 'right' };
-    sumRow2.getCell(colSubtotal).numFmt = '0.0" Total hrs"';
 
+    sumRow2.getCell(colTotalOt).value = grandTotalOtHours;
     sumRow2.getCell(colTotalOt).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF4338CA' } };
     sumRow2.getCell(colTotalOt).alignment = { vertical: 'middle', horizontal: 'center' };
     sumRow2.getCell(colTotalOt).numFmt = '0.0';
 
     // Summary Row 3: Daily Advances Disbursed & Grand Financial Totals
     currentRowIdx += 1;
-    const sumRow3Idx = currentRowIdx;
-    const sumRow3 = worksheet.getRow(sumRow3Idx);
+    const sumRow3 = worksheet.getRow(currentRowIdx);
     sumRow3.height = 24;
     sumRow3.getCell(colSr).value = 'DAILY ADVANCES DISBURSED';
     sumRow3.getCell(colSr).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FFB45309' } };
     sumRow3.getCell(colSr).alignment = { vertical: 'middle', horizontal: 'left' };
-    worksheet.mergeCells(sumRow3Idx, colSr, sumRow3Idx, colWorker);
+    worksheet.mergeCells(currentRowIdx, colSr, currentRowIdx, colWorker);
 
     sumRow3.getCell(colMetric).value = 'Total Adv';
     sumRow3.getCell(colMetric).font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FFB45309' } };
     sumRow3.getCell(colMetric).alignment = { vertical: 'middle', horizontal: 'center' };
 
-    daysArray.forEach((dInfo, i) => {
-        const col = dayColStart + i;
-        const colLet = getExcelCol(col);
-        const cell = sumRow3.getCell(col);
-
-        if (processedWorkers.length > 0) {
-            const advSumFormula = `SUMIF($C$5:$C$${lastWorkerRow},"Adv (₹)",${colLet}$5:${colLet}$${lastWorkerRow})`;
-            cell.value = { formula: advSumFormula, result: dailyAdvances[i] };
-        } else {
-            cell.value = 0;
-        }
-
+    dailyAdvances.forEach((adv, i) => {
+        const cell = sumRow3.getCell(dayColStart + i);
+        cell.value = adv > 0 ? adv : '-';
         cell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FFB45309' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.numFmt = '₹#,##0';
+        if (typeof adv === 'number' && adv > 0) cell.numFmt = '₹#,##0';
     });
 
-    if (processedWorkers.length > 0) {
-        const totAdvSumFormula = `SUMIF($C$5:$C$${lastWorkerRow},"Adv (₹)",$${subtotalColLet}$5:$${subtotalColLet}$${lastWorkerRow})`;
-        const grandGrossFormula = `SUMIF($C$5:$C$${lastWorkerRow},"Attd",$${grossColLet}$5:$${grossColLet}$${lastWorkerRow})`;
-        const grandAdvFormula = `SUMIF($C$5:$C$${lastWorkerRow},"Attd",$${advColLet}$5:$${advColLet}$${lastWorkerRow})`;
-        const grandBalFormula = `${grossColLet}${sumRow3Idx}-${advColLet}${sumRow3Idx}`;
-
-        sumRow3.getCell(colSubtotal).value = { formula: totAdvSumFormula, result: grandTotalAdvances };
-        sumRow3.getCell(colGross).value = { formula: grandGrossFormula, result: grandTotalGrossAmount };
-        sumRow3.getCell(colAdv).value = { formula: grandAdvFormula, result: grandTotalAdvances };
-        sumRow3.getCell(colBal).value = { formula: grandBalFormula, result: grandTotalBalancePayable };
-    } else {
-        sumRow3.getCell(colSubtotal).value = 0;
-        sumRow3.getCell(colGross).value = 0;
-        sumRow3.getCell(colAdv).value = 0;
-        sumRow3.getCell(colBal).value = 0;
-    }
-
+    sumRow3.getCell(colSubtotal).value = grandTotalAdvances;
     sumRow3.getCell(colSubtotal).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FFB45309' } };
     sumRow3.getCell(colSubtotal).alignment = { vertical: 'middle', horizontal: 'right' };
     sumRow3.getCell(colSubtotal).numFmt = '₹#,##0';
 
+    sumRow3.getCell(colGross).value = grandTotalGrossAmount;
     sumRow3.getCell(colGross).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF047857' } };
     sumRow3.getCell(colGross).alignment = { vertical: 'middle', horizontal: 'right' };
     sumRow3.getCell(colGross).numFmt = '₹#,##0';
 
+    sumRow3.getCell(colAdv).value = grandTotalAdvances;
     sumRow3.getCell(colAdv).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFD97706' } };
     sumRow3.getCell(colAdv).alignment = { vertical: 'middle', horizontal: 'right' };
     sumRow3.getCell(colAdv).numFmt = '₹#,##0';
 
+    sumRow3.getCell(colBal).value = grandTotalBalancePayable;
     sumRow3.getCell(colBal).font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF0F172A' } };
     sumRow3.getCell(colBal).alignment = { vertical: 'middle', horizontal: 'right' };
     sumRow3.getCell(colBal).numFmt = '₹#,##0';
