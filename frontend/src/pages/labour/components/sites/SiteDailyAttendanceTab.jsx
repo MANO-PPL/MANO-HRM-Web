@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Clock, AlertTriangle, Search, X, Building, Plus,
-    Save, Loader2, CheckCircle, XCircle, RotateCcw, CheckSquare
+    Save, Loader2, CheckCircle, XCircle, RotateCcw, CheckSquare, Check
 } from 'lucide-react';
 import LoadingScreen from '../../../../components/LoadingScreen';
 
