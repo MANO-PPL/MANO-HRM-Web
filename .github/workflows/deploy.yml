@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: deploy-mano-attendance
+  cancel-in-progress: false
+
 jobs:
   build-assets:
     name: Build & Verify (CI)
@@ -58,7 +62,7 @@ jobs:
   deploy-to-ec2:
     name: Deploy via Self-Hosted Runner
     needs: build-assets
-    runs-on: [self-hosted, hrm]
+    runs-on: [self-hosted, ec2-prod]
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -74,44 +78,40 @@ jobs:
       - name: Sync Production Codebase
         run: |
           echo "📥 Updating production repository codebase..."
-          cd /home/ubuntu/MANO-Attendance || exit
-          git fetch origin main
-          git reset --hard origin/main
+          cd /var/www/MANO-HRM-Web || exit
+          sudo git fetch origin main
+          sudo git reset --hard origin/main
 
       - name: Deploy Backend & Restart PM2
         run: |
           echo "⚙ Setting up Backend in production directory..."
-          cd /home/ubuntu/MANO-Attendance/backend
-          npm install --production --no-audit --no-fund
+          cd /var/www/MANO-HRM-Web/backend
+          sudo npm install --production --no-audit --no-fund
           
           # Restart backend process using PM2
-          if pm2 describe "ATTENDANCE-BACKEND" > /dev/null 2>&1; then
+          if sudo pm2 describe "MANO-Attendance" > /dev/null 2>&1; then
             echo "🔄 Reloading backend with PM2..."
-            pm2 reload "ATTENDANCE-BACKEND" --update-env
+            sudo pm2 reload "MANO-Attendance" --update-env
+          elif pm2 describe "MANO-Attendance" > /dev/null 2>&1; then
+            echo "🔄 Reloading backend with PM2..."
+            pm2 reload "MANO-Attendance" --update-env
           else
             echo "🚀 Starting new backend process under PM2..."
-            pm2 start server.js --name "ATTENDANCE-BACKEND" --update-env
+            sudo pm2 start server.js --name "MANO-Attendance" --update-env
           fi
 
       - name: Deploy Frontend to Nginx Target
         run: |
-          echo "📁 Copying pre-built assets to Nginx target..."
-          sudo cp -r $GITHUB_WORKSPACE/frontend/dist/* /var/www/attendance/
-
-          # Deploy the Nginx config with proper WebSocket upgrade headers.
-          # Without proxy_set_header Upgrade / Connection "upgrade", Socket.IO
-          # silently falls back to HTTP long-polling and messages only appear
-          # after a full page reload (the bug we are fixing).
-          echo "🔧 Deploying Nginx configuration with WebSocket proxy support..."
-          sudo cp $GITHUB_WORKSPACE/scripts/nginx.conf /etc/nginx/sites-available/attendance
-          sudo ln -sf /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/attendance
+          echo "📁 Copying pre-built assets to production dist..."
+          sudo mkdir -p /var/www/MANO-HRM-Web/frontend/dist
+          sudo cp -r $GITHUB_WORKSPACE/frontend/dist/* /var/www/MANO-HRM-Web/frontend/dist/
 
           # Validate and reload Nginx
           if sudo nginx -t; then
             sudo systemctl reload nginx
-            echo "✅ Nginx reloaded with WebSocket-enabled config."
+            echo "✅ Nginx reloaded successfully."
           else
-            echo "❌ Nginx config test failed. Keeping the previous config."
+            echo "❌ Nginx config test failed."
             exit 1
           fi
           echo "🎉 Deployment successfully completed!"
