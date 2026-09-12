@@ -557,21 +557,51 @@ async function runGenerateSimulation(orgId, payload) {
     const employeeIds = employees.map((employee) => employee.user_id);
     const dateList = buildDateRange(dateStart, dateEnd);
 
-    const attendanceRecords = await attendanceDB('attn_records')
+    const punchRows = await attendanceDB('attn_punches')
         .select(
-            'attendance_id',
+            'id',
             'user_id',
-            attendanceDB.raw("DATE_FORMAT(time_in, '%Y-%m-%d') as activity_date"),
-            attendanceDB.raw("DATE_FORMAT(time_in, '%H:%i:%s') as time_in_time"),
-            attendanceDB.raw("DATE_FORMAT(time_out, '%H:%i:%s') as time_out_time")
+            'punch_time',
+            'punch_type',
+            attendanceDB.raw("DATE_FORMAT(punch_time, '%Y-%m-%d') as punch_date"),
+            attendanceDB.raw("DATE_FORMAT(punch_time, '%H:%i:%s') as punch_clock")
         )
         .whereIn('user_id', employeeIds)
-        .whereRaw('DATE(time_in) >= ?', [dateStart])
-        .whereRaw('DATE(time_in) <= ?', [dateEnd])
-        .whereNotNull('time_in')
-        .whereNotNull('time_out')
+        .whereNull('deleted_at')
+        .whereIn('punch_type', ['in', 'out'])
+        .whereRaw('DATE(punch_time) >= ?', [dateStart])
+        .whereRaw('DATE(punch_time) <= DATE_ADD(?, INTERVAL 1 DAY)', [dateEnd])
         .orderBy('user_id', 'asc')
-        .orderBy('time_in', 'asc');
+        .orderBy('punch_time', 'asc')
+        .orderBy('id', 'asc');
+
+    const attendanceRecords = [];
+    const punchMap = {};
+    for (const p of punchRows) {
+        if (!punchMap[p.user_id]) punchMap[p.user_id] = [];
+        punchMap[p.user_id].push(p);
+    }
+    for (const [uId, uPunches] of Object.entries(punchMap)) {
+        let i = 0;
+        while (i < uPunches.length) {
+            const inP = uPunches[i];
+            if (inP.punch_type === 'in') {
+                const outP = (i + 1 < uPunches.length && uPunches[i + 1].punch_type === 'out') ? uPunches[i + 1] : null;
+                if (outP && inP.punch_date >= dateStart && inP.punch_date <= dateEnd) {
+                    attendanceRecords.push({
+                        attendance_id: inP.id,
+                        user_id: uId,
+                        activity_date: inP.punch_date,
+                        time_in_time: inP.punch_clock,
+                        time_out_time: outP.punch_clock
+                    });
+                }
+                i += outP ? 2 : 1;
+            } else {
+                i += 1;
+            }
+        }
+    }
 
     const existingActivities = await attendanceDB('attn_daily_activities')
         .select(
@@ -989,14 +1019,6 @@ export async function validateActivityTime(user_id, date, start_time, end_time, 
             }
         }
     } catch (_) {}
-
-    if (!attendance || attendance.length === 0) {
-        attendance = await attendanceDB('attn_records')
-            .where('user_id', user_id)
-            .whereRaw('DATE(time_in) BETWEEN ? AND ?', [fromStr, toStr])
-            .orderBy('time_in', 'asc')
-            .catch(() => []);
-    }
 
     // If logging for TODAY: Allow advance full-day planning if employee has clocked in or is planning ahead
     if (taskDate === todayStr) {

@@ -323,24 +323,41 @@ export function deriveDailyStatus(records) {
 export async function buildSessionContext(user_id, localTime, eventType) {
     const dateOnly = toMySQLDate(localTime);
 
-    const todaySessions = await attendanceDB("attn_records")
+    const punches = await attendanceDB("attn_punches")
         .where({ user_id })
-        .whereRaw("DATE(time_in) = ?", [dateOnly])
-        .orderBy("time_in", "asc");
+        .whereNull("deleted_at")
+        .whereIn("punch_type", ["in", "out"])
+        .whereRaw("DATE(punch_time) = ?", [dateOnly])
+        .orderBy("punch_time", "asc")
+        .orderBy("id", "asc")
+        .catch(() => []);
 
-    const isFirstSession = todaySessions.length === 0;
-    const sessionNumber = todaySessions.length + 1;
+    const sessions = [];
+    let i = 0;
+    while (i < punches.length) {
+        const inP = punches[i];
+        if (inP.punch_type === 'in') {
+            const outP = (i + 1 < punches.length && punches[i + 1].punch_type === 'out') ? punches[i + 1] : null;
+            if (outP) i += 2; else i += 1;
+            sessions.push({ in_punch: inP, out_punch: outP });
+        } else {
+            i += 1;
+        }
+    }
+
+    const isFirstSession = sessions.length === 0;
+    const sessionNumber = sessions.length + (eventType === 'time_in' ? 1 : 0);
 
     // Calculate total hours worked today using centralized helper
     let totalHoursToday = 0;
-    todaySessions.forEach(session => {
-        if (session.time_out) {
-            totalHoursToday += calculateDurationHours(session.time_in, session.time_out);
+    sessions.forEach(session => {
+        if (session.out_punch) {
+            totalHoursToday += calculateDurationHours(session.in_punch.punch_time, session.out_punch.punch_time);
         }
     });
 
-    const firstTimeIn = todaySessions[0]?.time_in;
-    const lastTimeOut = todaySessions[todaySessions.length - 1]?.time_out;
+    const firstTimeIn = sessions[0]?.in_punch?.punch_time || null;
+    const lastTimeOut = sessions[sessions.length - 1]?.out_punch?.punch_time || null;
 
     return {
         is_first_session: isFirstSession,
@@ -671,13 +688,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
 
     // 2. Fetch all supporting data in parallel
     const userIds = users.map(u => u.user_id);
-    const [records, punchRows, dailyRecords, holidays, leaves] = await Promise.all([
-        attendanceDB('attn_records')
-            .whereIn('user_id', userIds)
-            .whereRaw('DATE(time_in) >= ?', [date_from])
-            .whereRaw('DATE(time_in) <= ?', [date_to])
-            .modify(qb => { if (user_id) qb.where('user_id', user_id); })
-            .orderBy('time_in', 'asc'),
+    const [punchRows, dailyRecords, holidays, leaves] = await Promise.all([
         attendanceDB('attn_punches')
             .whereIn('user_id', userIds)
             .whereNull('deleted_at')
@@ -693,12 +704,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
             .where('date', '>=', date_from)
             .where('date', '<=', date_to)
             .modify(qb => { if (user_id) qb.where('user_id', user_id); })
-            .catch(() => attendanceDB('attn_daily_summary')
-                .whereIn('user_id', userIds)
-                .where('date', '>=', date_from)
-                .where('date', '<=', date_to)
-                .modify(qb => { if (user_id) qb.where('user_id', user_id); })
-            ),
+            .catch(() => []),
         attendanceDB('org_holidays')
             .where('org_id', org_id)
             .where('holiday_date', '>=', date_from)
@@ -717,12 +723,6 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
 
     // 3. Index data for O(1) lookups
     const recordsByUserDate = {};
-    for (const r of records) {
-        const ds = normalizeDate(r.time_in);
-        const k = `${r.user_id}_${ds}`;
-        if (!recordsByUserDate[k]) recordsByUserDate[k] = [];
-        recordsByUserDate[k].push(r);
-    }
 
     // Build sessions from attn_punches and override if punches exist
     if (punchRows && punchRows.length > 0) {
@@ -818,10 +818,9 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                     };
 
                     const k = `${uid}_${ds}`;
-                    if (!recordsByUserDate[k] || (recordsByUserDate[k].length > 0 && !recordsByUserDate[k][0]._fromPunches)) {
+                    if (!recordsByUserDate[k]) {
                         recordsByUserDate[k] = [];
                     }
-                    session._fromPunches = true;
                     recordsByUserDate[k].push(session);
                 } else {
                     i += 1;

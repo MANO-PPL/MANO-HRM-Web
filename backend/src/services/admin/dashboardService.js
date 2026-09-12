@@ -87,9 +87,10 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
 
     // Single query per period: counts present + late together via conditional aggregation
     const periodStatsQuery = (startStr, endStr) =>
-        attendanceDB("attn_records")
+        attendanceDB("attn_daily_summary_v2")
             .whereIn("user_id", activeUserIds)
-            .whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [startStr, endStr])
+            .whereRaw("date >= ? AND date <= ?", [startStr, endStr])
+            .whereIn("status", ["PRESENT", "LATE", "OVERTIME"])
             .select(
                 attendanceDB.raw("COUNT(DISTINCT user_id) as present"),
                 attendanceDB.raw("COUNT(DISTINCT CASE WHEN late_minutes > 0 THEN user_id END) as late")
@@ -109,15 +110,16 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         periodStatsQuery(currentStartStr, currentEndStr),
         periodStatsQuery(prevStartStr, prevEndStr),
         // one grouped query covering the whole chart range, instead of a query per day
-        attendanceDB("attn_records")
+        attendanceDB("attn_daily_summary_v2")
             .whereIn("user_id", activeUserIds)
-            .whereRaw("DATE(time_in) >= ? AND DATE(time_in) <= ?", [currentStartStr, currentEndStr])
-            .select(attendanceDB.raw("DATE_FORMAT(time_in, '%Y-%m-%d') as day"))
+            .whereRaw("date >= ? AND date <= ?", [currentStartStr, currentEndStr])
+            .whereIn("status", ["PRESENT", "LATE", "OVERTIME"])
+            .select(attendanceDB.raw("DATE_FORMAT(date, '%Y-%m-%d') as day"))
             .select(
                 attendanceDB.raw("COUNT(DISTINCT user_id) as present"),
                 attendanceDB.raw("COUNT(DISTINCT CASE WHEN late_minutes > 0 THEN user_id END) as late")
             )
-            .groupBy(attendanceDB.raw("DATE_FORMAT(time_in, '%Y-%m-%d')")),
+            .groupBy(attendanceDB.raw("DATE_FORMAT(date, '%Y-%m-%d')")),
         attendanceDB("sys_activity_logs as al")
             .leftJoin("core_users as u", "al.user_id", "u.user_id")
             .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")

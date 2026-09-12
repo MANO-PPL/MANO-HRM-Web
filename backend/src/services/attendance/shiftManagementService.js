@@ -352,7 +352,7 @@ function getDefaultShiftConfig() {
             max_overtime: DEFAULT_MAX_OVERTIME_HOURS
         },
         entry_requirements: {
-            selfie: true,
+            selfie: false,
             geofence: false
         },
         exit_requirements: {

@@ -93,8 +93,8 @@ export class PayrollCalculationService {
             .first();
         const orgOtEnabled = settings ? settings.overtime_enabled === 1 : false;
 
-        // Fetch attendance logs
-        const attendanceRecords = await attendanceDB('attn_daily_summary')
+        // Fetch attendance logs from v2 daily summary
+        const attendanceRecords = await attendanceDB('attn_daily_summary_v2')
             .where('user_id', emp.user_id)
             .whereBetween('date', [startDateStr, endDateStr]);
 

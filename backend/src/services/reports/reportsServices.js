@@ -415,10 +415,11 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
                         });
                     }).orWhereExists(function () {
                         this.select(1)
-                            .from("attn_records as ar")
-                            .whereRaw("ar.user_id = u.user_id")
-                            .whereRaw("DATE(ar.time_in) >= ?", [startDate])
-                            .whereRaw("DATE(ar.time_in) <= ?", [endDate]);
+                            .from("attn_punches as ap")
+                            .whereRaw("ap.user_id = u.user_id")
+                            .whereNull("ap.deleted_at")
+                            .whereRaw("DATE(ap.punch_time) >= ?", [startDate])
+                            .whereRaw("DATE(ap.punch_time) <= ?", [endDate]);
                     });
                 });
             } else {
@@ -466,75 +467,64 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
 }
 
 export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
-    let records = await attendanceDB("attn_records as ar")
-        .join("core_users as u", "ar.user_id", "u.user_id")
-        .select("ar.*", attendanceDB.raw("DATE_FORMAT(ar.time_in, '%Y-%m-%d') as record_date"))
+    const todayStr = await getTodayStr(org_id);
+
+    const punchRows = await attendanceDB("attn_punches as ap")
+        .join("core_users as u", "ap.user_id", "u.user_id")
+        .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
+        .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
+        .select(
+            "ap.id as attendance_id",
+            "ap.user_id",
+            "ap.punch_time",
+            "ap.punch_type",
+            "ap.location",
+            "ap.metadata",
+            "u.user_name",
+            "d.dept_name",
+            "s.shift_name",
+            attendanceDB.raw("DATE_FORMAT(ap.punch_time, '%Y-%m-%d') as record_date")
+        )
         .where("u.org_id", org_id)
+        .whereNull("ap.deleted_at")
+        .whereIn("ap.punch_type", ["in", "out"])
         .modify(qb => {
-            if (targetUserId) {
-                qb.where("ar.user_id", targetUserId);
-            }
-            if (isValidDeptId(dept_id)) {
-                qb.where("u.dept_id", dept_id);
-            }
-            if (isValidDesgId(desg_id)) {
-                qb.where("u.desg_id", desg_id);
-            }
-            if (shift_id === 'open_shift') {
-                qb.whereNull("u.shift_id");
-            } else if (isValidShiftId(shift_id)) {
-                qb.where("u.shift_id", shift_id);
-            }
+            if (targetUserId) qb.where("ap.user_id", targetUserId);
+            if (isValidDeptId(dept_id)) qb.where("u.dept_id", dept_id);
+            if (isValidDesgId(desg_id)) qb.where("u.desg_id", desg_id);
+            if (shift_id === 'open_shift') qb.whereNull("u.shift_id");
+            else if (isValidShiftId(shift_id)) qb.where("u.shift_id", shift_id);
         })
-        .whereRaw("DATE(ar.time_in) >= ?", [startDate])
-        .whereRaw("DATE(ar.time_in) <= ?", [endDate])
+        .whereRaw("DATE(ap.punch_time) >= ?", [startDate])
+        .whereRaw("DATE(ap.punch_time) <= DATE_ADD(?, INTERVAL 1 DAY)", [endDate])
+        .orderBy("ap.punch_time", "asc")
+        .orderBy("ap.id", "asc")
         .catch(() => []);
 
-    // Also supplement from attn_punches for any dates/users not represented in attn_records (e.g. missed punches or unmigrated punches)
-    try {
-        const todayStr = await getTodayStr(org_id);
-        const existingKeys = new Set(records.map(r => `${r.user_id}_${r.record_date}`));
+    const records = [];
+    if (punchRows && punchRows.length > 0) {
+        const punchesByUser = {};
+        for (const p of punchRows) {
+            if (!punchesByUser[p.user_id]) punchesByUser[p.user_id] = [];
+            punchesByUser[p.user_id].push(p);
+        }
 
-        const punchRows = await attendanceDB("attn_punches as ap")
-            .join("core_users as u", "ap.user_id", "u.user_id")
-            .select(
-                "ap.id as attendance_id",
-                "ap.user_id",
-                "ap.punch_time",
-                "ap.punch_type",
-                "ap.location",
-                "ap.metadata",
-                "ap.status as punch_status",
-                attendanceDB.raw("DATE_FORMAT(ap.punch_time, '%Y-%m-%d') as record_date")
-            )
-            .where("u.org_id", org_id)
-            .whereNull("ap.deleted_at")
-            .whereIn("ap.punch_type", ["in", "out"])
-            .modify(qb => {
-                if (targetUserId) qb.where("ap.user_id", targetUserId);
-                if (isValidDeptId(dept_id)) qb.where("u.dept_id", dept_id);
-                if (isValidDesgId(desg_id)) qb.where("u.desg_id", desg_id);
-                if (shift_id === 'open_shift') qb.whereNull("u.shift_id");
-                else if (isValidShiftId(shift_id)) qb.where("u.shift_id", shift_id);
-            })
-            .whereRaw("DATE(ap.punch_time) >= ?", [startDate])
-            .whereRaw("DATE(ap.punch_time) <= DATE_ADD(?, INTERVAL 1 DAY)", [endDate])
-            .orderBy("ap.punch_time", "asc")
-            .orderBy("ap.id", "asc")
-            .catch(() => []);
+        for (const [key, userPunches] of Object.entries(punchesByUser)) {
+            let i = 0;
+            while (i < userPunches.length) {
+                const inPunch = userPunches[i];
+                if (inPunch.punch_type === 'in') {
+                    let outPunch = null;
+                    if (i + 1 < userPunches.length && userPunches[i + 1].punch_type === 'out') {
+                        outPunch = userPunches[i + 1];
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
 
-        if (punchRows && punchRows.length > 0) {
-            const punchesByUserDate = {};
-            for (const p of punchRows) {
-                const key = `${p.user_id}_${p.record_date}`;
-                if (!punchesByUserDate[key]) punchesByUserDate[key] = [];
-                punchesByUserDate[key].push(p);
-            }
-
-            for (const [key, userDatePunches] of Object.entries(punchesByUserDate)) {
-                if (!existingKeys.has(key)) {
-                    const inPunch = userDatePunches.find(p => p.punch_type === 'in') || userDatePunches[0];
-                    const outPunch = userDatePunches.filter(p => p.punch_type === 'out').pop() || null;
+                    if (inPunch.record_date < startDate || inPunch.record_date > endDate) {
+                        continue;
+                    }
 
                     let inLoc = {};
                     let inMeta = {};
@@ -551,25 +541,31 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
                     const isPastPunch = inPunch.record_date && todayStr && inPunch.record_date < todayStr;
                     const defaultStatus = outPunch ? 'PRESENT' : (isPastPunch ? 'MISSED_PUNCH' : 'PRESENT');
 
+                    const workedHours = outPunch ? parseFloat(((new Date(outPunch.punch_time) - new Date(inPunch.punch_time)) / (1000 * 60 * 60)).toFixed(2)) : 0;
+                    const overtimeHours = workedHours > 9 ? parseFloat((workedHours - 9).toFixed(2)) : 0;
+
                     records.push({
                         attendance_id: inPunch.attendance_id,
                         user_id: inPunch.user_id,
+                        user_name: inPunch.user_name,
+                        dept_name: inPunch.dept_name,
+                        shift_name: inPunch.shift_name,
                         time_in: inPunch.punch_time,
                         time_out: outPunch ? outPunch.punch_time : null,
-                        status: defaultStatus,
-                        time_in_address: inLoc.address && inLoc.address !== 'Locating...' ? inLoc.address : '-',
-                        time_out_address: outLoc.address && outLoc.address !== 'Locating...' ? outLoc.address : '-',
+                        status: inMeta.missed_punch ? 'MISSED_PUNCH' : defaultStatus,
+                        time_in_address: inLoc.address && inLoc.address !== 'Locating...' && inLoc.address !== 'Pending...' ? inLoc.address : '-',
+                        time_out_address: outLoc.address && outLoc.address !== 'Locating...' && outLoc.address !== 'Pending...' ? outLoc.address : '-',
                         time_in_image_key: inMeta.image_key || null,
                         time_out_image_key: outMeta.image_key || null,
                         late_minutes: inMeta.late_minutes || 0,
-                        overtime_hours: 0,
+                        overtime_hours: overtimeHours,
                         record_date: inPunch.record_date
                     });
+                } else {
+                    i += 1;
                 }
             }
         }
-    } catch (suppErr) {
-        console.warn("Failed to supplement attendance records from punches in reports:", suppErr);
     }
 
     return records;
@@ -610,31 +606,7 @@ export const isDateInApprovedLeave = (userLeaves, dateStr) => {
 };
 
 export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
-    return attendanceDB("attn_records as ar")
-        .join("core_users as u", "ar.user_id", "u.user_id")
-        .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
-        .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
-        .select("ar.time_in", "u.user_id", "u.user_name", "d.dept_name", "s.shift_name", "ar.time_out", "ar.status", "ar.time_in_address", "ar.time_out_address", "ar.late_minutes", "ar.overtime_hours", attendanceDB.raw("DATE_FORMAT(ar.time_in, '%Y-%m-%d') as record_date"))
-        .where("u.org_id", org_id)
-        .whereRaw("DATE(ar.time_in) >= ?", [startDate])
-        .whereRaw("DATE(ar.time_in) <= ?", [endDate])
-        .modify(qb => {
-            if (targetUserId) {
-                qb.where("ar.user_id", targetUserId);
-            }
-            if (isValidDeptId(dept_id)) {
-                qb.where("u.dept_id", dept_id);
-            }
-            if (isValidDesgId(desg_id)) {
-                qb.where("u.desg_id", desg_id);
-            }
-            if (shift_id === 'open_shift') {
-                qb.whereNull("u.shift_id");
-            } else if (isValidShiftId(shift_id)) {
-                qb.where("u.shift_id", shift_id);
-            }
-        })
-        .orderBy("ar.time_in", "asc");
+    return getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 }
 
 export async function getCardRecords({ org_id, targetUserId, startDate, endDate, dept_id, desg_id, shift_id }) {

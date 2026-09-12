@@ -5,6 +5,7 @@ import { safeTruncate } from './dateUtils.js';
 class AppEventBus extends EventEmitter {
     constructor() {
         super();
+        this.setMaxListeners(50);
         this.events = {
             NOTIFICATION: 'notification',
             ACTIVITY_LOG: 'activity_log',

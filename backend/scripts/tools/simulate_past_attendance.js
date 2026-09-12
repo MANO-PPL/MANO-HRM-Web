@@ -328,26 +328,47 @@ async function runSimulation() {
             };
           }
 
-          const insertData = {
+          await attendanceDB("attn_punches").insert({
             user_id: user.user_id,
-            org_id: user.org_id,
-            time_in: timeInStr,
-            time_out: timeOutStr,
-            time_in_lat: localCoords.lat,
-            time_in_lng: localCoords.lng,
-            time_in_address: `Office Building, ${baseCity.name}`,
-            time_out_lat: timeOutStr ? localCoords.lat : null,
-            time_out_lng: timeOutStr ? localCoords.lng : null,
-            time_out_address: timeOutStr ? `Office Building, ${baseCity.name}` : null,
-            status: "PRESENT",
-            time_in_image_key: null,
-            time_out_image_key: null,
-            metadata: JSON.stringify(metadata),
-            created_at: attendanceDB.fn.now(),
-            updated_at: attendanceDB.fn.now()
-          };
+            punch_time: timeInStr,
+            punch_type: "in",
+            location: JSON.stringify({
+              lat: localCoords.lat,
+              lng: localCoords.lng,
+              address: `Office Building, ${baseCity.name}`,
+              is_geofence_violation: false
+            }),
+            punch_nature: "simulated",
+            metadata: JSON.stringify({
+              accuracy: 10,
+              ip_address: "127.0.0.1",
+              user_agent: "Mozilla/5.0 (Simulated)",
+              timezone: "Asia/Kolkata"
+            }),
+            created_at: s.checkInTarget
+          });
 
-          await attendanceDB("attn_records").insert(insertData);
+          if (timeOutStr) {
+            await attendanceDB("attn_punches").insert({
+              user_id: user.user_id,
+              punch_time: timeOutStr,
+              punch_type: "out",
+              location: JSON.stringify({
+                lat: localCoords.lat,
+                lng: localCoords.lng,
+                address: `Office Building, ${baseCity.name}`,
+                is_geofence_violation: false
+              }),
+              punch_nature: "simulated",
+              metadata: JSON.stringify({
+                accuracy: 10,
+                ip_address: "127.0.0.1",
+                user_agent: "Mozilla/5.0 (Simulated)",
+                timezone: "Asia/Kolkata"
+              }),
+              created_at: s.checkOutTarget
+            });
+          }
         }
 
         // Sync daily calculations

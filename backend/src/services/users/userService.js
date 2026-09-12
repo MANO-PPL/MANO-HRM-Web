@@ -63,9 +63,10 @@ export const getAllUsers = async (orgId, options = false) => {
                 // 2. OR inactive / soft-deleted users who have at least 1 punch in this period
                 .orWhereExists(function () {
                     this.select(1)
-                        .from('attn_records as ar')
-                        .whereRaw('ar.user_id = u.user_id')
-                        .whereRaw('DATE(ar.time_in) >= ? AND DATE(ar.time_in) <= ?', [startDate, endDate]);
+                        .from('attn_punches as ap')
+                        .whereRaw('ap.user_id = u.user_id')
+                        .whereNull('ap.deleted_at')
+                        .whereRaw('DATE(ap.punch_time) >= ? AND DATE(ap.punch_time) <= ?', [startDate, endDate]);
                 });
         });
     }
@@ -530,15 +531,14 @@ export const permanentlyDeleteUser = async (userId) => {
         // Nullify reviewer/altered references where this user is referenced
         try { await trx('attn_corrections').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) {}
         try { await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) {}
-        await trx('attn_records').where('altered_by', userId).update({ altered_by: null });
-        await trx('attn_daily_summary').where('adjusted_by', userId).update({ adjusted_by: null });
+        try { await trx('attn_daily_summary_v2').where('adjusted_by', userId).update({ adjusted_by: null }); } catch (_) {}
         await trx('leave_requests').where('reviewed_by', userId).update({ reviewed_by: null });
 
         try { await trx('attn_corrections').where('user_id', userId).del(); } catch (_) {}
         try { await trx('attn_correction_requests').where('user_id', userId).del(); } catch (_) {}
         await trx('org_user_work_locations').where('user_id', userId).del();
         await trx('attn_daily_activities').where('user_id', userId).del();
-        await trx('attn_daily_summary').where('user_id', userId).del();
+        await trx('attn_daily_summary_v2').where('user_id', userId).del();
         await trx('attn_dar_requests').where('user_id', userId).del();
         await trx('comm_events_meetings').where('user_id', userId).del();
         await trx('sys_security_alerts').where('user_id', userId).del();
@@ -596,12 +596,13 @@ export const permanentlyDeleteUser = async (userId) => {
             await trx('feedback_tickets').whereIn('feedback_id', feedbackIds).del();
         }
 
-        const attendanceRecords = await trx('attn_records').where('user_id', userId).select('time_in_image_key', 'time_out_image_key');
-        for (const record of attendanceRecords) {
-            if (record.time_in_image_key) await safeDeleteS3(record.time_in_image_key);
-            if (record.time_out_image_key) await safeDeleteS3(record.time_out_image_key);
+        const punches = await trx('attn_punches').where('user_id', userId).select('metadata');
+        for (const p of punches) {
+            let meta = {};
+            try { meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {}); } catch (_) {}
+            if (meta.image_key) await safeDeleteS3(meta.image_key);
         }
-        await trx('attn_records').where('user_id', userId).del();
+        await trx('attn_punches').where('user_id', userId).del();
 
         if (user.profile_image_url) {
             const key = extractKeyFromUrl(user.profile_image_url);

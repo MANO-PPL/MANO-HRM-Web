@@ -182,7 +182,7 @@ const MarkAttendanceTab = ({
             )}
 
             {/* Missed Punch Banner */}
-            {missedPunchWarning && (
+            {missedPunchWarning && missedPunchWarning.dates && missedPunchWarning.dates.length > 0 && (
                 <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-4 rounded-xl flex flex-col sm:flex-row gap-4 justify-between items-center animate-in fade-in slide-in-from-top-2">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-500 rounded-lg relative">
@@ -196,15 +196,13 @@ const MarkAttendanceTab = ({
                         <div>
                             <p className="text-sm font-bold text-amber-800 dark:text-amber-500">Missed Time Out</p>
                             <p className="text-xs text-amber-700/80 dark:text-amber-500/80 mt-0.5">
-                                You forgot to time out on {missedPunchWarning.dates.join(', ')}. Please submit a correction request or it will be marked absent.
+                                You forgot to time out on {formatDateDisplay ? formatDateDisplay(missedPunchWarning.dates[0]) : missedPunchWarning.dates[0]}. Please submit a correction request to fix your hours.
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={() => {
-                            const targetDate = (missedPunchWarning && missedPunchWarning.dates && missedPunchWarning.dates.length > 0)
-                                ? missedPunchWarning.dates[0]
-                                : selectedDate;
+                            const targetDate = missedPunchWarning.dates[0] || selectedDate;
                             setCorrDate(targetDate);
                             loadCorrectionDataForDate(targetDate);
                             setActiveTab('my_attendance');

@@ -258,10 +258,11 @@ async function initializeDailyState() {
       const profile = SIM_CONFIG?.profiles?.[mappedProfileName] || DEFAULT_PROFILE;
 
       // 3. Look for existing attendance records today (resiliency on restart)
-      const existingRecords = await attendanceDB('attn_records')
+      const existingRecords = await attendanceDB('attn_punches')
         .where({ user_id: user.user_id })
-        .whereRaw('DATE(time_in) = ?', [todayStr])
-        .orderBy('time_in', 'asc');
+        .whereNull('deleted_at')
+        .whereRaw('DATE(punch_time) = ?', [todayStr])
+        .orderBy('punch_time', 'asc');
 
       // 4. Generate daily state
       const rand = Math.random();

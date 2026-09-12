@@ -1,5 +1,6 @@
 import api from './api';
 import { getLocalDateString } from '../utils/dateUtils';
+import correctionsService, { correctionsCacheData, clearCorrectionsCache } from './correctionsService';
 
 const API_BASE_URL = "/attendance";
 
@@ -8,8 +9,6 @@ const cache = {
     holidays: null,
     shiftPolicy: null,
     records: new Map(),
-    correctionRequests: new Map(),
-    correctionDetails: new Map(),
     dailySummaryAdmin: new Map(),
     dailySummary: new Map(),
     realTimeAttendance: new Map(),
@@ -29,8 +28,8 @@ export const attendanceCacheData = {
     holidays: null,
     shiftPolicy: null,
     records: {},
-    correctionRequests: {},
-    correctionDetails: {},
+    correctionRequests: correctionsCacheData.correctionRequests,
+    correctionDetails: correctionsCacheData.correctionDetails,
     dailySummaryAdmin: {},
     dailySummary: {},
     realTimeAttendance: {},
@@ -50,8 +49,6 @@ const clearCache = () => {
     cache.holidays = null;
     cache.shiftPolicy = null;
     cache.records.clear();
-    cache.correctionRequests.clear();
-    cache.correctionDetails.clear();
     cache.dailySummaryAdmin.clear();
     cache.dailySummary.clear();
     cache.realTimeAttendance.clear();
@@ -62,11 +59,11 @@ const clearCache = () => {
     cacheTimestamps.dailySummaryAdmin.clear();
     cacheTimestamps.realTimeAttendance.clear();
 
+    clearCorrectionsCache();
+
     attendanceCacheData.holidays = null;
     attendanceCacheData.shiftPolicy = null;
     attendanceCacheData.records = {};
-    attendanceCacheData.correctionRequests = {};
-    attendanceCacheData.correctionDetails = {};
     attendanceCacheData.dailySummaryAdmin = {};
     attendanceCacheData.dailySummary = {};
     attendanceCacheData.realTimeAttendance = {};
@@ -284,87 +281,18 @@ export const attendanceService = {
         }
     },
 
-    // --- Correction Requests ---
-
-    // Submit or update a correction request (supports FormData for file attachments)
-    async submitCorrectionRequest(data) {
-        try {
-            let res;
-            if (data instanceof FormData) {
-                res = await api.post(`${API_BASE_URL}/correction-request`, data, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-            } else {
-                res = await api.post(`${API_BASE_URL}/correction-request`, data);
-            }
-            clearCache();
-            return res.data;
-        } catch (error) {
-            const err = new Error(error.response?.data?.error || error.response?.data?.message || "Failed to submit correction request");
-            err.status = error.response?.status;
-            err.code = error.response?.data?.code;
-            throw err;
-        }
+    // --- Correction Requests (Delegated to standalone correctionsService) ---
+    submitCorrectionRequest(data) {
+        return correctionsService.submitCorrectionRequest(data);
     },
-
-    // Get list of correction requests (Admin sees all, User sees own)
-    async getCorrectionRequests(params = {}) {
-        const cacheKey = JSON.stringify(params);
-        if (cache.correctionRequests.has(cacheKey)) {
-            return cache.correctionRequests.get(cacheKey);
-        }
-
-        const promise = (async () => {
-            try {
-                const res = await api.get(`${API_BASE_URL}/correction-requests`, { params });
-                attendanceCacheData.correctionRequests[cacheKey] = res.data;
-                return res.data;
-            } catch (error) {
-                cache.correctionRequests.delete(cacheKey);
-                throw new Error(error.response?.data?.message || error.response?.data?.error || "Failed to fetch correction requests");
-            }
-        })();
-
-        cache.correctionRequests.set(cacheKey, promise);
-        return promise;
+    getCorrectionRequests(params = {}) {
+        return correctionsService.getCorrectionRequests(params);
     },
-
-    // Get specific correction request details
-    async getCorrectionDetails(acr_id) {
-        if (!acr_id) return null;
-        if (cache.correctionDetails.has(acr_id)) {
-            return cache.correctionDetails.get(acr_id);
-        }
-
-        const promise = (async () => {
-            try {
-                const res = await api.get(`${API_BASE_URL}/correction-request/${acr_id}`);
-                attendanceCacheData.correctionDetails[acr_id] = res.data;
-                return res.data;
-            } catch (error) {
-                cache.correctionDetails.delete(acr_id);
-                throw new Error(error.response?.data?.message || error.response?.data?.error || "Failed to fetch correction details");
-            }
-        })();
-
-        cache.correctionDetails.set(acr_id, promise);
-        return promise;
+    getCorrectionDetails(acr_id) {
+        return correctionsService.getCorrectionDetails(acr_id);
     },
-
-    // Update correction status (Admin only)
-    async updateCorrectionStatus(acr_id, status, review_comments, overrides = {}) {
-        try {
-            const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : status;
-            const res = await api.patch(`${API_BASE_URL}/correct-request/${acr_id}`, {
-                status: normalizedStatus,
-                review_comments,
-                ...overrides
-            });
-            clearCache();
-            return res.data;
-        } catch (error) {
-            throw new Error(error.response?.data?.message || error.response?.data?.error || "Failed to update correction status");
-        }
+    updateCorrectionStatus(acr_id, status, review_comments, overrides = {}) {
+        return correctionsService.updateCorrectionStatus(acr_id, status, review_comments, overrides);
     },
 
     // Get Holidays
@@ -704,3 +632,7 @@ export const attendanceService = {
         }
     }
 };
+
+export { correctionsService };
+export default attendanceService;
+

@@ -102,18 +102,19 @@ export async function processHourlyAttendance() {
 
             // Only query DB to fetch custom timezone override when the base slot matches
             let timeZone = baseTimeZone;
-            const lastRecord = await attendanceDB('attn_records')
+            const lastPunch = await attendanceDB('attn_punches')
                 .where({ user_id: user.user_id })
-                .orderBy('created_at', 'desc')
+                .whereNull('deleted_at')
+                .orderBy('punch_time', 'desc')
                 .limit(1)
                 .first();
 
-            if (lastRecord && lastRecord.metadata) {
+            if (lastPunch && lastPunch.metadata) {
                 try {
-                    let meta = lastRecord.metadata;
+                    let meta = lastPunch.metadata;
                     if (typeof meta === 'string') meta = JSON.parse(meta);
-                    if (meta?.time_in?.timezone) {
-                        timeZone = meta.time_in.timezone;
+                    if (meta?.timezone || meta?.time_in?.timezone) {
+                        timeZone = meta.timezone || meta.time_in.timezone;
                         // Re-validate custom timezone
                         try {
                             Intl.DateTimeFormat(undefined, { timeZone });
@@ -170,8 +171,8 @@ export async function processHourlyAttendance() {
         }
     }
 
-    // --- SECOND PASS: Escalate expired MISSED_PUNCH to ABSENT ---
-    await escalateExpiredMissedPunches();
+    // --- SECOND PASS: Escalate expired MISSED_PUNCH to ABSENT (Bypassed / disabled since correction deadline is turned off) ---
+    // await escalateExpiredMissedPunches();
 
     console.log('✅ Attendance Check Completed.');
     } catch (err) {
@@ -189,7 +190,7 @@ export async function processHourlyAttendance() {
  * - If they never showed up → mark ABSENT/WEEK_OFF/HOLIDAY/LEAVE
  */
 async function processUserAttendanceForDate(user, dateStr) {
-    const record = await attendanceDB('attn_daily_summary')
+    const record = await attendanceDB('attn_daily_summary_v2')
         .where({ user_id: user.user_id, date: dateStr })
         .first();
 
@@ -198,6 +199,7 @@ async function processUserAttendanceForDate(user, dateStr) {
 
     // 1. Check for any open sessions (forgot to checkout)
     let hasPunchOpenSession = false;
+    let latestInPunch = null;
     try {
         const punches = await attendanceDB("attn_punches")
             .where({ user_id: user.user_id })
@@ -208,33 +210,32 @@ async function processUserAttendanceForDate(user, dateStr) {
             .orderBy("id", "asc");
 
         if (punches.length > 0) {
-            hasPunchOpenSession = punches[punches.length - 1].punch_type === "in";
+            const last = punches[punches.length - 1];
+            if (last.punch_type === "in") {
+                hasPunchOpenSession = true;
+                latestInPunch = last;
+            }
         }
     } catch (_) {}
 
-    const openSessions = await attendanceDB('attn_records')
-        .where({ user_id: user.user_id })
-        .whereNull('time_out')
-        .whereRaw('DATE(time_in) = ?', [dateStr])
-        .catch(() => []);
-
-    if (hasPunchOpenSession || openSessions.length > 0) {
+    if (hasPunchOpenSession) {
         if (user.shift_id === null) {
             console.log(`ℹ️ User ${user.user_id} has open session on ${dateStr} (Open Shift). Auto-completing session.`);
-            for (const openSession of openSessions) {
-                const checkInDate = new Date(openSession.time_in);
+            if (latestInPunch) {
+                const checkInDate = new Date(latestInPunch.punch_time);
                 const checkOutDate = new Date(checkInDate.getTime() + 9 * 60 * 60 * 1000);
-                
                 const now = new Date();
                 const finalCheckOut = checkOutDate > now ? now : checkOutDate;
-                
-                await attendanceDB('attn_records')
-                    .where({ attendance_id: openSession.attendance_id })
-                    .update({
-                        time_out: toMySQLDateTime(finalCheckOut),
-                        status: 'PRESENT',
-                        updated_at: attendanceDB.fn.now()
-                    });
+
+                await attendanceDB('attn_punches').insert({
+                    user_id: user.user_id,
+                    punch_time: toMySQLDateTime(finalCheckOut),
+                    punch_type: 'out',
+                    punch_nature: 'auto_system',
+                    location: JSON.stringify({ address: 'Auto-completed Session' }),
+                    metadata: JSON.stringify({ auto_completed: true, reason: 'Open shift auto checkout' }),
+                    created_at: attendanceDB.fn.now()
+                });
             }
             try {
                 await syncDailyAttendance(user.user_id, dateStr, { status: 'PRESENT' });
@@ -244,46 +245,13 @@ async function processUserAttendanceForDate(user, dateStr) {
         } else {
             console.log(`⚠️ User ${user.user_id} has open session on ${dateStr}. Marking as MISSED_PUNCH.`);
 
-            for (const openSession of openSessions) {
-                if (openSession.status === 'MISSED_PUNCH') continue;
-
-                let metadata = {};
+            if (latestInPunch) {
                 try {
-                    metadata = typeof openSession.metadata === 'string'
-                        ? JSON.parse(openSession.metadata)
-                        : (openSession.metadata || {});
-                } catch (e) {
-                    console.warn(`Failed to parse metadata for session ${openSession.attendance_id}`);
-                }
-
-                metadata.missed_punch = {
-                    flagged_at: new Date().toISOString(),
-                    reason: "Employee did not check out"
-                };
-
-                await attendanceDB('attn_records')
-                    .where({ attendance_id: openSession.attendance_id })
-                    .update({
-                        status: 'MISSED_PUNCH',
-                        metadata: JSON.stringify(metadata),
-                        updated_at: attendanceDB.fn.now()
-                    });
-            }
-
-            try {
-                const openPunches = await attendanceDB('attn_punches')
-                    .where({ user_id: user.user_id })
-                    .whereNull('deleted_at')
-                    .whereRaw('DATE(punch_time) = ?', [dateStr])
-                    .where({ punch_type: 'in' });
-
-                for (const p of openPunches) {
-                    let meta = {};
-                    try { meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {}); } catch (_) {}
+                    let meta = typeof latestInPunch.metadata === 'string' ? JSON.parse(latestInPunch.metadata) : (latestInPunch.metadata || {});
                     meta.missed_punch = true;
-                    await attendanceDB('attn_punches').where({ id: p.id }).update({ metadata: JSON.stringify(meta) });
-                }
-            } catch (_) {}
+                    await attendanceDB('attn_punches').where({ id: latestInPunch.id }).update({ metadata: JSON.stringify(meta) });
+                } catch (_) {}
+            }
 
             try {
                 await syncDailyAttendance(user.user_id, dateStr, { status: 'MISSED_PUNCH' });
@@ -306,7 +274,7 @@ async function processUserAttendanceForDate(user, dateStr) {
     if (record) {
         // Daily record exists - if it wasn't a missed punch, it's already updated via syncDailyAttendance above 
         // or during the day. No further action needed here for existing records.
-    } else if (openSessions.length === 0) {
+    } else if (!hasPunchOpenSession) {
         // Missing record: determine status using the centralized no-show resolver
         const holiday = await attendanceDB('org_holidays')
             .where({ org_id: user.org_id, holiday_date: dateStr })
@@ -322,10 +290,15 @@ async function processUserAttendanceForDate(user, dateStr) {
 
         const { status, remarks } = resolveNoShowStatus({ dateStr, rules, holiday, leave });
 
-        await attendanceDB('attn_daily_summary').insert({
+        await attendanceDB('attn_daily_summary_v2').insert({
             user_id: user.user_id,
             date: dateStr,
+            session_count: 0,
+            total_hours: 0,
+            late_minutes: 0,
+            overtime_hours: 0,
             status,
+            remarks,
             created_at: attendanceDB.fn.now(),
             updated_at: attendanceDB.fn.now()
         });
@@ -353,8 +326,11 @@ async function processUserAttendanceForDate(user, dateStr) {
  * After MISSED_PUNCH_GRACE_DAYS days, the daily record is changed to ABSENT.
  */
 async function escalateExpiredMissedPunches() {
+    // Escalation to ABSENT turned off since correction deadline is bypassed/unlimited
+    return;
+    /*
     // Find all MISSED_PUNCH daily records
-    const records = await attendanceDB('attn_daily_summary')
+    const records = await attendanceDB('attn_daily_summary_v2')
         .where({ status: 'MISSED_PUNCH' });
 
     for (const record of records) {
@@ -424,15 +400,10 @@ async function escalateExpiredMissedPunches() {
             const recordDate = new Date(record.date);
             recordDate.setHours(0, 0, 0, 0);
 
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            const diffTime = today - recordDate;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const diffTime = nowInUserTZ.getTime() - recordDate.getTime();
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
             const currentSlotMinutes = (nowInUserTZ.getHours() * 60) + (Math.floor(nowInUserTZ.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
 
-            // If the record is past the grace period, escalate it immediately.
-            // If it is exactly on the deadline day, only escalate once the escalation hour is reached.
             const isFullyExpired = diffDays > graceDays;
             if (!isFullyExpired) {
                 const isExpirationDay = diffDays === graceDays;
@@ -441,9 +412,10 @@ async function escalateExpiredMissedPunches() {
                 }
             }
 
-            // Check if user has submitted an approved/pending correction for this date
+            // Check if user submitted a correction request that is pending or approved
             const correction = await attendanceDB('attn_corrections')
-                .where({ user_id: record.user_id, request_date: record.date })
+                .where({ user_id: record.user_id })
+                .whereRaw('DATE(target_date) = ?', [record.date])
                 .whereIn('status', ['pending', 'approved'])
                 .first();
 
@@ -453,7 +425,7 @@ async function escalateExpiredMissedPunches() {
             }
 
             // No correction submitted - escalate to ABSENT
-            await attendanceDB('attn_daily_summary')
+            await attendanceDB('attn_daily_summary_v2')
                 .where({ user_id: record.user_id, date: record.date })
                 .update({
                     status: 'ABSENT',
@@ -464,16 +436,6 @@ async function escalateExpiredMissedPunches() {
             PayrollCalculationService.triggerRecalculation(record.user_id, record.date).catch(err => {
                 console.error("Failed to trigger background payroll calculation in escalateMissedPunches:", err);
             });
-
-            // Also update the attendance_records status
-            await attendanceDB('attn_records')
-                .where({ user_id: record.user_id })
-                .whereRaw('DATE(time_in) = ?', [record.date])
-                .where({ status: 'MISSED_PUNCH' })
-                .update({
-                    status: 'ABSENT',
-                    updated_at: attendanceDB.fn.now()
-                });
 
             // Notify the user
             EventBus.emitNotification({
@@ -491,6 +453,7 @@ async function escalateExpiredMissedPunches() {
             console.error(`Failed to escalate MISSED_PUNCH for user ${record.user_id} on ${record.date}:`, err);
         }
     }
+    */
 }
 
 /**
@@ -522,12 +485,12 @@ export async function checkAndSendShiftReminders() {
 
         try {
             const rules = ShiftService.getShiftRules(user);
-            const startTime = rules.shift_timing?.start_time; // e.g. "09:00:00"
-            const endTime = rules.shift_timing?.end_time; // e.g. "18:00:00"
+            const startTime = rules.shift_timing?.start_time || rules.start_time; // e.g. "09:00:00"
+            const endTime = rules.shift_timing?.end_time || rules.end_time; // e.g. "18:00:00"
 
             if (!startTime || !endTime) continue;
 
-            let timeZone = user.org_timezone || 'UTC';
+            let timeZone = user.org_timezone || user.timezone || 'UTC';
             try {
                 Intl.DateTimeFormat(undefined, { timeZone });
             } catch (e) {
@@ -551,12 +514,13 @@ export async function checkAndSendShiftReminders() {
                 const dateStr = `${yyyy}-${mm}-${dd}`;
 
                 // Check if user has already timed in today
-                const record = await attendanceDB('attn_records')
-                    .where({ user_id: user.user_id })
-                    .whereRaw('DATE(time_in) = ?', [dateStr])
+                const inPunchToday = await attendanceDB('attn_punches')
+                    .where({ user_id: user.user_id, punch_type: 'in' })
+                    .whereNull('deleted_at')
+                    .whereRaw('DATE(punch_time) = ?', [dateStr])
                     .first();
 
-                if (!record) {
+                if (!inPunchToday) {
                     EventBus.emitNotification({
                         org_id: user.org_id,
                         user_id: user.user_id,
@@ -575,13 +539,15 @@ export async function checkAndSendShiftReminders() {
             const timeOutReminderMinutes = (endMinutes - 10 + 1440) % 1440;
 
             if (currentMinutes === timeOutReminderMinutes) {
-                // Check if user has an active open session
-                const openSession = await attendanceDB('attn_records')
+                // Check if user has an active open session (latest punch is 'in')
+                const latestPunch = await attendanceDB('attn_punches')
                     .where({ user_id: user.user_id })
-                    .whereNull('time_out')
+                    .whereNull('deleted_at')
+                    .whereIn('punch_type', ['in', 'out'])
+                    .orderBy('punch_time', 'desc')
                     .first();
 
-                if (openSession) {
+                if (latestPunch && latestPunch.punch_type === 'in') {
                     EventBus.emitNotification({
                         org_id: user.org_id,
                         user_id: user.user_id,

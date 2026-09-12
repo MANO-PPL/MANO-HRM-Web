@@ -73,38 +73,52 @@ export async function reconcileUserDarForDate(user_id, dateStr, options = {}) {
     const isToday = (dateStr === todayStr);
     const isPastDate = (dateStr < todayStr);
 
-    // 1. Fetch attendance records for this user and date
-    const records = await attendanceDB('attn_records')
+    // 1. Fetch attendance punches for this user and date
+    const punches = await attendanceDB('attn_punches')
         .where({ user_id })
-        .whereRaw('DATE(time_in) = ?', [dateStr])
-        .orderBy('time_in', 'asc');
+        .whereNull('deleted_at')
+        .whereIn('punch_type', ['in', 'out'])
+        .whereRaw('DATE(punch_time) = ?', [dateStr])
+        .orderBy('punch_time', 'asc')
+        .orderBy('id', 'asc');
 
     // 2. Build active session intervals (in minutes)
     const sessionIntervals = [];
-    for (const rec of records) {
-        if (rec.status === 'MISSED_PUNCH' && !rec.time_out) {
-            // Uncorrected missed punch session — ignore until corrected
-            continue;
-        }
+    let i = 0;
+    while (i < punches.length) {
+        const inP = punches[i];
+        if (inP.punch_type === 'in') {
+            const outP = (i + 1 < punches.length && punches[i + 1].punch_type === 'out') ? punches[i + 1] : null;
+            let inMeta = {};
+            try { inMeta = typeof inP.metadata === 'string' ? JSON.parse(inP.metadata) : (inP.metadata || {}); } catch (_) {}
 
-        const inTimeStr = toMySQLTime(rec.time_in);
-        let outTimeStr = rec.time_out ? toMySQLTime(rec.time_out) : null;
-
-        if (!outTimeStr && isToday) {
-            // Open session today: valid for the entire day until checkout
-            outTimeStr = '23:59:59';
-        }
-
-        if (inTimeStr && outTimeStr) {
-            const startMin = timeStrToMinutes(inTimeStr);
-            const endMin = timeStrToMinutes(outTimeStr);
-            if (endMin > startMin) {
-                sessionIntervals.push({
-                    start: startMin,
-                    end: endMin,
-                    attendance_id: rec.attendance_id
-                });
+            if (inMeta.missed_punch && !outP) {
+                i += 1;
+                continue;
             }
+
+            const inTimeStr = toMySQLTime(inP.punch_time);
+            let outTimeStr = outP ? toMySQLTime(outP.punch_time) : null;
+
+            if (!outTimeStr && isToday) {
+                // Open session today: valid for the entire day until checkout
+                outTimeStr = '23:59:59';
+            }
+
+            if (inTimeStr && outTimeStr) {
+                const startMin = timeStrToMinutes(inTimeStr);
+                const endMin = timeStrToMinutes(outTimeStr);
+                if (endMin > startMin) {
+                    sessionIntervals.push({
+                        start: startMin,
+                        end: endMin,
+                        attendance_id: inP.id
+                    });
+                }
+            }
+            i += outP ? 2 : 1;
+        } else {
+            i += 1;
         }
     }
 

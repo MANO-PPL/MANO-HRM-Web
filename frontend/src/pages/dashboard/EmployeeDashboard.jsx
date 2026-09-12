@@ -174,6 +174,10 @@ const EmployeeDashboard = () => {
                 const todayMidnight = new Date(today);
                 todayMidnight.setHours(0, 0, 0, 0);
 
+                const thirtyDaysAgo = new Date(todayMidnight);
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
                 const missedDates = [];
 
                 for (const session of recentRes.data) {
@@ -181,18 +185,16 @@ const EmployeeDashboard = () => {
                         const sessionDate = new Date(session.time_in);
                         const sessionDateStr = sessionDate.toISOString().split('T')[0];
 
-                        if (sessionDateStr < todayDateStr) {
-                            const diffTime = todayMidnight - new Date(sessionDate).setHours(0, 0, 0, 0);
-                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
+                        if (sessionDateStr < todayDateStr && sessionDateStr >= thirtyDaysAgoStr) {
                             const isNotProcessed = !['ABSENT', 'REJECTED'].includes(session.status);
-                            if (isNotProcessed && diffDays <= 7) {
+                            if (isNotProcessed) {
                                 missedDates.push(sessionDateStr);
                             }
                         }
                     }
                 }
-                setMissedPunchWarning(missedDates.length > 0 ? { dates: [...new Set(missedDates)] } : null);
+                const sortedMissedDates = [...new Set(missedDates)].sort((a, b) => b.localeCompare(a));
+                setMissedPunchWarning(sortedMissedDates.length > 0 ? { dates: sortedMissedDates } : null);
             }
         } catch (error) {
             console.error("Dashboard Error:", error);
@@ -449,7 +451,7 @@ const EmployeeDashboard = () => {
                             <div>
                                 <p className="text-sm font-bold text-amber-800 dark:text-amber-500">Missed Time Out</p>
                                 <p className="text-xs text-amber-700/80 dark:text-amber-500/80 mt-1 leading-relaxed font-medium">
-                                    You forgot to time out on {missedPunchWarning.dates.join(', ')}. Please submit a correction request or it will be marked absent.
+                                    You forgot to time out on {missedPunchWarning.dates[0]}. Please submit a correction request to fix your hours.
                                 </p>
                             </div>
                         </div>

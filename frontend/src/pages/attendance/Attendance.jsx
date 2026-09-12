@@ -921,20 +921,13 @@ const Attendance = () => {
                 const todayMidnight = new Date(today);
                 todayMidnight.setHours(0, 0, 0, 0);
 
-                const deadlineDays = myShift?.rules?.correction_deadline || 2;
+                // Check only previous 30 days
+                const thirtyDaysAgo = new Date(todayMidnight);
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                const thirtyDaysAgoStr = getLocalDateString(thirtyDaysAgo);
+
                 const missedDates = [];
                 let hasTodayActiveSession = false;
-
-                // Fetch recent correction requests to check if any are pending/approved for missed dates
-                let activeCorrections = [];
-                try {
-                    const corrRes = await attendanceService.getCorrectionRequests({ limit: 50, my_requests: 'true' });
-                    if (corrRes && corrRes.data) {
-                        activeCorrections = corrRes.data;
-                    }
-                } catch (corrErr) {
-                    console.error("Failed to fetch correction requests in warning check", corrErr);
-                }
 
                 for (const session of recentRes.data) {
                     if (!session.time_out) {
@@ -945,21 +938,9 @@ const Attendance = () => {
                         // If unclosed session started within the last 24 hours and not absent/rejected, it is ACTIVE
                         if (hoursSinceIn < 24 && !['ABSENT', 'REJECTED'].includes(session.status)) {
                             hasTodayActiveSession = true;
-                        } else if (sessionDateStr < todayDateStr && hoursSinceIn >= 24) {
-                            // PAST DATE missed checkout
-                            const diffTime = todayMidnight - new Date(sessionTimeIn).setHours(0, 0, 0, 0);
-                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                            // Show banner if not already escalated to ABSENT/REJECTED and within deadline
-                            const isNotProcessed = !['ABSENT', 'REJECTED'].includes(session.status);
-
-                            // Hide warning if a pending or approved correction request exists
-                            const hasActiveCorrection = activeCorrections.some(c => {
-                                const reqDateStr = c.request_date ? getLocalDateString(c.request_date) : '';
-                                return reqDateStr === sessionDateStr && ['pending', 'approved'].includes(c.status);
-                            });
-
-                            if (isNotProcessed && diffDays <= deadlineDays && !hasActiveCorrection) {
+                        } else if (sessionDateStr < todayDateStr && hoursSinceIn >= 24 && sessionDateStr >= thirtyDaysAgoStr) {
+                            // PAST DATE missed checkout within previous 30 days
+                            if (!['ABSENT', 'REJECTED'].includes(session.status)) {
                                 missedDates.push(sessionDateStr);
                             }
                         }
@@ -972,7 +953,9 @@ const Attendance = () => {
                 }
 
                 setGlobalActiveSession(hasTodayActiveSession);
-                setMissedPunchWarning(missedDates.length > 0 ? { dates: [...new Set(missedDates)] } : null);
+                // Sort descending so the latest date is first (dates[0])
+                const sortedMissedDates = [...new Set(missedDates)].sort((a, b) => b.localeCompare(a));
+                setMissedPunchWarning(sortedMissedDates.length > 0 ? { dates: sortedMissedDates } : null);
             } else {
                 const hasOpenInDaily = Array.isArray(res?.data) && res.data.some(s => !s.time_out);
                 setGlobalActiveSession(Boolean(hasOpenInDaily));

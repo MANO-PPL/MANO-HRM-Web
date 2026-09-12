@@ -14,6 +14,7 @@ import darSettingsRoutes from './darRoutes/settingsRoutes.js';
 import darReportRoutes from '../services/darServices/DARReportAPI.js';
 import shiftRoutes from './policies/shiftRoutes.js';
 import attendanceRoutes from './attendance/attendanceRoutes.js';
+import correctionsRoutes from './corrections/correctionsRoutes.js';
 import feedbackRoutes from './feedback/feedbackRoutes.js';
 import paymentRoutes from './payment/paymentRoutes.js';
 import profileRoutes from './profile/profileRoutes.js';
@@ -41,6 +42,8 @@ router.use('/policies', shiftRoutes); // Shift management
 router.use('/notifications', notificationRoutes);
 router.use('/leaves', leaveRoutes);
 router.use('/attendance', attendanceRoutes);
+router.use('/corrections', correctionsRoutes);
+router.use('/attendance', correctionsRoutes); // Backwards compatibility for legacy /attendance/correction-request(s)
 router.use('/organizations', orgRoutes);
 router.use('/super-admin', superAdminRoutes);
 router.use('/admin/reports', reportsRoutes);

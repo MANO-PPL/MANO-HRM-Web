@@ -47,44 +47,28 @@ async function cleanupAttendanceImages() {
 
         const retentionDays = 30;
         const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
-
-        const oldRecords = await attendanceDB('attn_records')
-            .where('time_in', '<', cutoffDate)
-            .where(function () {
-                this.whereNotNull('time_in_image_key')
-                    .orWhereNotNull('time_out_image_key');
-            })
-            .select('attendance_id', 'time_in_image_key', 'time_out_image_key');
+        const oldPunches = await attendanceDB('attn_punches')
+            .where('punch_time', '<', cutoffDate)
+            .whereNotNull('metadata')
+            .select('id', 'metadata');
 
         let deletedCount = 0;
 
-        for (const record of oldRecords) {
-            if (record.time_in_image_key) {
+        for (const punch of oldPunches) {
+            let meta = {};
+            try { meta = typeof punch.metadata === 'string' ? JSON.parse(punch.metadata) : (punch.metadata || {}); } catch (_) {}
+            if (meta.image_key) {
                 try {
-                    await deleteFile({ key: record.time_in_image_key });
+                    await deleteFile({ key: meta.image_key });
                     deletedCount++;
+                    delete meta.image_key;
+                    await attendanceDB('attn_punches')
+                        .where('id', punch.id)
+                        .update({ metadata: JSON.stringify(meta) });
                 } catch (err) {
-                    console.error(`Failed to delete ${record.time_in_image_key}:`, err.message);
+                    console.error(`Failed to delete image ${meta.image_key}:`, err.message);
                 }
             }
-
-            if (record.time_out_image_key) {
-                try {
-                    await deleteFile({ key: record.time_out_image_key });
-                    deletedCount++;
-                } catch (err) {
-                    console.error(`Failed to delete ${record.time_out_image_key}:`, err.message);
-                }
-            }
-
-            await attendanceDB('attn_records')
-                .where('attendance_id', record.attendance_id)
-                .update({
-                    time_in_image_key: null,
-                    time_out_image_key: null,
-                    updated_at: attendanceDB.fn.now()
-                });
         }
 
         console.log(`✅ Cleanup complete: ${deletedCount} images deleted from ${oldRecords.length} records.`);
@@ -166,7 +150,7 @@ async function cleanupDeletedOrganizations() {
                     .del();
 
                 await trx('attn_daily_activities').whereIn('user_id', orgUserIdsSubquery).del();
-                await trx('attn_daily_summary').whereIn('user_id', orgUserIdsSubquery).del();
+                await trx('attn_daily_summary_v2').whereIn('user_id', orgUserIdsSubquery).del();
                 await trx('attn_dar_requests').whereIn('user_id', orgUserIdsSubquery).del();
                 await trx('comm_events_meetings').whereIn('user_id', orgUserIdsSubquery).del();
                 await trx('sys_security_alerts').where('org_id', org.org_id).del();
@@ -177,7 +161,7 @@ async function cleanupDeletedOrganizations() {
                 await trx('feedback_tickets').where('org_id', org.org_id).del();
 
                 await trx('leave_request').whereIn('user_id', orgUserIdsSubquery).del();
-                await trx('attn_records').whereIn('user_id', orgUserIdsSubquery).del();
+                await trx('attn_punches').whereIn('user_id', orgUserIdsSubquery).del();
 
                 // Relational chat tables cleanup (child to parent order)
                 await trx('chat_message_attachments').whereIn('message_id', orgMsgIdsSubquery).del();
@@ -279,12 +263,6 @@ async function repairStalePunchAddresses() {
                     location: JSON.stringify(loc)
                 });
 
-                // Also update legacy attn_records
-                const field = punch.punch_type === 'in' ? 'time_in_address' : 'time_out_address';
-                await attendanceDB('attn_records').where({ attendance_id: punch.id }).update({
-                    [field]: resolvedAddress,
-                    updated_at: attendanceDB.fn.now()
-                }).catch(() => {});
 
                 console.log(`✅ [GeoRepair] Resolved address for punch #${punch.id}: ${resolvedAddress}`);
             } catch (punchErr) {

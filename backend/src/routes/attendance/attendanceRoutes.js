@@ -98,53 +98,6 @@ router.get("/records/export",
   AttendanceController.exportRecords
 );
 
-// ========== CORRECTION REQUEST ENDPOINTS ==========
-
-/**
- * POST /attendance/correction-request
- * Submit a correction request for attendance
- */
-router.post("/correction-request", 
-  authenticateJWT, 
-  upload.single("attachment"),
-  AttendanceController.submitCorrectionRequest
-);
-
-/**
- * GET /attendance/correction-requests
- * Fetch correction requests with filters (user sees their own, admin sees all)
- */
-router.get("/correction-requests", 
-  authenticateJWT, 
-  AttendanceController.getCorrectionRequests
-);
-
-/**
- * GET /attendance/correction-request/:acr_id
- * Fetch single correction request details
- */
-router.get("/correction-request/:acr_id", 
-  authenticateJWT, 
-  AttendanceController.getCorrectionRequestById
-);
-
-/**
- * PATCH /attendance/correct-request/:acr_id
- * Admin endpoint to approve/reject correction request
- */
-router.patch("/correct-request/:acr_id", 
-  authenticateJWT, 
-  AttendanceController.reviewCorrectionRequest
-);
-router.patch("/correction-request/:acr_id", 
-  authenticateJWT, 
-  AttendanceController.reviewCorrectionRequest
-);
-router.put("/correction-request/:acr_id/review", 
-  authenticateJWT, 
-  AttendanceController.reviewCorrectionRequest
-);
-
 /**
  * GET /attendance/my-shift
  * Fetch current user's shift policy
