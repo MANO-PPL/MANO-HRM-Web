@@ -123,6 +123,7 @@ export async function submitLeaveRequest({ user_id, org_id, leave_type, start_da
 
     const [insertId] = await attendanceDB('leave_request').insert({
         user_id,
+        org_id,
         rule_id: resolvedRuleId,
         start_date: sqlStart,
         end_date: sqlEnd,
@@ -698,9 +699,15 @@ export async function getMyLeavePolicies({ user_id, org_id }) {
         .select('lp.lp_id')
         .distinct();
 
-    const lpIds = assignedPolicies.map(p => p.lp_id);
+    let lpIds = assignedPolicies.map(p => p.lp_id);
+
+    // Fallback: if user has no leave balances yet, return all active org policies
     if (lpIds.length === 0) {
-        return [];
+        const fallbackPolicies = await attendanceDB('leave_policies')
+            .where({ org_id, is_active: 1 })
+            .select('lp_id');
+        lpIds = fallbackPolicies.map(p => p.lp_id);
+        if (lpIds.length === 0) return [];
     }
 
     // Now fetch the details for these policies
