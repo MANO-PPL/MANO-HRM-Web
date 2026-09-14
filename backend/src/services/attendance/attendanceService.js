@@ -1,3 +1,20 @@
+
+export async function resolveS3ImageUrl(rawKey) {
+  if (!rawKey) return null;
+  const str = String(rawKey).trim();
+  if (!str || str === 'null' || str === 'undefined') return null;
+  if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:')) {
+    return str;
+  }
+  try {
+    const res = await S3Service.getFileUrl({ key: str });
+    if (res && res.url) return res.url;
+  } catch (e) {
+    console.warn("[S3] getFileUrl failed for key:", e.message);
+  }
+  return null;
+}
+
 import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
 import * as S3Service from "../s3/s3Service.js";
@@ -474,7 +491,7 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
               accuracy: chkLoc.accuracy || chkMeta.accuracy || null,
               address: (chkLoc.address && chkLoc.address !== 'Locating...') ? chkLoc.address : null,
               note: chkMeta.note || null,
-              image_key: chkMeta.image_key || null,
+              image_key: chkMeta.image_key || chkLoc.image_key || chkMeta.image || chkLoc.image || chk.image_key || null,
               is_geofence_violation: chkLoc.is_geofence_violation || false
             });
           } else if (userPunches[j].punch_type === "out") {
@@ -539,8 +556,8 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
           time_out_lat: outLoc.lat || null,
           time_out_lng: outLoc.lng || null,
           time_out_address: (outLoc.address && outLoc.address !== 'Locating...') ? outLoc.address : null,
-          time_in_image_key: inMeta.image_key || null,
-          time_out_image_key: outMeta.image_key || null,
+          time_in_image_key: inMeta.image_key || inLoc.image_key || inMeta.image || inLoc.image || inP.image_key || null,
+          time_out_image_key: outMeta.image_key || outLoc.image_key || outMeta.image || outLoc.image || (outP ? outP.image_key : null) || null,
           late_minutes: lateMinutes,
           is_late: isLate,
           late_reason: inMeta.late_reason || null,
@@ -587,19 +604,22 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
       let timeInUrl = null;
       let timeOutUrl = null;
 
-      if (row.time_in_image_key) {
-        if (row.time_in_image_key.startsWith('http://') || row.time_in_image_key.startsWith('https://')) {
-          timeInUrl = row.time_in_image_key;
+      const inKey = row.time_in_image_key || row.time_in_image || row.time_in_photo;
+      if (inKey) {
+        if (typeof inKey === 'string' && (inKey.startsWith('http://') || inKey.startsWith('https://'))) {
+          timeInUrl = inKey;
         } else {
-          const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key }).catch(() => ({ url: null }));
+          const { url } = await S3Service.getFileUrl({ key: inKey }).catch(() => ({ url: null }));
           timeInUrl = url;
         }
       }
-      if (row.time_out_image_key) {
-        if (row.time_out_image_key.startsWith('http://') || row.time_out_image_key.startsWith('https://')) {
-          timeOutUrl = row.time_out_image_key;
+
+      const outKey = row.time_out_image_key || row.time_out_image || row.time_out_photo;
+      if (outKey) {
+        if (typeof outKey === 'string' && (outKey.startsWith('http://') || outKey.startsWith('https://'))) {
+          timeOutUrl = outKey;
         } else {
-          const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key }).catch(() => ({ url: null }));
+          const { url } = await S3Service.getFileUrl({ key: outKey }).catch(() => ({ url: null }));
           timeOutUrl = url;
         }
       }
@@ -607,11 +627,12 @@ export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, l
       const checkpoints = await Promise.all(
         (row.checkpoints || []).map(async (chk) => {
           let chkImgUrl = null;
-          if (chk.image_key) {
-            if (chk.image_key.startsWith('http://') || chk.image_key.startsWith('https://')) {
-              chkImgUrl = chk.image_key;
+          const chkKey = chk.image_key || chk.image_url || chk.image || chk.photo;
+          if (chkKey) {
+            if (typeof chkKey === 'string' && (chkKey.startsWith('http://') || chkKey.startsWith('https://'))) {
+              chkImgUrl = chkKey;
             } else {
-              const { url } = await S3Service.getFileUrl({ key: chk.image_key }).catch(() => ({ url: null }));
+              const { url } = await S3Service.getFileUrl({ key: chkKey }).catch(() => ({ url: null }));
               chkImgUrl = url;
             }
           }
@@ -655,19 +676,22 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
       let timeInUrl = null;
       let timeOutUrl = null;
 
-      if (row.time_in_image_key) {
-        if (row.time_in_image_key.startsWith('http://') || row.time_in_image_key.startsWith('https://')) {
-          timeInUrl = row.time_in_image_key;
+      const inKey = row.time_in_image_key || row.time_in_image || row.time_in_photo;
+      if (inKey) {
+        if (typeof inKey === 'string' && (inKey.startsWith('http://') || inKey.startsWith('https://'))) {
+          timeInUrl = inKey;
         } else {
-          const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key }).catch(() => ({ url: null }));
+          const { url } = await S3Service.getFileUrl({ key: inKey }).catch(() => ({ url: null }));
           timeInUrl = url;
         }
       }
-      if (row.time_out_image_key) {
-        if (row.time_out_image_key.startsWith('http://') || row.time_out_image_key.startsWith('https://')) {
-          timeOutUrl = row.time_out_image_key;
+
+      const outKey = row.time_out_image_key || row.time_out_image || row.time_out_photo;
+      if (outKey) {
+        if (typeof outKey === 'string' && (outKey.startsWith('http://') || outKey.startsWith('https://'))) {
+          timeOutUrl = outKey;
         } else {
-          const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key }).catch(() => ({ url: null }));
+          const { url } = await S3Service.getFileUrl({ key: outKey }).catch(() => ({ url: null }));
           timeOutUrl = url;
         }
       }
@@ -675,11 +699,12 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
       const checkpoints = await Promise.all(
         (row.checkpoints || []).map(async (chk) => {
           let chkImgUrl = null;
-          if (chk.image_key) {
-            if (chk.image_key.startsWith('http://') || chk.image_key.startsWith('https://')) {
-              chkImgUrl = chk.image_key;
+          const chkKey = chk.image_key || chk.image_url || chk.image || chk.photo;
+          if (chkKey) {
+            if (typeof chkKey === 'string' && (chkKey.startsWith('http://') || chkKey.startsWith('https://'))) {
+              chkImgUrl = chkKey;
             } else {
-              const { url } = await S3Service.getFileUrl({ key: chk.image_key }).catch(() => ({ url: null }));
+              const { url } = await S3Service.getFileUrl({ key: chkKey }).catch(() => ({ url: null }));
               chkImgUrl = url;
             }
           }
@@ -778,20 +803,31 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
             let timeInUrl = null;
             let timeOutUrl = null;
 
-            if (row.time_in_image_key) {
-              try {
-                const { url } = await S3Service.getFileUrl({ key: row.time_in_image_key });
-                timeInUrl = url;
-              } catch (e) {
-                console.error("Error signing S3 image time_in_image_key", e);
+            const inKey = row.time_in_image_key || row.time_in_image || row.time_in_photo;
+            if (inKey) {
+              if (typeof inKey === 'string' && (inKey.startsWith('http://') || inKey.startsWith('https://'))) {
+                timeInUrl = inKey;
+              } else {
+                try {
+                  const { url } = await S3Service.getFileUrl({ key: inKey });
+                  timeInUrl = url;
+                } catch (e) {
+                  console.error("Error signing S3 image time_in_image_key", e);
+                }
               }
             }
-            if (row.time_out_image_key) {
-              try {
-                const { url } = await S3Service.getFileUrl({ key: row.time_out_image_key });
-                timeOutUrl = url;
-              } catch (e) {
-                console.error("Error signing S3 image time_out_image_key", e);
+
+            const outKey = row.time_out_image_key || row.time_out_image || row.time_out_photo;
+            if (outKey) {
+              if (typeof outKey === 'string' && (outKey.startsWith('http://') || outKey.startsWith('https://'))) {
+                timeOutUrl = outKey;
+              } else {
+                try {
+                  const { url } = await S3Service.getFileUrl({ key: outKey });
+                  timeOutUrl = url;
+                } catch (e) {
+                  console.error("Error signing S3 image time_out_image_key", e);
+                }
               }
             }
 

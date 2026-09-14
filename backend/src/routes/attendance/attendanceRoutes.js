@@ -66,6 +66,14 @@ router.get("/records/admin",
  * GET /attendance/records
  * User endpoint to fetch their own attendance records
  */
+
+/**
+ * GET /attendance/image
+ * Fetch and stream attendance image directly from S3
+ */
+router.get("/image", AttendanceController.getAttendanceImage);
+router.get("/image/:key(*)", AttendanceController.getAttendanceImage);
+
 router.get("/records", 
   authenticateJWT, 
   AttendanceController.getUserRecords

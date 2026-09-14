@@ -59,9 +59,24 @@ export async function uploadFile({ fileBuffer, filePath, key, directory = "", co
 }
 
 // 2. Get Signed URL to Fetch File
-export async function getFileUrl({ key, directory = "", expiresIn = 3600, filename = "" }) {
+export async function getFileUrl({ key, directory = "", expiresIn = 604800, filename = "" }) {
   try {
-    const finalKey = directory ? `${directory}/${key}` : key;
+    if (!key) return { success: false, url: null };
+    let cleanKey = (key || "").toString().trim().replace(/^\/+/, "");
+    if (directory && !cleanKey.startsWith(`${directory}/`)) {
+      cleanKey = `${directory}/${cleanKey}`;
+    }
+    // Normalize attendance images keys:
+    // If it's an attendance punch key (e.g. 100_in, 100_out, 100_checkpoint, or without folder)
+    if (!cleanKey.startsWith("attendance_images/") && 
+        (/_in(\.|$)/.test(cleanKey) || /_out(\.|$)/.test(cleanKey) || /_checkpoint(\.|$)/.test(cleanKey))) {
+      cleanKey = `attendance_images/${cleanKey}`;
+    }
+    // If missing extension for attendance image, default to .webp
+    if (cleanKey.startsWith("attendance_images/") && !cleanKey.includes(".")) {
+      cleanKey = `${cleanKey}.webp`;
+    }
+    const finalKey = cleanKey;
     const bucket = getBucket();
 
     const cmd = new GetObjectCommand({
@@ -161,4 +176,38 @@ export async function uploadCompressedImage({
   }
 }
 
+// 6. Get Object Stream (direct read from S3)
+export async function getObjectStream({ key, directory = "" }) {
+  try {
+    let cleanKey = (key || "").toString().trim().replace(/^\/+/, "");
+    if (directory && !cleanKey.startsWith(`${directory}/`)) {
+      cleanKey = `${directory}/${cleanKey}`;
+    }
+    if (!cleanKey.startsWith("attendance_images/") && 
+        (/_in(\.|$)/.test(cleanKey) || /_out(\.|$)/.test(cleanKey) || /_checkpoint(\.|$)/.test(cleanKey))) {
+      cleanKey = `attendance_images/${cleanKey}`;
+    }
+    if (cleanKey.startsWith("attendance_images/") && !cleanKey.includes(".")) {
+      cleanKey = `${cleanKey}.webp`;
+    }
+    const bucket = getBucket();
+    const cmd = new GetObjectCommand({
+      Bucket: bucket,
+      Key: cleanKey,
+    });
 
+    const response = await getS3().send(cmd);
+
+    return {
+      success: true,
+      stream: response.Body,
+      contentType: response.ContentType || 'image/webp',
+      contentLength: response.ContentLength,
+      lastModified: response.LastModified,
+      key: cleanKey
+    };
+  } catch (error) {
+    console.error("S3 GetObjectStream Error:", error);
+    throw error;
+  }
+}

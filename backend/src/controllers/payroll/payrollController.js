@@ -314,6 +314,23 @@ export const finalizePayrollRun = catchAsync(async (req, res, next) => {
 
     const run = await PayrollFinalizationService.finalizePayroll(orgId, year, monthNum, finalizedBy);
     
+    // Write audit log for full payroll run finalization
+    try {
+        const performer = await attendanceDB('core_users').where('user_id', finalizedBy).first();
+        await attendanceDB('payroll_audit_logs').insert({
+            org_id: orgId,
+            action: 'FINALIZE_RUN',
+            employee_id: null,
+            employee_name: 'All Employees',
+            month: month,
+            performed_by: finalizedBy,
+            performed_by_name: performer ? (performer.user_name || performer.email) : 'Admin',
+            details: `Finalized payroll run for ${month}. Total employees: ${run.total_employees || run.totalEmployees || 0}.`
+        });
+    } catch (auditErr) {
+        console.error('Audit logger failed for finalize run:', auditErr);
+    }
+    
     res.status(200).json({
         status: 'success',
         message: 'Payroll finalized successfully.',
@@ -921,16 +938,18 @@ export const getPayrollAuditLogs = catchAsync(async (req, res, next) => {
     const { month, employeeId } = req.query;
 
     let query = attendanceDB('payroll_audit_logs as pal')
-        .join('core_users as u', 'pal.performed_by', 'u.user_id')
-        .where('u.org_id', orgId)
+        .leftJoin('core_users as u', 'pal.performed_by', 'u.user_id')
+        .where(function() {
+            this.where('pal.org_id', orgId).orWhere('u.org_id', orgId);
+        })
         .select('pal.*')
         .orderBy('pal.created_at', 'desc');
 
     if (month) {
-        query = query.where('month', month);
+        query = query.where('pal.month', month);
     }
     if (employeeId) {
-        query = query.where('employee_id', Number(employeeId));
+        query = query.where('pal.employee_id', Number(employeeId));
     }
 
     const logs = await query.limit(100);
