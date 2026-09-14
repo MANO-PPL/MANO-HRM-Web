@@ -809,7 +809,10 @@ export const pingLocation = catchAsync(async (req, res) => {
  * Fetch and stream image directly from S3 to the frontend
  */
 export const getAttendanceImage = catchAsync(async (req, res) => {
-  const key = req.query.key || req.params.key || req.params[0];
+  let key = req.query.key || req.params.key || req.params[0];
+  if (Array.isArray(key)) {
+    key = key.join('/');
+  }
   if (!key) {
     return res.status(400).send("Missing image key");
   }

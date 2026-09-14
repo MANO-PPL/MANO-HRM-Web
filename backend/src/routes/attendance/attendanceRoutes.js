@@ -72,7 +72,7 @@ router.get("/records/admin",
  * Fetch and stream attendance image directly from S3
  */
 router.get("/image", AttendanceController.getAttendanceImage);
-router.get("/image/:key(*)", AttendanceController.getAttendanceImage);
+router.get("/image/*key", AttendanceController.getAttendanceImage);
 
 router.get("/records", 
   authenticateJWT, 
