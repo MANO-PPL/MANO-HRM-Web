@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
-import * as holidayService from '../../services/holiday/holidayService.js';
+import * as holidayService from './holidayService.js';
 
 
 //Get all holidays

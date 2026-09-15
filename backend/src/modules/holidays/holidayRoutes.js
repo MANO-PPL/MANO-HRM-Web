@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
-import * as holidaysController from '../../controllers/holidays/holidaysController.js';
+import * as holidaysController from './holidaysController.js';
 import ensureAdmin from '../../middleware/ensureAdmin.js';
 
 const router = express.Router();

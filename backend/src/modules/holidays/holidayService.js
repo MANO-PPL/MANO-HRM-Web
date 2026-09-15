@@ -3,8 +3,8 @@ import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
-import { cacheService } from '../cache/cacheService.js';
-import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
+import { cacheService } from '../../services/cache/cacheService.js';
+import { PayrollCalculationService } from '../../services/payroll/PayrollCalculationService.js';
 import EventBus from '../../utils/EventBus.js';
 
 // Helper to notify employees when new holidays are declared
