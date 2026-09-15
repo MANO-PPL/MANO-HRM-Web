@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
-import * as adminController from '../../controllers/admin/adminController.js';
+import * as adminController from './adminController.js';
 import * as shiftController from '../../controllers/shifts/shiftController.js';
 
 const router = express.Router();

@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticateJWT } from '../../middleware/auth.js';
 import AppError from '../../utils/AppError.js';
-import * as monitorController from '../../controllers/admin/systemMonitorController.js';
+import * as monitorController from './systemMonitorController.js';
 
 const router = express.Router();
 
