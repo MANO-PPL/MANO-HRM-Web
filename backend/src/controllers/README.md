@@ -46,6 +46,7 @@ All controllers adhere to standard clean controller design principles:
 | **`shifts/`** | `shiftController.js` | Shift master setup, flexible/rotational shift assignments, grace periods, and night shift definitions. |
 | **`superAdmin/`** | `superAdminController.js` | Super Admin platform governance, tenant onboarding/suspension, global audit logs, and PM2 process controls. |
 | **`workLocations/`** | `workLocationsController.js` | Work location geofencing, GPS coordinates, allowed radius boundaries, and polygon coordinates. |
+| **`corrections/`** | `correctionsController.js` | Leave application lifecycle, approval/rejection workflows, leave balance calculations, and policy rules. |
 
 ---
 
