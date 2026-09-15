@@ -81,6 +81,9 @@ export const attendanceService = {
         formData.append("accuracy", data.accuracy);
         const tz = data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         formData.append("timezone", tz);
+        if (data.local_time || data.localTime) {
+            formData.append("local_time", data.local_time || data.localTime);
+        }
         if (data.address) {
             formData.append("address", data.address);
         }
@@ -112,6 +115,9 @@ export const attendanceService = {
         formData.append("accuracy", data.accuracy);
         const tz = data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         formData.append("timezone", tz);
+        if (data.local_time || data.localTime) {
+            formData.append("local_time", data.local_time || data.localTime);
+        }
         if (data.address) {
             formData.append("address", data.address);
         }
