@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
-import * as LocationController from "../../controllers/employees/employeeControllers.js";
+import * as LocationController from "./employeeControllers.js";
 
 const router = express.Router();
 

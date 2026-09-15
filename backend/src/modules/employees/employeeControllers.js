@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as LocationService from "../../services/employees/employeeServices.js"; 
+import * as LocationService from "./employeeServices.js"; 
 
 export const getLocations = catchAsync(async (req, res) => {
     const { user_id } = req.user;
