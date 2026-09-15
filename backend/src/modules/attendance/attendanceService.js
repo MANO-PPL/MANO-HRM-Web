@@ -964,7 +964,8 @@ export async function processTimeInSync(context) {
     accuracy: Math.round(accuracy),
     ip_address: ip,
     user_agent: user_agent,
-    timezone: context.timezone || "N/A"
+    timezone: context.timezone || "N/A",
+    local_time: toMySQLDateTime(localTime)
   };
 
   // 7. Insert 'in' punch

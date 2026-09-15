@@ -18,6 +18,68 @@ import { processAttendanceJob } from "../../workers/attendanceWorker.js";
 import { uploadFile, getObjectStream } from "../../services/s3/s3Service.js";
 
 /**
+ * Resolves the user's local timezone.
+ * Prioritizes the user's actual local context:
+ * 1. User/Client provided timezone (req.body.timezone or req.headers['x-timezone'])
+ * 2. GPS coordinates lookup via Google Maps API (if valid coordinates available)
+ * 3. User's assigned branch/work location timezone
+ * 4. Fallback: Organization timezone (only when user cannot provide timezone / GPS is unavailable)
+ * 5. Default fallback ('Asia/Kolkata' or 'UTC')
+ */
+async function resolveEffectiveTimezone({ req, org_id, userId, latitude, longitude }) {
+  // 1. Client provided timezone
+  const clientTz = req.body?.timezone || req.headers?.['x-timezone'];
+  if (clientTz && typeof clientTz === 'string' && clientTz.trim() && clientTz !== 'null' && clientTz !== 'undefined' && clientTz.trim() !== 'UTC') {
+    return clientTz.trim();
+  }
+
+  // 2. GPS coordinate timezone resolution (when client did not provide tz, but GPS is available)
+  if (latitude && longitude && !isNaN(latitude) && !isNaN(longitude) && Number(latitude) !== 0 && Number(longitude) !== 0) {
+    try {
+      const tzData = await MapsService.fetchTimeStamp(Number(latitude), Number(longitude), new Date());
+      if (tzData?.timezone) {
+        return tzData.timezone;
+      }
+    } catch (e) {
+      // Maps timezone service failed or unavailable; proceed to location/org fallback
+    }
+  }
+
+  // 3. User assigned work location timezone
+  if (userId) {
+    try {
+      const userLoc = await attendanceDB('org_user_work_locations as uwl')
+        .join('org_work_locations as wl', 'uwl.location_id', 'wl.location_id')
+        .where('uwl.user_id', userId)
+        .where('wl.is_active', true)
+        .select('wl.timezone')
+        .first();
+      if (userLoc?.timezone) {
+        return userLoc.timezone;
+      }
+    } catch (e) { }
+  }
+
+  // 4. Fallback: Organization timezone (only if user cannot fetch GPS / no timezone detected)
+  if (org_id) {
+    try {
+      const org = await attendanceDB('core_organizations')
+        .where({ org_id })
+        .select('timezone')
+        .first();
+      if (org?.timezone) {
+        return org.timezone;
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch organization ${org_id} fallback timezone:`, err);
+    }
+  }
+
+  // 5. Ultimate fallback
+  return (clientTz && clientTz !== 'null' && clientTz !== 'undefined') ? clientTz.trim() : 'Asia/Kolkata';
+}
+
+/**
  * POST /attendance/timein
  * Handle user check-in with location and optional image
  */
@@ -32,19 +94,8 @@ export const timeIn = catchAsync(async (req, res) => {
   const address = req.body.address || null;
   const file = req.file;
 
-  // 2. QUICK TIMEZONE LOOKUP (Fast: ~2ms DB lookup + local date conversion)
-  let timezone = req.body.timezone || req.headers['x-timezone'] || 'Asia/Kolkata';
-  try {
-    const org = await attendanceDB('core_organizations')
-      .where({ org_id })
-      .select('timezone')
-      .first();
-    if (org && org.timezone) {
-      timezone = org.timezone;
-    }
-  } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone`, err);
-  }
+  // 2. RESOLVE USER LOCAL TIMEZONE (Org timezone is strictly a fallback if GPS/user tz is absent)
+  const timezone = await resolveEffectiveTimezone({ req, org_id, userId, latitude, longitude });
 
   const nowVal = getLocalNow(timezone);
   const localTime = req.body.local_time || req.body.localTime || String(nowVal).replace('Z', '');
@@ -133,19 +184,8 @@ export const timeOut = catchAsync(async (req, res) => {
   const address = req.body.address || null;
   const file = req.file;
 
-  // 2. QUICK TIMEZONE LOOKUP
-  let timezone = req.body.timezone || req.headers['x-timezone'] || 'Asia/Kolkata';
-  try {
-    const org = await attendanceDB('core_organizations')
-      .where({ org_id })
-      .select('timezone')
-      .first();
-    if (org && org.timezone) {
-      timezone = org.timezone;
-    }
-  } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone`, err);
-  }
+  // 2. RESOLVE USER LOCAL TIMEZONE (Org timezone is strictly a fallback if GPS/user tz is absent)
+  const timezone = await resolveEffectiveTimezone({ req, org_id, userId, latitude, longitude });
 
   const nowVal = getLocalNow(timezone);
   const localTime = req.body.local_time || req.body.localTime || String(nowVal).replace('Z', '');
@@ -631,18 +671,21 @@ export const getAdminDailySummary = catchAsync(async (req, res) => {
     date_to: date
   });
 
-  let timezone = "UTC";
-  try {
-    const org = await attendanceDB("core_organizations")
-      .where("org_id", org_id)
-      .select("timezone")
-      .first();
-    if (org && org.timezone) {
-      timezone = org.timezone;
+  let timezone = req.query.timezone || req.headers['x-timezone'];
+  if (!timezone) {
+    try {
+      const org = await attendanceDB("core_organizations")
+        .where("org_id", org_id)
+        .select("timezone")
+        .first();
+      if (org && org.timezone) {
+        timezone = org.timezone;
+      }
+    } catch (err) {
+      console.error("Failed to fetch organization timezone:", err);
     }
-  } catch (err) {
-    console.error("Failed to fetch organization timezone:", err);
   }
+  if (!timezone) timezone = "UTC";
 
   const staff = summaries.map(s => {
     const dayData = s.days[0] || {
@@ -767,18 +810,13 @@ export const pingLocation = catchAsync(async (req, res) => {
   const userId = req.user.id || req.user.user_id;
   const org_id = req.user.org_id;
 
-  let timezone = 'Asia/Kolkata';
-  try {
-    const org = await attendanceDB('core_organizations')
-      .where({ org_id })
-      .select('timezone')
-      .first();
-    if (org && org.timezone) {
-      timezone = org.timezone;
-    }
-  } catch (err) {
-    console.warn(`Failed to fetch organization ${org_id} timezone`, err);
-  }
+  const timezone = await resolveEffectiveTimezone({
+    req,
+    org_id,
+    userId,
+    latitude: Number(req.body.latitude),
+    longitude: Number(req.body.longitude)
+  });
 
   const nowVal = getLocalNow(timezone);
   const localTime = String(nowVal).replace('Z', '');
