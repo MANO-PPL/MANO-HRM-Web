@@ -47,6 +47,8 @@ async function cleanupAttendanceImages() {
 
         const retentionDays = 30;
         const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
         const oldPunches = await attendanceDB('attn_punches')
             .where('punch_time', '<', cutoffDate)
             .whereNotNull('metadata')
@@ -280,7 +282,7 @@ async function repairStalePunchAddresses() {
 export async function runCleanup() {
     console.log('🚀 Running scheduled cleanup tasks...');
     await cleanupRefreshTokens();
-    await cleanupAttendanceImages();
+    // await cleanupAttendanceImages(); // Temporarily disabled
     await cleanupDeletedUsers();
     await cleanupDeletedOrganizations();
     await deactivateExpiredOrganizations();

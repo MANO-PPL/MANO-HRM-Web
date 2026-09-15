@@ -33,39 +33,35 @@ import { requireActiveOrg } from '../middleware/auth.js';
 const router = express.Router();
 
 // Mount feature-specific routes
-router.use('/admin', adminRoutes);
-router.use('/labour', requireActiveOrg, labourRoutes);
-router.use('/employee', employeeRoutes);
-router.use('/auth', authRoutes);
-router.use('/holiday', holidayRoutes);
-router.use('/policies', shiftRoutes); // Shift management
-router.use('/notifications', notificationRoutes);
-router.use('/leaves', leaveRoutes);
-router.use('/attendance', attendanceRoutes);
-router.use('/corrections', correctionsRoutes);
+router.use('/admin', adminRoutes); // Administrative operations & organization controls
+router.use('/labour', requireActiveOrg, labourRoutes); // Labour/contractor workforce management
+router.use('/employee', employeeRoutes); // Employee management & directory
+router.use('/auth', authRoutes); // Authentication, login, signup & tokens
+router.use('/holiday', holidayRoutes); // Company holiday calendar & schedules
+router.use('/policies', shiftRoutes); // Shift policies & schedule management
+router.use('/notifications', notificationRoutes); // User alerts & notifications
+router.use('/leaves', leaveRoutes); // Leave requests, balances & approvals
+router.use('/attendance', attendanceRoutes); // Attendance records, check-in/out & punches
+router.use('/corrections', correctionsRoutes); // Attendance corrections & adjustments
 router.use('/attendance', correctionsRoutes); // Backwards compatibility for legacy /attendance/correction-request(s)
-router.use('/organizations', orgRoutes);
-router.use('/super-admin', superAdminRoutes);
-router.use('/admin/reports', reportsRoutes);
-router.use('/attendance/reports', reportsRoutes);
+router.use('/organizations', orgRoutes); // Organization profile & configuration
+router.use('/super-admin', superAdminRoutes); // Super admin system-level operations
+router.use('/admin/reports', reportsRoutes); // Admin reports
+router.use('/attendance/reports', reportsRoutes); // Attendance reports
 router.use('/super-admin/monitor', systemMonitorRoutes); // Moved from /admin/monitor
-router.use('/locations', workLocationsRoutes); // For work location management
-router.use('/dar/activities', darActivityRoutes); // For DAR activities
-router.use('/dar/events', darEventRoutes); // For DAR events
-router.use('/dar/requests', darRequestRoutes); // For DAR requests
-router.use('/dar/settings', darSettingsRoutes); // For DAR settings
-router.use('/dar/reports', darReportRoutes); // For DAR reporting & LLM analysis
-router.use('/feedback', feedbackRoutes); // For feedback/bug reports
-router.use('/payment', paymentRoutes); // For Razorpay payments
-router.use('/profile', profileRoutes); // For user profile management
+router.use('/locations', workLocationsRoutes); // Work location management
+router.use('/dar/activities', darActivityRoutes); // DAR activities
+router.use('/dar/events', darEventRoutes); // DAR events
+router.use('/dar/requests', darRequestRoutes); // DAR requests
+router.use('/dar/settings', darSettingsRoutes); // DAR settings
+router.use('/dar/reports', darReportRoutes); // DAR reporting & LLM analysis
+router.use('/feedback', feedbackRoutes); // Feedback/bug reports
+router.use('/payment', paymentRoutes); // Razorpay payments
+router.use('/profile', profileRoutes); // User profile management
 router.use('/website-chatbot', chatbotRoutes); // Public website chatbot endpoint
-router.use('/collaboration', chatRoutes); // Real-time chat & messaging
+router.use('/collaboration', chatRoutes);   // Real-time chat & team messaging
 router.use('/payroll', payrollRoutes); // Payroll V1 endpoints
 router.use('/geo', geoLocationRoutes); // Public geo data (countries, states, cities)
 router.use('/internal', internalRoutes); // Internal APIs for app UI
-
-router.get('/health', (req, res) => {
-    res.json({ message: 'API is working' });
-});
 
 export default router;
