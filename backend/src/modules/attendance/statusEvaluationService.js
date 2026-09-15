@@ -1,6 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import * as ShiftService from './shiftManagementService.js';
-import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { normalizeMaxOvertimeHours } from '../../services/shifts/shiftService.js';
 import { toMySQLTime, toMySQLDate, toMySQLDateTime } from '../../utils/dateUtils.js';
 
 /**
@@ -435,7 +435,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         firstIn = dailyRecord.first_in || null;
         lastOut = dailyRecord.last_out || null;
         overtimeHours = Number(dailyRecord.overtime_hours) || 0;
-        
+
         lateMinutes = Number(dailyRecord.late_minutes || 0);
         if (!lateMinutes && dayRecords.length > 0) {
             lateMinutes = Number(dayRecords[0].late_minutes || 0);
@@ -665,7 +665,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
             .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
             .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
             .first();
-    } catch (_) {}
+    } catch (_) { }
 
     for (const u of users) {
         if (!u.shift_id) {

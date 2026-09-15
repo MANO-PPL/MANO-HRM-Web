@@ -1,8 +1,8 @@
 import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../s3/s3Service.js';
-import { getShiftRules, getDayType, getExpectedHours } from '../attendance/shiftManagementService.js';
+import { getShiftRules, getDayType, getExpectedHours } from '../../modules/attendance/shiftManagementService.js';
 import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
-import { calculateLateArrival } from '../attendance/statusEvaluationService.js';
+import { calculateLateArrival } from '../../modules/attendance/statusEvaluationService.js';
 
 export { getShiftRules, getDayType, getExpectedHours };
 
@@ -452,7 +452,7 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
             .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
             .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
             .first();
-    } catch (_) {}
+    } catch (_) { }
 
     return users.map(u => {
         if (!u.shift_id) {
@@ -528,14 +528,14 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
 
                     let inLoc = {};
                     let inMeta = {};
-                    try { inLoc = typeof inPunch.location === 'string' ? JSON.parse(inPunch.location) : (inPunch.location || {}); } catch (_) {}
-                    try { inMeta = typeof inPunch.metadata === 'string' ? JSON.parse(inPunch.metadata) : (inPunch.metadata || {}); } catch (_) {}
+                    try { inLoc = typeof inPunch.location === 'string' ? JSON.parse(inPunch.location) : (inPunch.location || {}); } catch (_) { }
+                    try { inMeta = typeof inPunch.metadata === 'string' ? JSON.parse(inPunch.metadata) : (inPunch.metadata || {}); } catch (_) { }
 
                     let outLoc = {};
                     let outMeta = {};
                     if (outPunch) {
-                        try { outLoc = typeof outPunch.location === 'string' ? JSON.parse(outPunch.location) : (outPunch.location || {}); } catch (_) {}
-                        try { outMeta = typeof outPunch.metadata === 'string' ? JSON.parse(outPunch.metadata) : (outPunch.metadata || {}); } catch (_) {}
+                        try { outLoc = typeof outPunch.location === 'string' ? JSON.parse(outPunch.location) : (outPunch.location || {}); } catch (_) { }
+                        try { outMeta = typeof outPunch.metadata === 'string' ? JSON.parse(outPunch.metadata) : (outPunch.metadata || {}); } catch (_) { }
                     }
 
                     const isPastPunch = inPunch.record_date && todayStr && inPunch.record_date < todayStr;

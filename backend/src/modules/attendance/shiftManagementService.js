@@ -1,6 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
-import { verifyUserGeofence } from "./geofencing.js";
-import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { verifyUserGeofence } from "../../services/attendance/geofencing.js";
+import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../../services/shifts/shiftService.js';
 
 /**
  * Shift Management Service
@@ -88,7 +88,7 @@ function mapToRules(map) {
 export function buildPolicy(workingDays = [], weekOffRules = [], halfDayRules = []) {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const wdSet = new Set(workingDays.map(d => dayNames.indexOf(d)));
-    
+
     const policy = [];
 
     // 1. Permanently-off days
@@ -129,7 +129,7 @@ export function buildPolicy(workingDays = [], weekOffRules = [], halfDayRules = 
 export function parsePolicy(policy) {
     const entries = normalisePolicyInput(policy);
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    
+
     const workingDaysIndices = new Set([0, 1, 2, 3, 4, 5, 6]);
     const weekOffMap = new Map();
     const halfDayMap = new Map();
@@ -151,7 +151,7 @@ export function parsePolicy(policy) {
 
         const map = type === 'half' ? halfDayMap : weekOffMap;
         if (!map.has(resolvedDay)) map.set(resolvedDay, { weeks: new Set(), timing: null });
-        
+
         const ruleData = map.get(resolvedDay);
         if (entry.timing) ruleData.timing = entry.timing;
 
@@ -221,7 +221,7 @@ export function getExpectedHours(date, policy, shiftRules) {
     }
     const [sH, sM] = timingToUse.start_time.split(':').map(Number);
     const [eH, eM] = timingToUse.end_time.split(':').map(Number);
-    
+
     let fullHours = ((eH * 60 + eM) - (sH * 60 + sM)) / 60;
     if (fullHours < 0) fullHours += 24; // Handle overnight shifts if any
 
@@ -268,8 +268,8 @@ export function getMonthSummary(year, month, policy) {
  * Combines direct shift columns with optional policy_rules JSON for backward compatibility.
  */
 export function getShiftRules(shift) {
-    if (!shift || 
-        (shift.hasOwnProperty('shift_id') && !shift.shift_id) || 
+    if (!shift ||
+        (shift.hasOwnProperty('shift_id') && !shift.shift_id) ||
         (!shift.shift_id && !shift.policy_rules && !shift.start_time)) {
         return getDefaultShiftConfig();
     }
@@ -283,13 +283,13 @@ export function getShiftRules(shift) {
             rules = {};
         }
     }
-    
+
     rules = rules || {};
 
     // Merge direct shift columns into a unified rules object
     // Direct columns take priority if they exist
     const overtimeEnabled = parseBool(
-        shift.is_overtime_enabled ?? rules.overtime?.enabled, 
+        shift.is_overtime_enabled ?? rules.overtime?.enabled,
         true
     );
 
@@ -377,8 +377,8 @@ function getDefaultShiftConfig() {
 export async function checkLocationCompliance(user_id, lat, lng, accuracy, requirements) {
     const reqs = requirements || {};
     // Handle both old nested and new flat structures
-    const geoPolicy = reqs.geolocation || reqs; 
-    
+    const geoPolicy = reqs.geolocation || reqs;
+
     // If not required, pass
     if (geoPolicy.geofence === false || geoPolicy.required === false) return { ok: true };
 

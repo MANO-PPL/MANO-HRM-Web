@@ -13,7 +13,7 @@ import darRequestRoutes from './darRoutes/requestsRoutes.js';
 import darSettingsRoutes from './darRoutes/settingsRoutes.js';
 import darReportRoutes from '../services/darServices/DARReportAPI.js';
 import shiftRoutes from './policies/shiftRoutes.js';
-import attendanceRoutes from './attendance/attendanceRoutes.js';
+import attendanceRoutes from '../modules/attendance/attendanceRoutes.js';
 import correctionsRoutes from './corrections/correctionsRoutes.js';
 import feedbackRoutes from './feedback/feedbackRoutes.js';
 import paymentRoutes from './payment/paymentRoutes.js';

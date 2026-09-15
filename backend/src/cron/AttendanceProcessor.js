@@ -1,8 +1,8 @@
 import cron from 'node-cron';
 import { attendanceDB } from '../config/database.js';
-import { syncDailyAttendance } from '../services/attendance/attendanceService.js';
-import * as ShiftService from '../services/attendance/shiftManagementService.js';
-import { resolveNoShowStatus } from '../services/attendance/statusEvaluationService.js';
+import { syncDailyAttendance } from '../modules/attendance/attendanceService.js';
+import * as ShiftService from '../modules/attendance/shiftManagementService.js';
+import { resolveNoShowStatus } from '../modules/attendance/statusEvaluationService.js';
 import EventBus from '../utils/EventBus.js';
 import { PayrollCalculationService } from '../services/payroll/PayrollCalculationService.js';
 import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../services/shifts/shiftService.js';

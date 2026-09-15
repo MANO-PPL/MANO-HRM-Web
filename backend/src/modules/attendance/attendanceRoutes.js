@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { authenticateJWT } from "../../middleware/auth.js";
-import * as AttendanceController from "../../controllers/attendance/attendanceController.js";
+import * as AttendanceController from "./attendanceController.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() }); // store files in memory

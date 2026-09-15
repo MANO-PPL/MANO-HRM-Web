@@ -1,5 +1,5 @@
 import { attendanceDB } from '../../config/database.js';
-import { getDayType, getShiftRules } from '../attendance/shiftManagementService.js';
+import { getDayType, getShiftRules } from '../../modules/attendance/shiftManagementService.js';
 import { SalaryHistoryService } from './SalaryHistoryService.js';
 
 export class PayrollCalculationService {
@@ -13,15 +13,15 @@ export class PayrollCalculationService {
      */
     static async calculateProjectedPayroll(orgId, year, month) {
         const activeSalaryDate = `${year}-${String(month).padStart(2, '0')}-01`;
-        
+
         // Fetch employees who have a salary configuration for this month
         const employees = await attendanceDB('core_users as u')
             .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
             .leftJoin('org_shifts as sh', 'u.shift_id', 'sh.shift_id')
-            .leftJoin('payroll_packages as p', function() {
+            .leftJoin('payroll_packages as p', function () {
                 this.on('s.package_group_id', '=', 'p.package_group_id')
                     .andOn('p.effective_from', '<=', attendanceDB.raw('?', [activeSalaryDate]))
-                    .andOn(function() {
+                    .andOn(function () {
                         this.onNull('p.effective_to')
                             .orOn('p.effective_to', '>=', attendanceDB.raw('?', [activeSalaryDate]));
                     });
@@ -29,7 +29,7 @@ export class PayrollCalculationService {
             .where('u.org_id', orgId)
             .where('u.is_deleted', 0)
             .where('s.effective_from', '<=', activeSalaryDate)
-            .andWhere(function() {
+            .andWhere(function () {
                 this.whereNull('s.effective_to')
                     .orWhere('s.effective_to', '>=', activeSalaryDate);
             })
@@ -100,8 +100,8 @@ export class PayrollCalculationService {
 
         const attendanceMap = new Map();
         for (const rec of attendanceRecords) {
-            const dateStr = rec.date instanceof Date 
-                ? rec.date.toISOString().split('T')[0] 
+            const dateStr = rec.date instanceof Date
+                ? rec.date.toISOString().split('T')[0]
                 : String(rec.date).split('T')[0];
             attendanceMap.set(dateStr, rec);
         }
@@ -119,8 +119,8 @@ export class PayrollCalculationService {
             .whereBetween('holiday_date', [startDateStr, endDateStr]);
 
         const holidayDates = new Set(holidays.map(h => {
-            const d = h.holiday_date instanceof Date 
-                ? h.holiday_date.toISOString().split('T')[0] 
+            const d = h.holiday_date instanceof Date
+                ? h.holiday_date.toISOString().split('T')[0]
                 : String(h.holiday_date).split('T')[0];
             return d;
         }));
@@ -157,7 +157,7 @@ export class PayrollCalculationService {
 
             const record = attendanceMap.get(dateStr);
             const isHoliday = holidayDates.has(dateStr);
-            
+
             // Check for leave covering this date
             const matchingLeave = leaves.find(l => {
                 const start = l.start_date instanceof Date ? l.start_date.toISOString().split('T')[0] : String(l.start_date).split('T')[0];
@@ -175,7 +175,7 @@ export class PayrollCalculationService {
 
             if (record) {
                 const status = String(record.status).toUpperCase();
-                
+
                 if (status === 'PRESENT' || status === 'LATE' || status === 'OVERTIME') {
                     present_days += 1;
                     if (record.overtime_hours && Number(record.overtime_hours) > 0) {
@@ -240,14 +240,14 @@ export class PayrollCalculationService {
 
         // Apply calculations
         const gross_salary = Number(emp.gross_monthly_salary);
-        
+
         // Resolve dynamic daily rate based on policy
         const lopMethod = settings?.lop_calculation_method || 'calendar_days';
         const fixedDaysVal = Number(settings?.lop_fixed_days_value || 30);
-        
+
         let daily_rate = 0;
         let lop_method_label = 'calendar_days';
-        
+
         if (lopMethod === 'calendar_days') {
             daily_rate = Number((gross_salary / totalDays).toFixed(4));
             lop_method_label = 'calendar_days';
@@ -257,7 +257,7 @@ export class PayrollCalculationService {
         } else if (lopMethod === 'working_days') {
             // Expected working days = total calendar days in month minus weekly offs and organization holidays
             const totalWorkingDays = totalDays - weekly_off_days - holiday_days;
-            daily_rate = totalWorkingDays > 0 
+            daily_rate = totalWorkingDays > 0
                 ? Number((gross_salary / totalWorkingDays).toFixed(4))
                 : Number((gross_salary / totalDays).toFixed(4));
             lop_method_label = 'working_days';
@@ -352,17 +352,17 @@ export class PayrollCalculationService {
             const emp = await attendanceDB('core_users as u')
                 .join('payroll_salary_history as s', 'u.user_id', 's.employee_id')
                 .leftJoin('org_shifts as sh', 'u.shift_id', 'sh.shift_id')
-                .leftJoin('payroll_packages as p', function() {
+                .leftJoin('payroll_packages as p', function () {
                     this.on('s.package_group_id', '=', 'p.package_group_id')
                         .andOn('p.effective_from', '<=', attendanceDB.raw('?', [activeSalaryDate]))
-                        .andOn(function() {
+                        .andOn(function () {
                             this.onNull('p.effective_to')
                                 .orOn('p.effective_to', '>=', attendanceDB.raw('?', [activeSalaryDate]));
                         });
                 })
                 .where('u.user_id', employeeId)
                 .where('s.effective_from', '<=', activeSalaryDate)
-                .andWhere(function() {
+                .andWhere(function () {
                     this.whereNull('s.effective_to')
                         .orWhere('s.effective_to', '>=', activeSalaryDate);
                 })
@@ -405,7 +405,7 @@ export class PayrollCalculationService {
                 adjustments = typeof existingEntry.adjustments_json === 'string'
                     ? JSON.parse(existingEntry.adjustments_json)
                     : existingEntry.adjustments_json;
-                
+
                 const additionsSum = adjustments.filter(a => a.type === 'addition').reduce((sum, a) => sum + Number(a.amount), 0);
                 const deductionsSum = adjustments.filter(a => a.type === 'deduction').reduce((sum, a) => sum + Number(a.amount), 0);
                 finalNetSalary = Number((finalNetSalary + additionsSum - deductionsSum).toFixed(2));
@@ -470,7 +470,7 @@ export class PayrollCalculationService {
                 .where('u.org_id', orgId)
                 .where('u.is_deleted', 0)
                 .where('s.effective_from', '<=', activeSalaryDate)
-                .andWhere(function() {
+                .andWhere(function () {
                     this.whereNull('s.effective_to')
                         .orWhere('s.effective_to', '>=', activeSalaryDate);
                 })
@@ -492,7 +492,7 @@ export class PayrollCalculationService {
         try {
             const date = new Date(dateStr);
             if (isNaN(date.getTime())) return;
-            
+
             const year = date.getFullYear();
             const month = date.getMonth() + 1;
 
@@ -524,7 +524,7 @@ export class PayrollCalculationService {
             while (current <= end) {
                 const year = current.getFullYear();
                 const month = current.getMonth() + 1;
-                
+
                 this.updateDraftEntry(orgId, year, month, userId).catch(err => {
                     console.error("Background leave payroll calculation failed:", err);
                 });

@@ -5,14 +5,14 @@ import path from "path";
 import crypto from "crypto";
 import * as MapsService from "../../services/google_api_services/maps.js";
 import { getEventSource } from "../../utils/clientInfo.js";
-import * as AttendanceService from "../../services/attendance/attendanceService.js";
-import * as ShiftManagementService from "../../services/attendance/shiftManagementService.js";
+import * as AttendanceService from "./attendanceService.js";
+import * as ShiftManagementService from "./shiftManagementService.js";
 import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
-import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
+import { generatePdf, styleExcelWorksheet } from "../../controllers/reports/reportsController.js";
 import { calculateWorkHours, deriveStatus, getDetailedRecords } from "../../services/reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
-import { getLocalNow } from "../../services/attendance/statusEvaluationService.js";
+import { getLocalNow } from "./statusEvaluationService.js";
 import { attendanceQueue, redisConnection } from "../../config/queues.js";
 import { processAttendanceJob } from "../../workers/attendanceWorker.js";
 import { uploadFile, getObjectStream } from "../../services/s3/s3Service.js";
@@ -36,11 +36,11 @@ export const timeIn = catchAsync(async (req, res) => {
   let timezone = req.body.timezone || req.headers['x-timezone'] || 'Asia/Kolkata';
   try {
     const org = await attendanceDB('core_organizations')
-        .where({ org_id })
-        .select('timezone')
-        .first();
+      .where({ org_id })
+      .select('timezone')
+      .first();
     if (org && org.timezone) {
-        timezone = org.timezone;
+      timezone = org.timezone;
     }
   } catch (err) {
     console.warn(`Failed to fetch organization ${org_id} timezone`, err);
@@ -137,11 +137,11 @@ export const timeOut = catchAsync(async (req, res) => {
   let timezone = req.body.timezone || req.headers['x-timezone'] || 'Asia/Kolkata';
   try {
     const org = await attendanceDB('core_organizations')
-        .where({ org_id })
-        .select('timezone')
-        .first();
+      .where({ org_id })
+      .select('timezone')
+      .first();
     if (org && org.timezone) {
-        timezone = org.timezone;
+      timezone = org.timezone;
     }
   } catch (err) {
     console.warn(`Failed to fetch organization ${org_id} timezone`, err);
@@ -260,7 +260,7 @@ export const simulateTimeIn = catchAsync(async (req, res) => {
     try {
       const tzData = await MapsService.fetchTimeStamp(latitude, longitude, new Date());
       if (tzData?.timezone) simTimezone = tzData.timezone;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (!simTimezone) {
     try {
@@ -269,7 +269,7 @@ export const simulateTimeIn = catchAsync(async (req, res) => {
         .select('timezone')
         .first();
       if (org?.timezone) simTimezone = org.timezone;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (!simTimezone) simTimezone = 'Asia/Kolkata';
 
@@ -278,7 +278,7 @@ export const simulateTimeIn = catchAsync(async (req, res) => {
     try {
       const addrRes = await MapsService.coordsToAddress(latitude, longitude);
       if (addrRes?.address) address = addrRes.address;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (!address) address = "Simulated Location";
 
@@ -341,7 +341,7 @@ export const simulateTimeOut = catchAsync(async (req, res) => {
     try {
       const tzData = await MapsService.fetchTimeStamp(latitude, longitude, new Date());
       if (tzData?.timezone) simTimezone = tzData.timezone;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (!simTimezone) {
     try {
@@ -350,7 +350,7 @@ export const simulateTimeOut = catchAsync(async (req, res) => {
         .select('timezone')
         .first();
       if (org?.timezone) simTimezone = org.timezone;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (!simTimezone) simTimezone = 'Asia/Kolkata';
 
@@ -359,7 +359,7 @@ export const simulateTimeOut = catchAsync(async (req, res) => {
     try {
       const addrRes = await MapsService.coordsToAddress(latitude, longitude);
       if (addrRes?.address) outAddress = addrRes.address;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (!outAddress) outAddress = "Simulated Location";
 
@@ -770,11 +770,11 @@ export const pingLocation = catchAsync(async (req, res) => {
   let timezone = 'Asia/Kolkata';
   try {
     const org = await attendanceDB('core_organizations')
-        .where({ org_id })
-        .select('timezone')
-        .first();
+      .where({ org_id })
+      .select('timezone')
+      .first();
     if (org && org.timezone) {
-        timezone = org.timezone;
+      timezone = org.timezone;
     }
   } catch (err) {
     console.warn(`Failed to fetch organization ${org_id} timezone`, err);
