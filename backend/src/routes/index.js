@@ -3,7 +3,7 @@ import adminRoutes from '../modules/admin/adminRoutes.js';
 import authRoutes from './auth/authRoutes.js';
 import holidayRoutes from './holidays/holidayRoutes.js';
 import notificationRoutes from './notifications/notificationRoutes.js';
-import leaveRoutes from './leaves/leaveRoutes.js';
+import leaveRoutes from '../modules/leaves/leaveRoutes.js';
 import reportsRoutes from './reports/reportsRoutes.js';
 import employeeRoutes from '../modules/employees/employeeRoutes.js';
 import workLocationsRoutes from './workLocations/workLocationsRoutes.js';

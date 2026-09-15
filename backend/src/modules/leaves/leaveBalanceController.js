@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as LeaveService from '../../services/leaves/leaveService.js';
+import * as LeaveService from './leaveService.js';
 
 // Employee: Get own leave balance
 export const getMyLeaveBalance = catchAsync(async (req, res) => {

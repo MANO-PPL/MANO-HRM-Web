@@ -1,9 +1,9 @@
 import express from 'express';
 import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
 import multer from 'multer';
-import * as LeaveController from '../../controllers/leaves/leaveController.js';
-import * as LeavePolicyController from '../../controllers/leaves/leavepolicyController.js';
-import * as LeaveBalanceController from '../../controllers/leaves/leaveBalanceController.js';
+import * as LeaveController from './leaveController.js';
+import * as LeavePolicyController from './leavepolicyController.js';
+import * as LeaveBalanceController from './leaveBalanceController.js';
 import ensureAdmin from '../../middleware/ensureAdmin.js';
 
 // Multer Setup (Memory Storage)

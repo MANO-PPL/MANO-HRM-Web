@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as LeaveService from '../../services/leaves/leaveService.js';
+import * as LeaveService from './leaveService.js';
 
 // Leave Policies Controller
 export const createLeavePolicy = catchAsync(async (req, res) => {

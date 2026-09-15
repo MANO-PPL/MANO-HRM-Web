@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as NotificationService from '../../services/notifications/notificationService.js';
-import * as LeaveService from '../../services/leaves/leaveService.js';
+import * as LeaveService from './leaveService.js';
 import { notifyLeaveApplied, notifyLeaveStatusUpdated } from '../../services/collaboration/chatAlertService.js';
 
 
