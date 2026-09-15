@@ -23,7 +23,7 @@ import systemMonitorRoutes from '../modules/admin/systemMonitorRoutes.js';
 import superAdminRoutes from './superAdmin/superAdminRoutes.js';
 import chatbotRoutes from './chatbot/chatbotRoutes.js';
 import chatRoutes from './collaboration/chatRoutes.js';
-import labourRoutes from './labour/labourRoutes.js';
+import labourRoutes from '../modules/labour/labourRoutes.js';
 import payrollRoutes from './payroll/payrollRoutes.js';
 import geoLocationRoutes from './locations/locations.js';
 import internalRoutes from './internal/internalRoutes.js';

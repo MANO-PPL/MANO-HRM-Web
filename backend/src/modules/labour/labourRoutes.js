@@ -9,9 +9,9 @@ import {
     bulkTransferLabours, bulkCreateLabours, getLabourWorkHistory, logLabourPayout,
     downloadBulkTemplate, parseBulkLabours,
     getLabourWageHistory, addLabourWageRevision, updateLabourWageRevision, deleteLabourWageRevision
-} from '../../controllers/labour/labourController.js';
-import { getLabourSchedule, saveLabourSchedule } from '../../controllers/labour/dailyScheduleController.js';
-import { exportDetailedMonthlyLedgerExcel } from '../../controllers/labour/labourExportController.js';
+} from './labourController.js';
+import { getLabourSchedule, saveLabourSchedule } from './dailyScheduleController.js';
+import { exportDetailedMonthlyLedgerExcel } from './labourExportController.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
