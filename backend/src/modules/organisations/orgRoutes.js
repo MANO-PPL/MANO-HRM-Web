@@ -1,5 +1,5 @@
 import express from 'express';
-import * as orgController from '../../controllers/organizations/orgController.js';
+import * as orgController from './orgController.js';
 import { authenticateJWT, authorize } from '../../middleware/auth.js';
 
 const router = express.Router();

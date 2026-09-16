@@ -4,6 +4,32 @@ import AppError from '../../utils/AppError.js';
 import bcrypt from 'bcrypt';
 import { deactivateExpiredOrganizations } from '../../cron/cleanupScheduler.js';
 
+const mapSubscriptionPlanToEnum = (plan) => {
+    if (!plan) return 'free';
+    const p = String(plan).trim().toLowerCase();
+    if (p === 'pro' || p === 'basic') return 'pro';
+    if (p === 'enterprise' || p === 'premium') return 'enterprise';
+    return 'free';
+};
+
+const mapPlanToEnum = (plan) => {
+    if (!plan) return 'free';
+    const p = String(plan).trim().toLowerCase();
+    if (p === 'basic') return 'basic';
+    if (p === 'pro') return 'pro';
+    if (p === 'enterprise' || p === 'premium') return 'enterprise';
+    return 'free';
+};
+
+const formatSubscriptionPlanForDisplay = (org) => {
+    if (org.is_trial) return 'Trial';
+    const subPlan = (org.subscription_plan || '').toLowerCase();
+    const plan = (org.plan || '').toLowerCase();
+    if (subPlan === 'enterprise' || plan === 'enterprise' || plan === 'premium') return 'Premium';
+    if (subPlan === 'pro' || plan === 'pro' || plan === 'basic') return 'Basic';
+    return 'Trial';
+};
+
 export const createOrganization = catchAsync(async (req, res, next) => {
     const {
         org_name, org_code, subscription_plan, subscription_expiry, grace_period_days, max_users,
@@ -43,6 +69,8 @@ export const createOrganization = catchAsync(async (req, res, next) => {
         }
     }
 
+    const isTrialPlan = (subscription_plan || 'Trial').toLowerCase() === 'trial';
+
     // Wrap in transaction to ensure both org and admin user are created or neither
     const insertedId = await attendanceDB.transaction(async (trx) => {
         const [orgId] = await trx('core_organizations').insert({
@@ -51,9 +79,11 @@ export const createOrganization = catchAsync(async (req, res, next) => {
             contact_name: contact_name || null,
             contact_email: contact_email || null,
             contact_phone: contact_phone || null,
-            subscription_plan: subscription_plan || 'Trial',
+            subscription_plan: mapSubscriptionPlanToEnum(subscription_plan),
+            plan: mapPlanToEnum(subscription_plan),
             subscription_expiry: subscription_expiry || null,
-            is_trial: (subscription_plan || 'Trial') === 'Trial' ? 1 : 0,
+            grace_period_days: grace_period_days !== undefined ? grace_period_days : 0,
+            is_trial: isTrialPlan ? 1 : 0,
             status: 'active',
             max_users: max_users || 50,
             last_user_number: 1, // We're creating the first user right now
@@ -99,7 +129,12 @@ export const getOrganizations = catchAsync(async (req, res, next) => {
         .groupBy('o.org_id')
         .orderBy('o.created_at', 'desc');
 
-    res.status(200).json({ success: true, data: orgs });
+    const mappedOrgs = orgs.map(o => ({
+        ...o,
+        subscription_plan: formatSubscriptionPlanForDisplay(o)
+    }));
+
+    res.status(200).json({ success: true, data: mappedOrgs });
 });
 
 export const updateOrganization = catchAsync(async (req, res, next) => {
@@ -116,8 +151,12 @@ export const updateOrganization = catchAsync(async (req, res, next) => {
     const updates = {};
     if (org_name !== undefined) updates.org_name = org_name;
     if (status !== undefined) updates.status = status;
-    if (subscription_plan !== undefined) updates.subscription_plan = subscription_plan;
-    if (subscription_expiry !== undefined) updates.subscription_expiry = subscription_expiry;
+    if (subscription_plan !== undefined) {
+        updates.subscription_plan = mapSubscriptionPlanToEnum(subscription_plan);
+        updates.plan = mapPlanToEnum(subscription_plan);
+        updates.is_trial = String(subscription_plan).toLowerCase() === 'trial' ? 1 : 0;
+    }
+    if (subscription_expiry !== undefined) updates.subscription_expiry = subscription_expiry || null;
     if (grace_period_days !== undefined) updates.grace_period_days = grace_period_days;
     if (max_users !== undefined) updates.max_users = max_users;
     if (contact_name !== undefined) updates.contact_name = contact_name;

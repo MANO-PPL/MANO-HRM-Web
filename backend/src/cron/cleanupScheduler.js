@@ -212,7 +212,7 @@ export async function deactivateExpiredOrganizations() {
         const expiredOrgs = await attendanceDB('core_organizations')
             .where('status', 'active')
             .whereNotNull('subscription_expiry')
-            .andWhereRaw('DATE_ADD(subscription_expiry, INTERVAL grace_period_days DAY) < ?', [now]);
+            .andWhereRaw('DATE_ADD(subscription_expiry, INTERVAL COALESCE(grace_period_days, 0) DAY) < ?', [now]);
 
         console.log(`Found ${expiredOrgs.length} expired organization(s) to deactivate.`);
 
