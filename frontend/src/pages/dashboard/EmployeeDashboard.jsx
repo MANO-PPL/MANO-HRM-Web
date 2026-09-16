@@ -276,6 +276,7 @@ const EmployeeDashboard = () => {
     return (
         <DashboardLayout
             title="Employee Dashboard"
+            hideScrollbar={true}
             tourPageKey={PAGE_KEY}
             tourSteps={tourSteps}
         >

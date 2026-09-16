@@ -346,7 +346,7 @@ const AdminDashboard = () => {
 
 
     return (
-        <DashboardLayout title="Dashboard" tourPageKey={PAGE_KEY} tourSteps={TOUR_STEPS}>
+        <DashboardLayout title="Dashboard" hideScrollbar={true} tourPageKey={PAGE_KEY} tourSteps={TOUR_STEPS}>
             <div className="space-y-6 sm:space-y-8 animate-fade-in-up">
                 {/* Premium Greetings Card */}
                 <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-2xl p-6 sm:p-8 border border-indigo-500/20 shadow-2xl">

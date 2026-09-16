@@ -19,7 +19,7 @@ import InternalChatbotWidget from './InternalChatbotWidget';
 import TourTriggerButton from './tour/TourTriggerButton.jsx';
 import { useTour } from '../context/TourContext';
 
-const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, tourPageKey, tourSteps }) => {
+const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hideScrollbar = false, tourPageKey, tourSteps }) => {
     const { unreadCount } = useNotification();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -28,6 +28,20 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, tou
 
     const { startGlobalTour, hasSeenPage, wasSkippedThisSession, tourEnabled, isActive } = useTour();
     const GLOBAL_TOUR_KEY = 'global_site_tour';
+
+    const isDashboard = typeof title === 'string' && title.toLowerCase().includes('dashboard');
+    const shouldHideScrollbar = hideScrollbar || isDashboard;
+
+    useEffect(() => {
+        if (shouldHideScrollbar) {
+            document.documentElement.classList.add('no-scrollbar');
+            document.body.classList.add('no-scrollbar');
+            return () => {
+                document.documentElement.classList.remove('no-scrollbar');
+                document.body.classList.remove('no-scrollbar');
+            };
+        }
+    }, [shouldHideScrollbar]);
 
 
 
@@ -58,7 +72,7 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, tou
     };
 
     return (
-        <div className="flex min-h-screen bg-slate-50 dark:bg-github-dark-bg font-poppins text-slate-900 dark:text-github-dark-text transition-colors duration-300">
+        <div className={`flex min-h-screen bg-slate-50 dark:bg-github-dark-bg font-poppins text-slate-900 dark:text-github-dark-text transition-colors duration-300 ${shouldHideScrollbar ? 'no-scrollbar' : ''}`}>
             {/* Sidebar */}
             <Sidebar isMobileMenuOpen={isMobileMenuOpen} setIsMobileMenuOpen={setIsMobileMenuOpen} />
 
@@ -188,7 +202,7 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, tou
                 </header>
 
                 {/* Scrollable Content Area */}
-                <main className={`flex-1 flex flex-col ${noPadding ? '' : 'p-3'} bg-slate-50/50 dark:bg-github-dark-bg transition-colors duration-300 mt-16`}>
+                <main className={`flex-1 flex flex-col ${noPadding ? '' : 'p-3'} ${shouldHideScrollbar ? 'no-scrollbar' : ''} bg-slate-50/50 dark:bg-github-dark-bg transition-colors duration-300 mt-16`}>
                     {children}
                 </main>
             </div>

@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import InternalChatbotWidget from './InternalChatbotWidget';
 
-const MobileDashboardLayout = ({ children, title = "Dashboard", hideHeader = false, headerAction, showBackButton = false }) => {
+const MobileDashboardLayout = ({ children, title = "Dashboard", hideHeader = false, headerAction, showBackButton = false, hideScrollbar = false }) => {
     const navigate = useNavigate();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { unreadCount } = useNotification();
@@ -32,6 +32,20 @@ const MobileDashboardLayout = ({ children, title = "Dashboard", hideHeader = fal
         localStorage.setItem('theme', theme);
     }, [theme]);
 
+    const isDashboard = typeof title === 'string' && title.toLowerCase().includes('dashboard');
+    const shouldHideScrollbar = hideScrollbar || isDashboard;
+
+    useEffect(() => {
+        if (shouldHideScrollbar) {
+            document.documentElement.classList.add('no-scrollbar');
+            document.body.classList.add('no-scrollbar');
+            return () => {
+                document.documentElement.classList.remove('no-scrollbar');
+                document.body.classList.remove('no-scrollbar');
+            };
+        }
+    }, [shouldHideScrollbar]);
+
     const toggleTheme = () => {
         setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
     };
@@ -41,7 +55,7 @@ const MobileDashboardLayout = ({ children, title = "Dashboard", hideHeader = fal
         : null;
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-black font-poppins text-slate-900 dark:text-github-dark-text pb-6 md:pb-0 transition-colors duration-300 overflow-x-hidden">
+        <div className={`min-h-screen bg-slate-50 dark:bg-black font-poppins text-slate-900 dark:text-github-dark-text pb-6 md:pb-0 transition-colors duration-300 overflow-x-hidden ${shouldHideScrollbar ? 'no-scrollbar' : ''}`}>
             {/* Header */}
             {!hideHeader && (
                 <header className="fixed top-0 left-0 right-0 h-20 bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 flex items-center justify-between px-4 z-30" style={{ paddingTop: 'env(safe-area-inset-top)' }}>

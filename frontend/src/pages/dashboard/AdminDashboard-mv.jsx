@@ -298,7 +298,7 @@ const AdminDashboard = () => {
     );
 
     return (
-        <MobileDashboardLayout title="Dashboard" hideHeader={false} headerAction={refreshButton}>
+        <MobileDashboardLayout title="Dashboard" hideHeader={false} headerAction={refreshButton} hideScrollbar={true}>
             <div className="pb-24 space-y-6 animate-fade-in px-1">
                 {/* Premium Greetings Card */}
                 <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-2xl p-5 sm:p-6 text-white border border-indigo-500/20 shadow-2xl">
