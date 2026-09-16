@@ -1,5 +1,5 @@
 import { attendanceDB } from '../../config/database.js';
-import { createNotification } from '../notifications/notificationService.js';
+import { createNotification } from '../../modules/notifications/notificationService.js';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import EventBus from '../../utils/EventBus.js';
 

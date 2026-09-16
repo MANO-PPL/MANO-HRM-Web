@@ -10,7 +10,7 @@ import { initAttendanceProcessor } from './src/cron/AttendanceProcessor.js';
 import { initCleanupScheduler } from './src/cron/cleanupScheduler.js';
 import { initDARReportScheduler } from './src/cron/DARReportScheduler.js';
 
-import { sendPushNotification } from './src/services/notifications/fcmService.js';
+import { sendPushNotification } from './src/modules/notifications/fcmService.js';
 import EventBus from './src/utils/EventBus.js';
 import { attendanceDB } from './src/config/database.js';
 import './src/workers/reportWorker.js';
