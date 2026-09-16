@@ -17,7 +17,11 @@ const cleanExit = () => {
   isExiting = true;
   if (child && !child.killed) {
     try {
-      child.kill('SIGINT');
+      if (process.platform === 'win32') {
+        child.kill();
+      } else {
+        child.kill('SIGINT');
+      }
     } catch (_) {}
   }
   setTimeout(() => process.exit(0), 300).unref();
@@ -31,6 +35,7 @@ child.on('exit', () => {
 });
 
 child.on('error', (err) => {
+  if (isExiting && (err.code === 'EPERM' || err.code === 'ESRCH')) return;
   console.error('[Frontend Dev] Process error:', err);
   process.exit(1);
 });

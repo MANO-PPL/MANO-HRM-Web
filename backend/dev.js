@@ -20,7 +20,11 @@ const cleanExit = () => {
   isExiting = true;
   if (child && !child.killed) {
     try {
-      child.kill('SIGINT');
+      if (process.platform === 'win32') {
+        child.kill();
+      } else {
+        child.kill('SIGINT');
+      }
     } catch (_) {}
   }
   // Allow child a moment to terminate, then exit 0
@@ -35,6 +39,7 @@ child.on('exit', () => {
 });
 
 child.on('error', (err) => {
+  if (isExiting && (err.code === 'EPERM' || err.code === 'ESRCH')) return;
   console.error('[Backend Dev] Process error:', err);
   process.exit(1);
 });
