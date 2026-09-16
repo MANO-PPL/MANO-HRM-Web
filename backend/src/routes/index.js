@@ -4,7 +4,7 @@ import authRoutes from './auth/authRoutes.js';
 import holidayRoutes from '../modules/holidays/holidayRoutes.js';
 import notificationRoutes from './notifications/notificationRoutes.js';
 import leaveRoutes from '../modules/leaves/leaveRoutes.js';
-import reportsRoutes from './reports/reportsRoutes.js';
+import reportsRoutes from '../modules/reports/reportsRoutes.js';
 import employeeRoutes from '../modules/employees/employeeRoutes.js';
 import workLocationsRoutes from './workLocations/workLocationsRoutes.js';
 import darActivityRoutes from './darRoutes/activitiesRoutes.js';

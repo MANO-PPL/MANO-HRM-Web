@@ -1,7 +1,7 @@
 import { Worker } from 'bullmq';
 import { redisConnection } from '../config/queues.js';
 import { attendanceDB } from '../config/database.js';
-import { compileReportBuffer } from '../controllers/reports/reportsController.js';
+import { compileReportBuffer } from '../modules/reports/reportsController.js';
 import * as S3Service from '../services/s3/s3Service.js';
 import EventBus from '../utils/EventBus.js';
 

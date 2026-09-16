@@ -1,7 +1,7 @@
 import catchAsync from '../../utils/catchAsync.js';
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
-import * as reportsService from '../../services/reports/reportsServices.js';
+import * as reportsService from './reportsServices.js';
 import { attendanceDB } from '../../config/database.js';
 
 // Helper: Generate PDF using PDFKit with a professional grid/table design
@@ -23,14 +23,14 @@ export const generatePdf = (title, columns, rows) => {
     // Beautiful Title Header Banner
     doc.rect(margin, 30, pageWidth, 45).fill('#1F4E78');
     doc.fillColor('#FFFFFF')
-       .fontSize(14)
-       .font('Helvetica-Bold')
-       .text(title.toUpperCase(), margin + 15, 45, { align: 'left' });
-       
+        .fontSize(14)
+        .font('Helvetica-Bold')
+        .text(title.toUpperCase(), margin + 15, 45, { align: 'left' });
+
     doc.fontSize(8)
-       .font('Helvetica')
-       .fillColor('#A3BFFA')
-       .text(`Generated on: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 15, 62, { align: 'left' });
+        .font('Helvetica')
+        .fillColor('#A3BFFA')
+        .text(`Generated on: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`, margin + 15, 62, { align: 'left' });
 
     doc.moveDown(3.5);
     let currentY = doc.y;
@@ -100,7 +100,7 @@ export const generatePdf = (title, columns, rows) => {
 
         row.forEach((cell, i) => {
             const cellText = cell?.toString() || "-";
-            
+
             // Default text color
             let textColor = '#2D3748';
             let fontStyle = 'Helvetica';
@@ -138,22 +138,22 @@ export const generatePdf = (title, columns, rows) => {
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < range.start + range.count; i++) {
         doc.switchToPage(i);
-        
+
         // Draw thin page footer line
         doc.moveTo(margin, doc.page.height - 35)
-           .lineTo(doc.page.width - margin, doc.page.height - 35)
-           .stroke('#E2E8F0');
+            .lineTo(doc.page.width - margin, doc.page.height - 35)
+            .stroke('#E2E8F0');
 
         doc.fontSize(7)
-           .fillColor('#718096')
-           .font('Helvetica')
-           .text(
-               `Page ${i + 1} of ${range.count}`,
-               margin,
-               doc.page.height - 25,
-               { align: 'right' }
-           );
-           
+            .fillColor('#718096')
+            .font('Helvetica')
+            .text(
+                `Page ${i + 1} of ${range.count}`,
+                margin,
+                doc.page.height - 25,
+                { align: 'right' }
+            );
+
         doc.text(
             `MANO Attendance & Operations Report  |  Confidential`,
             margin,
@@ -188,7 +188,7 @@ export const styleExcelWorksheet = (worksheet, type) => {
     for (let rowNum = 1; rowNum <= headerRowsCount; rowNum++) {
         const headerRow = worksheet.getRow(rowNum);
         headerRow.height = isMultiDayMatrix ? 26 : 32;
-        
+
         headerRow.eachCell({ includeEmpty: true }, (cell) => {
             cell.font = {
                 name: 'Segoe UI',
@@ -300,7 +300,7 @@ export const styleExcelWorksheet = (worksheet, type) => {
 
             // 4. Conditional Formatting based on cell values
             const val = cell.value?.toString().trim();
-            
+
             // Present or 1.0 status (Green)
             if (val === 'Present' || val === '1.0') {
                 cell.fill = {
@@ -574,7 +574,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
                 const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, startDate);
                 const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' ? 1 : 0;
-                
+
                 let attendanceStatus = isPresent.toString() + ".0";
                 if (!isPresent) {
                     if (leaveOnDate) {
@@ -655,7 +655,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     }
                 });
                 const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings);
-                
+
                 let calculatedAbsentDays = 0;
                 dateHeaders.forEach((d, dIdx) => {
                     const dateStr = dateStrings[dIdx];
@@ -730,7 +730,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const baseRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
                 const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
-                
+
                 let presentDays = 0;
                 let halfDayCount = 0;
                 let leaveCount = 0;
@@ -746,7 +746,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
                     if (dayRecs.length > 0) {
                         const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
-                        
+
                         if (aggregated.status === "On Leave" || leaveOnDate) {
                             leaveCount++;
                         } else if (aggregated.status === "Half Day") {
@@ -792,7 +792,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 });
 
                 const payableDays = presentDays - (0.5 * halfDayCount) + leaveCount;
-                
+
                 const fullRow = [
                     u.user_name,
                     u.dept_name || "-",
@@ -822,11 +822,11 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     let sum = 0;
                     baseRows.forEach(r => {
                         const colName = idx === 3 ? "Present" :
-                                        idx === 4 ? "Absent" :
-                                        idx === 5 ? "Half Day" :
-                                        idx === 6 ? "Leave" :
+                            idx === 4 ? "Absent" :
+                                idx === 5 ? "Half Day" :
+                                    idx === 6 ? "Leave" :
                                         idx === 7 ? "Late Days" :
-                                        idx === 8 ? "Late Mins" : "Payable Days";
+                                            idx === 8 ? "Late Mins" : "Payable Days";
                         const mappedIdx = pdfCols.indexOf(colName);
                         if (mappedIdx !== -1) sum += parseInt(r[mappedIdx]) || 0;
                     });
@@ -880,7 +880,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         users.forEach(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
             const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
-            
+
             const rowData = {
                 name: u.user_name,
                 dept: u.dept_name || "-"
@@ -939,7 +939,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
             const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, startDate);
             const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' ? 1 : 0;
-            
+
             let attendanceStatus = isPresent.toString() + ".0";
             if (!isPresent) {
                 if (leaveOnDate) {
@@ -1006,7 +1006,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             baseHeaders.push("Shift");
         }
         const gridHeaders = dateHeaders.map(d => `${d.getDate()}\n${d.toLocaleDateString('en-US', { weekday: 'short' })}`);
-        
+
         const summaryCols = [];
         const summaryChecks = [];
         const pushSummary = (name, check) => {
@@ -1237,7 +1237,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         users.forEach(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
             const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
-            
+
             let presentDays = 0;
             let halfDayCount = 0;
             let leaveCount = 0;
@@ -1253,7 +1253,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
                 if (dayRecs.length > 0) {
                     const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
-                    
+
                     if (aggregated.status === "On Leave" || leaveOnDate) {
                         leaveCount++;
                     } else if (aggregated.status === "Half Day") {
@@ -1299,7 +1299,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             });
 
             const payableDays = presentDays - (0.5 * halfDayCount) + leaveCount;
-            
+
             const rowData = {
                 name: u.user_name,
                 dept: u.dept_name || "-",
@@ -1375,10 +1375,10 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         });
 
         const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
-        
+
         let dailyColspan = 0;
         const subCols = [];
-        
+
         dailyColspan++;
         subCols.push({ label: "Status", key: "status" });
         if (colsObj.timeIn !== false) {
@@ -1624,12 +1624,12 @@ import crypto from 'crypto';
 
 export const downloadReport = catchAsync(async (req, res) => {
     const { month, date, type, format = "xlsx", startDate, endDate, columns, dept_id, desg_id, shift_id } = req.query;
-    
+
     // TEMPORARY DEBUG LOGGING
     try {
         const fs = await import('fs');
         fs.appendFileSync('request-debug.log', `[${new Date().toISOString()}] downloadReport req.query: ${JSON.stringify(req.query)}\n`);
-    } catch (e) {}
+    } catch (e) { }
     const org_id = req.user.org_id;
     const isEmployee = req.user.user_type === "employee";
     const isUserReport = req.originalUrl.includes("/attendance/") || isEmployee;

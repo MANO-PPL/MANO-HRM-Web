@@ -1,8 +1,8 @@
 import { attendanceDB } from '../../config/database.js';
-import * as S3Service from '../s3/s3Service.js';
-import { getShiftRules, getDayType, getExpectedHours } from '../../modules/attendance/shiftManagementService.js';
-import { normalizeMaxOvertimeHours } from '../../modules/shifts/shiftService.js';
-import { calculateLateArrival } from '../../modules/attendance/statusEvaluationService.js';
+import * as S3Service from '../../services/s3/s3Service.js';
+import { getShiftRules, getDayType, getExpectedHours } from '../attendance/shiftManagementService.js';
+import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { calculateLateArrival } from '../attendance/statusEvaluationService.js';
 
 export { getShiftRules, getDayType, getExpectedHours };
 
