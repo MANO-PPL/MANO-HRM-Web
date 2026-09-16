@@ -104,7 +104,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
         let match;
         while ((match = mentionRegex.exec(text)) !== null) {
             const rawMention = match[1].trim().toLowerCase();
-            
+
             // Look for matching user names (trim trailing/leading spaces from DB names)
             const matchedUser = orgUsers.find(u => {
                 const name = (u.user_name || '').trim().toLowerCase();
@@ -179,7 +179,7 @@ export const handleMentions = async ({ org_id, sender_id, text, context_type, co
 
                     // 4. Create and append the message
                     const messageId = Date.now() + Math.floor(Math.random() * 1000);
-                    
+
                     await attendanceDB.transaction(async (trx) => {
                         await trx('chat_messages').insert({
                             id: messageId,

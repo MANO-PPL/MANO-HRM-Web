@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
 import { getNotifications, markAsRead, markAllAsRead, registerFCMToken, unregisterFCMToken, testPushNotification }
-    from '../../controllers/notifications/notificationController.js';
+    from './notificationController.js';
 
 
 const router = express.Router();

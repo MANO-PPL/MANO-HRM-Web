@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as NotificationService from '../../services/notifications/notificationService.js';
+import * as NotificationService from '../notifications/notificationService.js';
 import * as LeaveService from './leaveService.js';
 import { notifyLeaveApplied, notifyLeaveStatusUpdated } from '../../services/collaboration/chatAlertService.js';
 
@@ -31,12 +31,12 @@ export const submitLeaveRequest = catchAsync(async (req, res) => {
 
         // Trigger premium DM alert cards to all Admins and HRs
         const io = req.app.get('io');
-        notifyLeaveApplied({ 
-            org_id, 
-            sender_id: user_id, 
-            leave_id: insertId, 
-            attachments: responseAttachments || [], 
-            io 
+        notifyLeaveApplied({
+            org_id,
+            sender_id: user_id,
+            leave_id: insertId,
+            attachments: responseAttachments || [],
+            io
         }).catch(console.error);
 
         res.status(201).json({

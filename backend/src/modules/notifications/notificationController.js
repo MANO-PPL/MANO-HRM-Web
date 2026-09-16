@@ -1,8 +1,8 @@
 import express from 'express';
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
-import { getNotifications as getNotificationsService, markNotificationAsRead, markAllNotificationsAsRead } from '../../services/notifications/notificationService.js';
-import { registerToken, sendPushNotification, unregisterToken } from '../../services/notifications/fcmService.js';
+import { getNotifications as getNotificationsService, markNotificationAsRead, markAllNotificationsAsRead } from './notificationService.js';
+import { registerToken, sendPushNotification, unregisterToken } from './fcmService.js';
 
 export const getNotifications = catchAsync(async (req, res, next) => {
 
@@ -23,13 +23,13 @@ export const getNotifications = catchAsync(async (req, res, next) => {
         limit = 20,
         unread_only = false
     } = req.query;
-    
+
     const result =
-    await getNotificationsService(
-        user_id,
-        limit,
-        unread_only
-    );
+        await getNotificationsService(
+            user_id,
+            limit,
+            unread_only
+        );
 
 
     res.json({
@@ -39,7 +39,7 @@ export const getNotifications = catchAsync(async (req, res, next) => {
         data: result.notifications,
 
         unread_count:
-        result.unread_count
+            result.unread_count
     });
 
 });
@@ -59,10 +59,10 @@ export const markAsRead = catchAsync(async (req, res, next) => {
     }
 
     const count =
-    await markNotificationAsRead(
-        user_id,
-        id
-    );
+        await markNotificationAsRead(
+            user_id,
+            id
+        );
 
     if (count === 0) {
 
@@ -78,36 +78,36 @@ export const markAsRead = catchAsync(async (req, res, next) => {
         ok: true,
 
         message:
-        'Marked as read'
+            'Marked as read'
 
     });
 
 });
 
 export const markAllAsRead =
-catchAsync(async (req, res, next) => {
+    catchAsync(async (req, res, next) => {
 
-    const user_id = req.user.user_id ?? req.user.id;
-    if (!user_id) {
+        const user_id = req.user.user_id ?? req.user.id;
+        if (!user_id) {
 
-        throw new AppError(
-            'User not authenticated',
-            401
-        );
+            throw new AppError(
+                'User not authenticated',
+                401
+            );
 
-    }
+        }
 
-    const count =
-    await markAllNotificationsAsRead(
-        user_id
-    );
+        const count =
+            await markAllNotificationsAsRead(
+                user_id
+            );
 
-    res.json({
-        ok: true,
-        message: 'All notifications marked as read',
-        updated_count: count
+        res.json({
+            ok: true,
+            message: 'All notifications marked as read',
+            updated_count: count
+        });
     });
-});
 
 export const registerFCMToken = catchAsync(async (req, res, next) => {
     const user_id = req.user.user_id ?? req.user.id;
