@@ -17,7 +17,7 @@ import attendanceRoutes from '../modules/attendance/attendanceRoutes.js';
 import correctionsRoutes from '../modules/corrections/correctionsRoutes.js';
 import feedbackRoutes from '../modules/feedback/feedbackRoutes.js';
 import paymentRoutes from './payment/paymentRoutes.js';
-import profileRoutes from './profile/profileRoutes.js';
+import profileRoutes from '../modules/profile/profileRoutes.js';
 import orgRoutes from '../modules/organisations/orgRoutes.js';
 import systemMonitorRoutes from '../modules/admin/systemMonitorRoutes.js';
 import superAdminRoutes from './superAdmin/superAdminRoutes.js';

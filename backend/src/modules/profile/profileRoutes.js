@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { authenticateJWT } from '../../middleware/auth.js';
-import * as profileController from '../../controllers/profile/profileController.js';
+import * as profileController from './profileController.js';
 
 const router = express.Router();
 const upload = multer({

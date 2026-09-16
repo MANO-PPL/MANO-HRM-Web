@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
-import * as profileService from '../../services/profile/profileService.js';
+import * as profileService from './profileService.js';
 
 /**
  * POST /profile - Upload profile picture

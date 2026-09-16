@@ -1,5 +1,5 @@
 import { attendanceDB } from '../../config/database.js';
-import { uploadCompressedImage, deleteFile } from '../s3/s3Service.js';
+import { uploadCompressedImage, deleteFile } from '../../services/s3/s3Service.js';
 
 /**
  * Upload and update a user's profile picture.
