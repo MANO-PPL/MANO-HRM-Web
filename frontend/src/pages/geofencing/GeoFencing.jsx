@@ -30,6 +30,7 @@ import { useTour } from '../../context/TourContext';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { MAP_THEMES } from '../../config/mapConfig';
+import { MapPin, Loader2, Compass } from 'lucide-react';
 
 const PAGE_KEY = 'admin_geofencing';
 const TOUR_STEPS = [
@@ -61,6 +62,146 @@ const createMarkerIcon = (color) => {
     iconSize: [30, 30],
     iconAnchor: [15, 30],
   });
+};
+
+const GeofenceSkeletonLoader = ({ embedded = false }) => {
+  return (
+    <div className={`flex ${embedded ? 'h-full p-0' : 'h-[calc(100vh-64px)] p-3'} w-full overflow-hidden gap-3 bg-slate-50 dark:bg-dark-bg animate-in fade-in duration-300`}>
+      {/* Left Panel Skeleton: Locations List */}
+      <div className="w-72 sm:w-80 lg:w-[320px] shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl flex flex-col overflow-hidden shadow-xs">
+        {/* Search / Header Shimmer */}
+        <div className="p-3.5 border-b border-slate-100 dark:border-github-dark-border flex items-center gap-2">
+          <div className="h-9 flex-1 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />
+          <div className="h-9 w-20 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg animate-pulse" />
+        </div>
+        {/* Location List Shimmers */}
+        <div className="p-3 space-y-2.5 overflow-hidden flex-1">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="p-3 rounded-xl border border-slate-100 dark:border-github-dark-border/60 bg-slate-50/50 dark:bg-github-dark-subtle/10 space-y-2"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100/70 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-400 animate-pulse shrink-0">
+                  <MapPin size={15} />
+                </div>
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded-md animate-pulse" style={{ width: `${60 + (i * 10)}%` }} />
+                  <div className="h-2.5 bg-slate-100 dark:bg-slate-800 rounded-md animate-pulse w-3/4" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <div className="h-3.5 w-14 bg-slate-100 dark:bg-slate-800 rounded-full animate-pulse" />
+                <div className="h-3.5 w-16 bg-slate-100 dark:bg-slate-800 rounded-full animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Center Panel: Map Radar Animation */}
+      <div className="flex-1 relative bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-github-dark-border shadow-xs flex items-center justify-center">
+        {/* Tactical Background Grid */}
+        <div
+          className="absolute inset-0 opacity-25 pointer-events-none"
+          style={{
+            backgroundImage: `radial-gradient(circle, rgba(99,102,241,0.25) 1px, transparent 1px)`,
+            backgroundSize: '28px 28px',
+          }}
+        />
+
+        {/* Tactical Crosshairs */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+          <div className="w-full border-t border-dashed border-indigo-400" />
+          <div className="h-full border-l border-dashed border-indigo-400 absolute" />
+        </div>
+
+        {/* Top-Left Telemetry HUD Badge */}
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-slate-950/70 border border-indigo-500/20 backdrop-blur-md">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="font-mono text-[10px] tracking-wider text-indigo-300 font-medium uppercase">
+            Geofence Radar Scanning
+          </span>
+        </div>
+
+        {/* Top-Right Coordinate Simulation */}
+        <div className="absolute top-4 right-4 z-10 hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950/70 border border-slate-800 backdrop-blur-md">
+          <Compass size={13} className="text-indigo-400 animate-spin" style={{ animationDuration: '6s' }} />
+          <span className="font-mono text-[10px] text-slate-400">
+            GPS TELEMETRY SYNC
+          </span>
+        </div>
+
+        {/* Radar Concentric Rings & Scanning Sweep */}
+        <div className="relative w-72 h-72 sm:w-96 sm:h-96 flex items-center justify-center">
+          {/* Outer Ring */}
+          <div className="absolute inset-0 rounded-full border border-indigo-500/15" />
+          {/* Middle Ring */}
+          <div className="absolute inset-10 sm:inset-12 rounded-full border border-indigo-500/25" />
+          {/* Inner Ring */}
+          <div className="absolute inset-20 sm:inset-24 rounded-full border border-indigo-500/35" />
+
+          {/* Radiating Expanding Pulse Waves */}
+          <div className="absolute inset-8 rounded-full bg-indigo-500/10 animate-ping" style={{ animationDuration: '3s' }} />
+          <div className="absolute inset-16 rounded-full bg-indigo-500/15 animate-ping" style={{ animationDuration: '2s' }} />
+
+          {/* Rotating Radar Sweep Cone */}
+          <div
+            className="absolute inset-0 rounded-full animate-spin pointer-events-none"
+            style={{
+              animationDuration: '3.5s',
+              background: 'conic-gradient(from 0deg, rgba(99, 102, 241, 0.35) 0deg, rgba(99, 102, 241, 0.05) 50deg, transparent 65deg)',
+            }}
+          />
+
+          {/* Central Glowing Geofence Core */}
+          <div className="relative z-10 w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 shadow-[0_0_35px_rgba(99,102,241,0.9)] flex items-center justify-center text-white border border-indigo-300/30">
+            <MapPin size={24} className="animate-bounce" />
+          </div>
+        </div>
+
+        {/* Floating Glassmorphic Status Bar */}
+        <div className="absolute bottom-6 z-10 px-5 py-3 rounded-2xl bg-slate-950/80 border border-indigo-500/30 shadow-2xl backdrop-blur-md flex items-center gap-3 max-w-sm">
+          <Loader2 size={18} className="animate-spin text-indigo-400 shrink-0" />
+          <div>
+            <p className="text-xs font-semibold text-white tracking-wide">
+              Rendering Geofence Perimeter
+            </p>
+            <p className="text-[10px] text-slate-400 font-normal">
+              Acquiring coordinates & active office boundaries...
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Panel Skeleton: Staff Assignment */}
+      <div className="hidden xl:flex w-80 shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl flex-col overflow-hidden shadow-xs">
+        {/* Header Shimmer */}
+        <div className="p-3.5 border-b border-slate-100 dark:border-github-dark-border space-y-2">
+          <div className="h-4 w-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+          <div className="h-3 w-48 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+        </div>
+        {/* Staff Rows Shimmers */}
+        <div className="p-3 space-y-3 overflow-hidden flex-1">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-2.5 py-1">
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse shrink-0" />
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded-md animate-pulse" style={{ width: `${50 + (i * 8)}%` }} />
+                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-md animate-pulse w-20" />
+                </div>
+              </div>
+              <div className="w-9 h-5 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse shrink-0" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const GeoFencing = ({ embedded = false }) => {
@@ -507,9 +648,10 @@ const GeoFencing = ({ embedded = false }) => {
   };
 
   if (loadingLocations) {
-    return (
-      <DashboardLayout title="Geo-Fencing">
-        <div className="p-6 text-slate-500">Loading locations...</div>
+    const loader = <GeofenceSkeletonLoader embedded={embedded} />;
+    return embedded ? loader : (
+      <DashboardLayout title="Geo-Fencing" noPadding={true}>
+        {loader}
       </DashboardLayout>
     );
   }

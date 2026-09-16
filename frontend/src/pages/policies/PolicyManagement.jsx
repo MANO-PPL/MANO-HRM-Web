@@ -4,7 +4,8 @@ import DashboardLayout from '../../components/DashboardLayout';
 import ShiftManagement from '../shift-management/ShiftManagement';
 import GeoFencing from '../geofencing/GeoFencing';
 import SalaryPackages from '../payroll/SalaryPackages';
-import { Clock, MapPin, Layers } from 'lucide-react';
+import LeavePolicies from '../leaves/LeavePolicies';
+import { Clock, MapPin, Layers, CalendarCheck } from 'lucide-react';
 
 const PolicyManagement = () => {
     const location = useLocation();
@@ -14,8 +15,12 @@ const PolicyManagement = () => {
     const [activeTab, setActiveTab] = useState(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
-        if (tab) return tab;
+        if (tab) {
+            if (tab === 'leave_policies' || tab === 'leaves' || tab === 'leave' || tab === 'policies') return 'leave_policies';
+            return tab;
+        }
         if (location.pathname.includes('geofencing')) return 'geofencing';
+        if (location.pathname.includes('shift-management')) return 'shifts';
         return 'shifts';
     });
 
@@ -23,7 +28,11 @@ const PolicyManagement = () => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
         if (tab) {
-            setActiveTab(tab);
+            if (tab === 'leave_policies' || tab === 'leaves' || tab === 'leave' || tab === 'policies') {
+                setActiveTab('leave_policies');
+            } else {
+                setActiveTab(tab);
+            }
         } else if (location.pathname.includes('geofencing')) {
             setActiveTab('geofencing');
         } else if (location.pathname.includes('shift-management')) {
@@ -74,6 +83,17 @@ const PolicyManagement = () => {
                         <Layers size={14} className={`${activeTab === 'salary_packages' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
                         <span className="leading-none">Salary Packages</span>
                     </button>
+                    <button
+                        onClick={() => handleTabChange('leave_policies')}
+                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
+                            activeTab === 'leave_policies'
+                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                        }`}
+                    >
+                        <CalendarCheck size={14} className={`${activeTab === 'leave_policies' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
+                        <span className="leading-none">Leave Policies</span>
+                    </button>
                 </div>
 
                 {/* Content Panel */}
@@ -81,6 +101,11 @@ const PolicyManagement = () => {
                     {activeTab === 'shifts' && <ShiftManagement embedded={true} />}
                     {activeTab === 'geofencing' && <GeoFencing embedded={true} />}
                     {activeTab === 'salary_packages' && <SalaryPackages embedded={true} />}
+                    {activeTab === 'leave_policies' && (
+                        <div className="h-full overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <LeavePolicies />
+                        </div>
+                    )}
                 </div>
             </div>
         </DashboardLayout>

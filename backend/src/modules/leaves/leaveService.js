@@ -216,6 +216,15 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
         const employeeName = employee?.user_name || 'An employee';
         const statusLabel = wasApproved ? 'approved' : 'pending';
 
+        const formatSQLDate = (d) => {
+            if (!d) return '';
+            if (typeof d === 'string') return d.split('T')[0];
+            if (d instanceof Date) return d.toISOString().split('T')[0];
+            return String(d);
+        };
+        const startFormatted = formatSQLDate(request.start_date);
+        const endFormatted = formatSQLDate(request.end_date);
+
         const admins = await attendanceDB('core_users')
             .where({ org_id, is_deleted: 0, is_active: 1 })
             .whereIn('user_type', ['admin', 'hr'])
@@ -227,7 +236,7 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
                 org_id,
                 user_id: admin.user_id,
                 title: 'Leave Request Withdrawn',
-                message: `${employeeName} has withdrawn their ${statusLabel} leave request for ${request.start_date} to ${request.end_date}.`,
+                message: `${employeeName} has withdrawn their ${statusLabel} leave request for ${startFormatted} to ${endFormatted}.`,
                 type: 'WARNING',
                 related_entity_type: 'LEAVE',
                 related_entity_id: id
@@ -407,11 +416,13 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
                         .where({ lb_id: balance.lb_id })
                         .update({ used: Number(balance.used) + leaveDays, updated_at: attendanceDB.fn.now() });
                 } else {
+                    const ruleRecord = await attendanceDB('leave_policies_rules').where({ rule_id: resolvedRuleId }).first();
+                    const defaultAlloc = ruleRecord ? Number(ruleRecord.max_balance) : 0;
                     await attendanceDB('leave_balances').insert({
                         user_id: request.user_id,
                         rule_id: resolvedRuleId,
                         year: leaveYear,
-                        allocated: 0,
+                        allocated: defaultAlloc,
                         used: leaveDays,
                         carried_forward: 0,
                         updated_at: attendanceDB.fn.now()
@@ -467,10 +478,17 @@ export async function getMyLeaveBalance({ user_id, org_id, year }) {
         .where({ 'lb.user_id': user_id, 'lb.year': targetYear })
         .orderBy('lpr.name', 'asc');
 
-    return balances.map(b => ({
-        ...b,
-        available: Math.max(0, (Number(b.allocated) + Number(b.carried_forward)) - Number(b.used))
-    }));
+    return balances.map(b => {
+        const allocated = Number(b.allocated) > 0 ? Number(b.allocated) : Number(b.max_balance || 0);
+        const carried = Number(b.carried_forward || 0);
+        const total = allocated + carried;
+        const used = Number(b.used || 0);
+        return {
+            ...b,
+            allocated,
+            available: Math.max(0, total - used)
+        };
+    });
 }
 
 export async function getEmployeeLeaveBalance({ org_id, user_id, year }) {
@@ -499,10 +517,17 @@ export async function getEmployeeLeaveBalance({ org_id, user_id, year }) {
         .where({ 'u.org_id': org_id, 'lb.user_id': user_id, 'lb.year': targetYear })
         .orderBy('lpr.name', 'asc');
 
-    return balances.map(b => ({
-        ...b,
-        available: Math.max(0, (Number(b.allocated) + Number(b.carried_forward)) - Number(b.used))
-    }));
+    return balances.map(b => {
+        const allocated = Number(b.allocated) > 0 ? Number(b.allocated) : Number(b.max_balance || 0);
+        const carried = Number(b.carried_forward || 0);
+        const total = allocated + carried;
+        const used = Number(b.used || 0);
+        return {
+            ...b,
+            allocated,
+            available: Math.max(0, total - used)
+        };
+    });
 }
 
 export async function getAllEmployeesLeaveBalances({ org_id, year, rule_id, include_inactive }) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
-import { MapPin, Plus, Users, Search, X, Check, CheckCircle2 } from 'lucide-react';
+import { MapPin, Plus, Users, Search, X, Check, CheckCircle2, Loader2 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { fetchLocations, fetchWorkLocationUsers, updateLocationAssignments, createLocation } from '../../services/userService';
 import { toast } from 'react-toastify';
@@ -495,6 +495,67 @@ const GeoFencing = ({ embedded = false }) => {
             )}
         </>
     );
+
+    if (loadingLocations || loadingStaff) {
+        const loadingContent = (
+            <div className="p-4 space-y-4 animate-in fade-in duration-300">
+                {/* Mobile Radar Card */}
+                <div className="relative h-64 bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-github-dark-border shadow-md flex items-center justify-center">
+                    <div
+                        className="absolute inset-0 opacity-25 pointer-events-none"
+                        style={{
+                            backgroundImage: `radial-gradient(circle, rgba(99,102,241,0.3) 1px, transparent 1px)`,
+                            backgroundSize: '24px 24px',
+                        }}
+                    />
+                    <div className="relative w-48 h-48 flex items-center justify-center">
+                        <div className="absolute inset-0 rounded-full border border-indigo-500/20" />
+                        <div className="absolute inset-8 rounded-full border border-indigo-500/30" />
+                        <div className="absolute inset-16 rounded-full bg-indigo-500/15 animate-ping" style={{ animationDuration: '2.5s' }} />
+                        <div
+                            className="absolute inset-0 rounded-full animate-spin pointer-events-none"
+                            style={{
+                                animationDuration: '3.5s',
+                                background: 'conic-gradient(from 0deg, rgba(99, 102, 241, 0.4) 0deg, transparent 65deg)',
+                            }}
+                        />
+                        <div className="w-12 h-12 rounded-xl bg-indigo-600 shadow-[0_0_25px_rgba(99,102,241,0.8)] flex items-center justify-center text-white z-10">
+                            <MapPin size={22} className="animate-bounce" />
+                        </div>
+                    </div>
+                    <div className="absolute bottom-3 left-4 right-4 py-2 px-3 rounded-xl bg-slate-950/80 border border-indigo-500/30 backdrop-blur-md flex items-center gap-2.5">
+                        <Loader2 size={15} className="animate-spin text-indigo-400 shrink-0" />
+                        <div>
+                            <p className="text-xs font-semibold text-white">Rendering Geofence Radar</p>
+                            <p className="text-[10px] text-slate-400">Loading locations & boundaries...</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Location list skeletons */}
+                <div className="space-y-2.5">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="p-3.5 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl space-y-2 animate-pulse">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-950/50 shrink-0" />
+                                <div className="space-y-1.5 flex-1">
+                                    <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded w-1/2" />
+                                    <div className="h-2.5 bg-slate-100 dark:bg-slate-800 rounded w-3/4" />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        if (embedded) return loadingContent;
+        return (
+            <MobileDashboardLayout title="Geo-Fencing">
+                {loadingContent}
+            </MobileDashboardLayout>
+        );
+    }
 
     if (embedded) return content;
     return (
