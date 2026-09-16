@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { attendanceDB } from '../config/database.js';
 import { deleteFile } from '../services/s3/s3Service.js';
-import { permanentlyDeleteUser } from '../services/users/userService.js';
+import { permanentlyDeleteUser } from '../modules/users/userService.js';
 import * as MapsService from '../services/google_api_services/maps.js';
 import { safeJsonParse } from '../utils/dataUtils.js';
 
@@ -55,7 +55,7 @@ async function cleanupAttendanceImages() {
 
         for (const punch of oldPunches) {
             let meta = {};
-            try { meta = typeof punch.metadata === 'string' ? JSON.parse(punch.metadata) : (punch.metadata || {}); } catch (_) {}
+            try { meta = typeof punch.metadata === 'string' ? JSON.parse(punch.metadata) : (punch.metadata || {}); } catch (_) { }
             if (meta.image_key) {
                 try {
                     await deleteFile({ key: meta.image_key });
@@ -141,8 +141,8 @@ async function cleanupDeletedOrganizations() {
                 await trx('comm_notifications').whereIn('user_id', orgUserIdsSubquery).del();
                 await trx('sys_activity_logs').where('org_id', org.org_id).del();
                 await trx('sys_error_logs').where('org_id', org.org_id).del();
-                try { await trx('attn_corrections').whereIn('user_id', orgUserIdsSubquery).del(); } catch (_) {}
-                try { await trx('attn_correction_requests').whereIn('user_id', orgUserIdsSubquery).del(); } catch (_) {}
+                try { await trx('attn_corrections').whereIn('user_id', orgUserIdsSubquery).del(); } catch (_) { }
+                try { await trx('attn_correction_requests').whereIn('user_id', orgUserIdsSubquery).del(); } catch (_) { }
 
                 await trx('org_user_work_locations')
                     .whereIn('user_id', orgUserIdsSubquery)
@@ -204,7 +204,7 @@ export async function deactivateExpiredOrganizations() {
     try {
         console.log('🧹 Running deactivateExpiredOrganizations...');
         const now = new Date();
-        
+
         // Find all active organizations with subscription_expiry in the past (including grace period)
         const expiredOrgs = await attendanceDB('core_organizations')
             .where('status', 'active')

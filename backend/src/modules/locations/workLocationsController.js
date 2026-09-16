@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as WorkLocationService from '../../services/workLocations/workLocationsServices.js';
+import * as WorkLocationService from './workLocationsServices.js';
 import { notifyGeofenceAssigned } from '../../services/collaboration/chatAlertService.js';
 
 

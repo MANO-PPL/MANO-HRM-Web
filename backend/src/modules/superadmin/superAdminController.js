@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as superAdminService from '../../services/superAdmin/superAdminService.js';
+import * as superAdminService from './superAdminService.js';
 
 export const getDashboardStats = catchAsync(async (req, res, next) => {
     // Only super_admin allowed

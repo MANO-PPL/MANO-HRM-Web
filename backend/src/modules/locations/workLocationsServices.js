@@ -1,6 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
-import { cacheService } from '../cache/cacheService.js';
+import { cacheService } from '../../services/cache/cacheService.js';
 
 export async function getAllLocations({ org_id }) {
     const cacheKey = `mano-cache:locations:org:${org_id}`;

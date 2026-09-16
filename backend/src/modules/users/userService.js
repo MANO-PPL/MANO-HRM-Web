@@ -2,12 +2,12 @@ import { attendanceDB } from '../../config/database.js';
 import bcrypt from 'bcrypt';
 import AppError from '../../utils/AppError.js';
 import EventBus from '../../utils/EventBus.js';
-import { deleteFile, uploadCompressedImage } from '../s3/s3Service.js';
+import { deleteFile, uploadCompressedImage } from '../../services/s3/s3Service.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { encryptText, decryptText } from '../../utils/encryption.js';
-import { normalizeMaxOvertimeHours } from '../../modules/shifts/shiftService.js';
-import { cacheService } from '../cache/cacheService.js';
+import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { cacheService } from '../../services/cache/cacheService.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js
 
@@ -25,7 +25,7 @@ const ALLOWED_UPDATE_FIELDS = new Set([
 
 export const getAllUsers = async (orgId, options = false) => {
     const includeWorkLocation = typeof options === 'boolean' ? options : !!options?.includeWorkLocation;
-    const { startDate, endDate, dept_id, desg_id, shift_id } = (typeof options === 'object' && options !== null) ? options : {};
+    const { startDate, endDate, dept_id, desg_id, shift_id, include_inactive } = (typeof options === 'object' && options !== null) ? options : {};
 
     let usersQuery = attendanceDB('core_users as u')
         .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
@@ -50,7 +50,7 @@ export const getAllUsers = async (orgId, options = false) => {
         usersQuery.where('u.shift_id', shift_id);
     }
 
-    if (startDate && endDate) {
+    if (!include_inactive && startDate && endDate) {
         usersQuery.where(function () {
             // 1. Active employees who joined on or before endDate 
             this.where(function () {
@@ -77,12 +77,6 @@ export const getAllUsers = async (orgId, options = false) => {
                         .whereRaw('da.user_id = u.user_id')
                         .whereRaw('DATE(da.activity_date) >= ? AND DATE(da.activity_date) <= ?', [startDate, endDate]);
                 });
-        });
-    } else {
-        usersQuery.where(function () {
-            this.where('u.is_active', 1).orWhere('u.is_active', true);
-        }).andWhere(function () {
-            this.whereNull('u.is_deleted').orWhere('u.is_deleted', 0).orWhere('u.is_deleted', false);
         });
     }
 
@@ -546,13 +540,13 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('sys_error_logs').where('user_id', userId).del();
 
         // Nullify reviewer/altered references where this user is referenced
-        try { await trx('attn_corrections').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) {}
-        try { await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) {}
-        try { await trx('attn_daily_summary_v2').where('adjusted_by', userId).update({ adjusted_by: null }); } catch (_) {}
+        try { await trx('attn_corrections').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) { }
+        try { await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) { }
+        try { await trx('attn_daily_summary_v2').where('adjusted_by', userId).update({ adjusted_by: null }); } catch (_) { }
         await trx('leave_requests').where('reviewed_by', userId).update({ reviewed_by: null });
 
-        try { await trx('attn_corrections').where('user_id', userId).del(); } catch (_) {}
-        try { await trx('attn_correction_requests').where('user_id', userId).del(); } catch (_) {}
+        try { await trx('attn_corrections').where('user_id', userId).del(); } catch (_) { }
+        try { await trx('attn_correction_requests').where('user_id', userId).del(); } catch (_) { }
         await trx('org_user_work_locations').where('user_id', userId).del();
         await trx('attn_daily_activities').where('user_id', userId).del();
         await trx('attn_daily_summary_v2').where('user_id', userId).del();
@@ -616,7 +610,7 @@ export const permanentlyDeleteUser = async (userId) => {
         const punches = await trx('attn_punches').where('user_id', userId).select('metadata');
         for (const p of punches) {
             let meta = {};
-            try { meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {}); } catch (_) {}
+            try { meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {}); } catch (_) { }
             if (meta.image_key) await safeDeleteS3(meta.image_key);
         }
         await trx('attn_punches').where('user_id', userId).del();

@@ -1,7 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 import { getFileUrl } from '../../services/s3/s3Service.js';
-import { getHistoryLogs, getFilteredLogs } from '../../services/superAdmin/pm2Service.js';
+import { getHistoryLogs, getFilteredLogs } from '../superadmin/pm2Service.js';
 
 // --- Security Alerts ---
 export const getSecurityAlerts = async (req, res, next) => {

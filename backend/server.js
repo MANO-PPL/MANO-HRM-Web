@@ -16,7 +16,7 @@ import { attendanceDB } from './src/config/database.js';
 import './src/workers/reportWorker.js';
 import './src/workers/attendanceWorker.js';
 import fs from 'fs';
-import { getLogPaths, parseLogLine } from './src/services/superAdmin/pm2Service.js';
+import { getLogPaths, parseLogLine, initLogCapture } from './src/modules/superadmin/pm2Service.js';
 import { cacheService } from './src/services/cache/cacheService.js';
 
 const PORT = Number(process.env.PORT) || 5003;
@@ -213,10 +213,13 @@ server.on('error', (err) => {
 // Start PM2 Log Tailing & Streaming
 const logFileOffsets = {};
 function startLogTailing(ioInstance) {
+  // Capture application console output and write to log files & stream via socket
+  initLogCapture(ioInstance);
+
   const paths = getLogPaths();
   const setupWatcher = (filePath, sourceName) => {
     try {
-      if (!fs.existsSync(filePath)) {
+      if (!filePath || !fs.existsSync(filePath)) {
         console.warn(`[PM2 Monitor] Log file does not exist: ${filePath}`);
         return;
       }
@@ -251,8 +254,8 @@ function startLogTailing(ioInstance) {
       console.error(`[PM2 Monitor] Failed to initialize tailing for ${sourceName}:`, err);
     }
   };
-  setupWatcher(paths.out, 'stdout');
-  setupWatcher(paths.err, 'stderr');
+  if (paths.out) setupWatcher(paths.out, 'stdout');
+  if (paths.err) setupWatcher(paths.err, 'stderr');
 }
 
 server.listen(activePort, '0.0.0.0', () => {

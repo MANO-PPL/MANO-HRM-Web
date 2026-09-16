@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateJWT } from '../../middleware/auth.js';
-import * as superAdminController from '../../controllers/superAdmin/superAdminController.js';
+import * as superAdminController from './superAdminController.js';
 
 const router = express.Router();
 
