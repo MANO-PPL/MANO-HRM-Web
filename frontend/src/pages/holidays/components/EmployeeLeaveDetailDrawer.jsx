@@ -9,32 +9,35 @@ const EmployeeLeaveDetailDrawer = ({
     calculateDays,
     onWithdraw
 }) => {
-    if (!isOpen || !selectedLeave) return null;
-
-    const sl = selectedLeave;
+    const sl = selectedLeave || {};
     const statusStyles = sl.status === 'approved'
         ? { pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400', dot: 'bg-emerald-500', accent: '#10b981' }
         : sl.status === 'rejected'
-        ? { pill: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400', dot: 'bg-red-500', accent: '#ef4444' }
-        : { pill: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400', dot: 'bg-amber-500', accent: '#f59e0b' };
-    const days = calculateDays(sl.start_date, sl.end_date);
+            ? { pill: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400', dot: 'bg-red-500', accent: '#ef4444' }
+            : { pill: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400', dot: 'bg-amber-500', accent: '#f59e0b' };
+    const days = (sl.start_date && sl.end_date && calculateDays) ? calculateDays(sl.start_date, sl.end_date) : 0;
 
     return (
         <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={onClose}
-                className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px]"
-            />
-            <motion.div
-                initial={{ x: '100%', opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: '100%', opacity: 0 }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed right-0 top-0 h-full w-full max-w-[420px] z-50 bg-white dark:bg-dark-card border-l border-slate-200 dark:border-github-dark-border shadow-2xl flex flex-col overflow-hidden"
-            >
+            {isOpen && Boolean(selectedLeave) && (
+                <motion.div
+                    key="employee-leave-detail-backdrop"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={onClose}
+                    className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px]"
+                />
+            )}
+            {isOpen && Boolean(selectedLeave) && (
+                <motion.div
+                    key="employee-leave-detail-drawer"
+                    initial={{ x: '100%', opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: '100%', opacity: 0 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                    className="fixed right-0 top-0 h-full w-full max-w-[420px] z-50 bg-white dark:bg-dark-card border-l border-slate-200 dark:border-github-dark-border shadow-2xl flex flex-col overflow-hidden"
+                >
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
                     <div className="flex items-center gap-3">
@@ -59,8 +62,8 @@ const EmployeeLeaveDetailDrawer = ({
                     <div className="rounded-2xl p-5 flex items-center gap-4" style={{ background: `linear-gradient(135deg, ${statusStyles.accent}15 0%, ${statusStyles.accent}08 100%)`, border: `1px solid ${statusStyles.accent}30` }}>
                         <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${statusStyles.accent}20` }}>
                             {sl.status === 'approved' ? <CheckCircle size={24} style={{ color: statusStyles.accent }} /> :
-                             sl.status === 'rejected' ? <XCircle size={24} style={{ color: statusStyles.accent }} /> :
-                             <Clock size={24} style={{ color: statusStyles.accent }} />}
+                                sl.status === 'rejected' ? <XCircle size={24} style={{ color: statusStyles.accent }} /> :
+                                    <Clock size={24} style={{ color: statusStyles.accent }} />}
                         </div>
                         <div>
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium capitalize mb-1 ${statusStyles.pill}`}>
@@ -151,6 +154,7 @@ const EmployeeLeaveDetailDrawer = ({
                     </div>
                 )}
             </motion.div>
+            )}
         </AnimatePresence>
     );
 };

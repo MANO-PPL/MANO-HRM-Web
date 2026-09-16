@@ -56,15 +56,18 @@ const EmployeeLeavePlan = ({
                                         ][idx % 6];
 
                                         const myBalance = myBalances.find(b => b.rule_id === rule.rule_id);
-                                        const available = myBalance ? Number(myBalance.available) : null;
-                                        const total = myBalance ? (Number(myBalance.allocated) + Number(myBalance.carried_forward)) : rule.max_balance;
-                                        const used = myBalance ? Number(myBalance.used) : 0;
-                                        const usedPct = total > 0 ? Math.round((used / total) * 100) : 0;
-                                        const displayDays = available !== null ? available : total;
+                                        const ruleMax = Number(rule.max_balance || 0);
+                                        const allocated = myBalance && Number(myBalance.allocated) > 0 ? Number(myBalance.allocated) : ruleMax;
+                                        const carried = myBalance ? Number(myBalance.carried_forward || 0) : 0;
+                                        const total = allocated + carried;
+                                        const used = myBalance ? Number(myBalance.used || 0) : 0;
+                                        const available = myBalance && myBalance.available !== undefined ? Number(myBalance.available) : Math.max(0, total - used);
+                                        const displayDays = available;
+                                        const remainingPct = total > 0 ? Math.max(0, Math.min(100, Math.round((displayDays / total) * 100))) : 0;
 
                                         // SVG ring values (r=28, circumference ≈ 176)
                                         const r = 28, circ = 2 * Math.PI * r;
-                                        const offset = circ - (Math.min(usedPct, 100) / 100) * circ;
+                                        const offset = circ - (remainingPct / 100) * circ;
 
                                         return (
                                             <div
@@ -107,27 +110,30 @@ const EmployeeLeavePlan = ({
                                                     </div>
 
                                                     {/* Balance bar */}
-                                                    {myBalance ? (
-                                                        <div className="space-y-1.5">
-                                                            <div className="flex items-center justify-between text-[10px] font-medium">
-                                                                <span className="text-slate-500 dark:text-slate-400">{used} used</span>
-                                                                <span className="text-slate-500 dark:text-slate-400">{total} total</span>
-                                                            </div>
-                                                            <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                                                                <div
-                                                                    className="h-full rounded-full transition-all duration-700"
-                                                                    style={{ width: `${Math.min(usedPct, 100)}%`, backgroundColor: palettes.hex }}
-                                                                />
-                                                            </div>
-                                                            <p className="text-[10px] font-semibold" style={{ color: palettes.hex }}>
-                                                                {displayDays} days remaining
-                                                            </p>
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex items-center justify-between text-[11px] font-medium">
+                                                            <span className="text-slate-700 dark:text-slate-200 font-semibold">
+                                                                {displayDays} <span className="text-slate-400 dark:text-slate-500 font-normal text-[10px]">days left</span>
+                                                            </span>
+                                                            <span className="text-slate-500 dark:text-slate-400 text-[10px]">
+                                                                {used} used / {total} total
+                                                            </span>
                                                         </div>
-                                                    ) : (
-                                                        <p className="text-[10px] text-slate-400 font-normal">
-                                                            Up to <span className="font-medium text-slate-600 dark:text-slate-300">{total} days/year</span>
-                                                        </p>
-                                                    )}
+                                                        <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden relative">
+                                                            <div
+                                                                className="h-full rounded-full transition-all duration-700"
+                                                                style={{ width: `${remainingPct}%`, backgroundColor: palettes.hex }}
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center justify-between text-[10px]">
+                                                            <span className="font-medium" style={{ color: palettes.hex }}>
+                                                                {remainingPct}% remaining
+                                                            </span>
+                                                            <span className="text-slate-400 dark:text-slate-500">
+                                                                {total} days total allowance
+                                                            </span>
+                                                        </div>
+                                                    </div>
 
                                                     {/* Feature tags */}
                                                     <div className="flex flex-wrap gap-1.5">
