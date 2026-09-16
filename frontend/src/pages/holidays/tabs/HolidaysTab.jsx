@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Upload, Plus, Calendar, Pencil, Trash2 } from 'lucide-react';
+import { Calendar, Pencil, Trash2 } from 'lucide-react';
 import { parseLocalDate } from '../../../services/holidayService';
 
 const HolidaysTab = ({
@@ -32,7 +32,7 @@ const HolidaysTab = ({
         return d >= new Date().setHours(0, 0, 0, 0);
     });
 
-    const renderHolidayList = (holidayList, title) => {
+    const renderHolidayList = (holidayList, title = null) => {
         const groups = holidayList.reduce((groups, holiday) => {
             const date = parseLocalDate(holiday.date);
             const monthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' });
@@ -127,46 +127,8 @@ const HolidaysTab = ({
     };
 
     return (
-        <div className="space-y-6">
-            {/* Header Actions */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-dark-card p-4 rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border">
-                <div className="flex items-center gap-4 w-full sm:w-auto">
-                    <div className="relative w-full">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Search holidays..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 dark:text-github-dark-text"
-                        />
-                    </div>
-                </div>
-                <div className="flex gap-3 w-full sm:w-auto">
-                    {['admin', 'hr'].includes(user?.user_type) && (
-                        <>
-                            <button
-                                onClick={() => navigate('/holidays/bulk')}
-                                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-github-dark-text rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors cursor-pointer">
-                                <Upload size={16} />
-                                <span className="hidden sm:inline">Import</span>
-                            </button>
-                            <button
-                                data-tour-id="holiday-admin-add"
-                                onClick={onOpenAddModal}
-                                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 shadow-sm transition-colors cursor-pointer"
-                            >
-                                <Plus size={16} />
-                                <span>Add</span>
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* List */}
-            <div className="space-y-4">
-                {isLoading ? (
+        <div className="space-y-4">
+            {isLoading ? (
                     <div className="py-12 text-center text-slate-500">Loading holidays...</div>
                 ) : filteredHolidays.length === 0 ? (
                     <div className="py-12 text-center text-slate-400">
@@ -176,7 +138,7 @@ const HolidaysTab = ({
                 ) : (
                     <>
                         {selectedMonthHolidays.length > 0 ? (
-                            renderHolidayList(selectedMonthHolidays, "Selected Month")
+                            renderHolidayList(selectedMonthHolidays)
                         ) : (
                             <div className="text-center py-8 bg-white dark:bg-dark-card rounded-2xl border border-slate-200 dark:border-github-dark-border">
                                 <p className="text-slate-500 text-sm">No holidays in {calendarDate.toLocaleString('default', { month: 'long' })}</p>
@@ -186,7 +148,6 @@ const HolidaysTab = ({
                         {upcomingHolidays.length > 0 && renderHolidayList(upcomingHolidays, "Upcoming Holidays")}
                     </>
                 )}
-            </div>
         </div>
     );
 };

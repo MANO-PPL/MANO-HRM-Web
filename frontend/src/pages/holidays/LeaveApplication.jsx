@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { leaveService } from '../../services/leaveService';
@@ -41,13 +42,28 @@ import EmployeeLeaveDetailDrawer from './components/EmployeeLeaveDetailDrawer';
 import ApplyLeaveDrawer from './components/ApplyLeaveDrawer';
 import AttachmentModal from './components/AttachmentModal';
 
-const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }) => {
+// Helper to calculate days
+const calculateDays = (start, end) => {
+    if (!start || !end) return 0;
+    const s = new Date(start);
+    const e = new Date(end);
+    const diffTime = Math.abs(e - s);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return diffDays > 0 ? diffDays : 0;
+};
+
+const LeaveApplication = ({ mode, onSelectLeave, onLeavesChange, onActiveRangeChange }) => {
     const navigate = useNavigate();
 
-
     const { user, avatarTimestamp } = useAuth();
-    const [leaves, setLeaves] = useState([]);
+    const [myLeaves, setMyLeaves] = useState([]);
+    const [adminLeaves, setAdminLeaves] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    const isAdmin = user?.user_type === 'admin' || user?.user_type === 'hr';
+    const effectiveMode = mode || (isAdmin ? 'approval' : 'my_leaves');
+    const isApprovalView = isAdmin && effectiveMode === 'approval';
+    const leaves = isApprovalView ? adminLeaves : myLeaves;
     const [selectedLeave, setSelectedLeave] = useState(null); // For Detail View
     const [viewingAttachment, setViewingAttachment] = useState(null);
     const [adminAction, setAdminAction] = useState({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
@@ -74,7 +90,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
         title: '',
         message: '',
         type: 'info',
-        onConfirm: () => {},
+        onConfirm: () => { },
         confirmText: 'Confirm'
     });
     const [isWithdrawing, setIsWithdrawing] = useState(false);
@@ -137,25 +153,92 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
     const totalApprovedDays = React.useMemo(() => {
         return filteredLeaves
             .filter(l => l.status === 'approved')
-            .reduce((acc, curr) => {
-                // Inline calculateDays since helper is defined below, or move helper up.
-                // Better yet, just use the helper if it's defined in scope or move helper up.
-                // Helper is defined inside component? Yes at line 138.
-                // Since this is inside component, we can use it if defined before use?
-                // Javascript function declarations are hoisted, but const arrow functions are NOT.
-                // calculateDays is const arrow function at line 138.
-                // So we need to move calculateDays UP as well or define it as function.
-                if (!curr.start_date || !curr.end_date) return acc; // safety check
-
-                // Re-implementing logic inline to be safe or I'll move calculateDays up.
-                // Let's move calculateDays to module scope or top of component.
-                const s = new Date(curr.start_date);
-                const e = new Date(curr.end_date);
-                const diffTime = Math.abs(e - s);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-                return acc + (diffDays > 0 ? diffDays : 0);
-            }, 0);
+            .reduce((acc, curr) => acc + calculateDays(curr.start_date, curr.end_date), 0);
     }, [filteredLeaves]);
+
+    // Portal target container in the line of the tab bar
+    const [portalNode, setPortalNode] = useState(() => {
+        return typeof document !== 'undefined' ? document.getElementById('holiday-tab-actions') : null;
+    });
+
+    useEffect(() => {
+        if (!portalNode && typeof document !== 'undefined') {
+            const el = document.getElementById('holiday-tab-actions');
+            if (el) setPortalNode(el);
+        }
+    }, [portalNode]);
+
+    const myLeaveActionButtons = (
+        <div className="flex items-center gap-2 flex-wrap">
+            <button
+                onClick={() => setShowForm(true)}
+                data-tour-id="leave-request-btn"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all shadow-sm text-xs font-semibold active:scale-95 cursor-pointer"
+            >
+                <Plus size={14} />
+                <span>Apply for Leave</span>
+            </button>
+            <MinimalSelect
+                options={Array.from({ length: 12 }, (_, i) => ({
+                    value: i,
+                    label: new Date(0, i).toLocaleString('default', { month: 'long' })
+                }))}
+                value={selectedMonth}
+                onChange={(val) => setSelectedMonth(val)}
+                size="sm"
+                triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border shadow-sm font-semibold text-xs"
+                menuWidth={130}
+            />
+            <MinimalSelect
+                options={Array.from({ length: 5 }, (_, i) => {
+                    const y = new Date().getFullYear() - 2 + i;
+                    return { value: y, label: String(y) };
+                })}
+                value={selectedYear}
+                onChange={(val) => setSelectedYear(val)}
+                size="sm"
+                triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border shadow-sm font-semibold text-xs"
+                menuWidth={90}
+            />
+        </div>
+    );
+
+    const adminActionButtons = (
+        <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <input
+                    type="text"
+                    placeholder="Search by employee name..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-36 sm:w-52 pl-8 pr-3 py-1.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-github-dark-text shadow-sm"
+                />
+            </div>
+            <MinimalSelect
+                options={[
+                    { value: 'all', label: 'All' },
+                    { value: 'pending', label: 'Pending' },
+                    { value: 'approved', label: 'Approved' },
+                    { value: 'rejected', label: 'Rejected' }
+                ]}
+                value={statusFilter}
+                onChange={(val) => setStatusFilter(val)}
+                size="sm"
+                triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border shadow-sm font-semibold text-xs"
+                menuWidth={110}
+            />
+            <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                data-tour-id="leave-request-btn"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all shadow-sm text-xs font-semibold active:scale-95 cursor-pointer shrink-0"
+            >
+                <Plus size={14} />
+                <span>Apply for Leave</span>
+            </button>
+        </div>
+    );
 
     // eslint-disable-next-line no-unused-vars
     const { totalQuota, totalUsed, totalAvailable, usedPercentage } = React.useMemo(() => {
@@ -166,28 +249,36 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
         return { totalQuota: quota, totalUsed: used, totalAvailable: avail, usedPercentage: pct };
     }, [myBalances]);
 
-    const selectedBalance = myBalances.find(b => String(b.rule_id) === String(formData.leave_type));
-
-    const isAdmin = user?.user_type === 'admin' || user?.user_type === 'hr';
+    const selectedBalance = React.useMemo(() => {
+        if (isCustomType) return null;
+        return myBalances.find(b =>
+            String(b.rule_id) === String(formData.leave_type) ||
+            b.leave_type?.trim().toLowerCase() === String(formData.leave_type).trim().toLowerCase()
+        );
+    }, [myBalances, formData.leave_type, isCustomType]);
 
     // --- ADMIN FILTERED LEAVES ---
     const adminFilteredLeaves = React.useMemo(() => {
         if (!isAdmin) return [];
-        return leaves.filter(leaf => {
+        return adminLeaves.filter(leaf => {
             const matchesSearch = (leaf.user_name || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesStatus = statusFilter === 'all' || leaf.status === statusFilter;
             const isUserActive = leaf.is_active === undefined ? true : (leaf.is_active === 1 || leaf.is_active === true || leaf.is_active === '1');
             const isUserDeleted = leaf.is_deleted === undefined ? false : (leaf.is_deleted === 1 || leaf.is_deleted === true || leaf.is_deleted === '1');
             return matchesSearch && matchesStatus && isUserActive && !isUserDeleted;
         });
-    }, [leaves, isAdmin, searchTerm, statusFilter]);
+    }, [adminLeaves, isAdmin, searchTerm, statusFilter]);
+
+    useEffect(() => {
+        if (onLeavesChange) {
+            onLeavesChange(isApprovalView ? adminLeaves : myLeaves);
+        }
+    }, [isApprovalView, adminLeaves, myLeaves, onLeavesChange]);
 
     useEffect(() => {
         if (user) {
             fetchLeaves();
-            if (user.user_type !== 'admin' && user.user_type !== 'hr') {
-                fetchPolicies();
-            }
+            fetchPolicies();
         }
     }, [user, selectedYear]);
 
@@ -225,42 +316,38 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
     const fetchLeaves = async () => {
         setLoading(true);
         try {
-            // Admin: Fetch ALL history to allow filtering
-            const res = isAdmin ? await leaveService.getAdminLeaves() : await leaveService.getMyLeaves();
-            if (res.ok) {
-                // Admin endpoint returns 'history', User endpoint returns 'leaves'
-                // Pending endpoint (old) returned 'requests'
-                const fetchedRaw = isAdmin
-                    ? (res.history || res.requests || [])
-                    : (res.leaves || []);
+            // 1. Fetch own personal leaves
+            const myRes = await leaveService.getMyLeaves();
+            const personalLeaves = myRes?.leaves || [];
+            setMyLeaves(personalLeaves);
 
-                const fetched = isAdmin
-                    ? fetchedRaw.filter(l => {
+            // 2. If Admin/HR, also fetch all company leave requests
+            if (isAdmin) {
+                const adminRes = await leaveService.getAdminLeaves();
+                if (adminRes.ok) {
+                    const fetchedRaw = adminRes.history || adminRes.requests || [];
+                    const activeRequests = fetchedRaw.filter(l => {
                         const isUserActive = l.is_active === undefined ? true : (l.is_active === 1 || l.is_active === true || l.is_active === '1');
                         const isUserDeleted = l.is_deleted === undefined ? false : (l.is_deleted === 1 || l.is_deleted === true || l.is_deleted === '1');
                         return isUserActive && !isUserDeleted;
-                    })
-                    : fetchedRaw;
-
-                setLeaves(fetched);
-                if (onLeavesChange) {
-                    onLeavesChange(fetched);
+                    });
+                    setAdminLeaves(activeRequests);
+                    if (isApprovalView && activeRequests.length > 0 && !selectedLeave) {
+                        setSelectedLeave(activeRequests[0]);
+                    }
                 }
-                // Select first item by default for admin
-                if (isAdmin && fetched.length > 0) setSelectedLeave(fetched[0]);
             }
 
-            // Fetch current employee's leave balances
-            if (!isAdmin) {
-                const balRes = await leaveService.getMyLeaveBalances(selectedYear);
-                if (balRes.ok) {
-                    setMyBalances(balRes.balances || []);
-                    if (balRes.balances?.length > 0) {
-                        setFormData(prev => ({
-                            ...prev,
-                            leave_type: String(balRes.balances[0].rule_id)
-                        }));
-                    }
+            // 3. Fetch leave balances for the logged-in user
+            const balRes = await leaveService.getMyLeaveBalances(selectedYear);
+            if (balRes.ok) {
+                const balances = balRes.balances || [];
+                setMyBalances(balances);
+                if (balances.length > 0 && !formData.leave_type) {
+                    setFormData(prev => ({
+                        ...prev,
+                        leave_type: String(balances[0].rule_id)
+                    }));
                 }
             }
         } catch (error) {
@@ -273,7 +360,6 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
 
     // Fetch leave policies for the employee view
     const fetchPolicies = async () => {
-        if (isAdmin) return;
         setLoadingPolicies(true);
         try {
             const res = await leaveService.getLeavePolicies();
@@ -290,6 +376,11 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
     const handleApply = async (e) => {
         e.preventDefault();
         try {
+            if (isCustomType && (!formData.leave_type || !formData.leave_type.trim())) {
+                toast.error("Please enter a custom leave type name.");
+                return;
+            }
+
             // Check if attachment is required per policy
             if (selectedBalance && selectedBalance.requires_doc && (!formData.attachments || formData.attachments.length === 0)) {
                 toast.error(`An attachment is required for ${selectedBalance.leave_type} as per leave policy.`);
@@ -298,7 +389,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
 
             // Create FormData to handle file upload
             const data = new FormData();
-            data.append('leave_type', formData.leave_type);
+            data.append('leave_type', formData.leave_type.trim());
             data.append('start_date', formData.start_date);
             data.append('end_date', formData.end_date);
             data.append('reason', formData.reason);
@@ -312,7 +403,13 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
 
             if (res.ok) {
                 toast.success("Leave request submitted successfully");
-                setFormData({ leave_type: 'Casual Leave', start_date: '', end_date: '', reason: '', attachments: [] });
+                setFormData({
+                    leave_type: myBalances[0]?.rule_id ? String(myBalances[0].rule_id) : 'Casual Leave',
+                    start_date: '',
+                    end_date: '',
+                    reason: '',
+                    attachments: []
+                });
                 setShowForm(false);
                 setIsCustomType(false);
                 fetchLeaves();
@@ -388,12 +485,12 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
             if (res.ok) {
                 toast.success(`Leave request ${actionStatus.toLowerCase()} successfully`);
                 // Update local state
-                const updatedLeaves = leaves.map(l =>
+                const updatedAdminLeaves = adminLeaves.map(l =>
                     l.lr_id === selectedLeave.lr_id
                         ? { ...l, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage }
                         : l
                 );
-                setLeaves(updatedLeaves);
+                setAdminLeaves(updatedAdminLeaves);
                 setSelectedLeave({ ...selectedLeave, status: actionStatus.toLowerCase(), admin_comment: adminAction.remarks, pay_type: adminAction.payType, pay_percentage: adminAction.payPercentage });
                 setAdminAction({ status: '', remarks: '', payType: 'Paid', payPercentage: 100 });
             }
@@ -401,16 +498,6 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
             console.error("Action error", error);
             toast.error(error.message || "Failed to update status");
         }
-    };
-
-    // Helper to calculate days
-    const calculateDays = (start, end) => {
-        if (!start || !end) return 0;
-        const s = new Date(start);
-        const e = new Date(end);
-        const diffTime = Math.abs(e - s);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        return diffDays > 0 ? diffDays : 0;
     };
 
     const getStatusColor = (status) => {
@@ -433,75 +520,47 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
     // --- MAIN RENDER ---
     return (
         <>
-            {isAdmin ? (
-                <AdminLeaveRequests
-                    searchQuery={searchTerm}
-                    setSearchQuery={setSearchTerm}
-                    statusFilter={statusFilter}
-                    setStatusFilter={setStatusFilter}
-                    adminFilteredLeaves={adminFilteredLeaves}
-                    selectedLeave={selectedLeave}
-                    setSelectedLeave={setSelectedLeave}
-                    avatarTimestamp={avatarTimestamp}
-                    calculateDays={calculateDays}
-                    isAdmin={isAdmin}
-                    selectedEmployeeBalances={selectedEmployeeBalances}
-                    attachmentsExpanded={attachmentsExpanded}
-                    setAttachmentsExpanded={setAttachmentsExpanded}
-                    setViewingAttachment={setViewingAttachment}
-                    adminAction={adminAction}
-                    setAdminAction={setAdminAction}
-                    adminRemarksRef={adminRemarksRef}
-                    handleAdminAction={handleAdminAction}
-                />
+            {isApprovalView ? (
+                <>
+                    {portalNode ? (
+                        createPortal(adminActionButtons, portalNode)
+                    ) : (
+                        <div className="flex items-center justify-end gap-2 mb-2">
+                            {adminActionButtons}
+                        </div>
+                    )}
+                    <AdminLeaveRequests
+                        searchQuery={searchTerm}
+                        setSearchQuery={setSearchTerm}
+                        statusFilter={statusFilter}
+                        setStatusFilter={setStatusFilter}
+                        adminFilteredLeaves={adminFilteredLeaves}
+                        selectedLeave={selectedLeave}
+                        setSelectedLeave={setSelectedLeave}
+                        avatarTimestamp={avatarTimestamp}
+                        calculateDays={calculateDays}
+                        isAdmin={isAdmin}
+                        selectedEmployeeBalances={selectedEmployeeBalances}
+                        attachmentsExpanded={attachmentsExpanded}
+                        setAttachmentsExpanded={setAttachmentsExpanded}
+                        setViewingAttachment={setViewingAttachment}
+                        adminAction={adminAction}
+                        setAdminAction={setAdminAction}
+                        adminRemarksRef={adminRemarksRef}
+                        handleAdminAction={handleAdminAction}
+                        onOpenApply={() => setShowForm(true)}
+                    />
+                </>
             ) : (
-                <div className="w-full space-y-5">
-                    {/* ── TOP ACTION BAR ── */}
-                    <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border px-6 py-4 flex flex-wrap gap-4 justify-between items-center">
-                        <div>
-                            <h3 className="font-bold text-slate-800 dark:text-github-dark-text text-base">My Leave</h3>
-                            <div className="flex items-center gap-2 mt-1">
-                                <div className="text-xs font-medium text-slate-500 bg-slate-100 dark:bg-github-dark-subtle px-2 py-1 rounded-md">
-                                    {filteredLeaves.length} Requests
-                                </div>
-                                <div className="text-xs font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-500/20 dark:text-indigo-200 px-3 py-1.5 rounded-md border border-indigo-100 dark:border-indigo-500/30">
-                                    {totalApprovedDays} Days Approved
-                                </div>
-                            </div>
+                <div className="w-full space-y-4">
+                    {/* Render action buttons into tab bar line if container exists */}
+                    {portalNode ? (
+                        createPortal(myLeaveActionButtons, portalNode)
+                    ) : (
+                        <div className="flex items-center justify-end gap-2 mb-2">
+                            {myLeaveActionButtons}
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <button
-                                onClick={() => setShowForm(true)}
-                                data-tour-id="leave-request-btn"
-                                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all shadow-md text-xs font-bold active:scale-95 cursor-pointer"
-                            >
-                                <Plus size={14} />
-                                Apply for Leave
-                            </button>
-                            <MinimalSelect
-                                options={Array.from({ length: 12 }, (_, i) => ({
-                                    value: i,
-                                    label: new Date(0, i).toLocaleString('default', { month: 'long' })
-                                }))}
-                                value={selectedMonth}
-                                onChange={(val) => setSelectedMonth(val)}
-                                size="sm"
-                                triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border shadow-sm font-semibold"
-                                menuWidth={130}
-                            />
-                            <MinimalSelect
-                                options={Array.from({ length: 5 }, (_, i) => {
-                                    const y = new Date().getFullYear() - 2 + i;
-                                    return { value: y, label: String(y) };
-                                })}
-                                value={selectedYear}
-                                onChange={(val) => setSelectedYear(val)}
-                                size="sm"
-                                triggerClassName="bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border shadow-sm font-semibold"
-                                menuWidth={90}
-                            />
-                        </div>
-                    </div>
+                    )}
 
                     {/* ── MY LEAVE PLAN & BALANCES ── */}
                     <EmployeeLeavePlan
@@ -524,9 +583,9 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                 </div>
             )}
 
-            {/* --- LEAVE DETAIL DRAWER (Employee only) --- */}
+            {/* --- LEAVE DETAIL DRAWER --- */}
             <EmployeeLeaveDetailDrawer
-                isOpen={!isAdmin && Boolean(selectedLeave)}
+                isOpen={!isApprovalView && Boolean(selectedLeave)}
                 onClose={() => setSelectedLeave(null)}
                 selectedLeave={selectedLeave}
                 calculateDays={calculateDays}
@@ -545,6 +604,7 @@ const LeaveApplication = ({ onSelectLeave, onLeavesChange, onActiveRangeChange }
                 isCustomType={isCustomType}
                 setIsCustomType={setIsCustomType}
                 myBalances={myBalances}
+                policies={policies}
                 selectedBalance={selectedBalance}
                 calculateDays={calculateDays}
                 handleTextareaInput={handleTextareaInput}

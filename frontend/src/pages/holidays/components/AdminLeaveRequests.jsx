@@ -1,6 +1,5 @@
 import React from 'react';
-import { Search, Calendar, CheckCircle, XCircle, Paperclip, ChevronDown, FileText, ExternalLink } from 'lucide-react';
-import MinimalSelect from '../../../components/MinimalSelect';
+import { Calendar, CheckCircle, XCircle, Paperclip, ChevronDown, FileText, ExternalLink } from 'lucide-react';
 
 const AdminLeaveRequests = ({
     searchQuery,
@@ -20,39 +19,21 @@ const AdminLeaveRequests = ({
     adminAction,
     setAdminAction,
     adminRemarksRef,
-    handleAdminAction
+    handleAdminAction,
+    onOpenApply
 }) => {
     return (
         <div className="flex flex-col lg:flex-row gap-4 h-full min-h-0">
             {/* LEFT PANEL: LIST */}
-            <div className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
-                {/* Search & Filter */}
-                <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-3 bg-slate-50/50 dark:bg-github-dark-subtle/10">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Search by employee name..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-github-dark-text"
-                        />
-                    </div>
-                    <div className="flex gap-2">
-                        <MinimalSelect
-                            options={[
-                                { value: 'all', label: 'All' },
-                                { value: 'pending', label: 'Pending' },
-                                { value: 'approved', label: 'Approved' },
-                                { value: 'rejected', label: 'Rejected' }
-                            ]}
-                            value={statusFilter}
-                            onChange={(val) => setStatusFilter(val)}
-                            size="sm"
-                            triggerClassName="bg-slate-50 dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border text-xs"
-                            menuWidth={110}
-                        />
-                    </div>
+            <div data-tour-id="leave-admin-list" className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
+                {/* Header Title & Counter */}
+                <div className="px-4 py-3 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-subtle/10 shrink-0">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 tracking-wide">
+                        Requests Queue
+                    </span>
+                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 shadow-2xs">
+                        {adminFilteredLeaves.length} {adminFilteredLeaves.length === 1 ? 'request' : 'requests'}
+                    </span>
                 </div>
 
                 {/* List */}
@@ -133,11 +114,10 @@ const AdminLeaveRequests = ({
                                 </div>
                                 {selectedLeave.status === 'approved' && selectedLeave.pay_type && (
                                     <div className="mt-1">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                                            selectedLeave.pay_type === 'Paid'
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${selectedLeave.pay_type === 'Paid'
                                                 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400'
                                                 : 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400'
-                                        }`}>
+                                            }`}>
                                             {selectedLeave.pay_type}
                                         </span>
                                     </div>
@@ -154,7 +134,7 @@ const AdminLeaveRequests = ({
                                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Leave Type</span>
                                         <span className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">{selectedLeave.leave_type}</span>
                                     </div>
-                                    
+
                                     <div className="flex gap-10">
                                         <div>
                                             <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">From</span>
@@ -248,7 +228,7 @@ const AdminLeaveRequests = ({
                                         {selectedLeave.status === 'pending' ? (
                                             <>
                                                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-2">Admin Action</span>
-                                                
+
                                                 <div className="mb-4">
                                                     <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1.5">Pay Type</span>
                                                     <div className="flex gap-4">
@@ -307,11 +287,10 @@ const AdminLeaveRequests = ({
                                                     <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">
                                                         Pay Status
                                                     </span>
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                                        selectedLeave.pay_type === 'Paid'
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${selectedLeave.pay_type === 'Paid'
                                                             ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400'
                                                             : 'text-red-700 bg-red-50 dark:bg-red-950/20 dark:text-red-400'
-                                                    }`}>
+                                                        }`}>
                                                         {selectedLeave.pay_type || 'Unspecified'}
                                                     </span>
                                                 </div>

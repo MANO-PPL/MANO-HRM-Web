@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import { holidayService, parseLocalDate } from '../../services/holidayService';
+import { leaveService } from '../../services/leaveService';
 import api from '../../services/api';
 import DatePicker from '../../components/DatePicker';
 import { toast } from 'react-toastify';
@@ -38,7 +39,6 @@ import {
 import MobileDatePicker from '../../components/MobileDatePicker';
 import MobileSelect from '../../components/MobileSelect';
 import MobileConfirmModal from '../../components/MobileConfirmModal';
-import LeavePolicies from '../leaves/LeavePolicies';
 
 const AttachmentModal = ({ file, onClose }) => {
     if (!file) return null;
@@ -104,14 +104,65 @@ const HolidayManagement = () => {
         if (tab === 'leave_balances' || tab === 'balances') return 'balances';
         return 'requests';
     });
+    const [adminLeaveView, setAdminLeaveView] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab === 'my_leaves' || params.get('apply') === 'true') {
+            return 'my_leaves';
+        }
+        return 'requests';
+    });
+    const [requestSubTab, setRequestSubTab] = useState('pending'); // 'pending', 'history'
+    const [requestStatusFilter, setRequestStatusFilter] = useState('All');
+
+    // --- DATA STATE ---
+    const [holidays, setHolidays] = useState([]);
+    const [leaves, setLeaves] = useState([]); // My Leaves
+    const [requests, setRequests] = useState([]); // Admin Requests
+    const [policies, setPolicies] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // --- MODAL STATE ---
+    const [showApplyModal, setShowApplyModal] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('apply') === 'true';
+    });
+    const [selectedLeaf, setSelectedLeaf] = useState(null); // For details view
+    const [selectedHoliday, setSelectedHoliday] = useState(null); // For holiday details view
+    const [viewingAttachment, setViewingAttachment] = useState(null); // For attachment modal
+
+    // --- FORMS ---
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [newHoliday, setNewHoliday] = useState({
+        name: '',
+        date: '',
+        type: 'Public',
+    });
+
+    const [applyForm, setApplyForm] = useState({
+        leave_type: 'Casual Leave',
+        start_date: '',
+        end_date: '',
+        reason: '',
+        attachments: []
+    });
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
+        if (params.get('apply') === 'true') {
+            setShowApplyModal(true);
+            setAdminLeaveView('my_leaves');
+        }
         if (tab) {
             if (tab === 'leave_policies' || tab === 'policies') {
-                setActiveTab('policies');
-            } else if (['leave_application', 'my_leaves', 'leaves', 'requests'].includes(tab)) {
+                navigate('/policies?tab=leave_policies', { replace: true });
+                return;
+            } else if (tab === 'my_leaves') {
+                setActiveTab('leaves');
+                setAdminLeaveView('my_leaves');
+                setLeaveSubTab('requests');
+            } else if (['leave_application', 'leaves', 'requests'].includes(tab)) {
                 setActiveTab('leaves');
                 setLeaveSubTab('requests');
             } else if (tab === 'leave_balances' || tab === 'balances') {
@@ -133,38 +184,6 @@ const HolidayManagement = () => {
         setActiveTab(tab);
         navigate(`/holidays?tab=${tab}`);
     };
-
-    // --- DATA STATE ---
-    const [holidays, setHolidays] = useState([]);
-    const [leaves, setLeaves] = useState([]); // My Leaves
-    const [requests, setRequests] = useState([]); // Admin Requests
-    const [isLoading, setIsLoading] = useState(true);
-
-    // --- MODAL STATE ---
-    const [showApplyModal, setShowApplyModal] = useState(false);
-    const [selectedLeaf, setSelectedLeaf] = useState(null); // For details view
-    const [selectedHoliday, setSelectedHoliday] = useState(null); // For holiday details view
-    const [viewingAttachment, setViewingAttachment] = useState(null); // For attachment modal
-
-    // --- FILTERS ---
-    const [requestSubTab, setRequestSubTab] = useState('pending'); // 'pending', 'history'
-    const [requestStatusFilter, setRequestStatusFilter] = useState('All');
-
-    // --- FORMS ---
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [newHoliday, setNewHoliday] = useState({
-        name: '',
-        date: '',
-        type: 'Public',
-    });
-
-    const [applyForm, setApplyForm] = useState({
-        leave_type: 'Casual Leave',
-        start_date: '',
-        end_date: '',
-        reason: '',
-        attachments: []
-    });
 
     const [searchTerm, setSearchTerm] = useState('');
     const [isSearching, setIsSearching] = useState(false);
@@ -218,6 +237,13 @@ const HolidayManagement = () => {
     // --- LEAVE BALANCES STATE ---
     const [myBalances, setMyBalances] = useState([]);
 
+    const availableLeaveTypes = React.useMemo(() => {
+        if (myBalances.length > 0) return myBalances.map(b => b.leave_type);
+        const policyTypes = policies.flatMap(p => p.rules?.map(r => r.leave_type) || []).filter(Boolean);
+        if (policyTypes.length > 0) return Array.from(new Set(policyTypes));
+        return ['Casual Leave', 'Sick Leave', 'Earned Leave', 'Maternity Leave', 'Paternity Leave', 'Compensatory Off', 'Unpaid Leave'];
+    }, [myBalances, policies]);
+
     // --- FETCH DATA ---
     const loadData = async () => {
         setIsLoading(true);
@@ -253,6 +279,16 @@ const HolidayManagement = () => {
                     });
                     setRequests(activeList);
                 }
+            }
+
+            // 5. Policies
+            try {
+                const polRes = await leaveService.getLeavePolicies();
+                if (polRes.data?.ok && polRes.data?.policies) {
+                    setPolicies(polRes.data.policies);
+                }
+            } catch (pErr) {
+                // non-blocking
             }
 
         } catch (error) {
@@ -391,10 +427,7 @@ const HolidayManagement = () => {
                     <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1.5 flex rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-x-auto no-scrollbar">
                         {[
                             { id: 'holidays', label: 'Holidays', icon: Umbrella },
-                            { id: 'leaves', label: ['admin', 'hr'].includes(user?.user_type) ? 'Requests' : 'My Leaves', icon: CalendarDays },
-                            ...(user?.user_type === 'admin' || user?.user_type === 'hr' ? [
-                                { id: 'policies', label: 'Policies', icon: Settings }
-                            ] : [])
+                            { id: 'leaves', label: ['admin', 'hr'].includes(user?.user_type) ? 'Leaves' : 'My Leaves', icon: CalendarDays }
                         ].map(tab => (
                             <button
                                 key={tab.id}
@@ -503,189 +536,221 @@ const HolidayManagement = () => {
                 {/* --- LEAVES TAB --- */}
                 {activeTab === 'leaves' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 mt-2">
-                        {/* If employee OR requests sub-tab selected */}
-                        {(!['admin', 'hr'].includes(user?.user_type) || leaveSubTab === 'requests') && (
-                            <>
-                                {/* For employee show apply leaves, else show admin request list */}
-                                {!['admin', 'hr'].includes(user?.user_type) ? (
-                                    <div className="space-y-4">
-                                        {/* Leave Balances display */}
-                                        {myBalances.length > 0 && (
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {myBalances.map(bal => (
-                                                    <div key={bal.lb_id} className="bg-white dark:bg-black border border-slate-100 dark:border-slate-800 p-3.5 rounded-2xl shadow-sm flex flex-col">
-                                                        <span className="text-[9px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">{bal.leave_type}</span>
-                                                        <div className="flex justify-between items-baseline mt-1.5">
-                                                            <span className="text-xl font-black text-indigo-650 dark:text-indigo-400">{Number(bal.available)}</span>
-                                                            <span className="text-[10px] text-slate-500 dark:text-github-dark-muted">/ {Number(bal.allocated) + Number(bal.carried_forward)} left</span>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {/* Leave Summary Stats */}
-                                        <div className="grid grid-cols-3 gap-3">
-                                            <div className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-center">
-                                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-tight">Total</p>
-                                                <p className="text-lg font-medium text-slate-900 dark:text-github-dark-text mt-0.5">{leaves.length}</p>
-                                            </div>
-                                            <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/20 shadow-sm text-center">
-                                                <p className="text-[10px] font-semibold text-emerald-500/80 uppercase tracking-tight">Approved</p>
-                                                <p className="text-lg font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                                    {leaves.filter(l => l.status?.toLowerCase() === 'approved').length}
-                                                </p>
-                                            </div>
-                                            <div className="bg-amber-50/50 dark:bg-amber-900/10 p-3 rounded-2xl border border-amber-100/50 dark:border-amber-900/20 shadow-sm text-center">
-                                                <p className="text-[10px] font-semibold text-amber-500/80 uppercase tracking-tight">Pending</p>
-                                                <p className="text-lg font-medium text-amber-600 dark:text-amber-400 mt-0.5">
-                                                    {leaves.filter(l => l.status?.toLowerCase() === 'pending').length}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* List */}
-                                        <div className="space-y-2.5">
-                                            {leaves.length > 0 ? (
-                                                leaves.map(leave => (
-                                                    <div
-                                                        key={leave.lr_id}
-                                                        onClick={() => setSelectedLeaf(leave)}
-                                                        className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
-                                                    >
-                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${getStatusColor(leave.status).replace('text-', 'bg-').replace('-600', '-500/10').replace('-500', '-500/10')}`}>
-                                                            {leave.status?.toLowerCase() === 'approved' ? <CheckCircle size={20} className="text-emerald-500" /> :
-                                                             leave.status?.toLowerCase() === 'rejected' ? <XCircle size={20} className="text-red-500" /> :
-                                                             <Clock size={20} className="text-amber-500" />}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex justify-between items-start">
-                                                                <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate leading-tight group-hover:text-indigo-650 transition-colors">{leave.leave_type}</h3>
-                                                                <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(leave.status)}`}>
-                                                                    {leave.status}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 mt-1">
-                                                                <CalendarDays size={12} className="text-slate-400" />
-                                                                <span className="text-[11px] font-medium text-slate-500">
-                                                                    {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="text-center py-12">
-                                                    <div className="w-16 h-16 bg-slate-100 dark:bg-[#161b22] rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 mx-auto mb-3">
-                                                        <CalendarDays size={24} />
-                                                    </div>
-                                                    <p className="text-xs font-semibold text-slate-500">No leave records yet</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Apply FAB */}
-                                        <button
-                                            onClick={() => setShowApplyModal(true)}
-                                            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)', right: 20 }}
-                                            className="fixed w-14 h-14 bg-indigo-600 rounded-2xl text-white shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center active:scale-90 active:rotate-12 transition-all z-40"
-                                        >
-                                            <Plus size={28} strokeWidth={3} />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    /* Admin Requests List */
-                                    <div className="space-y-4">
-                                        {/* Sub Tabs for pending vs history */}
-                                        <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1 rounded-xl flex border border-slate-200 dark:border-github-dark-border shadow-sm">
-                                            <button
-                                                onClick={() => setRequestSubTab('pending')}
-                                                className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
-                                                ${requestSubTab === 'pending'
-                                                        ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
-                                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
-                                            >
-                                                <Clock size={14} className="inline mr-1" /> Pending
-                                            </button>
-                                            <button
-                                                onClick={() => setRequestSubTab('history')}
-                                                className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
-                                                ${requestSubTab === 'history'
-                                                        ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
-                                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
-                                            >
-                                                <History size={14} className="inline mr-1" /> History
-                                            </button>
-                                        </div>
-
-                                        {/* Filter */}
-                                        <div className="bg-white dark:bg-black rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                                            <MobileSelect
-                                                value={requestStatusFilter}
-                                                options={['All', 'Approved', 'Rejected']}
-                                                onChange={(val) => setRequestStatusFilter(val)}
-                                                placeholder="All Status"
-                                            />
-                                        </div>
-
-                                        {/* Request List */}
-                                        <div className="space-y-2.5 pb-24">
-                                            {requests
-                                                .filter(req => {
-                                                    if (requestSubTab === 'pending') return req.status === 'pending';
-                                                    return req.status !== 'pending';
-                                                })
-                                                .filter(req => {
-                                                    if (requestStatusFilter === 'All') return true;
-                                                    return req.status.toLowerCase() === requestStatusFilter.toLowerCase();
-                                                })
-                                                .map(req => (
-                                                    <div
-                                                        key={req.lr_id}
-                                                        onClick={() => setSelectedLeaf(req)}
-                                                        className="bg-white dark:bg-black p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
-                                                    >
-                                                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-black border-slate-100 dark:border-slate-800 flex items-center justify-center font-bold text-slate-650 dark:text-slate-400 text-sm">
-                                                            {(req.user_name || 'U').charAt(0).toUpperCase()}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex justify-between items-start">
-                                                                <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate group-hover:text-indigo-650 transition-colors">{req.user_name}</h3>
-                                                                <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(req.status)}`}>
-                                                                    {req.status}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center justify-between mt-1.5">
-                                                                <p className="text-[11px] font-semibold text-slate-500">{req.leave_type}</p>
-                                                                <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
-                                                                    <CalendarDays size={12} />
-                                                                    <span>{new Date(req.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            }
-                                            {requests.length === 0 && (
-                                                <div className="text-center py-12">
-                                                    <Shield size={32} className="mx-auto text-slate-200 mb-3" />
-                                                    <p className="text-xs font-medium text-slate-400">No requests found</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                        {/* Admin / HR Sub-tab selector */}
+                        {['admin', 'hr'].includes(user?.user_type) && (
+                            <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1 rounded-xl flex border border-slate-200 dark:border-github-dark-border shadow-sm mb-3">
+                                <button
+                                    onClick={() => setAdminLeaveView('requests')}
+                                    className={`flex-1 py-2 text-[11px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                                        adminLeaveView === 'requests'
+                                            ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
+                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'
+                                    }`}
+                                >
+                                    <Shield size={13} /> Team Requests
+                                    {requests.filter(r => r.status === 'pending').length > 0 && (
+                                        <span className="px-1.5 py-0.2 bg-amber-500 text-white rounded-full text-[9px] font-bold ml-1">
+                                            {requests.filter(r => r.status === 'pending').length}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => setAdminLeaveView('my_leaves')}
+                                    className={`flex-1 py-2 text-[11px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                                        adminLeaveView === 'my_leaves'
+                                            ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
+                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'
+                                    }`}
+                                >
+                                    <CalendarDays size={13} /> My Leave
+                                </button>
+                            </div>
                         )}
 
+                        {/* View 1: Personal Leaves (shown to employees, or Admin/HR when adminLeaveView === 'my_leaves') */}
+                        {(!['admin', 'hr'].includes(user?.user_type) || adminLeaveView === 'my_leaves') ? (
+                            <div className="space-y-4">
+                                {/* Leave Balances display */}
+                                {myBalances.length > 0 ? (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {myBalances.map(bal => (
+                                            <div key={bal.lb_id} className="bg-white dark:bg-black border border-slate-100 dark:border-slate-800 p-3.5 rounded-2xl shadow-sm flex flex-col">
+                                                <span className="text-[9px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">{bal.leave_type}</span>
+                                                <div className="flex justify-between items-baseline mt-1.5">
+                                                    <span className="text-xl font-black text-indigo-650 dark:text-indigo-400">{Number(bal.available)}</span>
+                                                    <span className="text-[10px] text-slate-500 dark:text-github-dark-muted">/ {Number(bal.allocated) + Number(bal.carried_forward)} left</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    ['admin', 'hr'].includes(user?.user_type) && (
+                                        <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 p-4 rounded-2xl shadow-sm flex items-center justify-between">
+                                            <div>
+                                                <p className="text-xs font-bold text-indigo-900 dark:text-indigo-200">Management Leave Application</p>
+                                                <p className="text-[11px] text-indigo-600/80 dark:text-indigo-400 mt-0.5">Submit leave requests according to company policy</p>
+                                            </div>
+                                            <button
+                                                onClick={() => setShowApplyModal(true)}
+                                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all"
+                                            >
+                                                Apply
+                                            </button>
+                                        </div>
+                                    )
+                                )}
 
-                    </div>
-                )}
+                                {/* Leave Summary Stats */}
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-center">
+                                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-tight">Total</p>
+                                        <p className="text-lg font-medium text-slate-900 dark:text-github-dark-text mt-0.5">{leaves.length}</p>
+                                    </div>
+                                    <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/20 shadow-sm text-center">
+                                        <p className="text-[10px] font-semibold text-emerald-500/80 uppercase tracking-tight">Approved</p>
+                                        <p className="text-lg font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                            {leaves.filter(l => l.status?.toLowerCase() === 'approved').length}
+                                        </p>
+                                    </div>
+                                    <div className="bg-amber-50/50 dark:bg-amber-900/10 p-3 rounded-2xl border border-amber-100/50 dark:border-amber-900/20 shadow-sm text-center">
+                                        <p className="text-[10px] font-semibold text-amber-500/80 uppercase tracking-tight">Pending</p>
+                                        <p className="text-lg font-medium text-amber-600 dark:text-amber-400 mt-0.5">
+                                            {leaves.filter(l => l.status?.toLowerCase() === 'pending').length}
+                                        </p>
+                                    </div>
+                                </div>
 
-                {/* --- POLICIES TAB (Admin/HR only) --- */}
-                {activeTab === 'policies' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 mt-2 pb-24">
-                        <LeavePolicies />
+                                {/* List */}
+                                <div className="space-y-2.5 pb-24">
+                                    {leaves.length > 0 ? (
+                                        leaves.map(leave => (
+                                            <div
+                                                key={leave.lr_id}
+                                                onClick={() => setSelectedLeaf(leave)}
+                                                className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
+                                            >
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${getStatusColor(leave.status).replace('text-', 'bg-').replace('-600', '-500/10').replace('-500', '-500/10')}`}>
+                                                    {leave.status?.toLowerCase() === 'approved' ? <CheckCircle size={20} className="text-emerald-500" /> :
+                                                     leave.status?.toLowerCase() === 'rejected' ? <XCircle size={20} className="text-red-500" /> :
+                                                     <Clock size={20} className="text-amber-500" />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex justify-between items-start">
+                                                        <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate leading-tight group-hover:text-indigo-650 transition-colors">{leave.leave_type}</h3>
+                                                        <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(leave.status)}`}>
+                                                            {leave.status}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <CalendarDays size={12} className="text-slate-400" />
+                                                        <span className="text-[11px] font-medium text-slate-500">
+                                                            {new Date(leave.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(leave.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-12">
+                                            <div className="w-16 h-16 bg-slate-100 dark:bg-[#161b22] rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 mx-auto mb-3">
+                                                <CalendarDays size={24} />
+                                            </div>
+                                            <p className="text-xs font-semibold text-slate-500">No leave records yet</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            /* View 2: Admin Requests List */
+                            <div className="space-y-4">
+                                {/* Sub Tabs for pending vs history */}
+                                <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1 rounded-xl flex border border-slate-200 dark:border-github-dark-border shadow-sm">
+                                    <button
+                                        onClick={() => setRequestSubTab('pending')}
+                                        className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
+                                        ${requestSubTab === 'pending'
+                                                ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
+                                                : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
+                                    >
+                                        <Clock size={14} className="inline mr-1" /> Pending
+                                    </button>
+                                    <button
+                                        onClick={() => setRequestSubTab('history')}
+                                        className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
+                                        ${requestSubTab === 'history'
+                                                ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
+                                                : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
+                                    >
+                                        <History size={14} className="inline mr-1" /> History
+                                    </button>
+                                </div>
+
+                                {/* Filter */}
+                                <div className="bg-white dark:bg-black rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                                    <MobileSelect
+                                        value={requestStatusFilter}
+                                        options={['All', 'Approved', 'Rejected']}
+                                        onChange={(val) => setRequestStatusFilter(val)}
+                                        placeholder="All Status"
+                                    />
+                                </div>
+
+                                {/* Request List */}
+                                <div className="space-y-2.5 pb-24">
+                                    {requests
+                                        .filter(req => {
+                                            if (requestSubTab === 'pending') return req.status === 'pending';
+                                            return req.status !== 'pending';
+                                        })
+                                        .filter(req => {
+                                            if (requestStatusFilter === 'All') return true;
+                                            return req.status.toLowerCase() === requestStatusFilter.toLowerCase();
+                                        })
+                                        .map(req => (
+                                            <div
+                                                key={req.lr_id}
+                                                onClick={() => setSelectedLeaf(req)}
+                                                className="bg-white dark:bg-black p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
+                                            >
+                                                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-black border-slate-100 dark:border-slate-800 flex items-center justify-center font-bold text-slate-650 dark:text-slate-400 text-sm">
+                                                    {(req.user_name || 'U').charAt(0).toUpperCase()}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex justify-between items-start">
+                                                        <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate group-hover:text-indigo-650 transition-colors">{req.user_name}</h3>
+                                                        <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(req.status)}`}>
+                                                            {req.status}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between mt-1.5">
+                                                        <p className="text-[11px] font-semibold text-slate-500">{req.leave_type}</p>
+                                                        <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
+                                                            <CalendarDays size={12} />
+                                                            <span>{new Date(req.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    }
+                                    {requests.length === 0 && (
+                                        <div className="text-center py-12">
+                                            <Shield size={32} className="mx-auto text-slate-200 mb-3" />
+                                            <p className="text-xs font-medium text-slate-400">No requests found</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Apply FAB */}
+                        <button
+                            onClick={() => setShowApplyModal(true)}
+                            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)', right: 20 }}
+                            className="fixed w-14 h-14 bg-indigo-600 rounded-2xl text-white shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center active:scale-90 active:rotate-12 transition-all z-40"
+                        >
+                            <Plus size={28} strokeWidth={3} />
+                        </button>
                     </div>
                 )}
 
@@ -826,8 +891,8 @@ const HolidayManagement = () => {
                         <form onSubmit={handleApplyLeave} className="space-y-6">
                             <MobileSelect
                                 label="Leave Type"
-                                value={applyForm.leave_type}
-                                options={myBalances.length > 0 ? myBalances.map(b => b.leave_type) : ['Casual Leave', 'Sick Leave']}
+                                value={applyForm.leave_type || availableLeaveTypes[0]}
+                                options={availableLeaveTypes}
                                 onChange={(val) => setApplyForm({ ...applyForm, leave_type: val })}
                             />
 
@@ -1005,7 +1070,7 @@ const HolidayManagement = () => {
                             )}
 
                             {/* Admin Action Area */}
-                            {activeTab === 'requests' && selectedLeaf.status === 'pending' && (
+                            {(adminLeaveView === 'requests' || activeTab === 'requests') && ['admin', 'hr'].includes(user?.user_type) && selectedLeaf.status?.toLowerCase() === 'pending' && (!selectedLeaf.user_id || selectedLeaf.user_id !== user?.user_id) && (
                                 <div className="border-t border-slate-100 dark:border-slate-800 pt-8 mt-4 space-y-6">
                                     <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
                                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-2">Pay Type</label>

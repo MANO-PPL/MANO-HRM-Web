@@ -20,10 +20,10 @@ import {
     Check,
     Users,
     Settings,
-    Layers
+    Layers,
+    Coffee
 } from 'lucide-react';
 import LeaveApplication from './LeaveApplication';
-import LeavePolicies from '../leaves/LeavePolicies';
 import HolidaysTab from './tabs/HolidaysTab';
 import AddHolidayModal from './components/AddHolidayModal';
 import EditHolidayModal from './components/EditHolidayModal';
@@ -48,10 +48,13 @@ const HolidayManagement = () => {
     const [activeTab, setActiveTab] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab') || 'holidays';
-        if (tab === 'leave_policies' || tab === 'policies') {
-            return 'policies';
+        if (tab === 'my_leaves') {
+            return 'my_leaves';
         }
         if (['leave_application', 'leave_balances', 'leaves'].includes(tab)) {
+            if (params.get('apply') === 'true' && ['admin', 'hr'].includes(user?.user_type)) {
+                return 'my_leaves';
+            }
             return 'leaves';
         }
         return 'holidays';
@@ -62,6 +65,15 @@ const HolidayManagement = () => {
         if (tab === 'leave_balances') return 'balances';
         return 'requests';
     });
+
+    // Automatically redirect legacy policies tab requests to Policy Management page
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab === 'policies' || tab === 'leave_policies') {
+            navigate('/policies?tab=leave_policies', { replace: true });
+        }
+    }, [navigate]);
 
     // Memoize role-aware tour steps with actions to switch tabs automatically
     const tourSteps = React.useMemo(() => {
@@ -331,42 +343,97 @@ const HolidayManagement = () => {
         <DashboardLayout title="Holiday Management" noPadding={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
             <div className="h-[calc(100vh-64px)] px-2.5 pt-2 pb-2 space-y-2 overflow-hidden flex flex-col">
 
-                {/* Tabs */}
-                <div className="flex w-fit items-center gap-1.5 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
-                    <button
-                        onClick={() => handleTabChange('holidays')}
-                        data-tour-id="holidays-tab-holidays"
-                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${activeTab === 'holidays'
-                            ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
-                            }`}
-                    >
-                        <Calendar size={14} className={`${activeTab === 'holidays' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
-                        <span className="leading-none">Holidays List</span>
-                    </button>
-                    <button
-                        onClick={() => { handleTabChange('leaves'); setLeaveSubTab('requests'); }}
-                        data-tour-id="holidays-tab-leaves"
-                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${activeTab === 'leaves'
-                            ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
-                            }`}
-                    >
-                        <FileText size={14} className={`${activeTab === 'leaves' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
-                        <span className="leading-none">{['admin', 'hr'].includes(user?.user_type) ? 'Leave Requests' : 'Leave'}</span>
-                    </button>
-                    {['admin', 'hr'].includes(user?.user_type) && (
+                {/* Tabs & Action Bar on the same line */}
+                <div className="flex items-center justify-between gap-2 shrink-0 flex-wrap">
+                    {/* Tabs */}
+                    <div className="flex w-fit items-center gap-1.5 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         <button
-                            onClick={() => handleTabChange('policies')}
-                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${activeTab === 'policies'
+                            onClick={() => handleTabChange('holidays')}
+                            data-tour-id="holidays-tab-holidays"
+                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${activeTab === 'holidays'
                                 ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
                                 }`}
                         >
-                            <Settings size={14} className={`${activeTab === 'policies' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
-                            <span className="leading-none">Policies & Balances</span>
+                            <Calendar size={14} className={`${activeTab === 'holidays' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
+                            <span className="leading-none">Holidays List</span>
                         </button>
-                    )}
+                        {['admin', 'hr'].includes(user?.user_type) ? (
+                            <>
+                                <button
+                                    onClick={() => handleTabChange('my_leaves')}
+                                    data-tour-id="holidays-tab-my-leaves"
+                                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${activeTab === 'my_leaves'
+                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                                        }`}
+                                >
+                                    <Coffee size={14} className={`${activeTab === 'my_leaves' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
+                                    <span className="leading-none">My Leave</span>
+                                </button>
+                                <button
+                                    onClick={() => { handleTabChange('leaves'); setLeaveSubTab('requests'); }}
+                                    data-tour-id="holidays-tab-leaves"
+                                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${activeTab === 'leaves'
+                                        ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                                        }`}
+                                >
+                                    <FileText size={14} className={`${activeTab === 'leaves' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
+                                    <span className="leading-none">Leave Requests</span>
+                                </button>
+                            </>
+                        ) : (
+                            <button
+                                onClick={() => { handleTabChange('leaves'); setLeaveSubTab('requests'); }}
+                                data-tour-id="holidays-tab-leaves"
+                                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${activeTab === 'leaves' || activeTab === 'my_leaves'
+                                    ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                                    }`}
+                            >
+                                <FileText size={14} className={`${activeTab === 'leaves' || activeTab === 'my_leaves' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
+                                <span className="leading-none">Leave</span>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Actions container in the same line as the tab bar */}
+                    <div id="holiday-tab-actions" className="flex items-center gap-2 shrink-0">
+                        {activeTab === 'holidays' && (
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <div className="relative">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                    <input
+                                        type="text"
+                                        placeholder="Search holidays..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-40 sm:w-56 pl-8 pr-3 py-1.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-github-dark-text shadow-sm"
+                                    />
+                                </div>
+                                {['admin', 'hr'].includes(user?.user_type) && (
+                                    <>
+                                        <button
+                                            onClick={() => navigate('/holidays/bulk')}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all cursor-pointer"
+                                        >
+                                            <Upload size={13} />
+                                            <span>Import</span>
+                                        </button>
+                                        <button
+                                            data-tour-id="holiday-admin-add"
+                                            onClick={() => setIsAddModalOpen(true)}
+                                            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
+                                        >
+                                            <Plus size={14} />
+                                            <span>Add</span>
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex flex-col xl:flex-row gap-3 flex-1 min-h-0">
@@ -390,30 +457,36 @@ const HolidayManagement = () => {
                                     onDeleteHoliday={handleDeleteClick}
                                 />
                             )}
-                            {activeTab === 'leaves' && (
+                            {activeTab === 'my_leaves' && (
                                 <div className="h-full">
                                     <LeaveApplication
+                                        mode="my_leaves"
                                         onSelectLeave={handleSelectLeave}
                                         onLeavesChange={setLeaves}
                                         onActiveRangeChange={setActiveRange}
                                     />
                                 </div>
                             )}
-                            {activeTab === 'policies' && (
-                                <div className="h-full overflow-y-auto no-scrollbar animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                    <LeavePolicies />
+                            {activeTab === 'leaves' && (
+                                <div className="h-full">
+                                    <LeaveApplication
+                                        mode={['admin', 'hr'].includes(user?.user_type) ? 'approval' : 'my_leaves'}
+                                        onSelectLeave={handleSelectLeave}
+                                        onLeavesChange={setLeaves}
+                                        onActiveRangeChange={setActiveRange}
+                                    />
                                 </div>
                             )}
                         </div>
                     </div>
 
                     {/* Calendar Sidebar */}
-                    {(activeTab === 'holidays' || (activeTab === 'leaves' && leaveSubTab === 'requests')) && (
+                    {(activeTab === 'holidays' || activeTab === 'my_leaves' || (activeTab === 'leaves' && leaveSubTab === 'requests')) && (
                         <div data-tour-id="holidays-calendar-view" className="w-full xl:w-[350px] shrink-0 overflow-hidden animate-in fade-in slide-in-from-right-10 duration-500">
                             <HolidayCalendarView
                                 holidays={holidays}
-                                leaves={activeTab === 'leaves' ? leaves : []}
-                                selectedLeave={activeTab === 'leaves' ? (selectedLeave || activeRange) : null}
+                                leaves={(activeTab === 'leaves' || activeTab === 'my_leaves') ? leaves : []}
+                                selectedLeave={(activeTab === 'leaves' || activeTab === 'my_leaves') ? (selectedLeave || activeRange) : null}
                                 onDelete={handleDeleteClick}
                                 isAdmin={['admin', 'hr'].includes(user?.user_type)}
                                 currentDate={calendarDate}
