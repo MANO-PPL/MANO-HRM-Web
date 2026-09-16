@@ -46,11 +46,11 @@ const SessionCheckpointsTimeline = ({
                                 <div className="absolute -left-[1.45rem] top-3.5 w-2.5 h-2.5 rounded-full bg-amber-500 border-2 border-white dark:border-slate-900 shadow-sm" />
 
                                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                                    {/* Checkpoint Selfie Thumbnail (if uploaded) or Icon Indicator */}
-                                    {selfieUrl ? (
+                                    {/* Checkpoint Selfie Thumbnail (if uploaded) */}
+                                    {selfieUrl && (
                                         <div
                                             onClick={() => setViewerImage && setViewerImage(selfieUrl)}
-                                            className="relative group/chkimg w-12 h-12 rounded-xl overflow-hidden border border-amber-500/30 bg-black/20 shrink-0 cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
+                                            className="relative group/chkimg w-11 h-11 rounded-xl overflow-hidden border border-amber-500/30 bg-black/20 shrink-0 cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
                                             title="Click to preview checkpoint selfie"
                                         >
                                             <img
@@ -61,13 +61,6 @@ const SessionCheckpointsTimeline = ({
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/chkimg:opacity-100 flex items-center justify-center transition-opacity">
                                                 <Eye size={14} className="text-white drop-shadow-md" />
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            className="w-10 h-10 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 shadow-sm"
-                                            title="Checkpoint logged without selfie"
-                                        >
-                                            <Camera size={16} className="opacity-60" />
                                         </div>
                                     )}
 

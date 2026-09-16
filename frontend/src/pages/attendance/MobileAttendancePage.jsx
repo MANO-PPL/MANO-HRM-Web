@@ -364,6 +364,15 @@ const MobileAttendancePage = () => {
     }, []);
 
     useEffect(() => {
+        document.documentElement.classList.add('no-scrollbar');
+        document.body.classList.add('no-scrollbar');
+        return () => {
+            document.documentElement.classList.remove('no-scrollbar');
+            document.body.classList.remove('no-scrollbar');
+        };
+    }, []);
+
+    useEffect(() => {
         const d = [];
         const today = new Date();
         // Generate 30 days around today
@@ -688,14 +697,8 @@ const MobileAttendancePage = () => {
                 async (position) => {
                     const { latitude, longitude, accuracy } = position.coords;
                     let resolvedAddr = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`);
-                        if (res.ok) {
-                            const data = await res.json();
-                            if (data.display_name) resolvedAddr = data.display_name;
-                        }
-                    } catch (_) {}
 
+                    // Unlock GPS state immediately without blocking on reverse geocoding
                     setCheckpointLocation({
                         lat: latitude,
                         lng: longitude,
@@ -704,6 +707,17 @@ const MobileAttendancePage = () => {
                         error: null,
                         loading: false
                     });
+
+                    // Enhance with street address asynchronously
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.display_name) {
+                                setCheckpointLocation(prev => ({ ...prev, address: data.display_name }));
+                            }
+                        }
+                    } catch (_) {}
                 },
                 (err) => {
                     if (highAccuracy && (err.code === 3 || err.code === 1)) {
@@ -1367,8 +1381,8 @@ const MobileAttendancePage = () => {
     const hasActiveSession = dailySessions.some(s => !s.time_out);
 
     return (
-        <MobileDashboardLayout title="Attendance">
-            <div className="pb-24" style={{ zoom: 0.8 }}>
+        <MobileDashboardLayout title="Attendance" hideScrollbar={true}>
+            <div className="pb-24 no-scrollbar" style={{ zoom: 0.8 }}>
                 {/* Premium Header / Greeting */}
                 <div className="px-5 pt-8 pb-12 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-b-[2.5rem] border-b border-indigo-500/20 shadow-xl relative overflow-hidden">
                     {/* Animated Background Blobs */}

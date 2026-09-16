@@ -2,24 +2,27 @@ import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Webcam from 'react-webcam';
 import {
-    MapPin,
-    Navigation,
     RefreshCw,
     AlertCircle,
-    ExternalLink,
     X,
     Camera,
     RotateCcw,
     CheckCircle2,
-    Lock,
-    ArrowRight,
-    ShieldCheck,
     Check
 } from 'lucide-react';
 import { requestCameraAccess } from '../../../utils/permissionUtils';
 
+// Clean text-only presets for quick selection without icon clutter
+const QUICK_NOTE_PRESETS = [
+    'Site Visit',
+    'Client Meeting',
+    'Field Work',
+    'Shift Patrol',
+    'In Transit',
+    'Floor Rounds'
+];
+
 const CheckpointModal = ({
-    // Support both prop naming conventions for seamless compatibility
     isOpen,
     showCheckpointModal,
     onClose,
@@ -91,14 +94,12 @@ const CheckpointModal = ({
 
     const onConfirmClick = () => {
         if (!requireSelfie) {
-            // When selfie is disabled, do NOT take selfie
             if (handleConfirmSubmit) {
                 handleConfirmSubmit(null);
             }
             return;
         }
 
-        // When selfie is enabled, require selfie capture
         let photoToSubmit = currentImgSrc;
         if (!photoToSubmit && activeWebcamRef?.current && !cameraError) {
             try {
@@ -121,401 +122,323 @@ const CheckpointModal = ({
         }
     };
 
-    const isGpsReady = Boolean(checkpointLocation?.lat && checkpointLocation?.lng && !checkpointLocation?.loading && !checkpointLocation?.error);
+    const isGpsLoading = Boolean(checkpointLocation?.loading);
+    const isGpsError = Boolean(checkpointLocation?.error);
+    const isGpsReady = Boolean(checkpointLocation?.lat && checkpointLocation?.lng && !isGpsLoading && !isGpsError);
+
+    const handlePresetNote = (preset) => {
+        if (!setCheckpointNote) return;
+        if (checkpointNote === preset) {
+            setCheckpointNote('');
+        } else {
+            setCheckpointNote(preset);
+        }
+    };
 
     return createPortal(
         <div className="fixed inset-0 z-[9000] overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-3 sm:p-4 text-center transition-all duration-200">
+            <div className="flex min-h-full items-center justify-center p-4 text-center transition-all duration-200">
                 {/* Backdrop */}
                 <div
-                    className="fixed inset-0 bg-slate-950/75 backdrop-blur-md transition-opacity"
+                    className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
                     onClick={() => !isMarkingCheckpoint && handleClose()}
                 />
 
-                {/* Main Content Modal Container */}
-                <div className="relative w-full max-w-lg sm:max-w-xl md:max-w-2xl space-y-4 sm:space-y-6 animate-in fade-in zoom-in-95 duration-200 text-left mx-auto my-auto py-2">
-                    {/* Header */}
-                    <div className="relative flex justify-center items-center px-4">
-                        <div className="flex flex-col items-center">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shadow-inner">
-                                    <MapPin size={20} strokeWidth={2.5} />
-                                </div>
-                                <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight text-center">
-                                    Mark Checkpoint
-                                </h3>
-                            </div>
-                            <div className="mt-1.5 flex items-center gap-2">
-                                {requireSelfie ? (
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-rose-300 bg-rose-500/20 border border-rose-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                                        <Lock size={10} /> Selfie Mandatory
-                                    </span>
-                                ) : (
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                                        <ShieldCheck size={11} /> GPS Only · No Selfie Required
-                                    </span>
-                                )}
-                            </div>
+                {/* Dialog Container */}
+                <div
+                    className={`relative w-full ${
+                        requireSelfie ? 'max-w-2xl' : 'max-w-md'
+                    } bg-white dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-2xl shadow-2xl text-left mx-auto my-auto overflow-hidden animate-in fade-in zoom-in-95 duration-200`}
+                >
+                    {/* Clean Header */}
+                    <div className="px-5 py-3.5 border-b border-slate-100 dark:border-[#30363d] flex items-center justify-between bg-slate-50/50 dark:bg-[#0d1117]/50">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                                Mark Checkpoint
+                            </h3>
+                            {requireSelfie ? (
+                                <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-0.5 rounded-full">
+                                    Photo Required
+                                </span>
+                            ) : (
+                                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                    GPS Only
+                                </span>
+                            )}
                         </div>
                         <button
+                            type="button"
                             onClick={() => !isMarkingCheckpoint && handleClose()}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-all backdrop-blur-md cursor-pointer"
-                            aria-label="Close Checkpoint Modal"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                            aria-label="Close"
                         >
-                            <X size={22} />
+                            <X size={18} />
                         </button>
                     </div>
 
-                    {/* CASE 1: SELFIE REQUIRED - Camera Viewport */}
-                    {requireSelfie ? (
-                        <div className="relative bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex items-center justify-center aspect-[4/3] sm:aspect-video w-full max-h-[320px] sm:max-h-[400px]">
-                            {currentImgSrc ? (
-                                <div className="relative w-full h-full">
-                                    <img
-                                        src={currentImgSrc}
-                                        alt="Checkpoint Selfie"
-                                        className="w-full h-full object-cover"
-                                    />
-                                    <div className="absolute top-4 right-4 z-10">
-                                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-emerald-500/30 shadow-lg">
-                                            <CheckCircle2 size={13} /> Photo Captured
-                                        </span>
-                                    </div>
-                                </div>
-                            ) : cameraError ? (
-                                <div className="p-6 text-center space-y-4 max-w-md mx-auto">
-                                    <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 mx-auto flex items-center justify-center border border-rose-500/30">
-                                        <Camera size={32} />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-base font-black text-white tracking-tight">Camera Permission Required</h4>
-                                        <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                                            {cameraError}
-                                        </p>
-                                    </div>
-
-                                    {/* Unblock steps */}
-                                    <div className="text-xs bg-white/5 border border-white/10 rounded-xl p-3 text-left text-slate-300 space-y-1.5">
-                                        <div className="font-bold text-amber-400 flex items-center gap-1.5">
-                                            <Lock size={13} /> Browser Permission Instructions:
-                                        </div>
-                                        <p>1. Click the lock/camera icon (🔒/🎥) beside the URL in the address bar.</p>
-                                        <p>2. Change Camera permission to <strong>&quot;Allow&quot;</strong>.</p>
-                                        <p>3. Click <strong>&quot;Ask Browser for Permission&quot;</strong> below.</p>
-                                    </div>
-
-                                    <div className="flex items-center justify-center gap-3 pt-2">
-                                        <button
-                                            type="button"
-                                            onClick={handleRequestCamera}
-                                            disabled={isRequestingCam}
-                                            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs shadow-lg flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
-                                        >
-                                            {isRequestingCam ? (
-                                                <>
-                                                    <RefreshCw size={14} className="animate-spin" /> Asking Browser...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Camera size={14} /> Ask Browser for Permission
-                                                </>
-                                            )}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setCameraError(null)}
-                                            className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-all cursor-pointer"
-                                        >
-                                            Retry
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <>
-                                    <Webcam
-                                        audio={false}
-                                        ref={activeWebcamRef}
-                                        screenshotFormat="image/jpeg"
-                                        className="w-full h-full object-cover"
-                                        playsInline={true}
-                                        mirrored={facingMode === 'user'}
-                                        videoConstraints={{ facingMode }}
-                                        onUserMediaError={(err) => {
-                                            console.warn("Checkpoint webcam error:", err);
-                                            const isDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
-                                            setCameraError(isDenied
-                                                ? "Camera permission was blocked in your browser settings."
-                                                : (err?.message || "Camera access denied or unavailable."));
-                                        }}
-                                    />
-                                    {/* Mobile Camera Switch Button (Front / Back) */}
-                                    <div className="absolute top-4 right-4 z-10">
-                                        <button
-                                            type="button"
-                                            onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
-                                            className="p-2 rounded-full bg-black/60 backdrop-blur-md text-white border border-white/20 hover:bg-black/80 transition-all active:scale-95 cursor-pointer shadow-lg flex items-center gap-1.5 text-xs font-bold"
-                                            title="Switch Camera (Front/Rear)"
-                                            aria-label="Switch Camera"
-                                        >
-                                            <RotateCcw size={14} />
-                                            <span className="hidden sm:inline text-[10px]">Flip</span>
-                                        </button>
-                                    </div>
-                                </>
-                            )}
-
-                            {/* On-Camera Top-Left Geolocation Status Pill Overlay */}
-                            <div className="absolute top-4 left-4 z-10">
-                                {checkpointLocation?.loading ? (
-                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-amber-300 text-xs font-semibold border border-amber-500/30 shadow-lg">
-                                        <RefreshCw size={12} className="animate-spin" /> Acquiring GPS...
-                                    </span>
-                                ) : checkpointLocation?.error ? (
-                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-950/80 backdrop-blur-md text-rose-300 text-xs font-semibold border border-rose-500/30 shadow-lg">
-                                        <AlertCircle size={12} /> GPS Error
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-emerald-400 text-xs font-semibold border border-emerald-500/30 shadow-lg">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Location Locked
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        /* CASE 2: SELFIE DISABLED - Clean GPS Location Hero Card (No Camera Viewport) */
-                        <div className="p-6 bg-gradient-to-br from-slate-900/90 via-slate-800/90 to-slate-900/90 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur-xl text-white space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
-                                        <Navigation size={24} className="animate-pulse" />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-base font-bold text-white tracking-tight">Location Verification</h4>
-                                        <p className="text-xs text-slate-400">Captured via high-precision device GPS</p>
-                                    </div>
-                                </div>
-                                {checkpointLocation?.accuracy && (
-                                    <span className="px-2.5 py-1 rounded-lg bg-white/10 text-xs font-semibold text-slate-300 border border-white/10">
-                                        ±{Math.round(checkpointLocation.accuracy)}m accuracy
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-xl space-y-2">
-                                {checkpointLocation?.loading ? (
-                                    <div className="flex items-center gap-2.5 text-amber-300 text-xs py-2">
-                                        <RefreshCw size={14} className="animate-spin text-amber-400" />
-                                        <span>Acquiring GPS coordinates and resolving address...</span>
-                                    </div>
-                                ) : checkpointLocation?.error ? (
-                                    <div className="space-y-2 text-rose-300">
-                                        <p className="flex items-center gap-2 text-xs font-medium">
-                                            <AlertCircle size={16} className="shrink-0" />
-                                            {checkpointLocation.error}
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={handleRetry}
-                                            className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold transition-all flex items-center gap-1.5 border border-rose-500/30 cursor-pointer"
-                                        >
-                                            <RefreshCw size={12} /> Retry GPS
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <p className="font-semibold text-slate-100 text-sm leading-relaxed">
-                                            {checkpointLocation?.address || "Address detected"}
-                                        </p>
-                                        <div className="flex items-center justify-between text-xs text-slate-400 font-mono pt-2 border-t border-white/10">
-                                            <span>
-                                                {checkpointLocation?.lat?.toFixed(5)}, {checkpointLocation?.lng?.toFixed(5)}
-                                            </span>
-                                            {checkpointLocation?.lat && checkpointLocation?.lng && (
-                                                <a
-                                                    href={`https://www.google.com/maps?q=${checkpointLocation.lat},${checkpointLocation.lng}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-amber-400 hover:underline flex items-center gap-1 font-sans font-bold"
-                                                >
-                                                    <ExternalLink size={12} /> Open in Maps
-                                                </a>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Geolocation Details (when camera is shown) & Optional Note Field */}
-                    <div className="space-y-3 px-2 w-full max-w-lg sm:max-w-xl mx-auto">
-                        {requireSelfie && (
-                            <div className="p-3.5 bg-slate-800/80 border border-slate-700/80 rounded-xl backdrop-blur-md text-white text-xs space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                                        <Navigation size={12} className="text-indigo-400" /> Current Location
-                                    </span>
-                                    {checkpointLocation?.accuracy && (
-                                        <span className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-semibold text-slate-300">
-                                            ±{Math.round(checkpointLocation.accuracy)}m accuracy
-                                        </span>
-                                    )}
-                                </div>
-                                {checkpointLocation?.loading ? (
-                                    <div className="flex items-center gap-2 text-slate-300 py-1 text-xs">
-                                        <RefreshCw size={12} className="animate-spin text-amber-400" />
-                                        <span>Acquiring high-precision GPS coordinates...</span>
-                                    </div>
-                                ) : checkpointLocation?.error ? (
-                                    <div className="space-y-2 text-rose-300">
-                                        <p className="flex items-center gap-1.5 text-xs font-medium">
-                                            <AlertCircle size={14} className="shrink-0" />
-                                            {checkpointLocation.error}
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={handleRetry}
-                                            className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold transition-all flex items-center gap-1.5 border border-rose-500/30 cursor-pointer"
-                                        >
-                                            <RefreshCw size={12} /> Retry GPS Location
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-1.5">
-                                        <p className="font-semibold text-slate-100 line-clamp-2 leading-relaxed">
-                                            {checkpointLocation?.address || "Address detected"}
-                                        </p>
-                                        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1 border-t border-white/5">
-                                            <span>
-                                                {checkpointLocation?.lat?.toFixed(5)}, {checkpointLocation?.lng?.toFixed(5)}
-                                            </span>
-                                            {checkpointLocation?.lat && checkpointLocation?.lng && (
-                                                <a
-                                                    href={`https://www.google.com/maps?q=${checkpointLocation.lat},${checkpointLocation.lng}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-amber-400 hover:underline flex items-center gap-1 font-sans font-bold"
-                                                >
-                                                    <ExternalLink size={11} /> Maps
-                                                </a>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Optional Note Field */}
-                        <div>
-                            <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                                Checkpoint Note <span className="text-slate-500 font-normal lowercase">(optional)</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={checkpointNote || ''}
-                                onChange={(e) => setCheckpointNote && setCheckpointNote(e.target.value)}
-                                placeholder="e.g. Site B inspection, floor rounds, client meeting..."
-                                maxLength={120}
-                                disabled={isMarkingCheckpoint}
-                                className="w-full px-4 py-3 bg-slate-800/80 border border-slate-700/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 text-white placeholder-slate-400 text-xs sm:text-sm backdrop-blur-md shadow-inner"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Bottom Action Controls */}
-                    <div className="pt-2">
+                    {/* Content Body */}
+                    <div className="p-5 space-y-4">
+                        {/* VIEW 1: SELFIE REQUIRED (2-Column on desktop) */}
                         {requireSelfie ? (
-                            /* SELFIE REQUIRED ACTIONS */
-                            !currentImgSrc ? (
-                                cameraError ? (
-                                    <div className="flex w-full gap-4 px-2 max-w-lg sm:max-w-xl mx-auto">
-                                        <button
-                                            type="button"
-                                            onClick={handleClose}
-                                            className="flex-1 px-6 py-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white border border-white/10 font-bold text-sm sm:text-base transition-all cursor-pointer backdrop-blur-md"
-                                        >
-                                            Close
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={true}
-                                            className="flex-1 px-6 py-3.5 rounded-2xl bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold text-xs sm:text-sm cursor-not-allowed text-center flex items-center justify-center gap-2"
-                                        >
-                                            <Lock size={15} /> Selfie Required
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={capturePhoto}
-                                            title="Take Checkpoint Selfie"
-                                            className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white text-amber-600 hover:scale-110 active:scale-95 flex items-center justify-center shadow-xl shadow-amber-900/20 transition-all duration-300 ring-8 ring-white/20 cursor-pointer"
-                                        >
-                                            <Camera size={36} />
-                                        </button>
-                                        <span className="text-xs font-bold text-slate-300 tracking-wide uppercase">
-                                            Tap to capture required selfie
-                                        </span>
-                                    </div>
-                                )
-                            ) : (
-                                <div className="flex w-full gap-4 px-2 max-w-lg sm:max-w-xl mx-auto">
-                                    <button
-                                        type="button"
-                                        onClick={retakePhoto}
-                                        disabled={isMarkingCheckpoint}
-                                        className="flex-1 px-6 py-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white border border-white/10 font-bold text-base transition-all flex items-center justify-center gap-2.5 backdrop-blur-md hover:scale-[1.02] active:scale-95 cursor-pointer disabled:opacity-50"
-                                    >
-                                        <RotateCcw size={18} /> Retake
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={onConfirmClick}
-                                        disabled={isMarkingCheckpoint || !isGpsReady}
-                                        className="flex-1 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-base shadow-xl shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                                    >
-                                        {isMarkingCheckpoint ? (
-                                            <>
-                                                <RefreshCw size={18} className="animate-spin" /> Recording...
-                                            </>
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                                {/* Camera Box */}
+                                <div className="md:col-span-6 space-y-2">
+                                    <div className="relative bg-black rounded-xl overflow-hidden shadow-sm aspect-[4/3] w-full flex items-center justify-center">
+                                        {currentImgSrc ? (
+                                            <div className="relative w-full h-full">
+                                                <img
+                                                    src={currentImgSrc}
+                                                    alt="Selfie"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute top-2.5 right-2.5 z-10">
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded-full border border-emerald-500/30">
+                                                        <CheckCircle2 size={11} /> Captured
+                                                    </span>
+                                                </div>
+                                                <div className="absolute bottom-2.5 inset-x-0 z-10 flex justify-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={retakePhoto}
+                                                        disabled={isMarkingCheckpoint}
+                                                        className="px-3 py-1 rounded-full bg-black/70 hover:bg-black/90 text-white text-xs font-semibold backdrop-blur-sm border border-white/20 transition-all cursor-pointer disabled:opacity-50"
+                                                    >
+                                                        Retake Photo
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : cameraError ? (
+                                            <div className="p-4 text-center space-y-2 max-w-xs">
+                                                <p className="text-xs text-slate-200">{cameraError}</p>
+                                                <div className="flex items-center justify-center gap-2 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleRequestCamera}
+                                                        disabled={isRequestingCam}
+                                                        className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs cursor-pointer disabled:opacity-50"
+                                                    >
+                                                        Enable Camera
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCameraError(null)}
+                                                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs cursor-pointer"
+                                                    >
+                                                        Retry
+                                                    </button>
+                                                </div>
+                                            </div>
                                         ) : (
                                             <>
-                                                Confirm Checkpoint <ArrowRight size={18} />
+                                                <Webcam
+                                                    audio={false}
+                                                    ref={activeWebcamRef}
+                                                    screenshotFormat="image/jpeg"
+                                                    className="w-full h-full object-cover"
+                                                    playsInline={true}
+                                                    mirrored={facingMode === 'user'}
+                                                    videoConstraints={{ facingMode }}
+                                                    onUserMediaError={(err) => {
+                                                        const isDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+                                                        setCameraError(isDenied ? "Camera access was blocked." : "Camera unavailable.");
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
+                                                    className="absolute top-2.5 right-2.5 z-10 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all cursor-pointer"
+                                                    title="Switch Camera"
+                                                >
+                                                    <RotateCcw size={13} />
+                                                </button>
+                                                <div className="absolute bottom-3 inset-x-0 z-10 flex justify-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={capturePhoto}
+                                                        className="px-4 py-1.5 rounded-full bg-white hover:bg-slate-100 text-amber-600 shadow-md font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95"
+                                                    >
+                                                        <Camera size={14} /> Snap Photo
+                                                    </button>
+                                                </div>
                                             </>
                                         )}
-                                    </button>
+                                    </div>
                                 </div>
-                            )
+
+                                {/* Form Details (Right) */}
+                                <div className="md:col-span-6 space-y-3">
+                                    {/* Flat Location Card */}
+                                    <div className="p-3 bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-xl space-y-1.5">
+                                        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                            Location
+                                        </span>
+
+                                        {isGpsLoading ? (
+                                            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs py-1">
+                                                <RefreshCw size={12} className="animate-spin shrink-0" />
+                                                <span>Acquiring coordinates...</span>
+                                            </div>
+                                        ) : isGpsError ? (
+                                            <div className="text-rose-500 text-xs flex items-center gap-1.5">
+                                                <AlertCircle size={13} className="shrink-0" />
+                                                <span>{checkpointLocation.error}</span>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs font-medium text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug">
+                                                {checkpointLocation?.address || "Address captured"}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Quick Purpose Chips */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                            Quick Purpose
+                                        </label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {QUICK_NOTE_PRESETS.map((label) => {
+                                                const isSelected = checkpointNote === label;
+                                                return (
+                                                    <button
+                                                        key={label}
+                                                        type="button"
+                                                        onClick={() => handlePresetNote(label)}
+                                                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                                                            isSelected
+                                                                ? 'bg-amber-500 text-white font-semibold'
+                                                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                                        }`}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Note Input */}
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                            Note <span className="text-slate-400 font-normal lowercase">(optional)</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={checkpointNote || ''}
+                                            onChange={(e) => setCheckpointNote && setCheckpointNote(e.target.value)}
+                                            placeholder="Add remarks or activity..."
+                                            maxLength={120}
+                                            disabled={isMarkingCheckpoint}
+                                            className="w-full px-3 py-2 bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-800 dark:text-white placeholder-slate-400 text-xs"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         ) : (
-                            /* SELFIE DISABLED - Clean Confirm Button (Zero Camera Capture) */
-                            <div className="flex w-full gap-4 px-2 max-w-lg sm:max-w-xl mx-auto">
-                                <button
-                                    type="button"
-                                    onClick={handleClose}
-                                    disabled={isMarkingCheckpoint}
-                                    className="flex-1 px-6 py-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white border border-white/10 font-bold text-sm sm:text-base transition-all cursor-pointer backdrop-blur-md active:scale-95"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={onConfirmClick}
-                                    disabled={isMarkingCheckpoint || !isGpsReady}
-                                    className="flex-1 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-sm sm:text-base shadow-xl shadow-amber-500/25 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                                >
-                                    {isMarkingCheckpoint ? (
-                                        <>
-                                            <RefreshCw size={18} className="animate-spin" /> Recording Checkpoint...
-                                        </>
+                            /* VIEW 2: GPS ONLY (Flat, clean, professional layout) */
+                            <div className="space-y-3.5">
+                                {/* Single Flat Location Card */}
+                                <div className="p-3 bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-xl space-y-1.5">
+                                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                        Device GPS Location
+                                    </span>
+
+                                    {isGpsLoading ? (
+                                        <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs py-1.5">
+                                            <RefreshCw size={13} className="animate-spin shrink-0" />
+                                            <span>Locating device coordinates...</span>
+                                        </div>
+                                    ) : isGpsError ? (
+                                        <div className="text-rose-500 text-xs py-1 flex items-center gap-1.5 font-medium">
+                                            <AlertCircle size={14} className="shrink-0" />
+                                            <span>{checkpointLocation.error}</span>
+                                        </div>
                                     ) : (
-                                        <>
-                                            <Check size={18} strokeWidth={3} /> Confirm Checkpoint
-                                        </>
+                                        <p className="text-xs font-medium text-slate-800 dark:text-slate-200 leading-snug">
+                                            {checkpointLocation?.address || "Address detected"}
+                                        </p>
                                     )}
-                                </button>
+                                </div>
+
+                                {/* Clean Quick Purpose Chips */}
+                                <div className="space-y-1.5">
+                                    <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                        Quick Purpose
+                                    </label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {QUICK_NOTE_PRESETS.map((label) => {
+                                            const isSelected = checkpointNote === label;
+                                            return (
+                                                <button
+                                                    key={label}
+                                                    type="button"
+                                                    onClick={() => handlePresetNote(label)}
+                                                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                                                        isSelected
+                                                            ? 'bg-amber-500 text-white font-semibold shadow-xs'
+                                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                                    }`}
+                                                >
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Note Field */}
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                                        Note <span className="text-slate-400 font-normal lowercase">(optional)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={checkpointNote || ''}
+                                        onChange={(e) => setCheckpointNote && setCheckpointNote(e.target.value)}
+                                        placeholder="Add notes or remarks..."
+                                        maxLength={120}
+                                        disabled={isMarkingCheckpoint}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-800 dark:text-white placeholder-slate-400 text-xs sm:text-sm"
+                                    />
+                                </div>
                             </div>
                         )}
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div className="px-5 py-3 border-t border-slate-100 dark:border-[#30363d] bg-slate-50/50 dark:bg-[#0d1117]/50 flex items-center justify-end gap-2.5">
+                        <button
+                            type="button"
+                            onClick={handleClose}
+                            disabled={isMarkingCheckpoint}
+                            className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={onConfirmClick}
+                            disabled={isMarkingCheckpoint || isGpsLoading || !isGpsReady}
+                            className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md shadow-amber-500/15 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                        >
+                            {isMarkingCheckpoint ? (
+                                <>
+                                    <RefreshCw size={13} className="animate-spin" /> Recording...
+                                </>
+                            ) : isGpsLoading ? (
+                                <>
+                                    <RefreshCw size={13} className="animate-spin" /> Locating...
+                                </>
+                            ) : requireSelfie && !currentImgSrc ? (
+                                <>
+                                    <Camera size={13} /> Snap & Confirm
+                                </>
+                            ) : (
+                                <>
+                                    <Check size={14} strokeWidth={2.5} /> Confirm Checkpoint
+                                </>
+                            )}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -525,4 +448,3 @@ const CheckpointModal = ({
 };
 
 export default CheckpointModal;
-

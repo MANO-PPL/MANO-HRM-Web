@@ -374,33 +374,24 @@ const MarkAttendanceTab = ({
                                             </p>
                                         </div>
 
-                                        {/* In Image */}
-                                        <div className="space-y-3 max-w-[280px]">
-                                            <div className="flex items-center justify-between px-1">
-                                                <p className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest opacity-60">Verification Image</p>
-                                                {session.time_in_image && <span className="text-[9px] font-black text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md">Captured</span>}
-                                            </div>
-                                            <div
-                                                onClick={() => session.time_in_image && setViewerImage(session.time_in_image)}
-                                                className="aspect-video rounded-xl overflow-hidden border-2 border-slate-100 dark:border-white/5 group relative shadow-inner cursor-pointer"
-                                            >
-                                                {session.time_in_image ? (
-                                                    <>
-                                                        <img src={session.time_in_image} alt="In" className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-110" />
-                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
-                                                            <Eye size={32} className="text-white transform scale-75 group-hover:scale-100 transition-transform duration-300" />
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <div className="w-full h-full bg-slate-50 dark:bg-white/5 flex flex-col items-center justify-center gap-3">
-                                                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-300">
-                                                            <Camera size={24} />
-                                                        </div>
-                                                        <span className="text-[9px] font-black text-slate-300 tracking-[0.2em]">No Image</span>
+                                        {/* In Image (only shown if a selfie was actually captured) */}
+                                        {session.time_in_image && (
+                                            <div className="space-y-2 max-w-[280px]">
+                                                <div className="flex items-center justify-between px-1">
+                                                    <p className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest opacity-60">Verification Image</p>
+                                                    <span className="text-[9px] font-black text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md">Captured</span>
+                                                </div>
+                                                <div
+                                                    onClick={() => setViewerImage(session.time_in_image)}
+                                                    className="aspect-video rounded-xl overflow-hidden border-2 border-slate-100 dark:border-white/5 group relative shadow-inner cursor-pointer"
+                                                >
+                                                    <img src={session.time_in_image} alt="In" className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-110" />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                                                        <Eye size={28} className="text-white transform scale-75 group-hover:scale-100 transition-transform duration-300" />
                                                     </div>
-                                                )}
+                                                </div>
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
 
                                     {/* Time Out Section */}
@@ -440,33 +431,24 @@ const MarkAttendanceTab = ({
                                             </p>
                                         </div>
 
-                                        {/* Out Image */}
-                                        <div className="space-y-3 max-w-[280px]">
-                                            <div className="flex items-center justify-between px-1">
-                                                <p className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest opacity-60">Verification Image</p>
-                                                {session.time_out_image && <span className="text-[9px] font-black text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-2 py-0.5 rounded-md">Captured</span>}
-                                            </div>
-                                            <div
-                                                onClick={() => session.time_out_image && setViewerImage(session.time_out_image)}
-                                                className="aspect-video rounded-xl overflow-hidden border-2 border-slate-100 dark:border-white/5 group relative shadow-inner cursor-pointer"
-                                            >
-                                                {session.time_out_image ? (
-                                                    <>
-                                                        <img src={session.time_out_image} alt="Out" className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-110" />
-                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
-                                                            <Eye size={32} className="text-white transform scale-75 group-hover:scale-100 transition-transform duration-300" />
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <div className="w-full h-full bg-slate-50 dark:bg-white/5 flex flex-col items-center justify-center gap-3">
-                                                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-300">
-                                                            <Camera size={24} />
-                                                        </div>
-                                                        <span className="text-[9px] font-black text-slate-300 tracking-[0.2em]">No Image</span>
+                                        {/* Out Image (only shown if a selfie was actually captured) */}
+                                        {session.time_out_image && (
+                                            <div className="space-y-2 max-w-[280px]">
+                                                <div className="flex items-center justify-between px-1">
+                                                    <p className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest opacity-60">Verification Image</p>
+                                                    <span className="text-[9px] font-black text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-2 py-0.5 rounded-md">Captured</span>
+                                                </div>
+                                                <div
+                                                    onClick={() => setViewerImage(session.time_out_image)}
+                                                    className="aspect-video rounded-xl overflow-hidden border-2 border-slate-100 dark:border-white/5 group relative shadow-inner cursor-pointer"
+                                                >
+                                                    <img src={session.time_out_image} alt="Out" className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-110" />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                                                        <Eye size={28} className="text-white transform scale-75 group-hover:scale-100 transition-transform duration-300" />
                                                     </div>
-                                                )}
+                                                </div>
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
                                 </div>
 

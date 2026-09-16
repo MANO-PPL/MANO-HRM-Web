@@ -456,6 +456,16 @@ const Attendance = () => {
         }
     }, []);
 
+    // Hide scrollbars while on Attendance page
+    useEffect(() => {
+        document.documentElement.classList.add('no-scrollbar');
+        document.body.classList.add('no-scrollbar');
+        return () => {
+            document.documentElement.classList.remove('no-scrollbar');
+            document.body.classList.remove('no-scrollbar');
+        };
+    }, []);
+
     // Fetch Holidays and Shift Policy
     useEffect(() => {
         attendanceService.getHolidays()
@@ -1341,14 +1351,8 @@ const Attendance = () => {
                 async (position) => {
                     const { latitude, longitude, accuracy } = position.coords;
                     let resolvedAddr = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`);
-                        if (res.ok) {
-                            const data = await res.json();
-                            if (data.display_name) resolvedAddr = data.display_name;
-                        }
-                    } catch (_) { }
 
+                    // Unlock GPS state immediately without blocking on reverse geocoding
                     setCheckpointLocation({
                         lat: latitude,
                         lng: longitude,
@@ -1357,6 +1361,17 @@ const Attendance = () => {
                         error: null,
                         loading: false
                     });
+
+                    // Enhance with street address asynchronously
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.display_name) {
+                                setCheckpointLocation(prev => ({ ...prev, address: data.display_name }));
+                            }
+                        }
+                    } catch (_) { }
                 },
                 (err) => {
                     if (highAccuracy && (err.code === 3 || err.code === 1)) {
@@ -2461,8 +2476,8 @@ const Attendance = () => {
     }, [monthlySessions, myShift]);
 
     return (
-        <DashboardLayout title="Attendance" tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
-            <div className="pb-10 overflow-x-hidden" style={{ zoom: 0.8 }}>
+        <DashboardLayout title="Attendance" hideScrollbar={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
+            <div className="pb-10 overflow-x-hidden no-scrollbar" style={{ zoom: 0.8 }}>
                 {/* Browser Permissions Alert & Prompt Banner */}
                 <div className="mb-4">
                     <AttendancePermissionsBanner
@@ -2999,141 +3014,6 @@ const Attendance = () => {
                                                 </motion.div>
                                             )}
 
-                                            {/* Original Attendance Context Card */}
-                                            <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3.5">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <History size={15} className="text-slate-400" />
-                                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                                                            Originally Logged on {formatCorrectionDate(corrDate)}
-                                                        </span>
-                                                    </div>
-                                                    {originalSessions.length === 0 ? (
-                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40">
-                                                            No Punches Recorded
-                                                        </span>
-                                                    ) : originalSessions.some(s => s.time_in && !s.time_out) ? (
-                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center gap-1.5">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                            Active Session
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
-                                                            {originalSessions.length} Session{originalSessions.length > 1 ? 's' : ''} Recorded
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                {/* Text Stating Each Session and Checkpoints */}
-                                                {originalSessions.length > 0 ? (
-                                                    <div className="space-y-2 pt-0.5">
-                                                        {originalSessions.map((s, idx) => {
-                                                            const isActive = Boolean(s.time_in && !s.time_out);
-                                                            const checkpointsList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
-                                                            return (
-                                                                <div key={idx} className="bg-white dark:bg-github-dark-subtle/80 p-3 rounded-xl border border-slate-200/70 dark:border-github-dark-border/60 space-y-2">
-                                                                    <div className="flex items-center justify-between text-xs">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}`} />
-                                                                            <span className="font-medium text-slate-700 dark:text-slate-300">
-                                                                                Session #{idx + 1}
-                                                                            </span>
-                                                                            {isActive && (
-                                                                                <span className="text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
-                                                                                    In Progress
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                        <div className="flex items-center gap-2 font-mono text-xs">
-                                                                            <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400"}>
-                                                                                {s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}
-                                                                            </span>
-                                                                            <span className="text-slate-400">→</span>
-                                                                            <span className={s.time_out ? "text-rose-600 dark:text-rose-400 font-medium" : "text-amber-500 dark:text-amber-400 italic"}>
-                                                                                {s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Not Clocked Out'}
-                                                                            </span>
-                                                                            {s.time_in && s.time_out && (
-                                                                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md ml-1">
-                                                                                    {calculateSessionDurationHours(s.time_in, s.time_out).toFixed(1)} hrs
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Checkpoints shown compactly without taking much space */}
-                                                                    {checkpointsList.length > 0 && (
-                                                                        <div className="pt-2 border-t border-slate-100 dark:border-github-dark-border/60">
-                                                                            <div className="flex items-center gap-1.5 mb-1.5">
-                                                                                <MapPin size={12} className="text-amber-500 shrink-0" />
-                                                                                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                                                                    Checkpoints ({checkpointsList.length})
-                                                                                </span>
-                                                                            </div>
-                                                                            <div className="flex flex-wrap gap-1.5">
-                                                                                {checkpointsList.map((chk, cIdx) => {
-                                                                                    const selfieUrl = chk.image_url || chk.image;
-                                                                                    const chkTime = chk.punch_time ? (formatTime ? formatTime(chk.punch_time, null, false) : formatLocalTimeString(chk.punch_time)) : (chk.time || `Point #${cIdx + 1}`);
-                                                                                    const locLabel = chk.address ? chk.address.split(',')[0] : (chk.lat && chk.lng ? `${Number(chk.lat).toFixed(2)}, ${Number(chk.lng).toFixed(2)}` : null);
-                                                                                    return (
-                                                                                        <div
-                                                                                            key={chk.id || cIdx}
-                                                                                            onClick={() => selfieUrl && setPreviewImage(selfieUrl)}
-                                                                                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/40 ${selfieUrl ? 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40' : ''}`}
-                                                                                            title={chk.address || (selfieUrl ? 'Click to view photo' : undefined)}
-                                                                                        >
-                                                                                            {selfieUrl ? (
-                                                                                                <Camera size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                                                                                            ) : (
-                                                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                                                                                            )}
-                                                                                            <span className="font-medium">#{cIdx + 1}</span>
-                                                                                            <span className="font-mono text-[10px] text-amber-700/80 dark:text-amber-400/80">{chkTime}</span>
-                                                                                            {locLabel && (
-                                                                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[110px] truncate">
-                                                                                                    • {locLabel}
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-xs text-slate-400 dark:text-slate-400 font-normal py-0.5">
-                                                        No mobile or biometric punches found for this date. Enter your requested session times below.
-                                                    </p>
-                                                )}
-
-                                                {/* Auto-fill actions */}
-                                                {(originalSessions.some(s => s.time_in && !s.time_out) || originalSessions.length > 0) && (
-                                                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/60 dark:border-github-dark-border/40">
-                                                        {originalSessions.some(s => s.time_in && !s.time_out) && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleAutoFillMissingOut}
-                                                                className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                            >
-                                                                <Sparkles size={13} /> Auto-fill Missing Out ({myShift?.end_time ? myShift.end_time.slice(0, 5) : '18:00'})
-                                                            </button>
-                                                        )}
-                                                        {originalSessions.length > 0 && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleResetCorrectionToOriginal}
-                                                                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                            >
-                                                                <RotateCcw size={13} /> Reset to Logged
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-
                                             {/* Reason Field */}
                                             <div className="space-y-2">
                                                 <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
@@ -3334,29 +3214,7 @@ const Attendance = () => {
                                                             exit={{ height: 0, opacity: 0 }}
                                                             className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-4 sm:p-5 space-y-4 bg-white dark:bg-github-dark-subtle/50"
                                                         >
-                                                            {/* Quick helper actions if applicable */}
-                                                            {(originalSessions.some(s => s.time_in && !s.time_out) || originalSessions.length > 0) && (
-                                                                <div className="flex flex-wrap items-center gap-2 pb-1 border-b border-slate-100 dark:border-github-dark-border/60">
-                                                                    {originalSessions.some(s => s.time_in && !s.time_out) && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={handleAutoFillMissingOut}
-                                                                            className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/40 text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                                        >
-                                                                            <Sparkles size={13} /> Auto-fill Missing Out
-                                                                        </button>
-                                                                    )}
-                                                                    {originalSessions.length > 0 && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={handleResetCorrectionToOriginal}
-                                                                            className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
-                                                                        >
-                                                                            <RotateCcw size={13} /> Reset to Logged
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            )}
+
 
                                                             {/* Interactive Visual Timeline Only */}
                                                             <VisualCorrectionTimeline
