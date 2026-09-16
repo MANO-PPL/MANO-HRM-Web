@@ -167,7 +167,7 @@ EventBus.on('notification_saved', async (notification) => {
           .where('id', room.last_message_id)
           .first();
         if (lastMsg) {
-          const sender = await attendanceDB('users')
+          const sender = await attendanceDB('core_users')
             .where('user_id', lastMsg.sender_id)
             .select('profile_image_url')
             .first();
@@ -182,6 +182,7 @@ EventBus.on('notification_saved', async (notification) => {
   }
 
   io.to(`user_${notification.user_id}`).emit('new-notification', enrichedNotification);
+  io.to(`user_${notification.user_id}`).emit('new_notification', enrichedNotification);
   console.log(`📡 Real-time notification push sent to user_${notification.user_id} for alert #${notification.notification_id}`);
   
   // Trigger FCM push notification to user's registered devices

@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as WorkLocationService from './workLocationsServices.js';
-import { notifyGeofenceAssigned } from '../../services/collaboration/chatAlertService.js';
+import { notifyGeofenceAssigned } from '../collaboration/chatAlertService.js';
 
 
 export const getLocations = catchAsync(async (req, res) => {

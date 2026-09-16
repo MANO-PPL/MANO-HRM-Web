@@ -1,7 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
-import { handleMentions } from '../../services/collaboration/mentionService.js';
+import { handleMentions } from './mentionService.js';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import { uploadFile, getFileUrl } from '../../services/s3/s3Service.js';
 import EventBus from '../../utils/EventBus.js';

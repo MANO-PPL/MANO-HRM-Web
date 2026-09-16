@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
-import * as chatController from '../../controllers/collaboration/chatController.js';
+import * as chatController from './chatController.js';
 
 const router = express.Router();
 

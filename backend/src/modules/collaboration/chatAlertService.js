@@ -1,7 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import EventBus from '../../utils/EventBus.js';
-import { getFileUrl } from '../s3/s3Service.js';
+import { getFileUrl } from '../../services/s3/s3Service.js';
 
 // Helper to parse system card and sign its attachments
 const signSystemCardAttachments = async (messageText) => {
@@ -177,16 +177,19 @@ export async function sendSystemAlert({ org_id, sender_id, recipient_id, card_ty
 }
 
 /**
- * Fetch all active Admin & HR users in the organization
+ * Fetch all active Admin, HR, and Super Admin users in the organization
  */
 async function getAdminsAndHrs(orgId) {
+    const finalOrgId = orgId || 1;
     return attendanceDB('core_users')
-        .where({ org_id: orgId, is_deleted: 0, is_active: 1 })
-        .whereIn('user_type', ['admin', 'hr'])
-        .select('user_id');
+        .where({ org_id: finalOrgId, is_deleted: 0, is_active: 1 })
+        .where(function() {
+            this.whereRaw('LOWER(user_type) IN (?, ?, ?)', ['admin', 'hr', 'super_admin'])
+                .orWhereIn('user_type', ['admin', 'hr', 'HR', 'Admin', 'super_admin', 'Super_Admin']);
+        })
+        .select('user_id', 'user_name', 'user_type');
 }
 
-/**
 const formatDateStr = (d) => {
     if (!d) return '';
     if (typeof d === 'string') return d.split('T')[0];

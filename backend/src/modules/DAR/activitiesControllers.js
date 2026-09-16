@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as DarActivityService from './activitiesServices.js';
-import { handleMentions } from '../../services/collaboration/mentionService.js';
+import { handleMentions } from '../collaboration/mentionService.js';
 
 export const createActivity = catchAsync(async (req, res) => {
     const { activity_date, start_time, end_time, title, description, activity_type } = req.body;

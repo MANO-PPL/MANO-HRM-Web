@@ -11,7 +11,7 @@ import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
 import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
 import { calculateWorkHours, deriveStatus, getDetailedRecords } from "../reports/reportsServices.js";
-import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../../services/collaboration/chatAlertService.js";
+import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../collaboration/chatAlertService.js";
 import { getLocalNow } from "./statusEvaluationService.js";
 import { attendanceQueue, redisConnection } from "../../config/queues.js";
 import { processAttendanceJob } from "../../workers/attendanceWorker.js";

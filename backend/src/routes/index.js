@@ -22,7 +22,7 @@ import orgRoutes from '../modules/organisations/orgRoutes.js';
 import systemMonitorRoutes from '../modules/admin/systemMonitorRoutes.js';
 import superAdminRoutes from '../modules/superadmin/superAdminRoutes.js';
 import chatbotRoutes from './chatbot/chatbotRoutes.js';
-import chatRoutes from './collaboration/chatRoutes.js';
+import chatRoutes from '../modules/collaboration/chatRoutes.js';
 import labourRoutes from '../modules/labour/labourRoutes.js';
 import payrollRoutes from '../modules/payroll/payrollRoutes.js';
 import geoLocationRoutes from '../modules/locations/locations.js';

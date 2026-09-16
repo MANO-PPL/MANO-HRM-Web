@@ -1,7 +1,7 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as NotificationService from '../notifications/notificationService.js';
 import * as LeaveService from './leaveService.js';
-import { notifyLeaveApplied, notifyLeaveStatusUpdated } from '../../services/collaboration/chatAlertService.js';
+import { notifyLeaveApplied, notifyLeaveStatusUpdated } from '../collaboration/chatAlertService.js';
 
 
 export const getMyHistory = catchAsync(async (req, res) => {

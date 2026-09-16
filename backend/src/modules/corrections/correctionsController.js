@@ -3,7 +3,7 @@ import catchAsync from '../../utils/catchAsync.js';
 import path from 'path';
 import { uploadFile } from '../../services/s3/s3Service.js';
 import crypto from 'crypto';
-import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from '../../services/collaboration/chatAlertService.js';
+import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from '../collaboration/chatAlertService.js';
 
 /**
  * POST /attendance/correction-request

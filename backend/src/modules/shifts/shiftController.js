@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as ShiftService from './shiftService.js';
-import { notifyShiftAssigned } from '../../services/collaboration/chatAlertService.js';
+import { notifyShiftAssigned } from '../collaboration/chatAlertService.js';
 
 
 export const getShifts = catchAsync(async (req, res) => {

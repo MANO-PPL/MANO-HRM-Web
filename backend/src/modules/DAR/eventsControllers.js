@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import * as DarEventService from './eventsServices.js';
-import { handleMentions } from '../../services/collaboration/mentionService.js';
+import { handleMentions } from '../collaboration/mentionService.js';
 
 export const createEvent = catchAsync(async (req, res) => {
     const { title, description, event_date, start_time, end_time, location, type } = req.body;
