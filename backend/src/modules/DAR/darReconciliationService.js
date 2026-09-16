@@ -1,28 +1,11 @@
 import { attendanceDB } from '../../config/database.js';
-import { toMySQLDate, toMySQLTime, getZonedNow } from '../../utils/dateUtils.js';
+import { toMySQLDate, toMySQLTime, getZonedNow, timeToMinutes, minutesToTime } from '../../utils/dateUtils.js';
 
 /**
- * Helper: Convert 'HH:mm' or 'HH:mm:ss' to integer minutes from midnight
+ * Helpers: re-exported from dateUtils for backward compatibility
  */
-export function timeStrToMinutes(timeStr) {
-    if (!timeStr) return 0;
-    const parts = String(timeStr).split(':').map(Number);
-    const h = parts[0] || 0;
-    const m = parts[1] || 0;
-    return (h * 60) + m;
-}
-
-/**
- * Helper: Convert integer minutes from midnight to 'HH:mm:ss'
- */
-export function minutesToTimeStr(totalMinutes) {
-    const clamped = Math.max(0, Math.min(24 * 60, Math.round(totalMinutes)));
-    const h = Math.floor(clamped / 60);
-    const m = clamped % 60;
-    const hh = String(Math.min(23, h)).padStart(2, '0');
-    const mm = String(m).padStart(2, '0');
-    return `${hh}:${mm}:00`;
-}
+export const timeStrToMinutes = (timeStr) => timeToMinutes(timeStr) || 0;
+export const minutesToTimeStr = (totalMinutes) => minutesToTime(totalMinutes, true);
 
 /**
  * Calculate the intersection of a task range [taskStart, taskEnd]

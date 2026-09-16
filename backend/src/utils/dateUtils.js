@@ -4,7 +4,7 @@
  * and supports multi-timezone conversions (e.g., India IST, Congo WAT, UTC).
  */
 
-const pad = (n) => String(n).padStart(2, '0');
+export const pad = (n) => String(n).padStart(2, '0');
 
 /**
  * Converts any Date object, ISO string, timestamp, or datetime string into
@@ -186,3 +186,104 @@ export function safeTruncate(str, maxLength = 250) {
     const text = typeof str === 'string' ? str : String(str);
     return text.length > maxLength ? text.substring(0, maxLength) : text;
 }
+
+/**
+ * Standard 3-letter day names from Sunday (0) to Saturday (6).
+ */
+export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/**
+ * Returns the occurrence of the weekday within its month (1 to 5).
+ * e.g. 2nd Saturday returns 2.
+ * 
+ * @param {Date|string} date
+ * @returns {number}
+ */
+export function getWeekdayOccurrence(date) {
+    return Math.ceil(new Date(date).getDate() / 7);
+}
+
+/**
+ * Converts 'HH:mm' or 'HH:mm:ss' to integer minutes from midnight.
+ * 
+ * @param {string} timeStr - e.g. '09:30' or '18:00:00'
+ * @returns {number|null} Minutes from midnight or null if invalid/missing
+ */
+export function timeToMinutes(timeStr) {
+    if (!timeStr) return null;
+    const clean = String(timeStr).trim().replace('Z', '');
+    const parts = clean.split(':').map(Number);
+    if (Number.isNaN(parts[0])) return null;
+    const h = parts[0] || 0;
+    const m = parts[1] || 0;
+    return (h * 60) + m;
+}
+
+/**
+ * Converts integer minutes from midnight to a time string.
+ * 
+ * @param {number} totalMinutes - Minutes from midnight
+ * @param {boolean} includeSeconds - Whether to append ':00' (default: true)
+ * @returns {string} 'HH:mm:ss' or 'HH:mm'
+ */
+export function minutesToTime(totalMinutes, includeSeconds = true) {
+    if (totalMinutes === null || totalMinutes === undefined || Number.isNaN(totalMinutes)) {
+        return includeSeconds ? '00:00:00' : '00:00';
+    }
+    const clamped = Math.max(0, Math.min(24 * 60, Math.round(totalMinutes)));
+    const h = Math.floor(clamped / 60);
+    const m = clamped % 60;
+    const hh = String(Math.min(23, h)).padStart(2, '0');
+    const mm = String(m).padStart(2, '0');
+    return includeSeconds ? `${hh}:${mm}:00` : `${hh}:${mm}`;
+}
+
+/**
+ * Calculates the difference in minutes between two 'HH:mm' or 'HH:mm:ss' times.
+ * Handles overnight rollovers automatically (e.g. 22:00 to 06:00 -> 480 mins).
+ * 
+ * @param {string} startTime 
+ * @param {string} endTime 
+ * @returns {number} Difference in minutes
+ */
+export function diffTimesInMinutes(startTime, endTime) {
+    const startMins = timeToMinutes(startTime);
+    const endMins = timeToMinutes(endTime);
+    if (startMins === null || endMins === null) return 0;
+
+    let diff = endMins - startMins;
+    if (diff < 0) diff += 24 * 60; // Overnight shift
+    return diff;
+}
+
+/**
+ * Calculates elapsed duration in hours between two timestamps or Date objects.
+ * Formatted to 2 decimal places.
+ * 
+ * @param {string|Date} start - Start timestamp or Date
+ * @param {string|Date} end - End timestamp or Date
+ * @returns {number} Elapsed hours (e.g. 8.5)
+ */
+export function calculateDurationHours(start, end) {
+    if (!start || !end) return 0;
+    const parse = (v) => {
+        if (!v) return 0;
+        if (v instanceof Date) return v.getTime();
+        const str = String(v).trim();
+        if (!str.includes('Z') && !str.includes('+')) {
+            const normalized = str.includes('T') ? `${str}Z` : `${str.replace(' ', 'T')}Z`;
+            const d = new Date(normalized);
+            if (!isNaN(d.getTime())) return d.getTime();
+        }
+        const d = new Date(str);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+    };
+
+    const s = parse(start);
+    const e = parse(end);
+    if (!s || !e) return 0;
+    const diff = e - s;
+    if (diff < 0) return 0;
+    return parseFloat((diff / (1000 * 60 * 60)).toFixed(2));
+}
+

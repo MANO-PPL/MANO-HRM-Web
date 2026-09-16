@@ -5,12 +5,9 @@ import { attendanceDB } from '../config/database.js';
 import * as S3Service from '../services/s3/s3Service.js';
 import * as MapsService from '../services/google_api_services/maps.js';
 import EventBus from '../utils/EventBus.js';
+import { safeJsonParse } from '../utils/dataUtils.js';
 
-function safeParseJSON(val) {
-    if (!val) return {};
-    if (typeof val === 'object') return val;
-    try { return JSON.parse(val); } catch { return {}; }
-}
+const safeParseJSON = safeJsonParse;
 
 export async function processAttendanceJob(jobData) {
     const {

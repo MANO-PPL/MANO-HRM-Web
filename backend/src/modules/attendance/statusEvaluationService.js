@@ -1,7 +1,8 @@
 import { attendanceDB } from '../../config/database.js';
-import * as ShiftService from './shiftManagementService.js';
+import * as ShiftService from '../shifts/shiftService.js';
 import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
-import { toMySQLTime, toMySQLDate, toMySQLDateTime } from '../../utils/dateUtils.js';
+import { toMySQLTime, toMySQLDate, toMySQLDateTime, calculateDurationHours, pad, DAY_NAMES } from '../../utils/dateUtils.js';
+import { safeJsonParse } from '../../utils/dataUtils.js';
 
 /**
  * Status Evaluation Service
@@ -14,39 +15,9 @@ import { toMySQLTime, toMySQLDate, toMySQLDateTime } from '../../utils/dateUtils
  * - Session context building
  */
 
-//  Helpers─────────────────────────────────────────────────────────────
-export function safeParseJSON(val) {
-    if (!val) return {};
-    if (typeof val === 'object') return val;
-    try { return JSON.parse(val); } catch { return {}; }
-}
-
-/**
- * Calculate duration in hours between two timestamps.
- * @param {string|Date} start
- * @param {string|Date} end
- * @returns {number}
- */
-export function calculateDurationHours(start, end) {
-    if (!start || !end) return 0;
-    const parse = (v) => {
-        if (!v) return 0;
-        if (v instanceof Date) return v.getTime();
-        const str = String(v).trim();
-        if (!str.includes('Z') && !str.includes('+')) {
-            const normalized = str.includes('T') ? `${str}Z` : `${str.replace(' ', 'T')}Z`;
-            const d = new Date(normalized);
-            if (!isNaN(d.getTime())) return d.getTime();
-        }
-        const d = new Date(str);
-        return isNaN(d.getTime()) ? 0 : d.getTime();
-    };
-    const s = parse(start);
-    const e = parse(end);
-    if (!s || !e) return 0;
-    const diff = e - s;
-    return parseFloat((diff / (1000 * 60 * 60)).toFixed(2));
-}
+// Helpers & Backward-Compatibility Re-exports
+export const safeParseJSON = safeJsonParse;
+export { calculateDurationHours };
 
 export function getLocalNow(timezone = 'Asia/Kolkata') {
     const tz = timezone || 'Asia/Kolkata';
@@ -510,8 +481,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         // ── No punch records - determine from shift policies ──
         const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
         const dayIdx = new Date(dateStr + 'T12:00:00').getDay();
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const dayName = dayNames[dayIdx];
+        const dayName = DAY_NAMES[dayIdx];
         const isWorkingSunday = Array.isArray(rules?.working_days || rules?.workingDays)
             && (rules.working_days || rules.workingDays).includes('Sun');
 
@@ -541,7 +511,6 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
     const toPlainStr = (v) => {
         if (!v) return null;
         if (v instanceof Date) {
-            const pad = (n) => String(n).padStart(2, '0');
             return `${v.getUTCFullYear()}-${pad(v.getUTCMonth() + 1)}-${pad(v.getUTCDate())} ${pad(v.getUTCHours())}:${pad(v.getUTCMinutes())}:${pad(v.getUTCSeconds())}`;
         }
         return String(v).split('.')[0];
@@ -590,9 +559,8 @@ export function resolveNoShowStatus({ dateStr, rules, holiday, leave }) {
     let remarks = 'No show';
 
     const dayType = ShiftService.getDayType(dateStr, rules?.week_off_policy);
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const dayIdx = new Date(dateStr + 'T12:00:00').getDay();
-    const dayName = dayNames[dayIdx];
+    const dayName = DAY_NAMES[dayIdx];
     const isWorkingSunday = Array.isArray(rules?.working_days || rules?.workingDays)
         && (rules.working_days || rules.workingDays).includes('Sun');
 

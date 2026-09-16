@@ -6,7 +6,7 @@ import crypto from "crypto";
 import * as MapsService from "../../services/google_api_services/maps.js";
 import { getEventSource } from "../../utils/clientInfo.js";
 import * as AttendanceService from "./attendanceService.js";
-import * as ShiftManagementService from "./shiftManagementService.js";
+import * as ShiftService from "../shifts/shiftService.js";
 import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
 import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
@@ -594,7 +594,7 @@ export async function getMyShift(req, res) {
     const shift = await AttendanceService.getUserShift(userId);
 
     if (!shift) {
-      const rules = ShiftManagementService.getShiftRules(null);
+      const rules = ShiftService.getShiftRules(null);
       return res.json({
         ok: true,
         shift: {
@@ -607,7 +607,7 @@ export async function getMyShift(req, res) {
       });
     }
 
-    const rules = ShiftManagementService.getShiftRules(shift);
+    const rules = ShiftService.getShiftRules(shift);
 
     res.json({
       ok: true,

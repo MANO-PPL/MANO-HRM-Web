@@ -123,7 +123,19 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         attendanceDB("sys_activity_logs as al")
             .leftJoin("core_users as u", "al.user_id", "u.user_id")
             .leftJoin("org_designations as d", "u.desg_id", "d.desg_id")
-            .select("al.activity_id as id", "u.user_name as user", "d.desg_name as role", "al.description as action", "al.occurred_at as time", "u.profile_image_url")
+            .leftJoin("org_user_work_locations as uwl", "u.user_id", "uwl.user_id")
+            .leftJoin("org_work_locations as wl", "uwl.location_id", "wl.location_id")
+            .leftJoin("core_organizations as o", "u.org_id", "o.org_id")
+            .select(
+                "al.activity_id as id",
+                "u.user_name as user",
+                "d.desg_name as role",
+                "al.description as action",
+                "al.occurred_at as time",
+                "u.profile_image_url",
+                "wl.timezone as location_timezone",
+                "o.timezone as org_timezone"
+            )
             .where("al.org_id", org_id)
             .whereNot("al.event_type", "API_CALL")
             .whereRaw("DATE(al.occurred_at) = ?", [today])
@@ -181,12 +193,21 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         return { name: dayName, present, late, absent };
     });
 
-    const formattedActivities = activities.map(a => ({
-        ...a,
-        time: new Date(a.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: a.action.toLowerCase().includes('clocked in') ? 'present' :
-            a.action.toLowerCase().includes('late') ? 'late' : 'absent'
-    }));
+    // Resolve each user's timezone: work location > org > UTC
+    const formattedActivities = activities.map(a => {
+        let timeZone = a.location_timezone || a.org_timezone || 'UTC';
+        try {
+            Intl.DateTimeFormat(undefined, { timeZone });
+        } catch (_) {
+            timeZone = 'UTC';
+        }
+        return {
+            ...a,
+            time: new Date(a.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone }),
+            status: a.action.toLowerCase().includes('clocked in') ? 'present' :
+                a.action.toLowerCase().includes('late') ? 'late' : 'absent'
+        };
+    });
 
     return {
         stats: { presentToday, totalEmployees, absentToday, lateCheckins },

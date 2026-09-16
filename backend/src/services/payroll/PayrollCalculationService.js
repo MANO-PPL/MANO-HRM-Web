@@ -1,5 +1,5 @@
 import { attendanceDB } from '../../config/database.js';
-import { getDayType, getShiftRules } from '../../modules/attendance/shiftManagementService.js';
+import { getDayType, getShiftRules } from '../../modules/shifts/shiftService.js';
 import { SalaryHistoryService } from './SalaryHistoryService.js';
 
 export class PayrollCalculationService {

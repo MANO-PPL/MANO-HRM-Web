@@ -18,7 +18,7 @@ The `src/services/` directory forms the core business logic, data persistence, a
 | Domain / Subdirectory | Key Service Files | Primary Responsibilities |
 | :--- | :--- | :--- |
 | **`admin/`** | `dashboardService.js` | Aggregates executive dashboard metrics, attendance percentages, department headcounts, and workforce distribution. |
-| **`attendance/`** | `attendanceService.js`<br>`geofencing.js`<br>`shiftManagementService.js`<br>`statusEvaluationService.js` | Check-in/out event processing, GPS distance calculation (Haversine/geofencing), late/half-day status evaluation, and shift window matching. |
+| **`attendance/`** | `attendanceService.js`<br>`geofencing.js`<br>`statusEvaluationService.js` | Check-in/out event processing, GPS distance calculation (Haversine/geofencing), late/half-day status evaluation, and session tracking. |
 | **`auth/`** | `authService.js`<br>`tokenService.js`<br>`OtpService.js`<br>`emailService.js`<br>`DARLLMService.js` | Bcrypt password hashing, JWT token generation & revocation, OTP lifecycle (SMS/Email), welcome/reset emails, and LLM text formatting. |
 | **`cache/`** | `cacheService.js` | Redis client abstraction providing `get`, `set`, `del`, pattern-based cache invalidation, and TTL management. |
 | **`chatbot/`** | `websiteRagService.js`<br>`internalAppGuide.json` | Vector search / RAG pipeline for the internal workforce guide and AI assistant responses. |
@@ -35,7 +35,7 @@ The `src/services/` directory forms the core business logic, data persistence, a
 | **`profile/`** | `profileService.js` | Self-service user profile updates, password resets, preference toggles, and avatar upload handling. |
 | **`reports/`** | `reportsServices.js` | Advanced database aggregation queries for daily/monthly attendance reports, payroll logs, and downloadable Excel/CSV exports. |
 | **`s3/`** | `s3Service.js` | AWS S3 client wrapper for secure file uploads, image/document storage, and generating presigned download URLs. |
-| **`shifts/`** | `shiftService.js` | Shift master definition, grace period logic, night shift rollover handling, and rotational shift schedules. |
+| **`shifts/`** | `shiftService.js` | Shift master definition, week-off policies, timing/late rules, overtime thresholds, and punch compliance verification. |
 | **`superAdmin/`** | `superAdminService.js`<br>`pm2Service.js` | Multi-tenant platform provisioning, organization suspension/activation, and PM2 node process health monitoring. |
 | **`users/`** | `userService.js` | User account lifecycle, credentials management, role assignments, and status toggling. |
 | **`workLocations/`** | `workLocationsServices.js` | Worksite coordinate storage, polygon/circular geofence boundaries, and location-based attendance rules. |

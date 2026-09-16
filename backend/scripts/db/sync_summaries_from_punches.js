@@ -8,8 +8,8 @@
  */
 
 import { attendanceDB } from "../../src/config/database.js";
-import * as ShiftService from "../../src/services/attendance/shiftManagementService.js";
-import * as StatusService from "../../src/services/attendance/statusEvaluationService.js";
+import * as ShiftService from "../../src/modules/shifts/shiftService.js";
+import * as StatusService from "../../src/modules/attendance/statusEvaluationService.js";
 
 // ==========================================
 // Standalone Inlined Helpers (Zero dependency on attendanceService.js)

@@ -22,8 +22,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { attendanceDB } from '../../src/config/database.js';
-import { syncDailyAttendance, getUserShift } from '../../src/services/attendance/attendanceService.js';
-import { getShiftRules, getDayType } from '../../src/services/attendance/shiftManagementService.js';
+import { syncDailyAttendance, getUserShift } from '../../src/modules/attendance/attendanceService.js';
+import { getShiftRules, getDayType } from '../../src/modules/shifts/shiftService.js';
 import * as S3Service from '../../src/services/s3/s3Service.js';
 import sharp from 'sharp';
 

@@ -19,10 +19,11 @@ import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
 import * as S3Service from "../../services/s3/s3Service.js";
 import EventBus from "../../utils/EventBus.js";
-import * as ShiftService from "./shiftManagementService.js";
+import * as ShiftService from "../shifts/shiftService.js";
 import * as StatusService from "./statusEvaluationService.js";
 import { PayrollCalculationService } from '../../services/payroll/PayrollCalculationService.js';
-import { toMySQLDateTime, toMySQLDate, toMySQLTime } from "../../utils/dateUtils.js";
+import { toMySQLDateTime, toMySQLDate, toMySQLTime, pad } from "../../utils/dateUtils.js";
+import { safeJsonParse } from "../../utils/dataUtils.js";
 import * as MapsService from "../../services/google_api_services/maps.js";
 import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttendanceCorrectionApprovedHook } from "../DAR/darReconciliationService.js";
 
@@ -58,67 +59,32 @@ export async function getUserShift(user_id) {
   return null;
 }
 
-const pad = (n) => String(n).padStart(2, '0');
-
 /**
  * Format timestamp to MySQL date string (YYYY-MM-DD)
  */
 export function formatLocalDate(val) {
-  if (!val) return null;
-  if (val instanceof Date) {
-    if (isNaN(val.getTime())) return null;
-    return val.toISOString().split('T')[0];
-  }
-  return String(val).split('T')[0].split(' ')[0];
+  return toMySQLDate(val);
 }
 
 export function formatLocalDatetime(val) {
-  if (!val) return null;
-  if (val instanceof Date) {
-    if (isNaN(val.getTime())) return null;
-    return val.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
-  }
-  return String(val).replace('T', ' ').replace('Z', '').split('.')[0];
+  return toMySQLDateTime(val);
 }
 
 export function toSqlDatetime(val) {
-  if (!val) {
-    const d = new Date();
-    return d.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
-  }
-  if (typeof val === 'string') {
-    return val.replace('T', ' ').replace('Z', '').split('.')[0];
-  }
-  if (val instanceof Date) {
-    if (isNaN(val.getTime())) return null;
-    return val.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
-  }
-  return String(val);
+  return toMySQLDateTime(val) || toMySQLDateTime(new Date());
 }
 
 /**
  * Format timestamp to time string HH:MM:SS
  */
 export function getTimeStr(d) {
-  if (!d) return null;
-  if (d instanceof Date) {
-    if (isNaN(d.getTime())) return null;
-    return d.toISOString().split('T')[1].split('.')[0];
-  }
-  const str = String(d).trim().replace('Z', '');
-  if (str.includes('T')) return str.split('T')[1].split('.')[0];
-  if (str.includes(' ')) return str.split(' ')[1].split('.')[0];
-  return str.split('.')[0];
+  return toMySQLTime(d);
 }
 
 /**
  * Safely parse a JSON column value.
  */
-export function safeParseJSON(val) {
-  if (!val) return {};
-  if (typeof val === 'object') return val;
-  try { return JSON.parse(val); } catch { return {}; }
-}
+export const safeParseJSON = safeJsonParse;
 
 /**
  * Pair punches sequentially into sessions for a specific date.

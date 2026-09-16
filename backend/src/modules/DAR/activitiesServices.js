@@ -1,4 +1,5 @@
 import { attendanceDB } from '../../config/database.js';
+import { timeToMinutes, minutesToTime } from '../../utils/dateUtils.js';
 
 const DEFAULT_SIMULATION_TEMPLATES = [
     {
@@ -116,20 +117,6 @@ function normalizeTimeInput(value) {
     }
 
     return null;
-}
-
-function timeToMinutes(value) {
-    const normalized = normalizeTimeInput(value);
-    if (!normalized) return null;
-
-    const [hours, minutes] = normalized.split(':').map(Number);
-    return (hours * 60) + minutes;
-}
-
-function minutesToTime(value) {
-    const hours = Math.floor(value / 60);
-    const minutes = value % 60;
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
 }
 
 function buildSimulationTemplates(customTemplates, categories) {
