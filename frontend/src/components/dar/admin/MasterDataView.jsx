@@ -57,8 +57,11 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
     const [timelineData, setTimelineData] = useState([]);
     const [summaryByQuery, setSummaryByQuery] = useState({});
     const [sidebarConfig, setSidebarConfig] = useState({ isOpen: false, user: null });
-    const [selectedShift, setSelectedShift] = useState(''); // Name of shift
-    const [currentShift, setCurrentShift] = useState({ start: 8, end: 18 }); // Default View Range
+    const [selectedShift, setSelectedShift] = useState('All Shifts'); // Name of shift or 'All Shifts'
+    const [currentShift, setCurrentShift] = useState({ start: 8, end: 19 }); // Default View Range
+    const [usersList, setUsersList] = useState([]);
+
+    const effectiveUsers = usersList.length > 0 ? usersList : allUsers;
 
     const [selectedDepartment, setSelectedDepartment] = useState("All Departments");
     const [selectedDesignation, setSelectedDesignation] = useState("All Designations");
@@ -66,9 +69,9 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
     const [employeesList, setEmployeesList] = useState([]);
 
     const designationsList = React.useMemo(() => {
-        const desgs = allUsers.map(u => u.designation).filter(d => d && d !== '-');
+        const desgs = effectiveUsers.map(u => u.designation).filter(d => d && d !== '-');
         return ["All Designations", ...new Set(desgs)].sort((a, b) => a.localeCompare(b));
-    }, [allUsers]);
+    }, [effectiveUsers]);
 
     // Calendar Popup State
     const [showCalendar, setShowCalendar] = useState(false);
@@ -86,16 +89,42 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
         setShowCalendar(!showCalendar);
     };
 
-    // Set default when shifts load
+    // Update Timeline Range when Shift Changes or Shifts Load
     useEffect(() => {
-        if (!selectedShift && shifts.length > 0) {
-            setSelectedShift(shifts[0].shift_name);
+        if (!selectedShift || selectedShift === "All Shifts" || shifts.length === 0) {
+            let minStart = 8;
+            let maxEnd = 19;
+            let foundAny = false;
+            if (shifts.length > 0) {
+                shifts.forEach(s => {
+                    try {
+                        const rules = typeof s.policy_rules === 'string' ? JSON.parse(s.policy_rules) : s.policy_rules;
+                        const startStr = rules?.shift_timing?.start_time;
+                        const endStr = rules?.shift_timing?.end_time;
+                        if (startStr && endStr) {
+                            let sH = parseInt(startStr.split(':')[0]);
+                            let eH = parseInt(endStr.split(':')[0]);
+                            if (eH < sH) eH += 24;
+                            if (!foundAny) {
+                                minStart = sH;
+                                maxEnd = eH;
+                                foundAny = true;
+                            } else {
+                                minStart = Math.min(minStart, sH);
+                                maxEnd = Math.max(maxEnd, eH);
+                            }
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                });
+            }
+            setCurrentShift({
+                start: Math.max(0, minStart - 1),
+                end: maxEnd + 1
+            });
+            return;
         }
-    }, [shifts, selectedShift]);
-
-    // Update Timeline Range when Shift Changes
-    useEffect(() => {
-        if (!selectedShift || shifts.length === 0) return;
 
         let targetShift = shifts.find(s => s.shift_name === selectedShift);
         if (!targetShift) targetShift = shifts[0]; // Fallback
@@ -133,7 +162,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
     // Dynamic Employee List based on Selected Dept, Shift & Role
     useEffect(() => {
-        let filtered = allUsers;
+        let filtered = effectiveUsers;
 
         // 1. Filter by Department
         if (selectedDepartment !== "All Departments") {
@@ -141,7 +170,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
         }
 
         // 2. Filter by Shift
-        if (selectedShift) {
+        if (selectedShift && selectedShift !== "All Shifts") {
             filtered = filtered.filter(u => u.shift === selectedShift);
         }
 
@@ -151,7 +180,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
         }
 
         setEmployeesList(filtered.map(u => u.name));
-    }, [selectedDepartment, selectedShift, selectedDesignation, allUsers]);
+    }, [selectedDepartment, selectedShift, selectedDesignation, effectiveUsers]);
 
     const fetchMasterData = async () => {
         setLoadingData(true);
@@ -159,13 +188,27 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
             const selectedStart = dateRange.start;
             const selectedEnd = dateRange.end;
 
-            // Parallel Fetch: Activities, Attendance, Holidays, Events
-            const [res, attRes, holRes, eventsRes] = await Promise.all([
+            // Parallel Fetch: Users (Reports-like date range matching), Activities, Attendance, Holidays, Events
+            const [usersRes, res, attRes, holRes, eventsRes] = await Promise.all([
+                api.get(`/admin/users`, { params: { startDate: selectedStart, endDate: selectedEnd } }).catch(() => null),
                 api.get(`/dar/activities/admin/all?startDate=${selectedStart}&endDate=${selectedEnd}`),
                 api.get(`/attendance/records/admin`, { params: { date_from: selectedStart, date_to: selectedEnd, limit: 1000 } }),
                 api.get('/holiday'),
                 api.get('/dar/events/admin/all', { params: { date_from: selectedStart, date_to: selectedEnd } })
             ]);
+
+            let activeUsers = allUsers;
+            if (usersRes?.data?.success && Array.isArray(usersRes.data.users) && usersRes.data.users.length > 0) {
+                activeUsers = usersRes.data.users.map(u => ({
+                    userId: u.user_id,
+                    name: u.user_name,
+                    dept: u.dept_name,
+                    shift: u.shift_name,
+                    role: u.user_type,
+                    designation: u.desg_name || 'N/A'
+                }));
+                setUsersList(activeUsers);
+            }
 
             if (res.data.ok) {
                 // Process Holidays
@@ -209,7 +252,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                 // Group activities
                 const grouped = {};
                 const userMap = {};
-                allUsers.forEach(u => userMap[u.userId] = u);
+                activeUsers.forEach(u => userMap[u.userId] = u);
 
                 // Helper inside fetchMasterData scope
                 const parseTimeHelper = (t) => {
@@ -312,7 +355,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                     cursor = shiftDateYMD(cursor, 1);
                 }
 
-                allUsers.forEach(u => {
+                activeUsers.forEach(u => {
                     dates.forEach(dateStr => {
                         const key = `${u.userId}-${dateStr}`;
                         const isHol = !!holidayMap[dateStr];
@@ -413,7 +456,7 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
 
     const filteredTimelineData = timelineData.filter(user => {
         if (selectedDepartment !== "All Departments" && user.dept !== selectedDepartment) return false;
-        if (selectedShift && user.shift !== selectedShift) return false;
+        if (selectedShift && selectedShift !== "All Shifts" && user.shift !== selectedShift) return false;
         if (selectedEmployee !== "All Employees" && user.name !== selectedEmployee) return false;
         if (selectedDesignation !== "All Designations" && user.designation !== selectedDesignation) return false;
         return true;
@@ -555,9 +598,10 @@ const MasterDataView = ({ departments, shifts, allUsers }) => {
                         <MinimalSelect
                             icon={Clock}
                             placeholder="Shift"
-                            options={shifts.map(s => s.shift_name)}
-                            value={selectedShift}
+                            options={["All Shifts", ...shifts.map(s => s.shift_name)]}
+                            value={selectedShift || "All Shifts"}
                             onChange={(val) => setSelectedShift(val)}
+                            searchable
                         />
                     </div>
                 </div>

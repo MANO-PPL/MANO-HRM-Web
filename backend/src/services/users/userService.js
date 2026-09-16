@@ -54,7 +54,9 @@ export const getAllUsers = async (orgId, options = false) => {
         usersQuery.where(function () {
             // 1. Active employees who joined on or before endDate 
             this.where(function () {
-                this.where('u.is_deleted', 0)
+                this.where(function () {
+                    this.whereNull('u.is_deleted').orWhere('u.is_deleted', 0).orWhere('u.is_deleted', false);
+                })
                     .andWhere(function () {
                         this.where('u.is_active', 1).orWhere('u.is_active', true);
                     })
@@ -67,9 +69,24 @@ export const getAllUsers = async (orgId, options = false) => {
                         .whereRaw('ap.user_id = u.user_id')
                         .whereNull('ap.deleted_at')
                         .whereRaw('DATE(ap.punch_time) >= ? AND DATE(ap.punch_time) <= ?', [startDate, endDate]);
+                })
+                // 3. OR users who have at least 1 DAR activity in this period
+                .orWhereExists(function () {
+                    this.select(1)
+                        .from('attn_daily_activities as da')
+                        .whereRaw('da.user_id = u.user_id')
+                        .whereRaw('DATE(da.activity_date) >= ? AND DATE(da.activity_date) <= ?', [startDate, endDate]);
                 });
         });
+    } else {
+        usersQuery.where(function () {
+            this.where('u.is_active', 1).orWhere('u.is_active', true);
+        }).andWhere(function () {
+            this.whereNull('u.is_deleted').orWhere('u.is_deleted', 0).orWhere('u.is_deleted', false);
+        });
     }
+
+    usersQuery.orderBy('u.user_name', 'asc');
 
     const users = await usersQuery;
 

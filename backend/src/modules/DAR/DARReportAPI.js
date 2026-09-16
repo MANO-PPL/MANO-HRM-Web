@@ -253,13 +253,42 @@ export async function fetchReportData(orgId, employeeIds, dateStart, dateEnd) {
             'org_shifts.shift_name',
         )
         .where('core_users.org_id', orgId)
-        .where('core_users.is_deleted', 0)
         .modify(q => {
             if (employeeIds && employeeIds.length > 0) {
                 q.whereIn('core_users.user_id', employeeIds);
             }
+            if (dateStart && dateEnd) {
+                q.where(function () {
+                    this.where(function () {
+                        this.where(function () {
+                            this.where('core_users.is_active', 1).orWhere('core_users.is_active', true);
+                        }).andWhere(function () {
+                            this.whereNull('core_users.is_deleted').orWhere('core_users.is_deleted', 0).orWhere('core_users.is_deleted', false);
+                        }).andWhere(attendanceDB.raw('COALESCE(DATE(core_users.joining_date), DATE(core_users.created_at)) <= ?', [dateEnd]));
+                    })
+                    .orWhereExists(function () {
+                        this.select(1)
+                            .from('attn_punches as ap')
+                            .whereRaw('ap.user_id = core_users.user_id')
+                            .whereNull('ap.deleted_at')
+                            .whereRaw('DATE(ap.punch_time) >= ? AND DATE(ap.punch_time) <= ?', [dateStart, dateEnd]);
+                    })
+                    .orWhereExists(function () {
+                        this.select(1)
+                            .from('attn_daily_activities as da')
+                            .whereRaw('da.user_id = core_users.user_id')
+                            .whereRaw('DATE(da.activity_date) >= ? AND DATE(da.activity_date) <= ?', [dateStart, dateEnd]);
+                    });
+                });
+            } else {
+                q.where(function () {
+                    this.where('core_users.is_active', 1).orWhere('core_users.is_active', true);
+                }).andWhere(function () {
+                    this.whereNull('core_users.is_deleted').orWhere('core_users.is_deleted', 0).orWhere('core_users.is_deleted', false);
+                });
+            }
         })
-        .orderBy('core_users.user_name');
+        .orderBy('core_users.user_name', 'asc');
 
     const targetIds = employees.map(e => e.user_id);
     if (targetIds.length === 0) return { employees: [], activities: [], events: [] };
