@@ -135,7 +135,7 @@ const SuperAdminDashboardMobile = () => {
   };
 
   return (
-    <MobileDashboardLayout title="Dashboard">
+    <MobileDashboardLayout title="Dashboard" hideScrollbar={true}>
       <div className="space-y-5 pb-20">
 
         {/* Premium Greetings Card */}

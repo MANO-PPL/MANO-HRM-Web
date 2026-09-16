@@ -187,6 +187,14 @@ async function getAdminsAndHrs(orgId) {
 }
 
 /**
+const formatDateStr = (d) => {
+    if (!d) return '';
+    if (typeof d === 'string') return d.split('T')[0];
+    if (d instanceof Date) return d.toISOString().split('T')[0];
+    return String(d);
+};
+
+/**
  * 1. Notify Admins and HRs that an employee has applied for leave
  */
 export async function notifyLeaveApplied({ org_id, sender_id, leave_id, attachments = [], io }) {
@@ -202,41 +210,49 @@ export async function notifyLeaveApplied({ org_id, sender_id, leave_id, attachme
         const employeeName = employee?.user_name || 'An employee';
 
         const admins = await getAdminsAndHrs(org_id);
+
+        const startDateFormatted = formatDateStr(leave.start_date);
+        const endDateFormatted = formatDateStr(leave.end_date);
+        const leaveTypeLabel = leave.leave_type || 'Leave';
         
         // Structured detailed payload
         const payload = {
             employee_name: employeeName,
-            leave_type: leave.leave_type,
-            start_date: leave.start_date,
-            end_date: leave.end_date,
+            leave_type: leaveTypeLabel,
+            start_date: startDateFormatted,
+            end_date: endDateFormatted,
             reason: leave.reason || 'None',
             local_time: new Date().toISOString(),
             attachments: attachments.map(a => ({
-                name: a.file_key.split('/').pop() || 'Attachment',
-                url: a.file_url
+                name: a.file_key ? a.file_key.split('/').pop() : 'Attachment',
+                url: a.file_url || ''
             }))
         };
 
         for (const admin of admins) {
             if (Number(admin.user_id) === Number(sender_id)) continue;
 
-            await sendSystemAlert({
-                org_id,
-                sender_id,
-                recipient_id: admin.user_id,
-                card_type: 'leave_request',
-                entity_id: leave_id,
-                status: 'Pending',
-                payload,
-                io
-            });
+            try {
+                await sendSystemAlert({
+                    org_id,
+                    sender_id,
+                    recipient_id: admin.user_id,
+                    card_type: 'leave_request',
+                    entity_id: leave_id,
+                    status: 'Pending',
+                    payload,
+                    io
+                });
+            } catch (cardErr) {
+                console.error('Failed to send system alert card to admin chat:', cardErr);
+            }
 
-            // Send standard browser / FCM notification
+            // Send standard browser / FCM notification strictly to this admin/HR account
             EventBus.emitNotification({
                 org_id,
                 user_id: admin.user_id,
                 title: 'New Leave Application',
-                message: `${employeeName} has applied for ${leave.leave_type} (${leave.start_date} to ${leave.end_date}).`,
+                message: `${employeeName} has applied for ${leaveTypeLabel} (${startDateFormatted} to ${endDateFormatted}).`,
                 type: 'INFO',
                 related_entity_type: 'LEAVE',
                 related_entity_id: leave_id
@@ -262,18 +278,26 @@ export async function notifyLeaveStatusUpdated({ org_id, reviewer_id, leave_id, 
         const reviewer = await attendanceDB('core_users').where({ user_id: reviewer_id }).select('user_name').first();
         const reviewerName = reviewer?.user_name || 'Supervisor';
 
+        const startDateFormatted = formatDateStr(leave.start_date);
+        const endDateFormatted = formatDateStr(leave.end_date);
+        const leaveTypeLabel = leave.leave_type || 'Leave';
+        const isApproved = leave.status?.toLowerCase() === 'approved';
+
         // Load attachments if any
-        const atts = typeof leave.attachments === 'string' ? JSON.parse(leave.attachments) : (leave.attachments || []);
+        let atts = [];
+        try {
+            atts = typeof leave.attachments === 'string' ? JSON.parse(leave.attachments) : (leave.attachments || []);
+        } catch (_) {}
         const formatAttachments = (atts || []).map(a => ({
-            name: a.file_key.split('/').pop() || 'Attachment',
-            url: `https://${process.env.S3_BUCKET || process.env.S3_BUCKET_NAME}.s3.amazonaws.com/${a.file_key}`
+            name: a.file_key ? a.file_key.split('/').pop() : 'Attachment',
+            url: a.file_key ? `https://${process.env.S3_BUCKET || process.env.S3_BUCKET_NAME}.s3.amazonaws.com/${a.file_key}` : (a.url || '')
         }));
 
         const payload = {
             reviewer_name: reviewerName,
-            leave_type: leave.leave_type,
-            start_date: leave.start_date,
-            end_date: leave.end_date,
+            leave_type: leaveTypeLabel,
+            start_date: startDateFormatted,
+            end_date: endDateFormatted,
             reason: leave.reason || 'None',
             admin_comment: leave.admin_comment || 'None',
             status: leave.status,
@@ -283,24 +307,32 @@ export async function notifyLeaveStatusUpdated({ org_id, reviewer_id, leave_id, 
             attachments: formatAttachments
         };
 
-        await sendSystemAlert({
-            org_id,
-            sender_id: reviewer_id,
-            recipient_id: leave.user_id,
-            card_type: 'leave_request',
-            entity_id: leave_id,
-            status: leave.status,
-            payload,
-            io
-        });
+        try {
+            await sendSystemAlert({
+                org_id,
+                sender_id: reviewer_id,
+                recipient_id: leave.user_id,
+                card_type: 'leave_request',
+                entity_id: leave_id,
+                status: leave.status,
+                payload,
+                io
+            });
+        } catch (cardErr) {
+            console.error('Failed to send system alert card to employee chat:', cardErr);
+        }
 
-        // Send standard browser / FCM notification
+        // Send standard browser / FCM notification strictly to the requesting employee's account
+        const statusMessage = isApproved
+            ? `Your leave request for ${leaveTypeLabel} (${startDateFormatted} to ${endDateFormatted}) has been approved${leave.pay_type ? ` as ${leave.pay_type}` : ''} by ${reviewerName}.${leave.admin_comment ? ` Note: ${leave.admin_comment}` : ''}`
+            : `Your leave request for ${leaveTypeLabel} (${startDateFormatted} to ${endDateFormatted}) has been rejected by ${reviewerName}.${leave.admin_comment ? ` Reason: ${leave.admin_comment}` : ''}`;
+
         EventBus.emitNotification({
             org_id,
             user_id: leave.user_id,
-            title: `Leave Request ${leave.status ? leave.status.charAt(0).toUpperCase() + leave.status.slice(1) : ''}`,
-            message: `Your leave request for ${leave.leave_type} has been ${leave.status ? leave.status.toLowerCase() : ''}${leave.status?.toLowerCase() === 'approved' && leave.pay_type ? ` as ${leave.pay_type}` : ''} by ${reviewerName}.`,
-            type: leave.status?.toLowerCase() === 'approved' ? 'SUCCESS' : 'ERROR',
+            title: isApproved ? 'Leave Request Approved' : 'Leave Request Rejected',
+            message: statusMessage,
+            type: isApproved ? 'SUCCESS' : 'ERROR',
             related_entity_type: 'LEAVE',
             related_entity_id: leave_id
         });
@@ -321,11 +353,12 @@ export async function notifyCorrectionApplied({ org_id, sender_id, acr_id, io })
         const employeeName = employee?.user_name || 'An employee';
 
         const admins = await getAdminsAndHrs(org_id);
+        const reqDateFormatted = formatDateStr(correction.request_date);
         
         const payload = {
             employee_name: employeeName,
             correction_type: correction.correction_type,
-            request_date: correction.request_date,
+            request_date: reqDateFormatted,
             reason: correction.reason || 'None',
             local_time: new Date().toISOString(),
             proposed_data: typeof correction.proposed_data === 'string' ? JSON.parse(correction.proposed_data) : correction.proposed_data
@@ -334,23 +367,27 @@ export async function notifyCorrectionApplied({ org_id, sender_id, acr_id, io })
         for (const admin of admins) {
             if (Number(admin.user_id) === Number(sender_id)) continue;
 
-            await sendSystemAlert({
-                org_id,
-                sender_id,
-                recipient_id: admin.user_id,
-                card_type: 'correction_request',
-                entity_id: acr_id,
-                status: 'pending',
-                payload,
-                io
-            });
+            try {
+                await sendSystemAlert({
+                    org_id,
+                    sender_id,
+                    recipient_id: admin.user_id,
+                    card_type: 'correction_request',
+                    entity_id: acr_id,
+                    status: 'pending',
+                    payload,
+                    io
+                });
+            } catch (cardErr) {
+                console.error('Failed to send correction alert card in chat:', cardErr);
+            }
 
-            // Send standard browser / FCM notification
+            // Send standard browser / FCM notification strictly to this admin/HR account
             EventBus.emitNotification({
                 org_id,
                 user_id: admin.user_id,
                 title: 'New Correction Request',
-                message: `${employeeName} has submitted an attendance correction request for ${correction.request_date}.`,
+                message: `${employeeName} has submitted an attendance correction request for ${reqDateFormatted}.`,
                 type: 'INFO',
                 related_entity_type: 'CORRECTION',
                 related_entity_id: acr_id
@@ -371,35 +408,45 @@ export async function notifyCorrectionStatusUpdated({ org_id, reviewer_id, acr_i
 
         const reviewer = await attendanceDB('core_users').where({ user_id: reviewer_id }).select('user_name').first();
         const reviewerName = reviewer?.user_name || 'Supervisor';
+        const reqDateFormatted = formatDateStr(correction.request_date);
+        const isApproved = correction.status?.toLowerCase() === 'approved';
 
         const payload = {
             reviewer_name: reviewerName,
             correction_type: correction.correction_type,
-            request_date: correction.request_date,
+            request_date: reqDateFormatted,
             reason: correction.reason || 'None',
             review_comments: correction.review_comments || 'None',
             status: correction.status,
             local_time: new Date().toISOString()
         };
 
-        await sendSystemAlert({
-            org_id,
-            sender_id: reviewer_id,
-            recipient_id: correction.user_id,
-            card_type: 'correction_request',
-            entity_id: acr_id,
-            status: correction.status,
-            payload,
-            io
-        });
+        try {
+            await sendSystemAlert({
+                org_id,
+                sender_id: reviewer_id,
+                recipient_id: correction.user_id,
+                card_type: 'correction_request',
+                entity_id: acr_id,
+                status: correction.status,
+                payload,
+                io
+            });
+        } catch (cardErr) {
+            console.error('Failed to send correction status card in chat:', cardErr);
+        }
 
-        // Send standard browser / FCM notification
+        // Send standard browser / FCM notification strictly to the employee's account
+        const statusMessage = isApproved
+            ? `Your attendance correction request for ${reqDateFormatted} has been approved by ${reviewerName}.${correction.review_comments ? ` Note: ${correction.review_comments}` : ''}`
+            : `Your attendance correction request for ${reqDateFormatted} has been rejected by ${reviewerName}.${correction.review_comments ? ` Reason: ${correction.review_comments}` : ''}`;
+
         EventBus.emitNotification({
             org_id,
             user_id: correction.user_id,
-            title: `Correction Request ${correction.status.charAt(0).toUpperCase() + correction.status.slice(1)}`,
-            message: `Your attendance correction request for ${correction.request_date} has been ${correction.status.toLowerCase()} by ${reviewerName}.`,
-            type: correction.status === 'approved' ? 'SUCCESS' : 'ERROR',
+            title: `Correction Request ${correction.status ? correction.status.charAt(0).toUpperCase() + correction.status.slice(1) : ''}`,
+            message: statusMessage,
+            type: isApproved ? 'SUCCESS' : 'ERROR',
             related_entity_type: 'CORRECTION',
             related_entity_id: acr_id
         });

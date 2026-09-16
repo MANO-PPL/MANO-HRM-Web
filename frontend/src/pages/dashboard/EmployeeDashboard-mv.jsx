@@ -245,7 +245,7 @@ const EmployeeDashboard = () => {
     };
 
     return (
-        <MobileDashboardLayout title="Employee Dashboard" hideHeader={false}>
+        <MobileDashboardLayout title="Employee Dashboard" hideHeader={false} hideScrollbar={true}>
             <div className="space-y-6">
                 {/* 1. Welcome Section */}
                 <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-2xl p-5 sm:p-6 text-white border border-indigo-500/20 shadow-2xl">
