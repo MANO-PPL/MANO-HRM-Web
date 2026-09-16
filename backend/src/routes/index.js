@@ -26,7 +26,7 @@ import chatRoutes from './collaboration/chatRoutes.js';
 import labourRoutes from '../modules/labour/labourRoutes.js';
 import payrollRoutes from './payroll/payrollRoutes.js';
 import geoLocationRoutes from './locations/locations.js';
-import internalRoutes from './internal/internalRoutes.js';
+import internalRoutes from '../modules/internal/internalRoutes.js';
 
 import { requireActiveOrg } from '../middleware/auth.js';
 
