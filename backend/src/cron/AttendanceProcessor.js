@@ -8,7 +8,12 @@ import { PayrollCalculationService } from '../services/payroll/PayrollCalculatio
 import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../modules/shifts/shiftService.js';
 import { toMySQLDateTime, toMySQLDate } from '../utils/dateUtils.js';
 import { reconcileUserDarForDate } from '../services/darServices/darReconciliationService.js';
-
+import {
+    resolveUserTimezone,
+    getLatestPunchTimezones,
+    getEffectiveUserTimezone,
+    getNextCronSlotMinutes
+} from '../utils/timezoneUtils.js';
 
 // Grace period (in days) before an uncorrected MISSED_PUNCH becomes ABSENT
 const MISSED_PUNCH_GRACE_DAYS = 2;
@@ -16,9 +21,6 @@ const MISSED_PUNCH_GRACE_DAYS = 2;
 const MISSED_PUNCH_BUFFER_MINUTES = 30;
 const CRON_INTERVAL_MINUTES = 30;
 
-function getNextCronSlotMinutes(totalMinutes) {
-    return (Math.ceil(totalMinutes / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES) % (24 * 60);
-}
 
 /**
  * Attendance Processor
@@ -30,131 +32,100 @@ export async function processHourlyAttendance() {
         console.log('⏰ Attendance Check Started...');
 
         const users = await attendanceDB('core_users')
-        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
-        .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
-        .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
-        .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
-        .where('core_users.is_deleted', 0)
-        .where('core_users.is_active', 1)
-        .select(
-            'core_users.user_id',
-            'core_users.shift_id',
-            'org_shifts.*',
-            'core_users.org_id',
-            'org_work_locations.timezone',
-            'core_organizations.timezone as org_timezone'
-        );
+            .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+            .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
+            .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
+            .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
+            .where('core_users.is_deleted', 0)
+            .where('core_users.is_active', 1)
+            .select(
+                'core_users.user_id',
+                'core_users.shift_id',
+                'org_shifts.*',
+                'core_users.org_id',
+                'org_work_locations.timezone',
+                'core_organizations.timezone as org_timezone'
+            );
 
-    for (const user of users) {
-        try {
-            // 1. Calculate target processing slot in-memory first (no DB queries)
-            let endTime = '18:00:00';
-            if (user.end_time) {
-                endTime = user.end_time;
-            } else {
-                try {
-                    let rules = user.policy_rules;
-                    if (typeof rules === 'string') rules = JSON.parse(rules);
-                    if (rules?.shift_timing?.end_time) {
-                        endTime = rules.shift_timing.end_time;
-                    }
-                } catch (e) {}
-            }
+        if (!users || users.length === 0) return;
 
-            let maxOvertime = DEFAULT_MAX_OVERTIME_HOURS;
+        // Batch fetch latest punch timezones for all users upfront
+        const punchMetaMap = await getLatestPunchTimezones();
+
+        for (const user of users) {
             try {
-                let rules = user.policy_rules;
-                if (typeof rules === 'string') rules = JSON.parse(rules);
-                if (rules?.overtime?.enabled === false) {
-                    maxOvertime = 0;
-                } else if (rules?.overtime?.max_overtime !== undefined) {
-                    maxOvertime = normalizeMaxOvertimeHours(rules.overtime.max_overtime);
-                } else if (rules?.overtime?.maxOvertime !== undefined) {
-                    maxOvertime = normalizeMaxOvertimeHours(rules.overtime.maxOvertime);
-                }
-            } catch (e) {}
-
-            const [endH, endM] = endTime.split(':').map(Number);
-            const latestCheckoutMinutes = (endH * 60) + endM + (maxOvertime * 60) + MISSED_PUNCH_BUFFER_MINUTES;
-            const calculatedSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
-
-            let targetSlotMinutes = calculatedSlotMinutes;
-            if (user.processing_time && user.processing_time !== '02:00:00') {
-                const [h, m] = user.processing_time.split(':').map(Number);
-                targetSlotMinutes = getNextCronSlotMinutes((h * 60) + (m || 0));
-            }
-
-            // Quick timezone check with the default timezone (no DB query needed)
-            let baseTimeZone = user.timezone || user.org_timezone || 'UTC';
-            try {
-                Intl.DateTimeFormat(undefined, { timeZone: baseTimeZone });
-            } catch (e) {
-                baseTimeZone = 'UTC';
-            }
-
-            const tempNow = new Date(new Date().toLocaleString('en-US', { timeZone: baseTimeZone }));
-            const baseSlotMinutes = (tempNow.getHours() * 60) + (Math.floor(tempNow.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
-
-            // Skip database queries when it is not the user's processing slot
-            if (baseSlotMinutes !== targetSlotMinutes) {
-                continue;
-            }
-
-            // Only query DB to fetch custom timezone override when the base slot matches
-            let timeZone = baseTimeZone;
-            const lastPunch = await attendanceDB('attn_punches')
-                .where({ user_id: user.user_id })
-                .whereNull('deleted_at')
-                .orderBy('punch_time', 'desc')
-                .limit(1)
-                .first();
-
-            if (lastPunch && lastPunch.metadata) {
-                try {
-                    let meta = lastPunch.metadata;
-                    if (typeof meta === 'string') meta = JSON.parse(meta);
-                    if (meta?.timezone || meta?.time_in?.timezone) {
-                        timeZone = meta.timezone || meta.time_in.timezone;
-                        // Re-validate custom timezone
-                        try {
-                            Intl.DateTimeFormat(undefined, { timeZone });
-                        } catch (e) {
-                            timeZone = baseTimeZone;
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`Failed to parse metadata for user ${user.user_id}`, e);
-                }
-            }
-
-            const nowInUserTZ = new Date(new Date().toLocaleString('en-US', { timeZone }));
-            const currentSlotMinutes = (nowInUserTZ.getHours() * 60) + (Math.floor(nowInUserTZ.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
-
-            // Determine if the shift is a night shift
-            let isNightShift = false;
-            if (user.crosses_midnight === 1 || user.crosses_midnight === true) {
-                isNightShift = true;
-            } else {
-                // Heuristic fallback if crosses_midnight column is null
-                let startTime = '09:00:00';
-                if (user.start_time) {
-                    startTime = user.start_time;
+                // 1. Calculate target processing slot in-memory first (no DB queries)
+                let endTime = '18:00:00';
+                if (user.end_time) {
+                    endTime = user.end_time;
                 } else {
                     try {
                         let rules = user.policy_rules;
                         if (typeof rules === 'string') rules = JSON.parse(rules);
-                        if (rules?.shift_timing?.start_time) {
-                            startTime = rules.shift_timing.start_time;
+                        if (rules?.shift_timing?.end_time) {
+                            endTime = rules.shift_timing.end_time;
                         }
-                    } catch (e) {}
+                    } catch (e) { }
                 }
-                const [startH] = startTime.split(':').map(Number);
-                isNightShift = (endH < startH) || (startH >= 17 || startH < 6);
-            }
 
-            const isNextDayCheck = isNightShift || latestCheckoutMinutes >= (24 * 60);
+                let maxOvertime = DEFAULT_MAX_OVERTIME_HOURS;
+                try {
+                    let rules = user.policy_rules;
+                    if (typeof rules === 'string') rules = JSON.parse(rules);
+                    if (rules?.overtime?.enabled === false) {
+                        maxOvertime = 0;
+                    } else if (rules?.overtime?.max_overtime !== undefined) {
+                        maxOvertime = normalizeMaxOvertimeHours(rules.overtime.max_overtime);
+                    } else if (rules?.overtime?.maxOvertime !== undefined) {
+                        maxOvertime = normalizeMaxOvertimeHours(rules.overtime.maxOvertime);
+                    }
+                } catch (e) { }
 
-            if (currentSlotMinutes === targetSlotMinutes) {
+                const [endH, endM] = endTime.split(':').map(Number);
+                const latestCheckoutMinutes = (endH * 60) + endM + (maxOvertime * 60) + MISSED_PUNCH_BUFFER_MINUTES;
+                const calculatedSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
+
+                let targetSlotMinutes = calculatedSlotMinutes;
+                if (user.processing_time && user.processing_time !== '02:00:00') {
+                    const [h, m] = user.processing_time.split(':').map(Number);
+                    targetSlotMinutes = getNextCronSlotMinutes((h * 60) + (m || 0));
+                }
+
+                // 2. Resolve user's true local timezone (punch metadata -> location -> org -> UTC)
+                const timeZone = getEffectiveUserTimezone(user, punchMetaMap);
+
+                // 3. Compute slot directly in the user's actual timezone
+                const nowInUserTZ = new Date(new Date().toLocaleString('en-US', { timeZone }));
+                const currentSlotMinutes = (nowInUserTZ.getHours() * 60) + (Math.floor(nowInUserTZ.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
+
+                // Skip when it is not the user's processing slot in their local timezone
+                if (currentSlotMinutes !== targetSlotMinutes) {
+                    continue;
+                }
+
+                // 4. Determine if shift is night shift / next day check
+                let isNightShift = false;
+                if (user.crosses_midnight === 1 || user.crosses_midnight === true) {
+                    isNightShift = true;
+                } else {
+                    let startTime = '09:00:00';
+                    if (user.start_time) {
+                        startTime = user.start_time;
+                    } else {
+                        try {
+                            let rules = user.policy_rules;
+                            if (typeof rules === 'string') rules = JSON.parse(rules);
+                            if (rules?.shift_timing?.start_time) {
+                                startTime = rules.shift_timing.start_time;
+                            }
+                        } catch (e) { }
+                    }
+                    const [startH] = startTime.split(':').map(Number);
+                    isNightShift = (endH < startH) || (startH >= 17 || startH < 6);
+                }
+
+                const isNextDayCheck = isNightShift || latestCheckoutMinutes >= (24 * 60);
+
                 const targetDateObj = new Date(nowInUserTZ);
                 if (isNextDayCheck) {
                     targetDateObj.setDate(targetDateObj.getDate() - 1);
@@ -165,16 +136,15 @@ export async function processHourlyAttendance() {
                 const targetDate = `${yyyy}-${mm}-${dd}`;
 
                 await processUserAttendanceForDate(user, targetDate);
+            } catch (err) {
+                console.error(`Failed to process user ${user.user_id}:`, err);
             }
-        } catch (err) {
-            console.error(`Failed to process user ${user.user_id}:`, err);
         }
-    }
 
-    // --- SECOND PASS: Escalate expired MISSED_PUNCH to ABSENT (Bypassed / disabled since correction deadline is turned off) ---
-    // await escalateExpiredMissedPunches();
+        // --- SECOND PASS: Escalate expired MISSED_PUNCH to ABSENT (Bypassed / disabled since correction deadline is turned off) ---
+        // await escalateExpiredMissedPunches();
 
-    console.log('✅ Attendance Check Completed.');
+        console.log('✅ Attendance Check Completed.');
     } catch (err) {
         if (err?.code === 'ECONNRESET' || err?.message?.includes('ECONNRESET')) {
             console.warn('⚠️ [AttendanceProcessor] Database connection reset during hourly attendance check. Will retry next cycle.');
@@ -216,7 +186,7 @@ async function processUserAttendanceForDate(user, dateStr) {
                 latestInPunch = last;
             }
         }
-    } catch (_) {}
+    } catch (_) { }
 
     if (hasPunchOpenSession) {
         if (user.shift_id === null) {
@@ -250,7 +220,7 @@ async function processUserAttendanceForDate(user, dateStr) {
                     let meta = typeof latestInPunch.metadata === 'string' ? JSON.parse(latestInPunch.metadata) : (latestInPunch.metadata || {});
                     meta.missed_punch = true;
                     await attendanceDB('attn_punches').where({ id: latestInPunch.id }).update({ metadata: JSON.stringify(meta) });
-                } catch (_) {}
+                } catch (_) { }
             }
 
             try {
@@ -480,89 +450,84 @@ export async function checkAndSendShiftReminders() {
 
         if (!users || users.length === 0) return;
 
-    for (const user of users) {
-        if (!user.shift_id) continue;
+        for (const user of users) {
+            if (!user.shift_id) continue;
 
-        try {
-            const rules = ShiftService.getShiftRules(user);
-            const startTime = rules.shift_timing?.start_time || rules.start_time; // e.g. "09:00:00"
-            const endTime = rules.shift_timing?.end_time || rules.end_time; // e.g. "18:00:00"
-
-            if (!startTime || !endTime) continue;
-
-            let timeZone = user.org_timezone || user.timezone || 'UTC';
             try {
-                Intl.DateTimeFormat(undefined, { timeZone });
-            } catch (e) {
-                timeZone = 'UTC';
-            }
+                const rules = ShiftService.getShiftRules(user);
+                const startTime = rules.shift_timing?.start_time || rules.start_time; // e.g. "09:00:00"
+                const endTime = rules.shift_timing?.end_time || rules.end_time; // e.g. "18:00:00"
 
-            const nowInUserTZ = new Date(new Date().toLocaleString('en-US', { timeZone }));
-            const currentHour = nowInUserTZ.getHours();
-            const currentMinute = nowInUserTZ.getMinutes();
-            const currentMinutes = currentHour * 60 + currentMinute;
+                if (!startTime || !endTime) continue;
 
-            // 1. Time-In Reminder (10 mins before start)
-            const [startH, startM] = startTime.split(':').map(Number);
-            const startMinutes = startH * 60 + startM;
-            const timeInReminderMinutes = (startMinutes - 10 + 1440) % 1440;
+                const timeZone = getEffectiveUserTimezone(user);
 
-            if (currentMinutes === timeInReminderMinutes) {
-                const yyyy = nowInUserTZ.getFullYear();
-                const mm = String(nowInUserTZ.getMonth() + 1).padStart(2, '0');
-                const dd = String(nowInUserTZ.getDate()).padStart(2, '0');
-                const dateStr = `${yyyy}-${mm}-${dd}`;
+                const nowInUserTZ = new Date(new Date().toLocaleString('en-US', { timeZone }));
+                const currentHour = nowInUserTZ.getHours();
+                const currentMinute = nowInUserTZ.getMinutes();
+                const currentMinutes = currentHour * 60 + currentMinute;
 
-                // Check if user has already timed in today
-                const inPunchToday = await attendanceDB('attn_punches')
-                    .where({ user_id: user.user_id, punch_type: 'in' })
-                    .whereNull('deleted_at')
-                    .whereRaw('DATE(punch_time) = ?', [dateStr])
-                    .first();
+                // 1. Time-In Reminder (10 mins before start)
+                const [startH, startM] = startTime.split(':').map(Number);
+                const startMinutes = startH * 60 + startM;
+                const timeInReminderMinutes = (startMinutes - 10 + 1440) % 1440;
 
-                if (!inPunchToday) {
-                    EventBus.emitNotification({
-                        org_id: user.org_id,
-                        user_id: user.user_id,
-                        title: "Time In Reminder",
-                        message: `Your shift starts in 10 minutes at ${startTime.substring(0, 5)}. Don't forget to time in!`,
-                        type: "INFO",
-                        related_entity_type: "ATTENDANCE",
-                        related_entity_id: null
-                    });
+                if (currentMinutes === timeInReminderMinutes) {
+                    const yyyy = nowInUserTZ.getFullYear();
+                    const mm = String(nowInUserTZ.getMonth() + 1).padStart(2, '0');
+                    const dd = String(nowInUserTZ.getDate()).padStart(2, '0');
+                    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+                    // Check if user has already timed in today
+                    const inPunchToday = await attendanceDB('attn_punches')
+                        .where({ user_id: user.user_id, punch_type: 'in' })
+                        .whereNull('deleted_at')
+                        .whereRaw('DATE(punch_time) = ?', [dateStr])
+                        .first();
+
+                    if (!inPunchToday) {
+                        EventBus.emitNotification({
+                            org_id: user.org_id,
+                            user_id: user.user_id,
+                            title: "Time In Reminder",
+                            message: `Your shift starts in 10 minutes at ${startTime.substring(0, 5)}. Don't forget to time in!`,
+                            type: "INFO",
+                            related_entity_type: "ATTENDANCE",
+                            related_entity_id: null
+                        });
+                    }
                 }
-            }
 
-            // 2. Time-Out Reminder (10 mins before end)
-            const [endH, endM] = endTime.split(':').map(Number);
-            const endMinutes = endH * 60 + endM;
-            const timeOutReminderMinutes = (endMinutes - 10 + 1440) % 1440;
+                // 2. Time-Out Reminder (10 mins before end)
+                const [endH, endM] = endTime.split(':').map(Number);
+                const endMinutes = endH * 60 + endM;
+                const timeOutReminderMinutes = (endMinutes - 10 + 1440) % 1440;
 
-            if (currentMinutes === timeOutReminderMinutes) {
-                // Check if user has an active open session (latest punch is 'in')
-                const latestPunch = await attendanceDB('attn_punches')
-                    .where({ user_id: user.user_id })
-                    .whereNull('deleted_at')
-                    .whereIn('punch_type', ['in', 'out'])
-                    .orderBy('punch_time', 'desc')
-                    .first();
+                if (currentMinutes === timeOutReminderMinutes) {
+                    // Check if user has an active open session (latest punch is 'in')
+                    const latestPunch = await attendanceDB('attn_punches')
+                        .where({ user_id: user.user_id })
+                        .whereNull('deleted_at')
+                        .whereIn('punch_type', ['in', 'out'])
+                        .orderBy('punch_time', 'desc')
+                        .first();
 
-                if (latestPunch && latestPunch.punch_type === 'in') {
-                    EventBus.emitNotification({
-                        org_id: user.org_id,
-                        user_id: user.user_id,
-                        title: "Time Out Reminder",
-                        message: `Your shift ends in 10 minutes at ${endTime.substring(0, 5)}. Don't forget to time out!`,
-                        type: "INFO",
-                        related_entity_type: "ATTENDANCE",
-                        related_entity_id: null
-                    });
+                    if (latestPunch && latestPunch.punch_type === 'in') {
+                        EventBus.emitNotification({
+                            org_id: user.org_id,
+                            user_id: user.user_id,
+                            title: "Time Out Reminder",
+                            message: `Your shift ends in 10 minutes at ${endTime.substring(0, 5)}. Don't forget to time out!`,
+                            type: "INFO",
+                            related_entity_type: "ATTENDANCE",
+                            related_entity_id: null
+                        });
+                    }
                 }
+            } catch (err) {
+                console.error(`Failed to process reminders for user ${user.user_id}:`, err);
             }
-        } catch (err) {
-            console.error(`Failed to process reminders for user ${user.user_id}:`, err);
         }
-    }
     } catch (err) {
         if (err?.code === 'ECONNRESET' || err?.message?.includes('ECONNRESET')) {
             console.warn('⚠️ [AttendanceProcessor] Database connection reset during shift reminders check. Will retry next minute.');
