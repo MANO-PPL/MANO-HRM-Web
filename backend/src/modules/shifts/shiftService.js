@@ -1,5 +1,5 @@
 import { attendanceDB } from '../../config/database.js';
-import { cacheService } from '../cache/cacheService.js';
+import { cacheService } from '../../services/cache/cacheService.js';
 
 export const DEFAULT_MAX_OVERTIME_HOURS = 3;
 

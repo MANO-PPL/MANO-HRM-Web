@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as ShiftService from '../../services/shifts/shiftService.js';
+import * as ShiftService from './shiftService.js';
 import { notifyShiftAssigned } from '../../services/collaboration/chatAlertService.js';
 
 

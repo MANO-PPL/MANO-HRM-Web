@@ -6,7 +6,7 @@ import { deleteFile, uploadCompressedImage } from '../s3/s3Service.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { encryptText, decryptText } from '../../utils/encryption.js';
-import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { normalizeMaxOvertimeHours } from '../../modules/shifts/shiftService.js';
 import { cacheService } from '../cache/cacheService.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js

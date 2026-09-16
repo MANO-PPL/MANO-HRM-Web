@@ -1,6 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import * as ShiftService from './shiftManagementService.js';
-import { normalizeMaxOvertimeHours } from '../../services/shifts/shiftService.js';
+import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
 import { toMySQLTime, toMySQLDate, toMySQLDateTime } from '../../utils/dateUtils.js';
 
 /**

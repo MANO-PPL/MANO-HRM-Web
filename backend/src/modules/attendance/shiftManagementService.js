@@ -1,6 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import { verifyUserGeofence } from "../../services/attendance/geofencing.js";
-import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../../services/shifts/shiftService.js';
+import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
 
 /**
  * Shift Management Service

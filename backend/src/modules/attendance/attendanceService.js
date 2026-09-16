@@ -175,7 +175,7 @@ export async function processTimeIn(context) {
           location: JSON.stringify(loc)
         });
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // DAR Reconciliation Hook on Checkin
@@ -210,7 +210,7 @@ export async function processTimeOut(context) {
           location: JSON.stringify(loc)
         });
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // DAR Reconciliation Hook on Checkout
@@ -245,9 +245,9 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       .where({ user_id })
       .whereNull("deleted_at")
       .whereIn("punch_type", ["in", "out"])
-      .where(function() {
+      .where(function () {
         this.whereRaw("DATE(punch_time) = ?", [sanitizedDate])
-          .orWhere(function() {
+          .orWhere(function () {
             this.where("punch_type", "out")
               .whereRaw("DATE(punch_time) = ?", [nextDateStr]);
           });
