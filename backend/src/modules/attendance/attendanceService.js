@@ -24,7 +24,7 @@ import * as StatusService from "./statusEvaluationService.js";
 import { PayrollCalculationService } from '../../services/payroll/PayrollCalculationService.js';
 import { toMySQLDateTime, toMySQLDate, toMySQLTime } from "../../utils/dateUtils.js";
 import * as MapsService from "../../services/google_api_services/maps.js";
-import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttendanceCorrectionApprovedHook } from "../../services/darServices/darReconciliationService.js";
+import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttendanceCorrectionApprovedHook } from "../DAR/darReconciliationService.js";
 
 
 /**

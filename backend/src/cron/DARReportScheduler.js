@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { attendanceDB } from '../config/database.js';
-import { buildReport } from '../services/darServices/DARReportAPI.js';
+import { buildReport } from '../modules/DAR/DARReportAPI.js';
 import { sendEmail } from '../services/auth/emailService.js';
 
 // ─────────────────────────────────────────────────────────────────────────────

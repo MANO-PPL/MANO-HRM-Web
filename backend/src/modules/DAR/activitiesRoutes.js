@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateJWT } from '../../middleware/auth.js';
-import * as DarActivityController from '../../controllers/darControllers/activitiesControllers.js';
+import * as DarActivityController from './activitiesControllers.js';
 
 const router = express.Router();
 

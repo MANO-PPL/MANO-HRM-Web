@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as DarEventService from '../../services/darServices/eventsServices.js';
+import * as DarEventService from './eventsServices.js';
 import { handleMentions } from '../../services/collaboration/mentionService.js';
 
 export const createEvent = catchAsync(async (req, res) => {

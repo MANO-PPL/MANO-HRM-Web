@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as DarRequestService from '../../services/darServices/requestsServices.js';
-import { getOrgBuffer, validateActivityTime } from '../../services/darServices/activitiesServices.js';
+import * as DarRequestService from './requestsServices.js';
+import { getOrgBuffer, validateActivityTime } from './activitiesServices.js';
 
 export const createRequest = catchAsync(async (req, res) => {
     const { request_date, original_data, proposed_data, reason } = req.body;

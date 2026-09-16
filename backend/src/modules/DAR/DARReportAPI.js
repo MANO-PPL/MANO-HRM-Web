@@ -2,7 +2,7 @@ import express from 'express';
 import { attendanceDB } from '../../config/database.js';
 import { authenticateJWT } from '../../middleware/auth.js';
 import catchAsync from '../../utils/catchAsync.js';
-import { generateNarrativeWithGroq } from '../auth/DARLLMService.js';
+import { generateNarrativeWithGroq } from '../../services/auth/DARLLMService.js';
 
 const router = express.Router();
 

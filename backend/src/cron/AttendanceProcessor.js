@@ -7,7 +7,7 @@ import EventBus from '../utils/EventBus.js';
 import { PayrollCalculationService } from '../services/payroll/PayrollCalculationService.js';
 import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../modules/shifts/shiftService.js';
 import { toMySQLDateTime, toMySQLDate } from '../utils/dateUtils.js';
-import { reconcileUserDarForDate } from '../services/darServices/darReconciliationService.js';
+import { reconcileUserDarForDate } from '../modules/DAR/darReconciliationService.js';
 import {
     resolveUserTimezone,
     getLatestPunchTimezones,

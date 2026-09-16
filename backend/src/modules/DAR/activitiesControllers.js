@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as DarActivityService from '../../services/darServices/activitiesServices.js';
+import * as DarActivityService from './activitiesServices.js';
 import { handleMentions } from '../../services/collaboration/mentionService.js';
 
 export const createActivity = catchAsync(async (req, res) => {

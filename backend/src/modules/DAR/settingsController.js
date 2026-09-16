@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as DarSettingsService from '../../services/darServices/settingsServices.js';
+import * as DarSettingsService from './settingsServices.js';
 
 
 export const getSettings = catchAsync(async (req, res) => {

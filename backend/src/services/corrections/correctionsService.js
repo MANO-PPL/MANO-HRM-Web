@@ -2,7 +2,7 @@ import { attendanceDB } from '../../config/database.js';
 import { toMySQLDate } from '../../utils/dateUtils.js';
 import * as S3Service from '../s3/s3Service.js';
 import { syncDailyAttendance } from '../../modules/attendance/attendanceService.js';
-import { handleAttendanceCorrectionApprovedHook } from '../darServices/darReconciliationService.js';
+import { handleAttendanceCorrectionApprovedHook } from '../../modules/DAR/darReconciliationService.js';
 
 
 

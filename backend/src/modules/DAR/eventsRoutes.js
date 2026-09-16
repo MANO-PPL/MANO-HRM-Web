@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateJWT } from '../../middleware/auth.js';
-import * as DarEventController from '../../controllers/darControllers/eventsControllers.js';
+import * as DarEventController from './eventsControllers.js';
 
 
 const router = express.Router();
