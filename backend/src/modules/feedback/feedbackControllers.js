@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
-import * as feedbackService from '../../services/feedback/feedbackService.js';
+import * as feedbackService from './feedbackService.js';
 
 const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB
 

@@ -15,7 +15,7 @@ import darReportRoutes from '../services/darServices/DARReportAPI.js';
 import shiftRoutes from '../modules/shifts/shiftRoutes.js';
 import attendanceRoutes from '../modules/attendance/attendanceRoutes.js';
 import correctionsRoutes from '../modules/corrections/correctionsRoutes.js';
-import feedbackRoutes from './feedback/feedbackRoutes.js';
+import feedbackRoutes from '../modules/feedback/feedbackRoutes.js';
 import paymentRoutes from './payment/paymentRoutes.js';
 import profileRoutes from './profile/profileRoutes.js';
 import orgRoutes from '../modules/organisations/orgRoutes.js';
