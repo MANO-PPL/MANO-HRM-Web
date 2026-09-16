@@ -4,7 +4,7 @@ import { syncDailyAttendance } from '../modules/attendance/attendanceService.js'
 import * as ShiftService from '../modules/shifts/shiftService.js';
 import { resolveNoShowStatus } from '../modules/attendance/statusEvaluationService.js';
 import EventBus from '../utils/EventBus.js';
-import { PayrollCalculationService } from '../services/payroll/PayrollCalculationService.js';
+import { PayrollCalculationService } from '../modules/payroll/PayrollCalculationService.js';
 import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../modules/shifts/shiftService.js';
 import { toMySQLDateTime, toMySQLDate } from '../utils/dateUtils.js';
 import { reconcileUserDarForDate } from '../modules/DAR/darReconciliationService.js';

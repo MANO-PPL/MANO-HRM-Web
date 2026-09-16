@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateJWT, authorize } from '../../middleware/auth.js';
-import * as payrollController from '../../controllers/payroll/payrollController.js';
+import * as payrollController from './payrollController.js';
 
 const router = express.Router();
 

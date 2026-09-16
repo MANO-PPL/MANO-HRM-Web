@@ -16,7 +16,7 @@ import shiftRoutes from '../modules/shifts/shiftRoutes.js';
 import attendanceRoutes from '../modules/attendance/attendanceRoutes.js';
 import correctionsRoutes from '../modules/corrections/correctionsRoutes.js';
 import feedbackRoutes from '../modules/feedback/feedbackRoutes.js';
-import paymentRoutes from './payment/paymentRoutes.js';
+import paymentRoutes from '../modules/payments/paymentRoutes.js';
 import profileRoutes from '../modules/profile/profileRoutes.js';
 import orgRoutes from '../modules/organisations/orgRoutes.js';
 import systemMonitorRoutes from '../modules/admin/systemMonitorRoutes.js';
@@ -24,7 +24,7 @@ import superAdminRoutes from '../modules/superadmin/superAdminRoutes.js';
 import chatbotRoutes from './chatbot/chatbotRoutes.js';
 import chatRoutes from './collaboration/chatRoutes.js';
 import labourRoutes from '../modules/labour/labourRoutes.js';
-import payrollRoutes from './payroll/payrollRoutes.js';
+import payrollRoutes from '../modules/payroll/payrollRoutes.js';
 import geoLocationRoutes from '../modules/locations/locations.js';
 import internalRoutes from '../modules/internal/internalRoutes.js';
 

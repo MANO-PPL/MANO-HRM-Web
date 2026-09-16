@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as paymentService from '../../services/payment/paymentService.js';
+import * as paymentService from './paymentService.js';
 
 /**
  * POST /payment/create-customer

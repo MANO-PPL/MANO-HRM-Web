@@ -2,7 +2,7 @@ import { attendanceDB } from '../../config/database.js';
 // S3 helper lives in the top-level services/s3 folder
 import * as S3Service from '../../services/s3/s3Service.js';
 import EventBus from '../../utils/EventBus.js';
-import { PayrollCalculationService } from '../../services/payroll/PayrollCalculationService.js';
+import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 
 export async function getMyHistory({ user_id, org_id }) {
     const leaves = await attendanceDB('leave_request as lr')

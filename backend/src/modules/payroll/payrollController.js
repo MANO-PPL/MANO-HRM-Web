@@ -1,11 +1,10 @@
 import { attendanceDB } from '../../config/database.js';
 import catchAsync from '../../utils/catchAsync.js';
-import AppError from '../../utils/AppError.js';
-import { SalaryHistoryService } from '../../services/payroll/SalaryHistoryService.js';
-import { PayrollCalculationService } from '../../services/payroll/PayrollCalculationService.js';
-import { PayrollFinalizationService } from '../../services/payroll/PayrollFinalizationService.js';
-import { PayslipService } from '../../services/payroll/PayslipService.js';
-import { PackageService } from '../../services/payroll/PackageService.js';
+import { SalaryHistoryService } from './SalaryHistoryService.js';
+import { PayrollCalculationService } from './PayrollCalculationService.js';
+import { PayrollFinalizationService } from './PayrollFinalizationService.js';
+import { PayslipService } from './PayslipService.js';
+import { PackageService } from './PackageService.js';
 
 /**
  * Controller to handle payroll operations.
