@@ -94,6 +94,31 @@ export async function getFileUrl({ key, directory = "", expiresIn = 604800, file
   }
 }
 
+/**
+ * Resolves a raw key or direct URL to an accessible URL string.
+ * If already a web URL or data URL, returns it directly.
+ * Otherwise, generates a signed S3 URL. Returns null on failure or empty input.
+ * 
+ * @param {string|null} rawKey
+ * @returns {Promise<string|null>}
+ */
+export async function resolveS3ImageUrl(rawKey) {
+  if (!rawKey) return null;
+  const str = String(rawKey).trim();
+  if (!str || str === 'null' || str === 'undefined') return null;
+  if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:')) {
+    return str;
+  }
+  try {
+    const res = await getFileUrl({ key: str });
+    if (res && res.url) return res.url;
+  } catch (e) {
+    console.warn("[S3] resolveS3ImageUrl failed for key:", e.message);
+  }
+  return null;
+}
+
+
 // 3. List Files (supports folders)
 export async function listFiles(prefix = "") {
   try {

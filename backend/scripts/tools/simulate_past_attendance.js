@@ -204,17 +204,16 @@ async function runSimulation() {
 
         // 3. Leave Simulation
         if (rand < profile.leave_prob) {
-          const existingLeave = await attendanceDB('leave_requests')
+          const existingLeave = await attendanceDB('leave_request')
             .where({ user_id: user.user_id, start_date: dateStr })
             .first();
 
           if (!existingLeave) {
-            await attendanceDB('leave_requests').insert({
+            await attendanceDB('leave_request').insert({
               user_id: user.user_id,
-              org_id: user.org_id,
-              leave_type: 'Casual',
               start_date: dateStr,
               end_date: dateStr,
+              total_days: 1,
               reason: 'Simulated Past Leave (Historical)',
               pay_type: 'Paid',
               pay_percentage: 100,

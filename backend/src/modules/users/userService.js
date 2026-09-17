@@ -539,11 +539,10 @@ export const permanentlyDeleteUser = async (userId) => {
         await trx('sys_activity_logs').where('user_id', userId).del();
         await trx('sys_error_logs').where('user_id', userId).del();
 
-        // Nullify reviewer/altered references where this user is referenced
         try { await trx('attn_corrections').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) { }
         try { await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) { }
         try { await trx('attn_daily_summary_v2').where('adjusted_by', userId).update({ adjusted_by: null }); } catch (_) { }
-        await trx('leave_requests').where('reviewed_by', userId).update({ reviewed_by: null });
+        try { await trx('leave_request').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) { }
 
         try { await trx('attn_corrections').where('user_id', userId).del(); } catch (_) { }
         try { await trx('attn_correction_requests').where('user_id', userId).del(); } catch (_) { }

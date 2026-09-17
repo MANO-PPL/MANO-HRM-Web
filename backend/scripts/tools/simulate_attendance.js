@@ -269,17 +269,16 @@ async function initializeDailyState() {
       
       // A. Leave Simulation
       if (rand < profile.leave_prob && existingRecords.length === 0) {
-        const existingLeave = await attendanceDB('leave_requests')
+        const existingLeave = await attendanceDB('leave_request')
           .where({ user_id: user.user_id, start_date: todayStr })
           .first();
 
         if (!existingLeave) {
-          await attendanceDB('leave_requests').insert({
+          await attendanceDB('leave_request').insert({
             user_id: user.user_id,
-            org_id: user.org_id,
-            leave_type: 'Casual',
             start_date: todayStr,
             end_date: todayStr,
+            total_days: 1,
             reason: 'Simulated Personal Leave',
             pay_type: 'Paid',
             pay_percentage: 100,
