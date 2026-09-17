@@ -1333,12 +1333,26 @@ const ChatPage = () => {
                                                                                                     )}
                                                                                                     {cardPayload.proposed_data && cardPayload.proposed_data.length > 0 && (
                                                                                                         <div className="mt-1 space-y-1">
-                                                                                                            <div className="font-bold text-[9px] uppercase tracking-wider opacity-85">Proposed Sessions:</div>
-                                                                                                            {cardPayload.proposed_data.map((sess, sIdx) => (
-                                                                                                                <div key={sIdx} className="bg-black/5 dark:bg-black/20 p-1 rounded text-[9px] border border-black/5">
-                                                                                                                    Session {sIdx + 1}: {sess.time_in ? formatTimePretty(sess.time_in) : '-'} to {sess.time_out ? formatTimePretty(sess.time_out) : '-'}
-                                                                                                                </div>
-                                                                                                            ))}
+                                                                                                            <div className="font-bold text-[9px] uppercase tracking-wider opacity-85">Proposed Punches:</div>
+                                                                                                            {(() => {
+                                                                                                                let sessionCounter = 0;
+                                                                                                                return cardPayload.proposed_data.map((sess, sIdx) => {
+                                                                                                                    if (sess.punch_type === 'normal') {
+                                                                                                                        return (
+                                                                                                                            <div key={sIdx} className="bg-amber-500/10 dark:bg-amber-500/20 p-1 rounded text-[9px] border border-amber-500/30 text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                                                                                                                                <span>Checkpoint: {sess.time_in ? formatTimePretty(sess.time_in) : '-'}</span>
+                                                                                                                                {sess.address && <span className="opacity-75 truncate max-w-[110px]">• {sess.address}</span>}
+                                                                                                                            </div>
+                                                                                                                        );
+                                                                                                                    }
+                                                                                                                    sessionCounter++;
+                                                                                                                    return (
+                                                                                                                        <div key={sIdx} className="bg-black/5 dark:bg-black/20 p-1 rounded text-[9px] border border-black/5">
+                                                                                                                            Session {sessionCounter}: {sess.time_in ? formatTimePretty(sess.time_in) : '-'} to {sess.time_out ? formatTimePretty(sess.time_out) : '-'}
+                                                                                                                        </div>
+                                                                                                                    );
+                                                                                                                });
+                                                                                                            })()}
                                                                                                         </div>
                                                                                                     )}
                                                                                                 </div>
