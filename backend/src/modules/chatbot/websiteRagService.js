@@ -13,7 +13,8 @@ const CHROMA_COLLECTION = process.env.WEBSITE_CHAT_COLLECTION || 'website_knowle
 const CHROMA_URL = process.env.CHROMA_URL || process.env.WEBSITE_CHAT_CHROMA_URL || 'http://localhost:8000';
 const CHUNKS_FILE = process.env.WEBSITE_CHAT_CHUNKS_FILE
     || path.resolve(__dirname, '../../../../knowledge_base/chunks.json');
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+const GROQ_FALLBACK_MODEL = process.env.GROQ_FALLBACK_MODEL || 'openai/gpt-oss-120b';
 const MAX_CONTEXT_CHUNKS = Number(process.env.WEBSITE_CHAT_TOP_K || 8);
 const WEBSITE_CHAT_DEBUG = String(process.env.WEBSITE_CHAT_DEBUG || '').toLowerCase() === 'true';
 const FEATURE_KEYWORDS = [
@@ -600,10 +601,10 @@ export async function answerWebsiteQuestion(question, history = []) {
             || String(error?.message || '').includes('429')
             || error?.status === 429;
 
-        if (isRateLimit && GROQ_MODEL !== 'llama-3.1-8b-instant') {
-            console.warn(`[website-chatbot] Rate limit hit for ${GROQ_MODEL}, automatically falling back to llama-3.1-8b-instant`);
+        if (isRateLimit && GROQ_MODEL !== GROQ_FALLBACK_MODEL) {
+            console.warn(`[website-chatbot] Rate limit hit for ${GROQ_MODEL}, automatically falling back to ${GROQ_FALLBACK_MODEL}`);
             completion = await groq.chat.completions.create({
-                model: 'llama-3.1-8b-instant',
+                model: GROQ_FALLBACK_MODEL,
                 temperature: 0.2,
                 messages: [
                     {
@@ -851,10 +852,10 @@ ${(g.faqs || []).map((faq, fIdx) => `Q${fIdx+1}: ${faq.question}\nA${fIdx+1}: ${
             || String(error?.message || '').includes('429')
             || error?.status === 429;
 
-        if (isRateLimit && GROQ_MODEL !== 'llama-3.1-8b-instant') {
-            console.warn(`[Mano Copilot] Rate limit hit for ${GROQ_MODEL}, automatically falling back to llama-3.1-8b-instant`);
+        if (isRateLimit && GROQ_MODEL !== GROQ_FALLBACK_MODEL) {
+            console.warn(`[Mano Copilot] Rate limit hit for ${GROQ_MODEL}, automatically falling back to ${GROQ_FALLBACK_MODEL}`);
             completion = await groq.chat.completions.create({
-                model: 'llama-3.1-8b-instant',
+                model: GROQ_FALLBACK_MODEL,
                 temperature: 0.2,
                 messages: [
                     {

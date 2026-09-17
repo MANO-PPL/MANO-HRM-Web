@@ -483,7 +483,7 @@ export async function generateNarrativeWithGroq({
     if (!dateList || dateList.length === 0) {
         throw new Error('Date range is empty for LLM report generation.');
     }
-    const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+    const model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
     const prompt = await buildPrompt({ employeeName, reportType, dateList, activitiesByDate, eventsByDate });
 
     try {
