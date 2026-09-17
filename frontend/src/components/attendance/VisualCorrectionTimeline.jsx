@@ -264,6 +264,7 @@ export default function VisualCorrectionTimeline({
     requestData,
     editable = true,
     onSessionsChange,
+    onIncompleteChange,
     className = '',
     showOriginalOnly = false,
     shift = null,
@@ -280,6 +281,14 @@ export default function VisualCorrectionTimeline({
 
     // Hourly ticks: 0 to 24 (25 tick marks)
     const hourlyTicks = useMemo(() => Array.from({ length: 25 }, (_, i) => i), []);
+
+    // Checkpoint detection helper
+    const isCheckpointPunch = useCallback((p) => {
+        if (!p) return false;
+        if (p.is_checkpoint === true) return true;
+        const type = String(p.type || p.punch_type || '').toLowerCase().trim();
+        return ['normal', 'checkpoint', 'normal_punch', 'checkpoint_punch'].includes(type);
+    }, []);
 
     // Time conversion helpers
     const parseMinutes = useCallback((timeStr) => {
@@ -316,22 +325,80 @@ export default function VisualCorrectionTimeline({
         return (clamped / 1440) * 100;
     }, []);
 
+    // Helper to safely extract HH:MM string from time string or timestamp
+    const extractTimeStr = useCallback((val) => {
+        if (!val) return '';
+        const mins = parseMinutes(val);
+        if (mins === null) return '';
+        return minutesToTimeStr(mins);
+    }, [parseMinutes, minutesToTimeStr]);
+
     // Flatten original punches (Read-Only Reference)
     const originalPunches = useMemo(() => {
         if (!Array.isArray(requestData?.original_data)) return [];
         const times = [];
-        requestData.original_data.forEach(s => {
-            if (s.time_in) times.push({ time: s.time_in, type: s.punch_type === 'normal' ? 'normal' : 'in' });
-            if (s.time_out) times.push({ time: s.time_out, type: 'out' });
+        requestData.original_data.forEach((s, sIdx) => {
+            if (isCheckpointPunch(s)) {
+                const t = extractTimeStr(s.time_in || s.time || s.punch_time);
+                if (t) {
+                    times.push({
+                        id: s.id || `orig-chk-${sIdx}`,
+                        time: t,
+                        type: 'normal',
+                        address: s.address || '',
+                        raw: s
+                    });
+                }
+            } else {
+                if (s.time_in) {
+                    const t = extractTimeStr(s.time_in);
+                    if (t) times.push({ id: `orig-${sIdx}-in`, time: t, type: 'in', raw: s });
+                }
+                const chkList = Array.isArray(s.checkpoints) ? s.checkpoints : (Array.isArray(s.raw_checkpoints) ? s.raw_checkpoints : []);
+                chkList.forEach((chk, cIdx) => {
+                    const t = extractTimeStr(chk.punch_time || chk.time || chk.time_in);
+                    if (t) {
+                        times.push({
+                            id: chk.id ? `orig-chk-${chk.id}` : `orig-${sIdx}-chk-${cIdx}`,
+                            time: t,
+                            type: 'normal',
+                            address: chk.address || '',
+                            raw: chk
+                        });
+                    }
+                });
+                if (s.time_out) {
+                    const t = extractTimeStr(s.time_out);
+                    if (t) times.push({ id: `orig-${sIdx}-out`, time: t, type: 'out', raw: s });
+                }
+            }
         });
         const sorted = times.sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
-        return sorted.map((p, idx) => ({
-            id: `orig-${idx}`,
-            time: p.time,
-            type: p.type || (idx % 2 === 0 ? 'in' : 'out'),
-            pairIdx: Math.floor(idx / 2)
-        }));
-    }, [requestData, parseMinutes]);
+        let boundaryIdx = 0;
+        return sorted.map((p, idx) => {
+            if (isCheckpointPunch(p) || p.type === 'normal') {
+                return {
+                    id: p.id || `orig-${idx}`,
+                    time: p.time,
+                    type: 'normal',
+                    pairIdx: Math.floor(boundaryIdx / 2),
+                    address: p.address,
+                    raw: p.raw
+                };
+            }
+            const assignedType = p.type || (boundaryIdx % 2 === 0 ? 'in' : 'out');
+            const assignedPair = Math.floor(boundaryIdx / 2);
+            boundaryIdx++;
+            return {
+                id: p.id || `orig-${idx}`,
+                time: p.time,
+                type: assignedType,
+                pairIdx: assignedPair,
+                address: p.address,
+                raw: p.raw
+            };
+        });
+    }, [requestData, parseMinutes, extractTimeStr, isCheckpointPunch]);
 
     // Resequence ONLY boundary punches (preserving normal checkpoints strictly)
     const resequencePunches = useCallback((punchList) => {
@@ -340,7 +407,7 @@ export default function VisualCorrectionTimeline({
         let currentPairIdx = 0;
 
         return sorted.map((p) => {
-            if (p.type === 'normal') {
+            if (isCheckpointPunch(p) || p.type === 'normal') {
                 return { ...p, type: 'normal', pairIdx: currentPairIdx };
             }
             const assignedType = boundaryIndex % 2 === 0 ? 'in' : 'out';
@@ -353,31 +420,65 @@ export default function VisualCorrectionTimeline({
                 pairIdx: assignedPair
             };
         });
-    }, [parseMinutes]);
+    }, [parseMinutes, isCheckpointPunch]);
 
     // Flatten initial proposed punches with STABLE IDs (never incorporating p.time!)
     const initialProposedPunches = useMemo(() => {
         if (!Array.isArray(requestData?.proposed_data)) return [];
         const list = [];
         requestData.proposed_data.forEach((s, sIdx) => {
-            if (s.time_in) {
-                list.push({
-                    id: s.inPunchId || (s.id ? `${s.id}-in` : `p-sess-${sIdx}-in`),
-                    time: s.time_in,
-                    type: s.punch_type === 'normal' ? 'normal' : 'in'
+            if (isCheckpointPunch(s)) {
+                const t = extractTimeStr(s.time_in || s.time || s.punch_time);
+                if (t) {
+                    list.push({
+                        id: s.inPunchId || (s.id ? `${s.id}` : `p-chk-${sIdx}`),
+                        time: t,
+                        type: 'normal',
+                        address: s.address || '',
+                        raw: s
+                    });
+                }
+            } else {
+                if (s.time_in) {
+                    const t = extractTimeStr(s.time_in);
+                    if (t) {
+                        list.push({
+                            id: s.inPunchId || (s.id ? `${s.id}-in` : `p-sess-${sIdx}-in`),
+                            time: t,
+                            type: 'in',
+                            raw: s
+                        });
+                    }
+                }
+                const chkList = Array.isArray(s.checkpoints) ? s.checkpoints : (Array.isArray(s.raw_checkpoints) ? s.raw_checkpoints : []);
+                chkList.forEach((chk, cIdx) => {
+                    const t = extractTimeStr(chk.punch_time || chk.time || chk.time_in);
+                    if (t) {
+                        list.push({
+                            id: chk.id ? `p-chk-${chk.id}` : (s.id ? `${s.id}-chk-${cIdx}` : `p-sess-${sIdx}-chk-${cIdx}`),
+                            time: t,
+                            type: 'normal',
+                            address: chk.address || '',
+                            raw: chk
+                        });
+                    }
                 });
-            }
-            if (s.time_out) {
-                list.push({
-                    id: s.outPunchId || (s.id ? `${s.id}-out` : `p-sess-${sIdx}-out`),
-                    time: s.time_out,
-                    type: 'out'
-                });
+                if (s.time_out) {
+                    const t = extractTimeStr(s.time_out);
+                    if (t) {
+                        list.push({
+                            id: s.outPunchId || (s.id ? `${s.id}-out` : `p-sess-${sIdx}-out`),
+                            time: t,
+                            type: 'out',
+                            raw: s
+                        });
+                    }
+                }
             }
         });
         const sorted = list.sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
         return resequencePunches(sorted);
-    }, [requestData, parseMinutes, resequencePunches]);
+    }, [requestData, parseMinutes, extractTimeStr, resequencePunches, isCheckpointPunch]);
 
     const [punches, setPunches] = useState(initialProposedPunches);
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -385,53 +486,236 @@ export default function VisualCorrectionTimeline({
     const [creatingRange, setCreatingRange] = useState(null);
     const [hoveredSessionIdx, setHoveredSessionIdx] = useState(null);
     const [hoveredPunchId, setHoveredPunchId] = useState(null);
-    const [, setHoveredMins] = useState(null);
+    const [hoveredMins, setHoveredMins] = useState(null);
+    const [pendingSessionStart, setPendingSessionStart] = useState(null);
     const [warningMsg, setWarningMsg] = useState(null);
     const lastEmittedJsonRef = useRef('');
     const trackRef = useRef(null);
     const scrollContainerRef = useRef(null);
     const lastClickRef = useRef({ id: null, time: 0 });
+    const hasInitiallyScrolledRef = useRef(false);
+    const prevDateRef = useRef(requestData?.request_date || requestData?.date || '');
+
+    // Reset initial scroll flag if date changes
+    useEffect(() => {
+        const curDate = requestData?.request_date || requestData?.date || '';
+        if (curDate && curDate !== prevDateRef.current) {
+            prevDateRef.current = curDate;
+            hasInitiallyScrolledRef.current = false;
+        }
+    }, [requestData?.request_date, requestData?.date]);
+
+    // Cancel pending session creation on Escape key
+    useEffect(() => {
+        const handleGlobalKeyDown = (e) => {
+            if (e.key === 'Escape' && pendingSessionStart !== null) {
+                setPendingSessionStart(null);
+                setWarningMsg('Session creation cancelled');
+                setTimeout(() => setWarningMsg(null), 2000);
+            }
+        };
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    }, [pendingSessionStart]);
 
     // Sync from props only when changes originate from outside and user is not actively editing
     useEffect(() => {
         const incomingJson = JSON.stringify(requestData?.proposed_data || []);
         const isEditingInput = document.activeElement && document.activeElement.tagName === 'INPUT';
-        if (incomingJson !== lastEmittedJsonRef.current && !creatingRange && !draggingPunchId && !isEditingInput) {
+        if (incomingJson !== lastEmittedJsonRef.current && !creatingRange && !draggingPunchId && !isEditingInput && pendingSessionStart === null) {
             setPunches(initialProposedPunches);
         }
-    }, [initialProposedPunches, creatingRange, draggingPunchId, requestData?.proposed_data]);
+    }, [initialProposedPunches, creatingRange, draggingPunchId, pendingSessionStart, requestData?.proposed_data]);
 
-    // Smooth scroll to target minute
-    const scrollToTime = useCallback((targetMins) => {
+    // Smooth scroll to position 8:00 AM at the start of the visible viewport
+    const scrollToTime = useCallback((startMins = 480) => {
         if (!scrollContainerRef.current) return;
         const container = scrollContainerRef.current;
         const scrollWidth = container.scrollWidth;
         const clientWidth = container.clientWidth;
         if (scrollWidth > clientWidth) {
-            const targetX = (targetMins / 1440) * scrollWidth - (clientWidth / 2);
+            // Position startMins (default 8:00 AM) right at the left edge of view
+            const targetX = (startMins / 1440) * scrollWidth;
             container.scrollTo({ left: Math.max(0, targetX), behavior: 'smooth' });
         }
     }, []);
 
-    // Auto-scroll on mount or date/shift change to bring shift/activity into view
+    // Auto-scroll ONCE on mount (or date change) to start from 8:00 AM
+    // Will not snap the user back while they are manually scrolling
     useEffect(() => {
+        if (hasInitiallyScrolledRef.current) return;
         const timer = setTimeout(() => {
-            if (!scrollContainerRef.current) return;
-            let focusMins = 540; // Default 09:00 AM
-            if (shift?.start_time) {
-                const sm = parseMinutes(shift.start_time);
-                if (sm !== null) focusMins = sm;
-            } else if (originalPunches.length > 0) {
+            if (!scrollContainerRef.current || hasInitiallyScrolledRef.current) return;
+            hasInitiallyScrolledRef.current = true;
+            let focusMins = 480; // Default 08:00 AM at left edge
+            if (originalPunches.length > 0) {
                 const pm = parseMinutes(originalPunches[0].time);
-                if (pm !== null) focusMins = pm;
-            } else if (punches.length > 0) {
-                const pm = parseMinutes(punches[0].time);
-                if (pm !== null) focusMins = pm;
+                if (pm !== null && pm < 480) {
+                    focusMins = Math.max(0, Math.floor(pm / 60) * 60);
+                }
             }
             scrollToTime(focusMins);
         }, 150);
         return () => clearTimeout(timer);
-    }, [shift, originalPunches.length, scrollToTime, parseMinutes]);
+    }, [shift, originalPunches, scrollToTime, parseMinutes]);
+
+    const originalPunchPairs = useMemo(() => {
+        const pairs = [];
+        const boundary = originalPunches.filter(p => p.type !== 'normal');
+        for (let i = 0; i < boundary.length; i += 2) {
+            pairs.push({
+                pairIdx: Math.floor(i / 2),
+                inPunch: boundary[i],
+                outPunch: boundary[i + 1] || null
+            });
+        }
+        return pairs;
+    }, [originalPunches]);
+
+    // Group proposed punches chronologically into sessions (IN -> [intermediate checkpoints] -> OUT)
+    const proposedSessions = useMemo(() => {
+        const sorted = [...punches].sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
+        const result = [];
+        let curIn = null;
+        let curCheckpoints = [];
+
+        sorted.forEach(p => {
+            if (p.type === 'in') {
+                if (curIn) {
+                    result.push({
+                        sessionIdx: result.length,
+                        inP: curIn,
+                        outP: null,
+                        checkpoints: curCheckpoints,
+                        punches: [curIn, ...curCheckpoints]
+                    });
+                } else if (curCheckpoints.length > 0) {
+                    result.push({
+                        sessionIdx: result.length,
+                        inP: null,
+                        outP: null,
+                        isCheckpointOnly: true,
+                        checkpoints: curCheckpoints,
+                        punches: [...curCheckpoints]
+                    });
+                }
+                curIn = p;
+                curCheckpoints = [];
+            } else if (isCheckpointPunch(p) || p.type === 'normal') {
+                curCheckpoints.push(p);
+            } else if (p.type === 'out') {
+                if (curIn) {
+                    result.push({
+                        sessionIdx: result.length,
+                        inP: curIn,
+                        outP: p,
+                        checkpoints: curCheckpoints,
+                        punches: [curIn, ...curCheckpoints, p]
+                    });
+                    curIn = null;
+                    curCheckpoints = [];
+                } else {
+                    result.push({
+                        sessionIdx: result.length,
+                        inP: null,
+                        outP: p,
+                        checkpoints: curCheckpoints,
+                        punches: [...curCheckpoints, p]
+                    });
+                    curCheckpoints = [];
+                }
+            }
+        });
+
+        if (curIn) {
+            result.push({
+                sessionIdx: result.length,
+                inP: curIn,
+                outP: null,
+                checkpoints: curCheckpoints,
+                punches: [curIn, ...curCheckpoints]
+            });
+        } else if (curCheckpoints.length > 0) {
+            result.push({
+                sessionIdx: result.length,
+                inP: null,
+                outP: null,
+                isCheckpointOnly: true,
+                checkpoints: curCheckpoints,
+                punches: [...curCheckpoints]
+            });
+        }
+
+        return result;
+    }, [punches, parseMinutes, isCheckpointPunch]);
+
+    // Map each punch ID to its session index so all punches in a session can be linked
+    const punchSessionMap = useMemo(() => {
+        const map = new Map();
+        proposedSessions.forEach(s => {
+            s.punches.forEach(p => {
+                map.set(p.id, s.sessionIdx);
+            });
+        });
+        return map;
+    }, [proposedSessions]);
+
+    // Track auras for interval spans on track (closed IN -> OUT sessions)
+    const trackAuras = useMemo(() => {
+        return proposedSessions
+            .filter(s => s.inP && s.outP)
+            .map(s => ({
+                sessionIdx: s.sessionIdx,
+                pairIdx: s.sessionIdx,
+                inP: s.inP,
+                outP: s.outP,
+                punches: s.punches,
+                checkpoints: s.checkpoints
+            }));
+    }, [proposedSessions]);
+
+    // Calculate Summary Stats
+    const totalWorkingMinutes = useMemo(() => {
+        let total = 0;
+        trackAuras.forEach(aura => {
+            const inM = parseMinutes(aura.inP.time);
+            const outM = parseMinutes(aura.outP.time);
+            if (inM !== null && outM !== null && outM > inM) {
+                total += (outM - inM);
+            }
+        });
+        return total;
+    }, [trackAuras, parseMinutes]);
+
+    const formatDuration = useCallback((mins) => {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        if (h === 0) return `${m}m`;
+        return `${h}h ${m > 0 ? `${m}m` : ''}`;
+    }, []);
+
+    // Check if a session was newly created (not matching any organic punch pair from original_data)
+    const isNewlyCreatedSession = useCallback((session) => {
+        if (!session) return false;
+        return !originalPunchPairs.some(pair => {
+            const matchesIn = pair.inPunch && session.inP && parseMinutes(pair.inPunch.time) === parseMinutes(session.inP.time);
+            const matchesOut = pair.outPunch && session.outP && parseMinutes(pair.outPunch.time) === parseMinutes(session.outP.time);
+            return Boolean(matchesIn || matchesOut);
+        });
+    }, [originalPunchPairs, parseMinutes]);
+
+    // Check if there is an incomplete session in the proposed punches (missing OUT or missing IN)
+    const incompleteSession = useMemo(() => {
+        return proposedSessions.find(s => !s.isCheckpointOnly && ((s.inP && !s.outP) || (!s.inP && s.outP))) || null;
+    }, [proposedSessions]);
+
+    // Notify parent whenever incomplete status changes (incomplete session or pending 2-click creation)
+    const isIncomplete = Boolean(incompleteSession || pendingSessionStart !== null);
+    useEffect(() => {
+        if (onIncompleteChange) {
+            onIncompleteChange(isIncomplete);
+        }
+    }, [isIncomplete, onIncompleteChange]);
 
     const getMinutesFromClientX = useCallback((clientX) => {
         if (!trackRef.current) return 0;
@@ -451,8 +735,8 @@ export default function VisualCorrectionTimeline({
         let curInPunchId = null;
 
         for (const p of sequenced) {
-            if (p.type === 'normal') {
-                paired.push({ id: `normal-${paired.length}`, time_in: p.time, time_out: '', punch_type: 'normal', inPunchId: p.id });
+            if (isCheckpointPunch(p) || p.type === 'normal') {
+                paired.push({ id: `normal-${paired.length}`, time_in: p.time, time_out: '', punch_type: 'normal', inPunchId: p.id, address: p.address || '' });
             } else if (p.type === 'in') {
                 if (curIn !== null) {
                     paired.push({ id: `sess-${paired.length}`, time_in: curIn, time_out: '', punch_type: 'regular', inPunchId: curInPunchId });
@@ -497,6 +781,101 @@ export default function VisualCorrectionTimeline({
         return null;
     }, [punches, parseMinutes]);
 
+    // Check if a proposed interval [startM, endM] collides with existing punches or sessions
+    const checkSpanCollision = useCallback((startM, endM) => {
+        // 1. Any punch strictly inside span or coincides with endpoints
+        const collidesPunch = punches.some(p => {
+            const pM = parseMinutes(p.time);
+            return pM !== null && ((pM > startM && pM < endM) || Math.abs(pM - startM) < 5 || Math.abs(pM - endM) < 5);
+        });
+        if (collidesPunch) return true;
+
+        // 2. Any existing IN -> OUT session interval overlapping with [startM, endM]
+        const boundary = punches
+            .filter(p => p.type !== 'normal')
+            .sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
+
+        for (let i = 0; i < boundary.length; i += 2) {
+            const inP = boundary[i];
+            const outP = boundary[i + 1];
+            if (inP && outP && inP.type === 'in' && outP.type === 'out') {
+                const inM = parseMinutes(inP.time);
+                const outM = parseMinutes(outP.time);
+                if (inM !== null && outM !== null && startM < outM && endM > inM) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }, [punches, parseMinutes]);
+
+    // Helper: Check if a clicked minute can complete an incomplete session's missing OUT punch
+    const canCompleteIncompleteOut = useCallback((clickedMins) => {
+        if (!incompleteSession || !incompleteSession.inP || incompleteSession.outP) return false;
+        const inM = parseMinutes(incompleteSession.inP.time);
+        if (inM === null || clickedMins <= inM + 5) return false;
+
+        // Must not be too close to an existing punch
+        const isTooClose = punches.some(p => {
+            const pM = parseMinutes(p.time);
+            return pM !== null && Math.abs(pM - clickedMins) < 5;
+        });
+        if (isTooClose) return false;
+
+        // No boundary punches (in/out) between inM and clickedMins
+        const hasBoundaryInside = punches.some(p => {
+            if (p.type === 'normal') return false;
+            const pM = parseMinutes(p.time);
+            return pM !== null && pM > inM && pM <= clickedMins;
+        });
+        if (hasBoundaryInside) return false;
+
+        // No other closed sessions overlap [inM, clickedMins]
+        for (const session of proposedSessions) {
+            if (session.inP && session.outP && session !== incompleteSession) {
+                const sIn = parseMinutes(session.inP.time);
+                const sOut = parseMinutes(session.outP.time);
+                if (sIn !== null && sOut !== null && inM < sOut && clickedMins > sIn) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }, [incompleteSession, punches, parseMinutes, proposedSessions]);
+
+    // Helper: Check if a clicked minute can complete an incomplete session's missing IN punch
+    const canCompleteIncompleteIn = useCallback((clickedMins) => {
+        if (!incompleteSession || incompleteSession.inP || !incompleteSession.outP) return false;
+        const outM = parseMinutes(incompleteSession.outP.time);
+        if (outM === null || clickedMins >= outM - 5) return false;
+
+        const isTooClose = punches.some(p => {
+            const pM = parseMinutes(p.time);
+            return pM !== null && Math.abs(pM - clickedMins) < 5;
+        });
+        if (isTooClose) return false;
+
+        const hasBoundaryInside = punches.some(p => {
+            if (p.type === 'normal') return false;
+            const pM = parseMinutes(p.time);
+            return pM !== null && pM >= clickedMins && pM < outM;
+        });
+        if (hasBoundaryInside) return false;
+
+        for (const session of proposedSessions) {
+            if (session.inP && session.outP && session !== incompleteSession) {
+                const sIn = parseMinutes(session.inP.time);
+                const sOut = parseMinutes(session.outP.time);
+                if (sIn !== null && sOut !== null && clickedMins < sOut && outM > sIn) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }, [incompleteSession, punches, parseMinutes, proposedSessions]);
+
     // Pointer down on track
     const handleTrackPointerDown = (e) => {
         if (!editable || draggingPunchId) return;
@@ -504,8 +883,22 @@ export default function VisualCorrectionTimeline({
 
         const clickedMins = getMinutesFromClientX(e.clientX);
 
+        // If user clicked on/near the pending session start marker -> Cancel
+        if (pendingSessionStart !== null && Math.abs(clickedMins - pendingSessionStart) < 10) {
+            setPendingSessionStart(null);
+            setWarningMsg('Cancelled session creation');
+            setTimeout(() => setWarningMsg(null), 2000);
+            return;
+        }
+
         // Check if user clicked inside an active session
         const insideSession = findInsideSession(clickedMins);
+
+        if (pendingSessionStart !== null && insideSession) {
+            setWarningMsg('Cannot set session boundary inside an existing session.');
+            setTimeout(() => setWarningMsg(null), 2500);
+            return;
+        }
 
         // Disallow clicking too close to an existing punch
         const isTooClose = punches.some(p => {
@@ -519,12 +912,17 @@ export default function VisualCorrectionTimeline({
             return;
         }
 
+        const completesIncompleteOut = pendingSessionStart === null && !insideSession && canCompleteIncompleteOut(clickedMins);
+        const completesIncompleteIn = pendingSessionStart === null && !insideSession && canCompleteIncompleteIn(clickedMins);
+
         setCreatingRange({
             startMins: clickedMins,
             currentMins: clickedMins,
             isDragging: false,
             isInsideSession: !!insideSession,
-            sessionPairIdx: insideSession ? insideSession.pairIdx : null
+            sessionPairIdx: insideSession ? insideSession.pairIdx : null,
+            completesIncompleteOut,
+            completesIncompleteIn
         });
     };
 
@@ -547,10 +945,14 @@ export default function VisualCorrectionTimeline({
         // 1. Dragging across track to create a punch pair (IN & OUT)
         if (creatingRange) {
             const diff = Math.abs(currentMins - creatingRange.startMins);
+            const willDrag = (!creatingRange.isInsideSession && diff >= 10) || creatingRange.isDragging;
+            if (willDrag && pendingSessionStart !== null) {
+                setPendingSessionStart(null);
+            }
             setCreatingRange(prev => prev ? {
                 ...prev,
                 currentMins,
-                isDragging: (!prev.isInsideSession && diff >= 10) || prev.isDragging
+                isDragging: willDrag
             } : null);
             return;
         }
@@ -576,7 +978,7 @@ export default function VisualCorrectionTimeline({
 
             setPunches(resequencePunches(updated));
         }
-    }, [creatingRange, draggingPunchId, getMinutesFromClientX, punches, parseMinutes, minutesToTimeStr]);
+    }, [creatingRange, draggingPunchId, getMinutesFromClientX, punches, parseMinutes, minutesToTimeStr, pendingSessionStart, resequencePunches]);
 
     const handlePointerUp = useCallback(() => {
         if (creatingRange) {
@@ -586,13 +988,13 @@ export default function VisualCorrectionTimeline({
 
             if (isRange) {
                 // Dragged to create an IN & OUT pair
-                const collides = punches.some(p => {
-                    const pM = parseMinutes(p.time);
-                    return pM !== null && pM >= rawStart && pM <= rawEnd;
-                });
+                if (pendingSessionStart !== null) {
+                    setPendingSessionStart(null);
+                }
+                const collides = checkSpanCollision(rawStart, rawEnd);
 
                 if (collides) {
-                    setWarningMsg('Cannot span across existing punch points.');
+                    setWarningMsg('Cannot span across or overlap existing sessions/punches.');
                     setTimeout(() => setWarningMsg(null), 2500);
                 } else {
                     const newIn = { id: `p-${Date.now()}-1`, time: minutesToTimeStr(rawStart), type: 'in' };
@@ -603,6 +1005,9 @@ export default function VisualCorrectionTimeline({
                 }
             } else if (creatingRange.isInsideSession) {
                 // Clicked inside an active session -> CREATE A CHECKPOINT / NORMAL PUNCH
+                if (pendingSessionStart !== null) {
+                    setPendingSessionStart(null);
+                }
                 const newNormalPunch = {
                     id: `p-chk-${Date.now()}`,
                     time: minutesToTimeStr(creatingRange.startMins),
@@ -613,16 +1018,71 @@ export default function VisualCorrectionTimeline({
                 setPunches(next);
                 emitChanges(next);
                 setHoveredPunchId(newNormalPunch.id);
-            } else {
-                // Clicked outside any session -> CREATE A REGULAR BOUNDARY PUNCH
-                const newPunch = {
-                    id: `p-${Date.now()}`,
+            } else if (creatingRange.completesIncompleteOut && incompleteSession?.inP) {
+                // Single click to complete missing Clock OUT for missed punch session!
+                if (pendingSessionStart !== null) {
+                    setPendingSessionStart(null);
+                }
+                const newOut = {
+                    id: `p-${Date.now()}-out`,
+                    time: minutesToTimeStr(creatingRange.startMins),
+                    type: 'out'
+                };
+                const next = resequencePunches([...punches, newOut]);
+                setPunches(next);
+                emitChanges(next);
+                setHoveredPunchId(newOut.id);
+                if (typeof toast !== 'undefined') {
+                    toast.success(`Completed session: ${formatDisplayTime(incompleteSession.inP.time)} – ${formatDisplayTime(newOut.time)}`, { autoClose: 2500 });
+                }
+            } else if (creatingRange.completesIncompleteIn && incompleteSession?.outP) {
+                // Single click to complete missing Clock IN!
+                if (pendingSessionStart !== null) {
+                    setPendingSessionStart(null);
+                }
+                const newIn = {
+                    id: `p-${Date.now()}-in`,
                     time: minutesToTimeStr(creatingRange.startMins),
                     type: 'in'
                 };
-                const next = resequencePunches([...punches, newPunch]);
+                const next = resequencePunches([...punches, newIn]);
                 setPunches(next);
                 emitChanges(next);
+                setHoveredPunchId(newIn.id);
+                if (typeof toast !== 'undefined') {
+                    toast.success(`Completed session: ${formatDisplayTime(newIn.time)} – ${formatDisplayTime(incompleteSession.outP.time)}`, { autoClose: 2500 });
+                }
+            } else if (pendingSessionStart !== null) {
+                // Second click of 2-click session creation!
+                const startM = Math.min(pendingSessionStart, creatingRange.startMins);
+                const endM = Math.max(pendingSessionStart, creatingRange.startMins);
+
+                if (endM - startM < 10) {
+                    setWarningMsg('Session duration must be at least 10 minutes.');
+                    setTimeout(() => setWarningMsg(null), 2500);
+                    setCreatingRange(null);
+                    return;
+                }
+
+                const collides = checkSpanCollision(startM, endM);
+
+                if (collides) {
+                    setWarningMsg('Cannot span across or overlap existing sessions/punches.');
+                    setTimeout(() => setWarningMsg(null), 2500);
+                } else {
+                    const newIn = { id: `p-${Date.now()}-1`, time: minutesToTimeStr(startM), type: 'in' };
+                    const newOut = { id: `p-${Date.now()}-2`, time: minutesToTimeStr(endM), type: 'out' };
+                    const next = resequencePunches([...punches, newIn, newOut]);
+                    setPunches(next);
+                    emitChanges(next);
+                    setPendingSessionStart(null);
+                    if (typeof toast !== 'undefined') {
+                        toast.success(`Created session: ${formatDisplayTime(newIn.time)} – ${formatDisplayTime(newOut.time)}`, { autoClose: 2500 });
+                    }
+                }
+            } else {
+                // First click of 2-click session creation!
+                setPendingSessionStart(creatingRange.startMins);
             }
             setCreatingRange(null);
         }
@@ -631,7 +1091,7 @@ export default function VisualCorrectionTimeline({
             setDraggingPunchId(null);
             emitChanges(punches);
         }
-    }, [creatingRange, draggingPunchId, punches, parseMinutes, minutesToTimeStr]);
+    }, [creatingRange, draggingPunchId, punches, parseMinutes, minutesToTimeStr, pendingSessionStart, checkSpanCollision, formatDisplayTime, resequencePunches, incompleteSession]);
 
     // Global listeners for smooth dragging
     useEffect(() => {
@@ -680,7 +1140,20 @@ export default function VisualCorrectionTimeline({
     // Bulk Delete Selected Punches
     const handleDeleteSelected = () => {
         if (selectedIds.size === 0) return;
-        const filtered = punches.filter(p => !selectedIds.has(p.id));
+        setPendingSessionStart(null);
+
+        // Expand selected IDs to include paired punches for newly created sessions
+        const idsToDelete = new Set(selectedIds);
+        proposedSessions.forEach(session => {
+            if (isNewlyCreatedSession(session)) {
+                const hasSelectedPunch = session.punches.some(p => selectedIds.has(p.id));
+                if (hasSelectedPunch) {
+                    session.punches.forEach(p => idsToDelete.add(p.id));
+                }
+            }
+        });
+
+        const filtered = punches.filter(p => !idsToDelete.has(p.id));
         const sequenced = resequencePunches(filtered);
         setPunches(sequenced);
         setSelectedIds(new Set());
@@ -689,146 +1162,103 @@ export default function VisualCorrectionTimeline({
 
     // Clear All Punches
     const handleClearAll = () => {
+        setPendingSessionStart(null);
         setPunches([]);
         setSelectedIds(new Set());
         emitChanges([]);
     };
 
-    // Remove single punch from proposed punches
+    // Remove single punch or session from proposed punches
     const handleRemovePunch = (punchId) => {
+        setPendingSessionStart(null);
         const targetPunch = punches.find(p => p.id === punchId);
-        const filtered = punches.filter(p => p.id !== punchId);
+        if (!targetPunch) return;
+
+        // 1. Checkpoint: only remove this single normal punch
+        if (targetPunch.type === 'normal') {
+            const filtered = punches.filter(p => p.id !== punchId);
+            const sequenced = resequencePunches(filtered);
+            setPunches(sequenced);
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(punchId);
+                return next;
+            });
+            emitChanges(sequenced);
+            setHoveredPunchId(null);
+            setDraggingPunchId(null);
+            if (typeof toast !== 'undefined') {
+                toast.info(`Removed Checkpoint (${formatDisplayTime(targetPunch.time)})`, { autoClose: 2000 });
+            }
+            return;
+        }
+
+        // 2. Find the session this boundary punch belongs to
+        const session = proposedSessions.find(s => s.inP?.id === punchId || s.outP?.id === punchId);
+        if (!session) {
+            const filtered = punches.filter(p => p.id !== punchId);
+            const sequenced = resequencePunches(filtered);
+            setPunches(sequenced);
+            emitChanges(sequenced);
+            return;
+        }
+
+        // Check if matching an original organic punch pair
+        const matchingOrigPair = originalPunchPairs.find(pair => {
+            const matchesIn = pair.inPunch && session.inP && parseMinutes(pair.inPunch.time) === parseMinutes(session.inP.time);
+            const matchesOut = pair.outPunch && session.outP && parseMinutes(pair.outPunch.time) === parseMinutes(session.outP.time);
+            return Boolean(matchesIn || matchesOut);
+        });
+
+        const isOrganicSession = Boolean(matchingOrigPair);
+        const isOrganicMissedPunch = Boolean(matchingOrigPair && (!matchingOrigPair.inPunch || !matchingOrigPair.outPunch));
+
+        // Case A: Organic session (either complete pair or missed punch)
+        // Removing a punch removes ONLY that punch, preserving the rest of the organic session
+        if (isOrganicSession) {
+            const filtered = punches.filter(p => p.id !== punchId);
+            const sequenced = resequencePunches(filtered);
+            setPunches(sequenced);
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(punchId);
+                return next;
+            });
+            emitChanges(sequenced);
+            setHoveredPunchId(null);
+            setDraggingPunchId(null);
+            if (typeof toast !== 'undefined') {
+                const isAddedMissedPunch = isOrganicMissedPunch && (
+                    (matchingOrigPair.inPunch && !matchingOrigPair.outPunch && session.outP?.id === punchId) ||
+                    (!matchingOrigPair.inPunch && matchingOrigPair.outPunch && session.inP?.id === punchId)
+                );
+                const label = isAddedMissedPunch
+                    ? (targetPunch.type === 'in' ? 'added Clock IN' : 'added Clock OUT')
+                    : (targetPunch.type === 'in' ? 'Clock IN' : 'Clock OUT');
+                toast.info(`Removed ${label} (${formatDisplayTime(targetPunch.time)})`, { autoClose: 2000 });
+            }
+            return;
+        }
+
+        // Case C: Newly created session pair (not organic)
+        // Deleting either time_in or time_out deletes the ENTIRE session pair!
+        const idsToRemove = new Set(session.punches.map(p => p.id));
+        const filtered = punches.filter(p => !idsToRemove.has(p.id));
         const sequenced = resequencePunches(filtered);
         setPunches(sequenced);
         setSelectedIds(prev => {
             const next = new Set(prev);
-            next.delete(punchId);
+            idsToRemove.forEach(id => next.delete(id));
             return next;
         });
         emitChanges(sequenced);
         setHoveredPunchId(null);
         setDraggingPunchId(null);
-        if (targetPunch && typeof toast !== 'undefined') {
-            const label = targetPunch.type === 'normal' ? 'Checkpoint' : targetPunch.type === 'in' ? 'Clock IN' : 'Clock OUT';
-            toast.info(`Removed proposed ${label} (${formatDisplayTime(targetPunch.time)})`, { autoClose: 2000 });
+        if (typeof toast !== 'undefined') {
+            const inTimeStr = session.inP ? formatDisplayTime(session.inP.time) : '';
+            const outTimeStr = session.outP ? formatDisplayTime(session.outP.time) : '';
+            toast.info(`Removed session (${inTimeStr} – ${outTimeStr})`, { autoClose: 2000 });
         }
-    };
-
-    // Group proposed punches chronologically into sessions (IN -> [intermediate checkpoints] -> OUT)
-    const proposedSessions = useMemo(() => {
-        const sorted = [...punches].sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
-        const result = [];
-        let curIn = null;
-        let curCheckpoints = [];
-
-        sorted.forEach(p => {
-            if (p.type === 'in') {
-                if (curIn) {
-                    result.push({
-                        sessionIdx: result.length,
-                        inP: curIn,
-                        outP: null,
-                        checkpoints: curCheckpoints,
-                        punches: [curIn, ...curCheckpoints]
-                    });
-                }
-                curIn = p;
-                curCheckpoints = [];
-            } else if (p.type === 'normal') {
-                curCheckpoints.push(p);
-            } else if (p.type === 'out') {
-                if (curIn) {
-                    result.push({
-                        sessionIdx: result.length,
-                        inP: curIn,
-                        outP: p,
-                        checkpoints: curCheckpoints,
-                        punches: [curIn, ...curCheckpoints, p]
-                    });
-                    curIn = null;
-                    curCheckpoints = [];
-                } else {
-                    result.push({
-                        sessionIdx: result.length,
-                        inP: null,
-                        outP: p,
-                        checkpoints: curCheckpoints,
-                        punches: [...curCheckpoints, p]
-                    });
-                    curCheckpoints = [];
-                }
-            }
-        });
-
-        if (curIn) {
-            result.push({
-                sessionIdx: result.length,
-                inP: curIn,
-                outP: null,
-                checkpoints: curCheckpoints,
-                punches: [curIn, ...curCheckpoints]
-            });
-        }
-
-        return result;
-    }, [punches, parseMinutes]);
-
-    // Map each punch ID to its session index so all punches in a session can be linked
-    const punchSessionMap = useMemo(() => {
-        const map = new Map();
-        proposedSessions.forEach(s => {
-            s.punches.forEach(p => {
-                map.set(p.id, s.sessionIdx);
-            });
-        });
-        return map;
-    }, [proposedSessions]);
-
-    // Track auras for interval spans on track (closed IN -> OUT sessions)
-    const trackAuras = useMemo(() => {
-        return proposedSessions
-            .filter(s => s.inP && s.outP)
-            .map(s => ({
-                sessionIdx: s.sessionIdx,
-                pairIdx: s.sessionIdx,
-                inP: s.inP,
-                outP: s.outP,
-                punches: s.punches,
-                checkpoints: s.checkpoints
-            }));
-    }, [proposedSessions]);
-
-    const originalPunchPairs = useMemo(() => {
-        const pairs = [];
-        const boundary = originalPunches.filter(p => p.type !== 'normal');
-        for (let i = 0; i < boundary.length; i += 2) {
-            pairs.push({
-                pairIdx: Math.floor(i / 2),
-                inPunch: boundary[i],
-                outPunch: boundary[i + 1] || null
-            });
-        }
-        return pairs;
-    }, [originalPunches]);
-
-    // Calculate Summary Stats
-    const totalWorkingMinutes = useMemo(() => {
-        let total = 0;
-        trackAuras.forEach(aura => {
-            const inM = parseMinutes(aura.inP.time);
-            const outM = parseMinutes(aura.outP.time);
-            if (inM !== null && outM !== null && outM > inM) {
-                total += (outM - inM);
-            }
-        });
-        return total;
-    }, [trackAuras, parseMinutes]);
-
-    const formatDuration = (mins) => {
-        const h = Math.floor(mins / 60);
-        const m = mins % 60;
-        if (h === 0) return `${m}m`;
-        return `${h}h ${m > 0 ? `${m}m` : ''}`;
     };
 
     const isSummaryOverride = (requestData?.correction_type || '').toLowerCase() === 'summary';
@@ -997,8 +1427,13 @@ export default function VisualCorrectionTimeline({
                                                         </span>
                                                         <span>{formatDisplayTime(p.time)}</span>
                                                         <span className="text-[10px] text-slate-400 font-sans border-l border-white/20 pl-1.5 ml-0.5">
-                                                            Originally Logged
+                                                            Originally Recorded
                                                         </span>
+                                                        {isNormal && p.address && (
+                                                            <span className="text-[10px] text-amber-300/90 font-sans border-l border-white/20 pl-1.5 ml-0.5 truncate max-w-[130px]">
+                                                                {p.address}
+                                                            </span>
+                                                        )}
                                                     </motion.div>
                                                 )}
                                             </AnimatePresence>
@@ -1197,6 +1632,11 @@ export default function VisualCorrectionTimeline({
                                                     <span className="text-[10px] text-slate-400 font-sans border-l border-white/20 pl-1.5 ml-0.5">
                                                         Originally Recorded
                                                     </span>
+                                                    {isNormal && p.address && (
+                                                        <span className="text-[10px] text-amber-300/90 font-sans border-l border-white/20 pl-1.5 ml-0.5 truncate max-w-[130px]">
+                                                            {p.address}
+                                                        </span>
+                                                    )}
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>
@@ -1219,28 +1659,51 @@ export default function VisualCorrectionTimeline({
                                 <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
                                     Proposed Timeline
                                 </span>
-                                {totalWorkingMinutes > 0 ? (
-                                    <span className="text-xs font-normal font-mono px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
-                                        {formatDuration(totalWorkingMinutes)} total
-                                    </span>
-                                ) : (
-                                    <span className="text-xs font-normal font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-github-dark-bg text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-github-dark-border">
-                                        0h (Empty)
-                                    </span>
-                                )}
                             </div>
 
-                            {editable && (
+                            {editable && pendingSessionStart !== null ? (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 animate-pulse">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        Start: {formatDisplayTime(minutesToTimeStr(pendingSessionStart))} — Click 2nd point to set Clock Out
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setPendingSessionStart(null);
+                                            setWarningMsg(null);
+                                        }}
+                                        className="text-[11px] font-medium text-rose-500 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/40 transition-colors cursor-pointer"
+                                    >
+                                        ✕ Cancel (Esc)
+                                    </button>
+                                </div>
+                            ) : editable && incompleteSession?.inP && !incompleteSession?.outP ? (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
+                                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                        Missed Punch: Clock IN at {formatDisplayTime(incompleteSession.inP.time)} — Click timeline (e.g. 6 PM) to set Clock OUT
+                                    </span>
+                                </div>
+                            ) : editable && !incompleteSession?.inP && incompleteSession?.outP ? (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
+                                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                        Missed Punch: Clock OUT at {formatDisplayTime(incompleteSession.outP.time)} — Click timeline to set Clock IN
+                                    </span>
+                                </div>
+                            ) : editable ? (
                                 <span className="text-[11px] font-normal text-indigo-600 dark:text-indigo-400 font-medium">
-                                    Click rail to add punch • Drag across to set work interval • Double-click dot to remove
+                                    Click 2 points or drag to create session • Click inside session to add checkpoint • Double-click dot to remove
                                 </span>
-                            )}
+                            ) : null}
                         </div>
 
                         {/* Interactive Track Rail */}
                         <div
                             ref={trackRef}
                             onPointerDown={handleTrackPointerDown}
+                            onMouseLeave={() => setHoveredMins(null)}
                             className={`relative h-12 flex items-center bg-white/90 dark:bg-dark-card rounded-xl px-2 border border-slate-200 dark:border-github-dark-border shadow-xs select-none ${
                                 editable ? 'cursor-crosshair' : 'cursor-default'
                             }`}
@@ -1329,6 +1792,93 @@ export default function VisualCorrectionTimeline({
                                 );
                             })}
 
+                            {/* Incomplete Missed Punch: Dashed Open Trail */}
+                            {incompleteSession && incompleteSession.inP && !incompleteSession.outP && (() => {
+                                const inM = parseMinutes(incompleteSession.inP.time);
+                                if (inM === null) return null;
+                                const inPct = getPosPercent(inM);
+                                const targetEndM = shiftEndMins && shiftEndMins > inM ? shiftEndMins : 1080;
+                                const endPct = getPosPercent(targetEndM);
+                                const widthPct = Math.max(0, endPct - inPct);
+
+                                return (
+                                    <div
+                                        className="absolute top-1/2 -translate-y-1/2 h-6 rounded-lg bg-amber-500/10 border border-dashed border-amber-400/40 pointer-events-none transition-all flex items-center justify-end pr-2 z-10"
+                                        style={{ left: `${inPct}%`, width: `${widthPct}%` }}
+                                    >
+                                        <span className="text-[9px] font-medium text-amber-500 dark:text-amber-400 opacity-75 whitespace-nowrap hidden sm:inline">
+                                            Awaiting Clock OUT
+                                        </span>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Incomplete Missed Punch: Hover Preview to set missing Clock OUT */}
+                            {editable && pendingSessionStart === null && incompleteSession && incompleteSession.inP && !incompleteSession.outP && hoveredMins !== null && canCompleteIncompleteOut(hoveredMins) && (() => {
+                                const inM = parseMinutes(incompleteSession.inP.time);
+                                const inPct = getPosPercent(inM);
+                                const hoverPct = getPosPercent(hoveredMins);
+                                const spanWidth = Math.max(0.5, hoverPct - inPct);
+                                const durMins = hoveredMins - inM;
+
+                                return (
+                                    <>
+                                        <div
+                                            className="absolute top-1/2 -translate-y-1/2 h-7 rounded-xl bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-rose-500/20 border border-dashed border-rose-400 shadow-xs pointer-events-none transition-all z-10"
+                                            style={{ left: `${inPct}%`, width: `${spanWidth}%` }}
+                                        >
+                                            {spanWidth >= 5 && (
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                    <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow-xs bg-slate-900/90 text-rose-300 border border-rose-500/40 whitespace-nowrap">
+                                                        {formatDuration(durMins)} • Click to set Clock OUT ({formatDisplayTime(minutesToTimeStr(hoveredMins))})
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Ghost OUT dot at hover position */}
+                                        <div
+                                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
+                                            style={{ left: `${hoverPct}%` }}
+                                        >
+                                            <div className="w-4 h-4 rounded-full border-2 border-white shadow-xs ring-4 ring-rose-400/50 bg-rose-500 animate-pulse" />
+                                        </div>
+                                    </>
+                                );
+                            })()}
+
+                            {/* Incomplete Missed Punch: Hover Preview to set missing Clock IN */}
+                            {editable && pendingSessionStart === null && incompleteSession && !incompleteSession.inP && incompleteSession.outP && hoveredMins !== null && canCompleteIncompleteIn(hoveredMins) && (() => {
+                                const outM = parseMinutes(incompleteSession.outP.time);
+                                const outPct = getPosPercent(outM);
+                                const hoverPct = getPosPercent(hoveredMins);
+                                const spanWidth = Math.max(0.5, outPct - hoverPct);
+                                const durMins = outM - hoveredMins;
+
+                                return (
+                                    <>
+                                        <div
+                                            className="absolute top-1/2 -translate-y-1/2 h-7 rounded-xl bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-indigo-500/20 border border-dashed border-emerald-400 shadow-xs pointer-events-none transition-all z-10"
+                                            style={{ left: `${hoverPct}%`, width: `${spanWidth}%` }}
+                                        >
+                                            {spanWidth >= 5 && (
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                    <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow-xs bg-slate-900/90 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
+                                                        {formatDuration(durMins)} • Click to set Clock IN ({formatDisplayTime(minutesToTimeStr(hoveredMins))})
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Ghost IN dot at hover position */}
+                                        <div
+                                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
+                                            style={{ left: `${hoverPct}%` }}
+                                        >
+                                            <div className="w-4 h-4 rounded-full border-2 border-white shadow-xs ring-4 ring-emerald-400/50 bg-emerald-500 animate-pulse" />
+                                        </div>
+                                    </>
+                                );
+                            })()}
+
                             {/* Live Drag Creation Aura Preview */}
                             {creatingRange && creatingRange.isDragging && (() => {
                                 const sMin = Math.min(creatingRange.startMins, creatingRange.currentMins);
@@ -1354,8 +1904,82 @@ export default function VisualCorrectionTimeline({
                                 );
                             })()}
 
+                            {/* Pending 2-Click Session Creation: Dynamic Hover Preview Span */}
+                            {editable && pendingSessionStart !== null && hoveredMins !== null && hoveredMins !== pendingSessionStart && (() => {
+                                const sMin = Math.min(pendingSessionStart, hoveredMins);
+                                const eMin = Math.max(pendingSessionStart, hoveredMins);
+                                const sPct = getPosPercent(sMin);
+                                const ePct = getPosPercent(eMin);
+                                const spanWidth = Math.max(0.5, ePct - sPct);
+                                const durMins = eMin - sMin;
+                                const collides = checkSpanCollision(sMin, eMin);
+
+                                return (
+                                    <>
+                                        <div
+                                            className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-xl border border-dashed pointer-events-none transition-all ${
+                                                collides
+                                                    ? 'bg-rose-500/20 border-rose-400 shadow-xs'
+                                                    : 'bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-indigo-500/20 border-emerald-400 shadow-xs'
+                                            }`}
+                                            style={{ left: `${sPct}%`, width: `${spanWidth}%` }}
+                                        >
+                                            {spanWidth >= 5 && (
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                    <span className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow-xs ${
+                                                        collides
+                                                            ? 'bg-rose-900 text-rose-100 border border-rose-700'
+                                                            : 'bg-slate-900/90 text-emerald-300 border border-emerald-500/40'
+                                                    }`}>
+                                                        {collides ? 'Cannot overlap existing session' : `${formatDuration(durMins)} • Click to set ${hoveredMins > pendingSessionStart ? 'OUT' : 'IN'}`}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {/* Dot at hover position */}
+                                        <div
+                                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
+                                            style={{ left: `${getPosPercent(hoveredMins)}%` }}
+                                        >
+                                            <div className={`w-4 h-4 rounded-full border-2 border-white shadow-xs ring-2 ${
+                                                collides
+                                                    ? 'bg-rose-500 ring-rose-400/40'
+                                                    : hoveredMins > pendingSessionStart
+                                                        ? 'bg-rose-500 ring-rose-400/40'
+                                                        : 'bg-emerald-500 ring-emerald-400/40'
+                                            }`} />
+                                        </div>
+                                    </>
+                                );
+                            })()}
+
+                            {/* Pending 2-Click Session Creation: Start Dot Marker */}
+                            {editable && pendingSessionStart !== null && (
+                                <div
+                                    className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 cursor-pointer select-none group/pending"
+                                    style={{ left: `${getPosPercent(pendingSessionStart)}%` }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPendingSessionStart(null);
+                                        setWarningMsg('Cancelled session creation');
+                                        setTimeout(() => setWarningMsg(null), 2000);
+                                    }}
+                                    title="Click to cancel start time selection"
+                                >
+                                    <div className="relative flex items-center justify-center">
+                                        <div className="absolute w-7 h-7 rounded-full bg-emerald-400/30 animate-ping pointer-events-none" />
+                                        <div className="w-5 h-5 rounded-full bg-emerald-500 ring-4 ring-emerald-400/50 border-2 border-white dark:border-dark-card shadow-lg flex items-center justify-center">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                                        </div>
+                                    </div>
+                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900 text-white text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm pointer-events-none z-40">
+                                        Start: {formatDisplayTime(minutesToTimeStr(pendingSessionStart))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Empty Proposed Timeline Placeholder Prompt */}
-                            {punches.length === 0 && !creatingRange && (
+                            {punches.length === 0 && !creatingRange && pendingSessionStart === null && (
                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                     <span className="text-xs font-normal text-slate-400 dark:text-slate-500 bg-white/90 dark:bg-dark-card/90 px-3 py-1 rounded-full border border-dashed border-slate-300 dark:border-slate-700/60 shadow-2xs">
                                         No punches proposed yet
@@ -1370,6 +1994,8 @@ export default function VisualCorrectionTimeline({
                                 const isDragging = draggingPunchId === p.id;
                                 const isThisDotHovered = hoveredPunchId === p.id;
                                 const punchSessionIdx = punchSessionMap.get(p.id);
+                                const session = proposedSessions.find(s => s.sessionIdx === punchSessionIdx);
+                                const isNewSession = isNewlyCreatedSession(session);
                                 const isSessionActive = hoveredSessionIdx !== null && punchSessionIdx !== undefined && hoveredSessionIdx === punchSessionIdx;
                                 const isIn = p.type === 'in';
                                 const isNormal = p.type === 'normal';
@@ -1381,7 +2007,7 @@ export default function VisualCorrectionTimeline({
                                             editable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                                         }`}
                                         style={{ left: `${pct}%` }}
-                                        title={editable ? "Double-click to remove, or drag along rail to adjust" : undefined}
+                                        title={editable ? (isNormal ? "Double-click to remove checkpoint, or drag along rail to adjust" : isNewSession ? "Double-click to remove session pair, or drag along rail to adjust" : "Double-click to remove, or drag along rail to adjust") : undefined}
                                         onPointerDown={(e) => {
                                             if (!editable) return;
                                             if (e.target.closest('input') || e.target.closest('button')) return;
@@ -1434,7 +2060,12 @@ export default function VisualCorrectionTimeline({
                                                     <span>{formatDisplayTime(p.time)}</span>
                                                     {editable && (
                                                         <span className="text-[10px] text-slate-400 font-sans border-l border-white/20 pl-1.5 ml-0.5">
-                                                            Double-click to remove
+                                                            {isNormal ? 'Double-click to remove checkpoint' : isNewSession ? 'Double-click to remove session pair' : 'Double-click to remove'}
+                                                        </span>
+                                                    )}
+                                                    {isNormal && p.address && (
+                                                        <span className="text-[10px] text-amber-300/90 font-sans border-l border-white/20 pl-1.5 ml-0.5 truncate max-w-[130px]">
+                                                            {p.address}
                                                         </span>
                                                     )}
                                                 </motion.div>
@@ -1510,6 +2141,8 @@ export default function VisualCorrectionTimeline({
                             {punches.map((p, idx) => {
                                 const isChecked = selectedIds.has(p.id);
                                 const punchSessionIdx = punchSessionMap.get(p.id);
+                                const session = proposedSessions.find(s => s.sessionIdx === punchSessionIdx);
+                                const isNewSession = isNewlyCreatedSession(session);
                                 const isSessionActive = hoveredSessionIdx !== null && punchSessionIdx !== undefined && hoveredSessionIdx === punchSessionIdx;
                                 const isDirectlyHovered = hoveredPunchId === p.id;
                                 const isIn = p.type === 'in';
@@ -1519,7 +2152,7 @@ export default function VisualCorrectionTimeline({
                                     <div
                                         key={p.id || idx}
                                         onDoubleClick={() => handleRemovePunch(p.id)}
-                                        title="Double-click to remove punch"
+                                        title={isNormal ? "Double-click to remove checkpoint" : isNewSession ? "Double-click to remove session pair" : "Double-click to remove punch"}
                                         onMouseEnter={() => {
                                             setHoveredPunchId(p.id);
                                             if (punchSessionIdx !== undefined) {
@@ -1552,7 +2185,7 @@ export default function VisualCorrectionTimeline({
                                                     e.stopPropagation();
                                                     handleRemovePunch(p.id);
                                                 }}
-                                                title="Click to select, double-click to remove"
+                                                title={isNormal ? "Click to select, double-click to remove checkpoint" : isNewSession ? "Click to select, double-click to remove session pair" : "Click to select, double-click to remove punch"}
                                                 className="text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer shrink-0 w-4 flex justify-center"
                                             >
                                                 {isChecked ? (
@@ -1572,7 +2205,7 @@ export default function VisualCorrectionTimeline({
                                                     e.stopPropagation();
                                                     handleRemovePunch(p.id);
                                                 }}
-                                                title="Double-click to remove punch"
+                                                title={isNormal ? "Double-click to remove checkpoint" : isNewSession ? "Double-click to remove session pair" : "Double-click to remove punch"}
                                                 className={`w-28 shrink-0 text-xs font-normal rounded-lg px-2 py-1 border inline-flex items-center justify-center gap-1.5 text-center cursor-pointer ${
                                                     isNormal
                                                         ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
@@ -1592,6 +2225,13 @@ export default function VisualCorrectionTimeline({
                                                     onChange={(newTime) => handleTimeChange(p.id, newTime)}
                                                 />
                                             </div>
+
+                                            {/* Location / address snippet for checkpoints if available */}
+                                            {isNormal && p.address && (
+                                                <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate max-w-[130px] sm:max-w-[180px] hidden sm:inline" title={p.address}>
+                                                    • {p.address}
+                                                </span>
+                                            )}
                                         </div>
 
                                         {/* 1-Click Cross Button to Delete */}
@@ -1599,8 +2239,8 @@ export default function VisualCorrectionTimeline({
                                             type="button"
                                             onClick={() => handleRemovePunch(p.id)}
                                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all flex items-center justify-center cursor-pointer shrink-0"
-                                            title="Delete punch"
-                                            aria-label="Delete punch"
+                                            title={isNormal ? "Delete checkpoint" : isNewSession ? "Delete session pair" : "Delete punch"}
+                                            aria-label={isNormal ? "Delete checkpoint" : isNewSession ? "Delete session pair" : "Delete punch"}
                                         >
                                             <X size={15} />
                                         </button>

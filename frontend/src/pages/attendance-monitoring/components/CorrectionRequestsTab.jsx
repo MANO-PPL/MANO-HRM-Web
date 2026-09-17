@@ -24,7 +24,7 @@ import VisualCorrectionTimeline from '../../../components/attendance/VisualCorre
 import CorrectionDocumentCard from '../../../components/attendance/CorrectionDocumentCard';
 import { attendanceService } from '../../../services/attendanceService';
 import { toast } from 'react-toastify';
-import { parseCorrectionDetails } from '../../../utils/attendanceStatus';
+import { parseCorrectionDetails, isCheckpointRecord } from '../../../utils/attendanceStatus';
 
 const CorrectionRequestsTab = ({
     correctionRequests = [],
@@ -63,15 +63,20 @@ const CorrectionRequestsTab = ({
         }
         if (Array.isArray(parsed) && parsed.length > 0) {
             const cleaned = parsed
-                .map((s, idx) => ({
-                    id: s.id || `sess-${idx}-${Date.now()}`,
-                    time_in: s.time_in ? String(s.time_in).slice(0, 5) : (s.requested_time_in ? String(s.requested_time_in).slice(0, 5) : ''),
-                    time_out: s.time_out ? String(s.time_out).slice(0, 5) : (s.requested_time_out ? String(s.requested_time_out).slice(0, 5) : ''),
-                    punch_type: s.punch_type || 'regular',
-                    attachment: s.attachment || null,
-                    inImage: s.inImage || null,
-                    outImage: s.outImage || null
-                }))
+                .map((s, idx) => {
+                    const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                    return {
+                        id: s.id || `sess-${idx}-${Date.now()}`,
+                        time_in: s.time_in ? String(s.time_in).slice(0, 5) : (s.requested_time_in ? String(s.requested_time_in).slice(0, 5) : ''),
+                        time_out: isChk ? '' : (s.time_out ? String(s.time_out).slice(0, 5) : (s.requested_time_out ? String(s.requested_time_out).slice(0, 5) : '')),
+                        punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                        is_checkpoint: isChk,
+                        checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : [],
+                        attachment: s.attachment || null,
+                        inImage: s.inImage || null,
+                        outImage: s.outImage || null
+                    };
+                })
                 .filter(s => s.time_in || s.time_out);
             if (cleaned.length > 0) return cleaned;
         }
@@ -214,7 +219,9 @@ const CorrectionRequestsTab = ({
 
     // Total duration of current proposed sessions
     const proposedDurationHours = useMemo(() => {
-        return activeProposedSessions.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
+        return activeProposedSessions
+            .filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal')
+            .reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
     }, [activeProposedSessions, calculateSessionDurationHours]);
 
     // Attachment for the currently selected request
@@ -347,7 +354,9 @@ const CorrectionRequestsTab = ({
                         filteredRequests.map((request) => {
                             const isSelected = selectedRequestId === request.acr_id;
                             const proposed = normalizeSessions(request.proposed_data, request);
-                            const duration = proposed.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
+                            const duration = proposed
+                                .filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal')
+                                .reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
                             const statusLower = (request.status || 'pending').toLowerCase();
                             const attInfo = getAttachmentInfo(request);
                             const { category: reqCategory, cleanReason: reqCleanReason } = parseCorrectionDetails(request);
@@ -559,14 +568,19 @@ const CorrectionRequestsTab = ({
                                 }}
                                 editable={isPending && overrideMode}
                                 onSessionsChange={(updated) => {
-                                    setOverrideSessions(updated.map((s, idx) => ({
-                                        id: s.id || `session-${idx}`,
-                                        time_in: s.time_in ? String(s.time_in).slice(0, 5) : '',
-                                        time_out: s.time_out ? String(s.time_out).slice(0, 5) : '',
-                                        punch_type: s.punch_type || 'regular',
-                                        inPunchId: s.inPunchId,
-                                        outPunchId: s.outPunchId
-                                    })));
+                                    setOverrideSessions(updated.map((s, idx) => {
+                                        const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                                        return {
+                                            id: s.id || `session-${idx}`,
+                                            time_in: s.time_in ? String(s.time_in).slice(0, 5) : '',
+                                            time_out: isChk ? '' : (s.time_out ? String(s.time_out).slice(0, 5) : ''),
+                                            punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                                            is_checkpoint: isChk,
+                                            checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : [],
+                                            inPunchId: s.inPunchId,
+                                            outPunchId: s.outPunchId
+                                        };
+                                    }));
                                 }}
                             />
 

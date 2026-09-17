@@ -16,6 +16,7 @@ import {
 import CustomCalendar from '../../../components/CustomCalendar';
 import SessionCheckpointsTimeline from '../components/SessionCheckpointsTimeline';
 import { getLocalDateString } from '../../../utils/dateUtils';
+import { isCheckpointRecord } from '../../../utils/attendanceStatus';
 
 const MarkAttendanceTab = ({
     globalActiveSession,
@@ -49,7 +50,7 @@ const MarkAttendanceTab = ({
     calculateDuration,
     setViewerImage
 }) => {
-    const hasActiveSession = Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !s.time_out)));
+    const hasActiveSession = Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && !s.time_out)));
     const isToday = selectedDate === getLocalDateString(new Date());
 
     return (
@@ -299,10 +300,12 @@ const MarkAttendanceTab = ({
                 <div className="space-y-4">
                     {loading ? (
                         <p className="text-center text-slate-500 py-10">Loading...</p>
-                    ) : dailySessions.length === 0 ? (
-                        <p className="text-center text-slate-400 py-10">No attendance records for this date.</p>
-                    ) : (
-                        dailySessions.map((session, idx) => (
+                    ) : (() => {
+                        const workSessions = Array.isArray(dailySessions) ? dailySessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal') : [];
+                        if (workSessions.length === 0) {
+                            return <p className="text-center text-slate-400 py-10">No attendance records for this date.</p>;
+                        }
+                        return workSessions.map((session, idx) => (
                             <div key={session.attendance_id || session.id} className="bg-white dark:bg-github-dark-subtle p-5 rounded-xl border border-slate-100 dark:border-white/5 shadow-md space-y-6 transition-all hover:shadow-xl">
                                 {/* Session Header */}
                                 <div className="flex justify-between items-center pb-4 border-b border-slate-50 dark:border-white/5">
@@ -310,7 +313,7 @@ const MarkAttendanceTab = ({
                                         <div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-lg">
                                             <Clock size={14} />
                                         </div>
-                                        Session #{dailySessions.length - idx}
+                                        Session #{workSessions.length - idx}
                                     </span>
                                     <div className="flex flex-col items-end gap-2">
                                         {(() => {
@@ -462,8 +465,8 @@ const MarkAttendanceTab = ({
                                     setViewerImage={setViewerImage}
                                 />
                             </div>
-                        ))
-                    )}
+                        ));
+                    })()}
                 </div>
             </div>
         </div>

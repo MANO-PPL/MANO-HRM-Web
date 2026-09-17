@@ -11,6 +11,7 @@ import {
     ExternalLink,
     Camera
 } from 'lucide-react';
+import { isCheckpointRecord } from '../../../utils/attendanceStatus';
 
 const AttendanceHistoryTab = ({
     handlePrevMonth,
@@ -384,7 +385,7 @@ const AttendanceHistoryTab = ({
                                                     </div>
 
                                                     <div className="grid gap-2">
-                                                        {day.sessions.map((session, sIdx) => {
+                                                        {day.sessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal').map((session, sIdx) => {
                                                             const isSessionOpen = !session.time_out;
                                                             const isSessionMissed = session.status === 'MISSED_PUNCH' || (day.isPastDay && isSessionOpen);
                                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'CLOSED');

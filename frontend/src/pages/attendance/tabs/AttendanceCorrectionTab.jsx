@@ -12,12 +12,13 @@ import {
     Download,
     Paperclip,
     Plus,
-    Clock
+    Clock,
+    MapPin
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
 import CorrectionDocumentCard from '../../../components/attendance/CorrectionDocumentCard';
-import { parseCorrectionDetails } from '../../../utils/attendanceStatus';
+import { parseCorrectionDetails, isCheckpointRecord } from '../../../utils/attendanceStatus';
 
 const AttendanceCorrectionTab = ({
     filteredCorrectionHistory,
@@ -369,40 +370,96 @@ const AttendanceCorrectionTab = ({
                                             />
 
                                             {proposedList.length > 0 && (
-                                                <div className="bg-slate-50/70 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-xl p-4 space-y-2">
+                                                <div className="bg-slate-50/70 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-xl p-4 space-y-3">
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                                                            Requested Work Sessions
+                                                            Requested Punches & Sessions
                                                         </span>
-                                                        {proposedList.length > 1 && (
+                                                        {!proposedList.some(s => !isCheckpointRecord(s) && s.punch_type !== 'normal') ? null : (
                                                             <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                                                                Total: {proposedList.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0).toFixed(2)} hrs
+                                                                Total: {proposedList.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal').reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0).toFixed(2)} hrs
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                                                        {proposedList.map((session, idx) => {
-                                                            const duration = calculateSessionDurationHours(session.time_in, session.time_out);
-                                                            return (
-                                                                <div
-                                                                    key={session.id || idx}
-                                                                    className="flex items-center justify-between p-2.5 bg-white dark:bg-dark-card border border-slate-200/80 dark:border-github-dark-border rounded-xl text-xs"
-                                                                >
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-slate-500 font-medium">Session #{idx + 1}:</span>
-                                                                        <span className="font-mono text-slate-800 dark:text-slate-200">
-                                                                            {session.time_in || '--:--'} to {session.time_out || '--:--'}
-                                                                        </span>
+                                                    {(() => {
+                                                        const workSessions = proposedList.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal');
+                                                        const standaloneCheckpoints = proposedList.filter(s => isCheckpointRecord(s) || s.punch_type === 'normal');
+                                                        const nestedCheckpoints = workSessions.flatMap(s => (Array.isArray(s.checkpoints) ? s.checkpoints : []));
+                                                        const seenCheckpoints = new Set();
+                                                        const checkpoints = [...standaloneCheckpoints, ...nestedCheckpoints].filter(chk => {
+                                                            const chkTime = chk.time_in || chk.punch_time || chk.time || '';
+                                                            const key = `${chk.id || ''}_${chkTime}`;
+                                                            if (seenCheckpoints.has(key)) return false;
+                                                            seenCheckpoints.add(key);
+                                                            return true;
+                                                        });
+
+                                                        return (
+                                                            <div className="space-y-2.5">
+                                                                {workSessions.length > 0 && (
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                        {workSessions.map((session, idx) => {
+                                                                            const duration = calculateSessionDurationHours(session.time_in, session.time_out);
+                                                                            return (
+                                                                                <div
+                                                                                    key={session.id || idx}
+                                                                                    className="flex items-center justify-between p-2.5 bg-white dark:bg-dark-card border border-slate-200/80 dark:border-github-dark-border rounded-xl text-xs"
+                                                                                >
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <span className="text-slate-500 font-medium">Session #{idx + 1}:</span>
+                                                                                        <span className="font-mono text-slate-800 dark:text-slate-200">
+                                                                                            {session.time_in || '--:--'} to {session.time_out || '--:--'}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    {duration > 0 && (
+                                                                                        <span className="font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full text-[11px]">
+                                                                                            {duration.toFixed(2)} hrs
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
                                                                     </div>
-                                                                    {duration > 0 && (
-                                                                        <span className="font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full text-[11px]">
-                                                                            {duration.toFixed(2)} hrs
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
+                                                                )}
+
+                                                                {checkpoints.length > 0 && (
+                                                                    <div className="space-y-1.5 pt-1">
+                                                                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 px-0.5">
+                                                                            <MapPin size={12} className="shrink-0" />
+                                                                            <span>Checkpoints ({checkpoints.length})</span>
+                                                                        </div>
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                                            {checkpoints.map((chk, cIdx) => {
+                                                                                const timeDisplay = (chk.time_in || chk.punch_time || chk.time || '').slice(0, 5) || '--:--';
+                                                                                return (
+                                                                                    <div
+                                                                                        key={chk.id || cIdx}
+                                                                                        className="flex items-center justify-between p-2.5 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl text-xs"
+                                                                                    >
+                                                                                        <div className="flex items-center gap-2 min-w-0">
+                                                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                                                                            <span className="text-amber-800 dark:text-amber-300 font-medium">Checkpoint #{cIdx + 1}:</span>
+                                                                                            <span className="font-mono text-slate-800 dark:text-slate-200 font-medium">
+                                                                                                {timeDisplay}
+                                                                                            </span>
+                                                                                            {chk.address && (
+                                                                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[130px]" title={chk.address}>
+                                                                                                    • {chk.address}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100/70 dark:bg-amber-900/40 px-2 py-0.5 rounded-full shrink-0">
+                                                                                            Checkpoint
+                                                                                        </span>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             )}
 

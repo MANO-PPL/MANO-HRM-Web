@@ -78,7 +78,7 @@ import DatePicker from '../../components/DatePicker';
 import MonthPicker from '../../components/MonthPicker';
 import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
 import TimePicker from '../../components/TimePicker';
-import { getStatusStyle, ATTENDANCE_STATUS } from '../../utils/attendanceStatus';
+import { getStatusStyle, ATTENDANCE_STATUS, isCheckpointRecord, normalizeDailySessionsWithCheckpoints } from '../../utils/attendanceStatus';
 import { getLocalDateString, formatLocalTimeString } from '../../utils/dateUtils';
 
 // Modular Components & Tabs
@@ -693,6 +693,7 @@ const Attendance = () => {
 
     // Inputs for sessions - starts empty so user can construct with their own mindset
     const [corrSessions, setCorrSessions] = useState([]);
+    const [timelineHasIncomplete, setTimelineHasIncomplete] = useState(false);
     const [isDraggingFile, setIsDraggingFile] = useState(false);
     const corrFileInputRef = useRef(null);
 
@@ -719,7 +720,71 @@ const Attendance = () => {
     const [isSavingCorrection, setIsSavingCorrection] = useState(false);
     const [showAdminRejectModal, setShowAdminRejectModal] = useState(false);
     const [adminRejectReason, setAdminRejectReason] = useState('');
+    const [adminRejectingRequestId, setAdminRejectingRequestId] = useState(null);
     const [isAdminActionLoading, setIsAdminActionLoading] = useState(false);
+
+    // Filter controls for request history
+    const [historyTypeFilter, setHistoryTypeFilter] = useState('all'); // 'all' | 'punch' | 'summary' | 'fix' | 'reset'
+    const [historyDateRange, setHistoryDateRange] = useState('30days'); // '7days' | '30days' | '90days' | 'all'
+    const [historySearchQuery, setHistorySearchQuery] = useState('');
+
+    const extractHHMM = useCallback((val) => {
+        if (!val) return '';
+        if (val instanceof Date) {
+            const h = String(val.getHours()).padStart(2, '0');
+            const m = String(val.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
+        }
+        const raw = String(val).trim();
+        if (raw.includes('T')) {
+            const timePart = raw.split('T')[1];
+            return timePart.slice(0, 5);
+        }
+        if (raw.includes(' ')) {
+            const timePart = raw.split(' ')[1];
+            return timePart.slice(0, 5);
+        }
+        return raw.slice(0, 5);
+    }, []);
+
+    const calculateSessionDurationHours = useCallback((startStr, endStr) => {
+        if (!startStr || !endStr) return 0;
+        const [sH, sM] = startStr.split(':').map(Number);
+        const [eH, eM] = endStr.split(':').map(Number);
+        if (isNaN(sH) || isNaN(sM) || isNaN(eH) || isNaN(eM)) return 0;
+        let startMins = sH * 60 + sM;
+        let endMins = eH * 60 + eM;
+        if (endMins < startMins) {
+            endMins += 24 * 60; // Overnight
+        }
+        return (endMins - startMins) / 60;
+    }, []);
+
+    const totalProposedHours = useMemo(() => {
+        const valid = corrSessions.filter(s => s.time_in && s.time_out);
+        if (valid.length === 0) {
+            if (corrIn && corrOut) return calculateSessionDurationHours(corrIn, corrOut);
+            return 0;
+        }
+        return valid.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
+    }, [corrSessions, corrIn, corrOut, calculateSessionDurationHours]);
+
+    // Check if there are any incomplete sessions (missing OUT or missing IN, or pending timeline creation)
+    // Only enforced when the Advanced correction options are open!
+    const hasIncompleteSession = useMemo(() => {
+        if (!showAdvancedOptions) return false;
+
+        // 1. Any regular session in corrSessions missing either time_in or time_out
+        const hasIncompleteInCorr = corrSessions.some(s => {
+            if (isCheckpointRecord(s) || s.punch_type === 'normal') return false; // checkpoints only have single time
+            const hasIn = Boolean(s.time_in && String(s.time_in).trim());
+            const hasOut = Boolean(s.time_out && String(s.time_out).trim());
+            // If it has one but not the other, it's incomplete!
+            return (hasIn && !hasOut) || (!hasIn && hasOut);
+        });
+
+        return Boolean(hasIncompleteInCorr || timelineHasIncomplete);
+    }, [showAdvancedOptions, corrSessions, timelineHasIncomplete]);
 
     const isAdminUser = Boolean(user?.user_type === 'admin' || user?.user_type === 'superadmin' || user?.role === 'admin' || user?.is_admin);
     const isAdminOrHr = Boolean(
@@ -744,13 +809,18 @@ const Attendance = () => {
         }
         if (Array.isArray(parsed) && parsed.length > 0) {
             const cleaned = parsed
-                .map((s, idx) => ({
-                    id: s.id || `sess-${idx}-${Date.now()}`,
-                    time_in: s.time_in ? String(s.time_in).slice(0, 5) : (s.requested_time_in ? String(s.requested_time_in).slice(0, 5) : ''),
-                    time_out: s.time_out ? String(s.time_out).slice(0, 5) : (s.requested_time_out ? String(s.requested_time_out).slice(0, 5) : ''),
-                    punch_type: s.punch_type || 'regular',
-                    ...(s.attachment ? { attachment: s.attachment } : {})
-                }))
+                .map((s, idx) => {
+                    const isChk = isCheckpointRecord(s);
+                    return {
+                        id: s.id || `sess-${idx}-${Date.now()}`,
+                        time_in: s.time_in ? String(s.time_in).slice(0, 5) : (s.requested_time_in ? String(s.requested_time_in).slice(0, 5) : (s.punch_time ? String(s.punch_time).slice(11, 16) : '')),
+                        time_out: isChk ? '' : (s.time_out ? String(s.time_out).slice(0, 5) : (s.requested_time_out ? String(s.requested_time_out).slice(0, 5) : '')),
+                        punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                        address: s.address || '',
+                        checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : (Array.isArray(s.raw_checkpoints) ? s.raw_checkpoints : []),
+                        ...(s.attachment ? { attachment: s.attachment } : {})
+                    };
+                })
                 .filter(s => s.time_in || s.time_out);
             if (cleaned.length > 0) return cleaned;
         }
@@ -786,29 +856,6 @@ const Attendance = () => {
     const maxAllowedCorrectionDate = useMemo(() => {
         return getLocalDateString();
     }, []);
-
-    // Session duration calculation helper
-    const calculateSessionDurationHours = useCallback((timeIn, timeOut) => {
-        if (!timeIn || !timeOut) return 0;
-        const [h1, m1] = String(timeIn).slice(0, 5).split(':').map(Number);
-        const [h2, m2] = String(timeOut).slice(0, 5).split(':').map(Number);
-        if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return 0;
-        let startMins = h1 * 60 + m1;
-        let endMins = h2 * 60 + m2;
-        if (endMins <= startMins) {
-            endMins += 24 * 60; // Overnight shift
-        }
-        return (endMins - startMins) / 60;
-    }, []);
-
-    const totalProposedHours = useMemo(() => {
-        const valid = corrSessions.filter(s => s.time_in && s.time_out);
-        if (valid.length === 0) {
-            if (corrIn && corrOut) return calculateSessionDurationHours(corrIn, corrOut);
-            return 0;
-        }
-        return valid.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
-    }, [corrSessions, corrIn, corrOut, calculateSessionDurationHours]);
 
     const handleSessionChange = (index, field, val) => {
         setCorrSessions(prev => {
@@ -858,12 +905,39 @@ const Attendance = () => {
 
     const handleResetCorrectionToOriginal = () => {
         if (originalSessions.length > 0) {
-            setCorrSessions(originalSessions.map((s, i) => ({
-                id: Date.now() + i,
-                time_in: s.time_in || '',
-                time_out: s.time_out || '',
-                punch_type: s.punch_type || 'regular'
-            })));
+            const resetList = [];
+            originalSessions.forEach((s, idx) => {
+                if (isCheckpointRecord(s) || s.punch_type === 'normal') {
+                    resetList.push({
+                        id: `chk-${Date.now()}-${idx}`,
+                        time_in: s.time_in || '',
+                        time_out: '',
+                        punch_type: 'normal',
+                        address: s.address || ''
+                    });
+                } else {
+                    resetList.push({
+                        id: `sess-${Date.now()}-${idx}`,
+                        time_in: s.time_in || '',
+                        time_out: s.time_out || '',
+                        punch_type: s.punch_type || 'regular'
+                    });
+                    const chkList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
+                    chkList.forEach((chk, cIdx) => {
+                        const chkTime = extractHHMM(chk.punch_time || chk.time || chk.time_in);
+                        if (chkTime) {
+                            resetList.push({
+                                id: `chk-${Date.now()}-${idx}-${cIdx}`,
+                                time_in: chkTime,
+                                time_out: '',
+                                punch_type: 'normal',
+                                address: chk.address || ''
+                            });
+                        }
+                    });
+                }
+            });
+            setCorrSessions(resetList);
             toast.info("Reset to originally recorded punches");
         } else {
             setCorrSessions([]);
@@ -919,7 +993,11 @@ const Attendance = () => {
         setLoading(true);
         try {
             const res = await attendanceService.getMyRecords(selectedDate, selectedDate, force);
-            if (res.ok) setDailySessions(res.data);
+            let normalizedDaily = [];
+            if (res.ok) {
+                normalizedDaily = normalizeDailySessionsWithCheckpoints(res.data);
+                setDailySessions(normalizedDaily);
+            }
 
             // Fetch recent records to detect missed punches and today's active session
             const recentRes = await attendanceService.getMyRecords(undefined, undefined, force);
@@ -939,7 +1017,23 @@ const Attendance = () => {
                 const missedDates = [];
                 let hasTodayActiveSession = false;
 
-                for (const session of recentRes.data) {
+                // Fetch recent correction requests to check if any are pending/approved for missed dates
+                let activeCorrections = [];
+                try {
+                    const corrRes = await attendanceService.getCorrectionRequests({ limit: 50, my_requests: 'true' });
+                    if (corrRes && corrRes.data) {
+                        activeCorrections = corrRes.data;
+                    }
+                } catch (corrErr) {
+                    console.error("Failed to fetch correction requests in warning check", corrErr);
+                }
+
+                const normalizedRecent = normalizeDailySessionsWithCheckpoints(recentRes.data);
+
+                for (const session of normalizedRecent) {
+                    // Skip standalone checkpoints from missed punch and active session calculations
+                    if (isCheckpointRecord(session)) continue;
+
                     if (!session.time_out) {
                         const sessionTimeIn = new Date(session.time_in);
                         const sessionDateStr = getLocalDateString(sessionTimeIn);
@@ -957,8 +1051,8 @@ const Attendance = () => {
                     }
                 }
 
-                // Also check if dailySessions for selected date has an open session
-                if (!hasTodayActiveSession && Array.isArray(res?.data) && res.data.some(s => !s.time_out)) {
+                // Also check if dailySessions for selected date has an open session (excluding checkpoints)
+                if (!hasTodayActiveSession && normalizedDaily.some(s => !isCheckpointRecord(s) && !s.time_out)) {
                     hasTodayActiveSession = true;
                 }
 
@@ -967,7 +1061,7 @@ const Attendance = () => {
                 const sortedMissedDates = [...new Set(missedDates)].sort((a, b) => b.localeCompare(a));
                 setMissedPunchWarning(sortedMissedDates.length > 0 ? { dates: sortedMissedDates } : null);
             } else {
-                const hasOpenInDaily = Array.isArray(res?.data) && res.data.some(s => !s.time_out);
+                const hasOpenInDaily = normalizedDaily.some(s => !isCheckpointRecord(s) && !s.time_out);
                 setGlobalActiveSession(Boolean(hasOpenInDaily));
                 setMissedPunchWarning(null);
             }
@@ -1176,14 +1270,19 @@ const Attendance = () => {
 
                 setOriginalSessions(originalList);
                 if (proposedList.length > 0) {
-                    setCorrSessions(proposedList.map((s, i) => ({
-                        id: Date.now() + i,
-                        time_in: s.time_in ? String(s.time_in).slice(0, 5) : '',
-                        time_out: s.time_out ? String(s.time_out).slice(0, 5) : '',
-                        punch_type: s.punch_type || 'regular'
-                    })));
-                    setCorrIn(proposedList[0]?.time_in ? String(proposedList[0].time_in).slice(0, 5) : '');
-                    setCorrOut(proposedList[0]?.time_out ? String(proposedList[0].time_out).slice(0, 5) : '');
+                    setCorrSessions(proposedList.map((s, i) => {
+                        const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                        return {
+                            id: s.id || Date.now() + i,
+                            time_in: s.time_in ? String(s.time_in).slice(0, 5) : (s.punch_time ? String(s.punch_time).slice(11, 16) : ''),
+                            time_out: isChk ? '' : (s.time_out ? String(s.time_out).slice(0, 5) : ''),
+                            punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                            address: s.address || ''
+                        };
+                    }));
+                    const workProposed = proposedList.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal');
+                    setCorrIn(workProposed[0]?.time_in ? String(workProposed[0].time_in).slice(0, 5) : (proposedList[0]?.time_in ? String(proposedList[0].time_in).slice(0, 5) : ''));
+                    setCorrOut(workProposed[workProposed.length - 1]?.time_out ? String(workProposed[workProposed.length - 1].time_out).slice(0, 5) : '');
                 }
                 return;
             }
@@ -1203,35 +1302,20 @@ const Attendance = () => {
             if (rawList && rawList.length > 0) {
                 setExistingRecord(rawList[0]);
 
-                const extractHHMM = (val) => {
-                    if (!val) return '';
-                    if (val instanceof Date) {
-                        const h = String(val.getHours()).padStart(2, '0');
-                        const m = String(val.getMinutes()).padStart(2, '0');
-                        return `${h}:${m}`;
-                    }
-                    const raw = String(val).trim();
-                    if (raw.includes('T')) {
-                        const timePart = raw.split('T')[1];
-                        return timePart.slice(0, 5);
-                    }
-                    if (raw.includes(' ')) {
-                        const timePart = raw.split(' ')[1];
-                        return timePart.slice(0, 5);
-                    }
-                    return raw.slice(0, 5);
-                };
+                const normalizedRaw = normalizeDailySessionsWithCheckpoints(rawList);
 
                 // Parse out all sessions and auto-populate the add_session array
-                const loadedSessions = rawList.map((s, i) => {
-                    const time_in_str = extractHHMM(s.time_in || s.time_in_ts);
-                    const time_out_str = extractHHMM(s.time_out || s.time_out_ts);
+                const loadedSessions = normalizedRaw.map((s, i) => {
+                    const isChk = isCheckpointRecord(s);
+                    const time_in_str = extractHHMM(s.time_in || s.time_in_ts || s.punch_time);
+                    const time_out_str = isChk ? '' : extractHHMM(s.time_out || s.time_out_ts);
                     return {
                         id: Date.now() + i,
                         time_in: time_in_str,
                         time_out: time_out_str,
-                        punch_type: 'regular',
+                        punch_type: isChk ? 'normal' : 'regular',
                         checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : (Array.isArray(s.raw_checkpoints) ? s.raw_checkpoints : []),
+                        address: s.address || s.time_in_address || '',
                         status: s.status,
                         raw_session: s
                     };
@@ -1241,20 +1325,51 @@ const Attendance = () => {
                 setOriginalSessions(loadedSessions.map(s => ({
                     time_in: s.time_in,
                     time_out: s.time_out,
+                    punch_type: s.punch_type,
                     checkpoints: s.checkpoints,
+                    address: s.address,
                     status: s.status,
                     raw_session: s.raw_session
                 })));
 
-                // Pre-populate proposed sessions with existing logged sessions so user can edit or add punches directly
-                setCorrSessions(loadedSessions.map((s, idx) => ({
-                    id: Date.now() + idx,
-                    time_in: s.time_in || '',
-                    time_out: s.time_out || '',
-                    punch_type: s.punch_type || 'regular'
-                })));
-                setCorrIn(loadedSessions[0]?.time_in || '');
-                setCorrOut(loadedSessions[loadedSessions.length - 1]?.time_out || '');
+                // Pre-populate proposed sessions with existing logged sessions and checkpoints so user can edit or add punches directly
+                const initialCorr = [];
+                loadedSessions.forEach((s, idx) => {
+                    if (s.punch_type === 'normal') {
+                        initialCorr.push({
+                            id: `chk-${Date.now()}-${idx}`,
+                            time_in: s.time_in || '',
+                            time_out: '',
+                            punch_type: 'normal',
+                            address: s.address || ''
+                        });
+                    } else {
+                        initialCorr.push({
+                            id: `sess-${Date.now()}-${idx}`,
+                            time_in: s.time_in || '',
+                            time_out: s.time_out || '',
+                            punch_type: s.punch_type || 'regular',
+                            address: s.address || ''
+                        });
+                        const chkList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
+                        chkList.forEach((chk, cIdx) => {
+                            const chkTime = extractHHMM(chk.punch_time || chk.time || chk.time_in);
+                            if (chkTime) {
+                                initialCorr.push({
+                                    id: `chk-${Date.now()}-${idx}-${cIdx}`,
+                                    time_in: chkTime,
+                                    time_out: '',
+                                    punch_type: 'normal',
+                                    address: chk.address || ''
+                                });
+                            }
+                        });
+                    }
+                });
+                setCorrSessions(initialCorr);
+                const workList = loadedSessions.filter(s => s.punch_type !== 'normal');
+                setCorrIn(workList[0]?.time_in || loadedSessions[0]?.time_in || '');
+                setCorrOut(workList[workList.length - 1]?.time_out || loadedSessions[loadedSessions.length - 1]?.time_out || '');
 
                 // Smart default for corrType: Missed Punch vs Missed Day
                 if (loadedSessions.length === 0) {
@@ -1331,7 +1446,7 @@ const Attendance = () => {
             toast.error("Checkpoints are disabled by your assigned shift policy.");
             return;
         }
-        const isSessionActive = globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !s.time_out));
+        const isSessionActive = globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && !s.time_out));
         if (!isSessionActive) {
             toast.warning("You must Clock IN before marking a checkpoint.");
             return;
@@ -1755,6 +1870,11 @@ const Attendance = () => {
             return;
         }
 
+        if (hasIncompleteSession) {
+            toast.error("Cannot submit request with incomplete sessions. Please complete or remove all unmatched punch times.");
+            return;
+        }
+
         // ENFORCE DYNAMIC CORRECTION DEADLINE (Bypassed / unlimited for testing)
         /*
         const deadlineDays = myShift?.rules?.correction_deadline ?? 2;
@@ -1770,20 +1890,24 @@ const Attendance = () => {
         }
         */
 
-        // Validation for sessions (optional: only checked if user customized punches on timeline)
-        let validSessions = corrSessions.filter(s => s.time_in || s.time_out);
+        // Validation for sessions (optional: only checked if user customized punches on advanced timeline)
+        if (showAdvancedOptions) {
+            let validSessions = corrSessions.filter(s => s.time_in || s.time_out);
 
-        for (let i = 0; i < validSessions.length; i++) {
-            const sessionA = validSessions[i];
-            const isOvernightA = Boolean(sessionA.time_in && sessionA.time_out && sessionA.time_in >= sessionA.time_out);
+            for (let i = 0; i < validSessions.length; i++) {
+                const sessionA = validSessions[i];
+                if (isCheckpointRecord(sessionA) || sessionA.punch_type === 'normal') continue;
+                const isOvernightA = Boolean(sessionA.time_in && sessionA.time_out && sessionA.time_in >= sessionA.time_out);
 
-            for (let j = i + 1; j < validSessions.length; j++) {
-                const sessionB = validSessions[j];
-                const isOvernightB = Boolean(sessionB.time_in && sessionB.time_out && sessionB.time_in >= sessionB.time_out);
-                if (sessionA.time_in && sessionA.time_out && sessionB.time_in && sessionB.time_out) {
-                    if (!isOvernightA && !isOvernightB && sessionA.time_in < sessionB.time_out && sessionA.time_out > sessionB.time_in) {
-                        toast.error(`Sessions cannot overlap: ${sessionA.time_in} to ${sessionA.time_out} with ${sessionB.time_in} to ${sessionB.time_out}`);
-                        return;
+                for (let j = i + 1; j < validSessions.length; j++) {
+                    const sessionB = validSessions[j];
+                    if (isCheckpointRecord(sessionB) || sessionB.punch_type === 'normal') continue;
+                    const isOvernightB = Boolean(sessionB.time_in && sessionB.time_out && sessionB.time_in >= sessionB.time_out);
+                    if (sessionA.time_in && sessionA.time_out && sessionB.time_in && sessionB.time_out) {
+                        if (!isOvernightA && !isOvernightB && sessionA.time_in < sessionB.time_out && sessionA.time_out > sessionB.time_in) {
+                            toast.error(`Sessions cannot overlap: ${sessionA.time_in} to ${sessionA.time_out} with ${sessionB.time_in} to ${sessionB.time_out}`);
+                            return;
+                        }
                     }
                 }
             }
@@ -1799,14 +1923,16 @@ const Attendance = () => {
             let validSessions = corrSessions.filter(s => s.time_in || s.time_out);
             let proposed_data = [];
 
-            if (validSessions.length > 0) {
+            if (showAdvancedOptions && validSessions.length > 0) {
                 proposed_data = validSessions.map(s => {
-                    const isOvernight = Boolean(s.time_in && s.time_out && s.time_in >= s.time_out);
+                    const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                    const isOvernight = Boolean(!isChk && s.time_in && s.time_out && s.time_in >= s.time_out);
                     return {
                         ...(s.time_in ? { time_in: s.time_in } : {}),
-                        ...(s.time_out ? { time_out: s.time_out } : {}),
-                        punch_type: s.punch_type || 'regular',
-                        is_overnight: isOvernight
+                        ...(s.time_out && !isChk ? { time_out: s.time_out } : {}),
+                        punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                        is_overnight: isOvernight,
+                        ...(s.address ? { address: s.address } : {})
                     };
                 });
             } else {
@@ -1928,7 +2054,8 @@ const Attendance = () => {
                 id: s.id || `session-${idx}-${Date.now()}`,
                 time_in: s.time_in ? String(s.time_in).slice(0, 5) : '',
                 time_out: s.time_out ? String(s.time_out).slice(0, 5) : '',
-                punch_type: s.punch_type || 'regular'
+                punch_type: s.punch_type || 'regular',
+                address: s.address || ''
             }))
             : [{ id: Date.now(), time_in: '09:00', time_out: '18:00', punch_type: 'regular' }];
         setEditCorrectionSessions(proposed);
@@ -2379,11 +2506,17 @@ const Attendance = () => {
         const todayStr = getLocalDateString();
 
         const processedDays = Object.values(daysMap).map(day => {
+            // Normalize daily sessions so any checkpoints are nested into their enclosing work session
+            day.sessions = normalizeDailySessionsWithCheckpoints(day.sessions);
+
             // Sort sessions ascending by time_in
             day.sessions.sort((a, b) => new Date(a.time_in || a.check_in) - new Date(b.time_in || b.check_in));
 
-            const firstSession = day.sessions[0];
-            const lastSession = day.sessions[day.sessions.length - 1];
+            const workSessions = day.sessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal');
+            const primarySessions = workSessions.length > 0 ? workSessions : day.sessions;
+
+            const firstSession = primarySessions[0];
+            const lastSession = primarySessions[primarySessions.length - 1];
 
             const firstIn = firstSession?.time_in || firstSession?.check_in;
             const lastOut = lastSession?.time_out || lastSession?.check_out || null;
@@ -2518,7 +2651,7 @@ const Attendance = () => {
                     isLoadingLoc={isLoadingLoc}
                     onRefreshLocation={fetchUserLocation}
                     myShift={myShift}
-                    globalActiveSession={Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !s.time_out)))}
+                    globalActiveSession={Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && !s.time_out)))}
                     isCheckpointAllowed={isCheckpointAllowed}
                     onOpenCheckpointModal={isCheckpointAllowed ? handleOpenCheckpointModal : undefined}
                 />
@@ -2559,7 +2692,7 @@ const Attendance = () => {
                     {/* 1. MARK ATTENDANCE TAB */}
                     {activeTab === 'mark_attendance' && (
                         <MarkAttendanceTab
-                            globalActiveSession={Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !s.time_out)))}
+                            globalActiveSession={Boolean(globalActiveSession || (Array.isArray(dailySessions) && dailySessions.some(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && !s.time_out)))}
                             isSubmitting={isSubmitting}
                             isMarkingCheckpoint={isMarkingCheckpoint}
                             cameraMode={cameraMode}
@@ -2765,35 +2898,84 @@ const Attendance = () => {
                                                 </span>
                                             </div>
                                             <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-100 dark:border-github-dark-border rounded-xl space-y-2.5">
-                                                {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
-                                                    corrSessions.filter(s => s.time_in || s.time_out).map((s, idx) => {
-                                                        const isOvernight = Boolean(s.time_in && s.time_out && s.time_in >= s.time_out);
-                                                        const duration = calculateSessionDurationHours(s.time_in, s.time_out);
+                                                {(() => {
+                                                    const activeItems = corrSessions.filter(s => s.time_in || s.time_out);
+                                                    const workSessions = activeItems.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal');
+                                                    const checkpoints = activeItems.filter(s => isCheckpointRecord(s) || s.punch_type === 'normal');
+
+                                                    if (activeItems.length === 0) {
                                                         return (
-                                                            <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 dark:border-github-dark-border/50 last:border-0">
-                                                                <span className="font-medium text-slate-500 dark:text-slate-400">Session #{idx + 1}</span>
-                                                                <div className="flex items-center gap-2 font-mono font-normal">
-                                                                    <span className="text-emerald-600 dark:text-emerald-400">{s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}</span>
-                                                                    <span className="text-slate-400">→</span>
-                                                                    <span className="text-rose-600 dark:text-rose-400">{s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Missing Out'}</span>
-                                                                    {isOvernight && (
-                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-sans">Overnight</span>
-                                                                    )}
-                                                                </div>
-                                                                <span className="text-xs font-normal text-slate-600 dark:text-slate-300 font-mono">{duration.toFixed(1)} hrs</span>
+                                                            <div className="py-2 text-center sm:text-left">
+                                                                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                                                                    No custom timeline punches specified.
+                                                                </p>
+                                                                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                                                    Request will be processed based on your stated remarks & attached proof document.
+                                                                </p>
                                                             </div>
                                                         );
-                                                    })
-                                                ) : (
-                                                    <div className="py-2 text-center sm:text-left">
-                                                        <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-                                                            No custom timeline punches specified.
-                                                        </p>
-                                                        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                                                            Request will be processed based on your stated remarks & attached proof document.
-                                                        </p>
-                                                    </div>
-                                                )}
+                                                    }
+
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            {/* Work Sessions */}
+                                                            {workSessions.length > 0 && (
+                                                                <div className="space-y-2">
+                                                                    {workSessions.map((s, idx) => {
+                                                                        const isOvernight = Boolean(s.time_in && s.time_out && s.time_in >= s.time_out);
+                                                                        const duration = calculateSessionDurationHours(s.time_in, s.time_out);
+                                                                        return (
+                                                                            <div key={s.id || idx} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 dark:border-github-dark-border/50 last:border-0">
+                                                                                <span className="font-medium text-slate-500 dark:text-slate-400">Session #{idx + 1}</span>
+                                                                                <div className="flex items-center gap-2 font-mono font-normal">
+                                                                                    <span className="text-emerald-600 dark:text-emerald-400">{s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}</span>
+                                                                                    <span className="text-slate-400">→</span>
+                                                                                    <span className="text-rose-600 dark:text-rose-400">{s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Missing Out'}</span>
+                                                                                    {isOvernight && (
+                                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-sans">Overnight</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <span className="text-xs font-normal text-slate-600 dark:text-slate-300 font-mono">{duration.toFixed(1)} hrs</span>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Checkpoints Section */}
+                                                            {checkpoints.length > 0 && (
+                                                                <div className={`space-y-1.5 ${workSessions.length > 0 ? 'pt-2.5 border-t border-slate-200/60 dark:border-github-dark-border/60' : ''}`}>
+                                                                    <div className="flex items-center gap-1.5 px-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                                                                        <MapPin size={12} className="shrink-0" />
+                                                                        <span>Checkpoints ({checkpoints.length})</span>
+                                                                    </div>
+                                                                    <div className="space-y-1.5">
+                                                                        {checkpoints.map((chk, cIdx) => {
+                                                                            const chkTime = chk.time_in ? formatTime(`2000-01-01T${chk.time_in}:00`) : '--:--';
+                                                                            return (
+                                                                                <div key={chk.id || cIdx} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
+                                                                                    <div className="flex items-center gap-2 min-w-0">
+                                                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                                                                        <span className="font-medium text-amber-900 dark:text-amber-300">Checkpoint #{cIdx + 1}</span>
+                                                                                        <span className="font-mono font-medium text-slate-700 dark:text-slate-200">{chkTime}</span>
+                                                                                        {chk.address && (
+                                                                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-[150px] sm:max-w-[220px]" title={chk.address}>
+                                                                                                • {chk.address}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100/70 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium shrink-0">
+                                                                                        Logged Checkpoint
+                                                                                    </span>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
 
@@ -3035,6 +3217,117 @@ const Attendance = () => {
                                                 </motion.div>
                                             )}
 
+                                            {/* Original Attendance Context Card */}
+                                            <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3.5">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <History size={15} className="text-slate-400" />
+                                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                                            Originally Logged on {formatCorrectionDate(corrDate)}
+                                                        </span>
+                                                    </div>
+                                                    {originalSessions.length === 0 ? (
+                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40">
+                                                            No Punches Recorded
+                                                        </span>
+                                                    ) : originalSessions.some(s => s.time_in && !s.time_out) ? (
+                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center gap-1.5">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                            Active Session
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
+                                                            {originalSessions.length} Session{originalSessions.length > 1 ? 's' : ''} Recorded
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Text Stating Each Session and Checkpoints */}
+                                                {originalSessions.length > 0 ? (
+                                                    <div className="space-y-2 pt-0.5">
+                                                        {originalSessions.map((s, idx) => {
+                                                            const isActive = Boolean(s.time_in && !s.time_out);
+                                                            const checkpointsList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
+                                                            return (
+                                                                <div key={idx} className="bg-white dark:bg-github-dark-subtle/80 p-3 rounded-xl border border-slate-200/70 dark:border-github-dark-border/60 space-y-2">
+                                                                    <div className="flex items-center justify-between text-xs">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}`} />
+                                                                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                                                                                Session #{idx + 1}
+                                                                            </span>
+                                                                            {isActive && (
+                                                                                <span className="text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
+                                                                                    In Progress
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 font-mono text-xs">
+                                                                            <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400"}>
+                                                                                {s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}
+                                                                            </span>
+                                                                            <span className="text-slate-400">→</span>
+                                                                            <span className={s.time_out ? "text-rose-600 dark:text-rose-400 font-medium" : "text-amber-500 dark:text-amber-400 italic"}>
+                                                                                {s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Not Clocked Out'}
+                                                                            </span>
+                                                                            {s.time_in && s.time_out && (
+                                                                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md ml-1">
+                                                                                    {calculateSessionDurationHours(s.time_in, s.time_out).toFixed(1)} hrs
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Checkpoints shown compactly without taking much space */}
+                                                                    {checkpointsList.length > 0 && (
+                                                                        <div className="pt-2 border-t border-slate-100 dark:border-github-dark-border/60">
+                                                                            <div className="flex items-center gap-1.5 mb-1.5">
+                                                                                <MapPin size={12} className="text-amber-500 shrink-0" />
+                                                                                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                                                    Checkpoints ({checkpointsList.length})
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex flex-wrap gap-1.5">
+                                                                                {checkpointsList.map((chk, cIdx) => {
+                                                                                    const selfieUrl = chk.image_url || chk.image;
+                                                                                    const chkTime = chk.punch_time ? (formatTime ? formatTime(chk.punch_time, null, false) : formatLocalTimeString(chk.punch_time)) : (chk.time || `Point #${cIdx + 1}`);
+                                                                                    const locLabel = chk.address ? chk.address.split(',')[0] : (chk.lat && chk.lng ? `${Number(chk.lat).toFixed(2)}, ${Number(chk.lng).toFixed(2)}` : null);
+                                                                                    return (
+                                                                                        <div
+                                                                                            key={chk.id || cIdx}
+                                                                                            onClick={() => selfieUrl && setPreviewImage(selfieUrl)}
+                                                                                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/40 ${selfieUrl ? 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40' : ''}`}
+                                                                                            title={chk.address || (selfieUrl ? 'Click to view photo' : undefined)}
+                                                                                        >
+                                                                                            {selfieUrl ? (
+                                                                                                <Camera size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                                                                            ) : (
+                                                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                                                                            )}
+                                                                                            <span className="font-medium">#{cIdx + 1}</span>
+                                                                                            <span className="font-mono text-[10px] text-amber-700/80 dark:text-amber-400/80">{chkTime}</span>
+                                                                                            {locLabel && (
+                                                                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[110px] truncate">
+                                                                                                    • {locLabel}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs text-slate-400 dark:text-slate-400 font-normal py-0.5">
+                                                        No mobile or biometric punches found for this date. Enter your requested session times below.
+                                                    </p>
+                                                )}
+                                            </div>
+
                                             {/* Reason Field */}
                                             <div className="space-y-2">
                                                 <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
@@ -3235,7 +3528,18 @@ const Attendance = () => {
                                                             exit={{ height: 0, opacity: 0 }}
                                                             className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-4 sm:p-5 space-y-4 bg-white dark:bg-github-dark-subtle/50"
                                                         >
-
+                                                            {/* Quick helper actions if applicable */}
+                                                            {originalSessions.length > 0 && (
+                                                                <div className="flex flex-wrap items-center gap-2 pb-1 border-b border-slate-100 dark:border-github-dark-border/60">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleResetCorrectionToOriginal}
+                                                                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                                    >
+                                                                        <RotateCcw size={13} /> Reset to Logged
+                                                                    </button>
+                                                                </div>
+                                                            )}
 
                                                             {/* Interactive Visual Timeline Only */}
                                                             <VisualCorrectionTimeline
@@ -3249,13 +3553,18 @@ const Attendance = () => {
                                                                 shift={myShift}
                                                                 frameless={true}
                                                                 hideHeader={true}
+                                                                onIncompleteChange={setTimelineHasIncomplete}
                                                                 onSessionsChange={(updated) => {
-                                                                    setCorrSessions(updated.map((s, idx) => ({
-                                                                        id: `session-${idx}-${s.time_in || s.time_out}`,
-                                                                        time_in: s.time_in || '',
-                                                                        time_out: s.time_out || '',
-                                                                        punch_type: s.punch_type || 'regular'
-                                                                    })));
+                                                                    setCorrSessions(updated.map((s, idx) => {
+                                                                        const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                                                                        return {
+                                                                            id: `session-${idx}-${s.time_in || s.time_out}`,
+                                                                            time_in: s.time_in || '',
+                                                                            time_out: isChk ? '' : (s.time_out || ''),
+                                                                            punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                                                                            address: s.address || ''
+                                                                        };
+                                                                    }));
                                                                 }}
                                                             />
                                                         </motion.div>
@@ -3273,7 +3582,7 @@ const Attendance = () => {
                                             </span>
                                             {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
                                                 <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400 text-sm">
-                                                    {totalProposedHours.toFixed(2)} hrs ({corrSessions.filter(s => s.time_in || s.time_out).length} session{corrSessions.filter(s => s.time_in || s.time_out).length !== 1 ? 's' : ''})
+                                                    {totalProposedHours.toFixed(2)} hrs ({corrSessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && (s.time_in || s.time_out)).length} session{corrSessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && (s.time_in || s.time_out)).length !== 1 ? 's' : ''})
                                                 </span>
                                             ) : (
                                                 <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
@@ -3285,11 +3594,23 @@ const Attendance = () => {
                                             type="submit"
                                             form="correction-form"
                                             data-tour-id="att-correction-submit-btn"
-                                            className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-xl shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                                            disabled={hasIncompleteSession || submitLoading}
+                                            className={`w-full h-12 font-medium text-sm rounded-xl transition-all flex items-center justify-center gap-2 ${
+                                                hasIncompleteSession || submitLoading
+                                                    ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed opacity-60 shadow-none'
+                                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 active:scale-[0.99] cursor-pointer'
+                                            }`}
+                                            title={hasIncompleteSession ? "Please complete all session punch pairs (Clock IN & OUT) before requesting correction" : undefined}
                                         >
                                             <Plus size={18} strokeWidth={2.5} />
                                             {pendingRequestId ? `Review & Update Request (#${pendingRequestId})` : 'Request Correction'}
                                         </button>
+                                        {hasIncompleteSession && (
+                                            <p className="text-xs text-center text-amber-600 dark:text-amber-400 font-medium flex items-center justify-center gap-1.5 pt-0.5">
+                                                <AlertCircle size={13} className="shrink-0" />
+                                                <span>Please complete all session punch pairs (Clock IN &amp; OUT) before requesting correction</span>
+                                            </p>
+                                        )}
                                         <p className="text-xs text-center text-slate-400 dark:text-slate-500 font-normal">
                                             {pendingRequestId ? 'Updates will immediately reflect in manager review queue' : 'Requires Manager / HR Approval'}
                                         </p>

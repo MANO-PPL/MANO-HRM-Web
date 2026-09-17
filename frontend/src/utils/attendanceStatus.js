@@ -188,3 +188,197 @@ export function parseCorrectionDetails(req) {
   };
 }
 
+/**
+ * Determines whether a record or punch represents a mid-shift checkpoint.
+ * Checks for known punch types ('normal', 'normal_punch', 'checkpoint', 'checkpoint_punch'),
+ * explicit boolean flags (is_checkpoint), or punch nature/type indicators.
+ *
+ * @param {Object} item - An attendance record or punch object.
+ * @returns {boolean}
+ */
+export function isCheckpointRecord(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (item.is_checkpoint === true) return true;
+  const pType = String(item.punch_type || item.type || '').toLowerCase().trim();
+  if (['normal', 'normal_punch', 'checkpoint', 'checkpoint_punch'].includes(pType)) {
+    return true;
+  }
+  const noteStr = String(item.note || item.remarks || item.address || item.time_in_address || '').toLowerCase();
+  if (noteStr.includes('checkpoint') || noteStr.includes('logged checkpoint')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Normalizes daily sessions and checkpoints for consistent frontend display.
+ * 
+ * When attendance is modified or passes through attendance correction, checkpoints
+ * may appear as standalone records with a single punch time and no time_out.
+ * This helper:
+ * 1. Identifies bona fide work sessions (records with both time_in & time_out).
+ * 2. Identifies checkpoints: explicit checkpoint records, as well as single-punch records
+ *    that fall chronologically inside an existing closed work session (since an employee
+ *    cannot start an overlapping work session mid-shift).
+ * 3. Associates each checkpoint with its enclosing session (time_in <= checkpoint_time <= time_out)
+ *    by nesting it into that session's `checkpoints` array.
+ * 4. Deduplicates checkpoints by ID and punch time.
+ * 5. Removes nested checkpoints from the top-level session list so they are never rendered
+ *    as independent/incomplete/missed punch session cards.
+ *
+ * @param {Array} records - Raw records or sessions array.
+ * @returns {Array} Normalized sessions with nested checkpoints.
+ */
+export function normalizeDailySessionsWithCheckpoints(records) {
+  if (!Array.isArray(records) || records.length === 0) return [];
+
+  const parseTimeToMs = (val) => {
+    if (!val) return null;
+    const s = String(val).trim();
+    if (s.includes('T') || s.includes('-') || s.includes('/')) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+    const timeMatch = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (timeMatch) {
+      const h = parseInt(timeMatch[1], 10);
+      const m = parseInt(timeMatch[2], 10);
+      const sec = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
+      return (h * 3600 + m * 60 + sec) * 1000;
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d.getTime();
+  };
+
+  const closedSessions = [];
+  const singlePunches = [];
+
+  records.forEach((r) => {
+    if (!r) return;
+    const isExplicitChk = isCheckpointRecord(r);
+    const hasOut = Boolean(r.time_out && String(r.time_out).trim());
+
+    if (isExplicitChk) {
+      singlePunches.push({ ...r, is_checkpoint: true });
+    } else if (hasOut) {
+      closedSessions.push({
+        ...r,
+        checkpoints: Array.isArray(r.checkpoints) ? [...r.checkpoints] : (Array.isArray(r.raw_checkpoints) ? [...r.raw_checkpoints] : [])
+      });
+    } else {
+      singlePunches.push(r);
+    }
+  });
+
+  // Sort closed sessions chronologically
+  closedSessions.sort((a, b) => {
+    const tA = parseTimeToMs(a.time_in || a.check_in || a.time_in_ts) || 0;
+    const tB = parseTimeToMs(b.time_in || b.check_in || b.time_in_ts) || 0;
+    return tA - tB;
+  });
+
+  const remainingWorkSessions = [];
+  const orphanedCheckpoints = [];
+
+  singlePunches.forEach((sp) => {
+    const spTimeMs = parseTimeToMs(sp.punch_time || sp.time_in || sp.time || sp.time_in_ts);
+    const isExplicitChk = isCheckpointRecord(sp);
+
+    // Check if sp falls inside any closed session
+    let enclosingSession = null;
+    if (spTimeMs !== null && closedSessions.length > 0) {
+      for (const cs of closedSessions) {
+        const inMs = parseTimeToMs(cs.time_in || cs.check_in || cs.time_in_ts);
+        const outMs = parseTimeToMs(cs.time_out || cs.check_out || cs.time_out_ts);
+        if (inMs !== null && outMs !== null) {
+          // If strictly inside or within 2 minutes of session bounds
+          if (spTimeMs >= inMs - 2 * 60 * 1000 && spTimeMs <= outMs + 2 * 60 * 1000) {
+            enclosingSession = cs;
+            break;
+          }
+        }
+      }
+    }
+
+    if (enclosingSession) {
+      // It is an enclosed checkpoint!
+      const formattedChk = {
+        id: sp.id || sp.attendance_id || `chk-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        punch_time: sp.punch_time || sp.time_in || sp.time || sp.time_in_ts,
+        address: sp.address || sp.time_in_address || (typeof sp.location === 'object' ? sp.location?.address : sp.location) || '',
+        image_url: sp.image_url || sp.image || sp.time_in_image || sp.time_in_image_key || null,
+        image: sp.image_url || sp.image || sp.time_in_image || sp.time_in_image_key || null,
+        note: sp.note || sp.remarks || '',
+        lat: sp.lat || sp.time_in_lat || null,
+        lng: sp.lng || sp.time_in_lng || null,
+        accuracy: sp.accuracy || null,
+        punch_type: 'normal',
+        is_checkpoint: true,
+        ...sp
+      };
+      if (!Array.isArray(enclosingSession.checkpoints)) {
+        enclosingSession.checkpoints = [];
+      }
+      const exists = enclosingSession.checkpoints.some(
+        c => (c.id && c.id === formattedChk.id) ||
+             (c.punch_time && formattedChk.punch_time && String(c.punch_time) === String(formattedChk.punch_time))
+      );
+      if (!exists) {
+        enclosingSession.checkpoints.push(formattedChk);
+      }
+    } else if (isExplicitChk) {
+      // An explicit checkpoint outside closed sessions
+      if (closedSessions.length > 0) {
+        // Associate with closest session
+        let bestSession = closedSessions[0];
+        let bestDiff = Infinity;
+        closedSessions.forEach(cs => {
+          const inMs = parseTimeToMs(cs.time_in || cs.check_in || cs.time_in_ts);
+          if (inMs !== null && spTimeMs !== null) {
+            const diff = Math.abs(spTimeMs - inMs);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              bestSession = cs;
+            }
+          }
+        });
+        bestSession.checkpoints.push({
+          id: sp.id || sp.attendance_id || `chk-${Date.now()}`,
+          punch_time: sp.punch_time || sp.time_in || sp.time,
+          address: sp.address || sp.time_in_address || '',
+          punch_type: 'normal',
+          is_checkpoint: true,
+          ...sp
+        });
+      } else {
+        orphanedCheckpoints.push(sp);
+      }
+    } else {
+      // Genuine open / missed punch session that does NOT fall inside any closed session
+      remainingWorkSessions.push({
+        ...sp,
+        checkpoints: Array.isArray(sp.checkpoints) ? [...sp.checkpoints] : []
+      });
+    }
+  });
+
+  const allSessions = [...closedSessions, ...remainingWorkSessions];
+  allSessions.sort((a, b) => {
+    const tA = parseTimeToMs(a.time_in || a.check_in || a.time_in_ts) || 0;
+    const tB = parseTimeToMs(b.time_in || b.check_in || b.time_in_ts) || 0;
+    return tA - tB;
+  });
+
+  allSessions.forEach(session => {
+    if (Array.isArray(session.checkpoints) && session.checkpoints.length > 1) {
+      session.checkpoints.sort((a, b) => {
+        const tA = parseTimeToMs(a.punch_time || a.time_in || a.time) || 0;
+        const tB = parseTimeToMs(b.punch_time || b.time_in || b.time) || 0;
+        return tA - tB;
+      });
+    }
+  });
+
+  return allSessions.length > 0 ? allSessions : orphanedCheckpoints;
+}
+
