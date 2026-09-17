@@ -144,10 +144,14 @@ const CustomCalendar = ({ selectedDate, onChange, onClose, events = {}, classNam
                         bgClass = "bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-indigo-900/30";
                     } else if (today) {
                         bgClass = "bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800";
+                    } else if (eventType === 'holiday') {
+                        bgClass = "bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800/50";
+                    } else if (eventType === 'late') {
+                        bgClass = "bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/50";
+                    } else if (eventType === 'present') {
+                        bgClass = "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50";
                     } else if (eventType === 'absent') {
                         bgClass = "bg-red-50 text-red-600 border border-red-100 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50";
-                    } else if (eventType === 'holiday') {
-                        bgClass = "bg-amber-50 text-amber-600 border border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/50";
                     }
 
                     return (
@@ -166,10 +170,12 @@ const CustomCalendar = ({ selectedDate, onChange, onClose, events = {}, classNam
             </div>
 
             {/* Legend */}
-            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-github-dark-border flex justify-between text-[10px] text-slate-500">
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-github-dark-border flex items-center justify-between text-[10px] text-slate-500 flex-wrap gap-1.5">
                 <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div>Today</div>
+                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Present</div>
+                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500"></div>Late</div>
+                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-yellow-400"></div>Holiday</div>
                 <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-400"></div>Absent</div>
-                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-400"></div>Holiday</div>
             </div>
         </div>
     );

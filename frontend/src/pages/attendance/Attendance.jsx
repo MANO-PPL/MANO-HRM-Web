@@ -2260,8 +2260,9 @@ const Attendance = () => {
             datasets: [{
                 data: Object.values(statusCounts),
                 backgroundColor: labels.map(label => {
-                    if (label === 'PRESENT') return '#10b981'; // emerald-500
-                    if (label === 'LATE') return '#f59e0b';    // amber-500
+                    if (label === 'PRESENT') return '#10b981'; // emerald-500 (Green)
+                    if (label === 'LATE') return '#f97316';    // orange-500 (Orange)
+                    if (label === 'HOLIDAY') return '#eab308'; // yellow-500 (Yellow)
                     if (label === 'OVERTIME') return '#8b5cf6'; // violet-500
                     if (label === 'ABSENT') return '#ef4444';   // red-500
                     if (label === 'MISSED PUNCH') return '#f43f5e'; // rose-500
@@ -2282,7 +2283,27 @@ const Attendance = () => {
         calendarEvents[h.holiday_date] = { type: 'holiday' };
     });
 
-    // 2. Add Absents (Red) - Simple Approximation
+    // 2. Add Attendance Records (Present = Green, Late = Orange)
+    monthlySessions.forEach(s => {
+        const rawDate = s.time_in || s.check_in || s.date || s.work_date;
+        if (!rawDate) return;
+        const dateStr = rawDate.slice(0, 10);
+
+        // Holidays take precedence
+        if (calendarEvents[dateStr]?.type === 'holiday') return;
+
+        const isLate = (s.status && String(s.status).toUpperCase() === 'LATE') ||
+            (s.late_minutes && Number(s.late_minutes) > 0) ||
+            (s.is_late === true);
+
+        if (isLate) {
+            calendarEvents[dateStr] = { type: 'late' };
+        } else {
+            calendarEvents[dateStr] = { type: 'present' };
+        }
+    });
+
+    // 3. Add Absents (Red) - Simple Approximation
     // Mark past weekdays (not Sat/Sun) as absent if no record exists
     const daysInReportMonth = new Date(reportYear, reportMonthIdx + 1, 0).getDate();
     const now = new Date();

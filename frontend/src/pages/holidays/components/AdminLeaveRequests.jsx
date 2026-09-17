@@ -112,16 +112,6 @@ const AdminLeaveRequests = ({
                                         }`}></span>
                                     {selectedLeave.status}
                                 </div>
-                                {selectedLeave.status === 'approved' && selectedLeave.pay_type && (
-                                    <div className="mt-1">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${selectedLeave.pay_type === 'Paid'
-                                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                                : 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400'
-                                            }`}>
-                                            {selectedLeave.pay_type}
-                                        </span>
-                                    </div>
-                                )}
                                 <div className="text-xs text-slate-400 mt-2">Applied: {new Date(selectedLeave.applied_at || Date.now()).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</div>
                             </div>
                         </div>

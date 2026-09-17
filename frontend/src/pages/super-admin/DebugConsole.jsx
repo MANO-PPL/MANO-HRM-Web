@@ -109,13 +109,13 @@ const DebugConsole = () => {
     if (isErrorLog) {
       if (log.level === 'CLIENT_ERROR') {
         return (
-          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 w-fit">
-            <Cpu size={12} /> Client Error
+          <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30 flex items-center gap-1.5 w-fit">
+            <Cpu size={12} /> Client Crash
           </span>
         );
       }
       return (
-        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5 w-fit">
+        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/15 dark:text-rose-400 dark:border-rose-500/30 flex items-center gap-1.5 w-fit">
           <ShieldAlert size={12} /> Server Error 500
         </span>
       );
@@ -124,19 +124,19 @@ const DebugConsole = () => {
     const code = Number(log.status_code);
     if (code >= 500) {
       return (
-        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 w-fit">
+        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/15 dark:text-rose-400 dark:border-rose-500/30 w-fit">
           {code} Server Error
         </span>
       );
     } else if (code >= 400) {
       return (
-        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 w-fit">
+        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-500/15 dark:text-orange-400 dark:border-orange-500/30 w-fit">
           {code} Client Error
         </span>
       );
     }
     return (
-      <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 w-fit">
+      <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30 w-fit">
         {code} Success
       </span>
     );
@@ -147,89 +147,92 @@ const DebugConsole = () => {
       <div className="space-y-6">
         
         {/* Header Block & Total Counter */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/60 dark:bg-slate-900/40 p-6 rounded-2xl border border-slate-200/10 backdrop-blur-md">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-dark-card p-6 rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-xs">
           <div>
-            <h1 className="text-xl font-bold text-white flex items-center gap-2">
-              <Terminal className="text-indigo-400 animate-pulse" /> Diagnostics Console
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                <Terminal size={18} />
+              </span>
+              Diagnostics Console
             </h1>
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Search and filter client-side errors, API failures, and server crashes by Org, User, and Platform.
             </p>
           </div>
-          <div className="bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700/50">
-            <span className="text-xs text-slate-400 block uppercase tracking-wider font-semibold">Total Logs</span>
-            <span className="text-xl font-bold text-indigo-300">{totalLogs}</span>
+          <div className="bg-slate-50 dark:bg-github-dark-subtle px-4 py-2.5 rounded-xl border border-slate-200 dark:border-github-dark-border shrink-0">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block uppercase tracking-wider font-bold">Total Logs</span>
+            <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{totalLogs.toLocaleString()}</span>
           </div>
         </div>
 
         {/* Filter Box */}
-        <form onSubmit={handleSearchSubmit} className="bg-slate-900/40 p-6 rounded-2xl border border-slate-200/10 backdrop-blur-md space-y-4">
+        <form onSubmit={handleSearchSubmit} className="bg-white dark:bg-dark-card p-6 rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-xs space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             
             {/* Search query */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Search logs</label>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Search logs</label>
               <div className="relative">
                 <input 
                   type="text" 
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Error, path, IP, OS..." 
-                  className="w-full bg-slate-800/50 border border-slate-700/80 rounded-xl py-2.5 pl-9 pr-4 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl py-2.5 pl-9 pr-4 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                 />
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               </div>
             </div>
 
             {/* Log Type */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Log Type</label>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Log Type</label>
               <select 
                 value={type} 
                 onChange={(e) => setType(e.target.value)}
-                className="w-full bg-slate-800/50 border border-slate-700/80 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                className="w-full bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl py-2.5 px-3 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer transition-colors"
               >
-                <option value="all">All API Failures (4xx / 5xx)</option>
-                <option value="errors">Server Exceptions (500)</option>
-                <option value="client_errors">Client-Side Crashes</option>
+                <option value="all" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">All API Failures (4xx / 5xx)</option>
+                <option value="errors" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Server Exceptions (500)</option>
+                <option value="client_errors" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Client-Side Crashes</option>
               </select>
             </div>
 
             {/* Platform */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Platform</label>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Platform</label>
               <select 
                 value={platform} 
                 onChange={(e) => setPlatform(e.target.value)}
-                className="w-full bg-slate-800/50 border border-slate-700/80 rounded-xl py-2.5 px-4 text-sm text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                className="w-full bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl py-2.5 px-3 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer transition-colors"
               >
-                <option value="">All Platforms</option>
-                <option value="WEB">Web App (WEB)</option>
-                <option value="MOBILE_APP">Mobile App (MOBILE_APP)</option>
+                <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">All Platforms</option>
+                <option value="WEB" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Web App (WEB)</option>
+                <option value="MOBILE_APP" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Mobile App (MOBILE_APP)</option>
               </select>
             </div>
 
             {/* User ID */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">User ID</label>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">User ID</label>
               <input 
                 type="number" 
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 placeholder="Filter by User ID" 
-                className="w-full bg-slate-800/50 border border-slate-700/80 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                className="w-full bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl py-2.5 px-4 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
               />
             </div>
 
             {/* Org ID */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Org ID</label>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Org ID</label>
               <input 
                 type="number" 
                 value={orgId}
                 onChange={(e) => setOrgId(e.target.value)}
                 placeholder="Filter by Org ID" 
-                className="w-full bg-slate-800/50 border border-slate-700/80 rounded-xl py-2.5 px-4 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                className="w-full bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl py-2.5 px-4 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
               />
             </div>
 
@@ -240,13 +243,13 @@ const DebugConsole = () => {
             <button 
               type="button" 
               onClick={resetFilters} 
-              className="px-4 py-2.5 rounded-xl border border-slate-700 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+              className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-github-dark-border text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               Reset Filters
             </button>
             <button 
               type="submit" 
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-sm font-semibold text-white rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-indigo-600/10"
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-sm font-semibold text-white rounded-xl flex items-center gap-2 transition-all shadow-sm shadow-indigo-600/20 cursor-pointer"
             >
               <Filter size={16} /> Apply Filters
             </button>
@@ -254,16 +257,16 @@ const DebugConsole = () => {
         </form>
 
         {/* Logs Table */}
-        <div className="bg-slate-900/40 rounded-2xl border border-slate-200/10 backdrop-blur-md overflow-hidden shadow-xl">
+        <div className="bg-white dark:bg-dark-card rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-xs overflow-hidden">
           {loading ? (
             <div className="p-20 flex justify-center items-center">
-              <RefreshCw size={24} className="text-indigo-400 animate-spin" />
+              <RefreshCw size={24} className="text-indigo-600 dark:text-indigo-400 animate-spin" />
             </div>
           ) : logs.length === 0 ? (
             <div className="p-20 text-center space-y-3">
-              <Terminal size={40} className="text-slate-600 mx-auto" />
-              <h3 className="text-base font-semibold text-slate-300">No logs found</h3>
-              <p className="text-sm text-slate-500 max-w-sm mx-auto">
+              <Terminal size={40} className="text-slate-400 dark:text-slate-600 mx-auto" />
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">No logs found</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                 No request audits or exceptions matched the selected filter configuration.
               </p>
             </div>
@@ -271,17 +274,17 @@ const DebugConsole = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/80">
-                    <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Timestamp</th>
-                    <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Severity / Code</th>
-                    <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">User (ID)</th>
-                    <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Organization (ID)</th>
-                    <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Platform</th>
-                    <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Request Path</th>
-                    <th className="py-4 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Action</th>
+                  <tr className="border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50">
+                    <th className="py-3.5 px-6 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Timestamp</th>
+                    <th className="py-3.5 px-6 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Severity / Code</th>
+                    <th className="py-3.5 px-6 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">User (ID)</th>
+                    <th className="py-3.5 px-6 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Organization (ID)</th>
+                    <th className="py-3.5 px-6 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Platform</th>
+                    <th className="py-3.5 px-6 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Request Path</th>
+                    <th className="py-3.5 px-6 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-slate-100 dark:divide-github-dark-border">
                   {logs.map((log, idx) => {
                     const isError = log.level !== undefined;
                     const platformVal = isError 
@@ -289,8 +292,8 @@ const DebugConsole = () => {
                       : log.event_source;
 
                     return (
-                      <tr key={log.error_id || log.api_log_id || idx} className="hover:bg-slate-800/20 transition-colors">
-                        <td className="py-3.5 px-6 text-sm text-slate-300 whitespace-nowrap">
+                      <tr key={log.error_id || log.api_log_id || idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
+                        <td className="py-3.5 px-6 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap font-medium">
                           {formatTimestamp(log.occurred_at)}
                         </td>
                         <td className="py-3.5 px-6">
@@ -299,46 +302,54 @@ const DebugConsole = () => {
                         <td className="py-3.5 px-6 text-sm">
                           {log.user_name ? (
                             <div>
-                              <div className="text-white font-medium">{log.user_name}</div>
-                              <div className="text-slate-500 text-xs">ID: {log.user_id}</div>
+                              <div className="text-slate-900 dark:text-white font-medium">{log.user_name}</div>
+                              <div className="text-slate-400 dark:text-slate-500 text-xs">ID: {log.user_id}</div>
                             </div>
                           ) : log.user_id ? (
-                            <span className="text-slate-400 font-semibold">User ID: {log.user_id}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-semibold">User #{log.user_id}</span>
                           ) : (
-                            <span className="text-slate-600">Guest</span>
+                            <span className="text-slate-400 dark:text-slate-500 italic">Guest</span>
                           )}
                         </td>
                         <td className="py-3.5 px-6 text-sm">
                           {log.org_name ? (
                             <div>
-                              <div className="text-white font-medium">{log.org_name}</div>
-                              <div className="text-slate-500 text-xs">ID: {log.org_id}</div>
+                              <div className="text-slate-900 dark:text-white font-medium">{log.org_name}</div>
+                              <div className="text-slate-400 dark:text-slate-500 text-xs">ID: {log.org_id}</div>
                             </div>
                           ) : log.org_id ? (
-                            <span className="text-slate-400 font-semibold">Org ID: {log.org_id}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-semibold">Org #{log.org_id}</span>
                           ) : (
-                            <span className="text-slate-600">-</span>
+                            <span className="text-slate-400 dark:text-slate-500">-</span>
                           )}
                         </td>
                         <td className="py-3.5 px-6 text-sm">
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
                             platformVal === 'MOBILE_APP' 
-                              ? 'bg-purple-500/10 text-purple-300 border border-purple-500/20' 
-                              : 'bg-blue-500/10 text-blue-300 border border-blue-500/20'
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-300 dark:border-purple-500/20' 
+                              : 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20'
                           }`}>
                             {platformVal === 'MOBILE_APP' ? 'MOBILE' : 'WEB'}
                           </span>
                         </td>
-                        <td className="py-3.5 px-6 text-sm text-slate-300 font-mono break-all max-w-xs">
-                          {!isError && (
-                            <span className="text-indigo-400 mr-1.5 font-bold">{log.method}</span>
+                        <td className="py-3.5 px-6 text-sm font-mono break-all max-w-xs">
+                          {!isError && log.method && (
+                            <span className={`mr-2 font-bold ${
+                              log.method === 'GET' ? 'text-emerald-600 dark:text-emerald-400' :
+                              log.method === 'POST' ? 'text-indigo-600 dark:text-indigo-400' :
+                              log.method === 'PUT' || log.method === 'PATCH' ? 'text-amber-600 dark:text-amber-400' :
+                              log.method === 'DELETE' ? 'text-rose-600 dark:text-rose-400' :
+                              'text-slate-600 dark:text-slate-400'
+                            }`}>
+                              {log.method}
+                            </span>
                           )}
-                          {log.request_path}
+                          <span className="text-slate-800 dark:text-slate-200">{log.request_path}</span>
                         </td>
-                        <td className="py-3.5 px-6 text-sm">
+                        <td className="py-3.5 px-6 text-sm text-right">
                           <button 
                             onClick={() => setSelectedLog(log)}
-                            className="bg-slate-800 hover:bg-slate-700 text-indigo-400 p-2 rounded-lg transition-colors border border-slate-700"
+                            className="p-2 bg-slate-50 dark:bg-github-dark-subtle hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-colors border border-slate-200 dark:border-github-dark-border cursor-pointer shadow-2xs"
                             title="View Details"
                           >
                             <Eye size={16} />
@@ -354,16 +365,16 @@ const DebugConsole = () => {
 
           {/* Load More Button */}
           {page < totalPages && !loading && (
-            <div className="p-4 border-t border-slate-800 text-center">
+            <div className="p-4 border-t border-slate-200 dark:border-github-dark-border text-center bg-slate-50/50 dark:bg-github-dark-subtle/30">
               <button 
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 disabled:opacity-50 text-sm font-semibold text-white rounded-xl transition-all border border-slate-700/80 inline-flex items-center gap-2"
+                className="px-5 py-2.5 bg-white dark:bg-dark-card hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 text-sm font-semibold text-slate-700 dark:text-slate-200 rounded-xl transition-all border border-slate-200 dark:border-github-dark-border inline-flex items-center gap-2 cursor-pointer shadow-2xs"
               >
                 {loadingMore ? (
-                  <RefreshCw size={16} className="animate-spin" />
+                  <RefreshCw size={16} className="animate-spin text-indigo-600" />
                 ) : (
-                  <Play size={16} className="rotate-90" />
+                  <Play size={16} className="rotate-90 text-indigo-600" />
                 )}
                 Load More Logs
               </button>
@@ -375,49 +386,51 @@ const DebugConsole = () => {
 
       {/* Log Details Modal */}
       {selectedLog && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-3xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/60">
+            <div className="p-6 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-center bg-slate-50/80 dark:bg-github-dark-subtle/50">
               <div className="flex items-center gap-3">
-                <Terminal className="text-indigo-400" />
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Terminal size={20} />
+                </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Log Diagnostic details</h3>
-                  <span className="text-xs text-slate-400 font-mono">{selectedLog.error_id ? `Error ID: ${selectedLog.error_id}` : `API Log ID: ${selectedLog.api_log_id || 'N/A'}`}</span>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Log Diagnostic Details</h3>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">{selectedLog.error_id ? `Error ID: ${selectedLog.error_id}` : `API Log ID: ${selectedLog.api_log_id || 'N/A'}`}</span>
                 </div>
               </div>
               <button 
                 onClick={() => setSelectedLog(null)}
-                className="text-slate-400 hover:text-white p-1.5 hover:bg-slate-800 rounded-xl transition-all"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
               >
                 <X size={20} />
               </button>
             </div>
 
             {/* Modal Content */}
-            <div className="p-6 overflow-y-auto space-y-6 text-sm text-slate-300">
+            <div className="p-6 overflow-y-auto space-y-6 text-sm text-slate-700 dark:text-slate-300">
               
               {/* Top diagnostic metadata grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 
                 {/* Meta item 1 */}
-                <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/20">
-                  <span className="text-xs text-slate-400 block font-semibold uppercase tracking-wider mb-1.5">Request Details</span>
-                  <div className="space-y-1">
-                    <div><span className="text-slate-500">Method:</span> <span className="font-mono text-indigo-300 font-bold">{selectedLog.method || 'CLIENT_CRASH'}</span></div>
-                    <div><span className="text-slate-500">Path:</span> <span className="font-mono break-all text-white">{selectedLog.request_path}</span></div>
+                <div className="bg-slate-50 dark:bg-github-dark-subtle/40 p-4 rounded-xl border border-slate-200 dark:border-github-dark-border">
+                  <span className="text-xs text-slate-500 dark:text-slate-400 block font-bold uppercase tracking-wider mb-2">Request Details</span>
+                  <div className="space-y-1.5 text-xs">
+                    <div><span className="text-slate-400 dark:text-slate-500">Method:</span> <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold ml-1">{selectedLog.method || 'CLIENT_CRASH'}</span></div>
+                    <div><span className="text-slate-400 dark:text-slate-500">Path:</span> <span className="font-mono break-all text-slate-900 dark:text-white ml-1">{selectedLog.request_path}</span></div>
                     {selectedLog.duration_ms !== undefined && (
-                      <div><span className="text-slate-500">Latency:</span> <span className="text-emerald-300 font-semibold">{selectedLog.duration_ms} ms</span></div>
+                      <div><span className="text-slate-400 dark:text-slate-500">Latency:</span> <span className="text-emerald-600 dark:text-emerald-400 font-semibold ml-1">{selectedLog.duration_ms} ms</span></div>
                     )}
-                    <div><span className="text-slate-500">Occurred:</span> <span>{formatTimestamp(selectedLog.occurred_at)}</span></div>
+                    <div><span className="text-slate-400 dark:text-slate-500">Occurred:</span> <span className="text-slate-800 dark:text-slate-200 ml-1">{formatTimestamp(selectedLog.occurred_at)}</span></div>
                   </div>
                 </div>
 
                 {/* Meta item 2 */}
-                <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/20">
-                  <span className="text-xs text-slate-400 block font-semibold uppercase tracking-wider mb-1.5">Client Context</span>
-                  <div className="space-y-1">
+                <div className="bg-slate-50 dark:bg-github-dark-subtle/40 p-4 rounded-xl border border-slate-200 dark:border-github-dark-border">
+                  <span className="text-xs text-slate-500 dark:text-slate-400 block font-bold uppercase tracking-wider mb-2">Client Context</span>
+                  <div className="space-y-1.5 text-xs">
                     {selectedLog.level ? (
                       // Error logs extra_context parsing
                       (() => {
@@ -429,18 +442,18 @@ const DebugConsole = () => {
                         } catch (_) {}
                         return (
                           <>
-                            <div><span className="text-slate-500">OS:</span> <span className="text-white">{parsedCtx.client_os || 'Unknown OS'}</span></div>
-                            <div><span className="text-slate-500">Platform:</span> <span className="text-white">{parsedCtx.platform || 'WEB'}</span></div>
-                            <div><span className="text-slate-500">User Agent:</span> <span className="text-slate-400 text-xs block font-mono truncate" title={parsedCtx.userAgent}>{parsedCtx.userAgent || 'Unknown'}</span></div>
+                            <div><span className="text-slate-400 dark:text-slate-500">OS:</span> <span className="text-slate-900 dark:text-white ml-1">{parsedCtx.client_os || 'Unknown OS'}</span></div>
+                            <div><span className="text-slate-400 dark:text-slate-500">Platform:</span> <span className="text-slate-900 dark:text-white ml-1">{parsedCtx.platform || 'WEB'}</span></div>
+                            <div><span className="text-slate-400 dark:text-slate-500">User Agent:</span> <span className="text-slate-600 dark:text-slate-400 text-xs block font-mono truncate mt-0.5" title={parsedCtx.userAgent}>{parsedCtx.userAgent || 'Unknown'}</span></div>
                           </>
                         );
                       })()
                     ) : (
                       // API logs fields
                       <>
-                        <div><span className="text-slate-500">Device/OS:</span> <span className="text-white">{selectedLog.device_type} ({selectedLog.client_os})</span></div>
-                        <div><span className="text-slate-500">Client Type:</span> <span className="text-white">{selectedLog.client_type}</span></div>
-                        <div><span className="text-slate-500">Client IP:</span> <span className="text-white font-mono">{selectedLog.request_ip || 'N/A'}</span></div>
+                        <div><span className="text-slate-400 dark:text-slate-500">Device/OS:</span> <span className="text-slate-900 dark:text-white ml-1">{selectedLog.device_type} ({selectedLog.client_os})</span></div>
+                        <div><span className="text-slate-400 dark:text-slate-500">Client Type:</span> <span className="text-slate-900 dark:text-white ml-1">{selectedLog.client_type}</span></div>
+                        <div><span className="text-slate-400 dark:text-slate-500">Client IP:</span> <span className="text-slate-900 dark:text-white font-mono ml-1">{selectedLog.request_ip || 'N/A'}</span></div>
                       </>
                     )}
                   </div>
@@ -451,8 +464,8 @@ const DebugConsole = () => {
               {/* Error Message Section */}
               {selectedLog.error_message && (
                 <div className="space-y-2">
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Error Message</h4>
-                  <div className="bg-rose-500/10 border border-rose-500/20 text-rose-200 p-4 rounded-xl font-mono text-xs break-words">
+                  <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Error Message</h4>
+                  <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-700 dark:text-rose-300 p-4 rounded-xl font-mono text-xs break-words">
                     {selectedLog.error_message}
                   </div>
                 </div>
@@ -461,8 +474,8 @@ const DebugConsole = () => {
               {/* Stack Trace Section for Server / Client Errors */}
               {selectedLog.stack_trace && (
                 <div className="space-y-2">
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stack Trace</h4>
-                  <pre className="bg-slate-950 p-4 rounded-xl font-mono text-xs text-rose-400/90 overflow-x-auto max-h-60 whitespace-pre-wrap break-all border border-slate-800">
+                  <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Stack Trace</h4>
+                  <pre className="bg-slate-900 dark:bg-[#0d1117] p-4 rounded-xl font-mono text-xs text-rose-300 overflow-x-auto max-h-60 whitespace-pre-wrap break-all border border-slate-800">
                     {selectedLog.stack_trace}
                   </pre>
                 </div>
@@ -471,8 +484,8 @@ const DebugConsole = () => {
               {/* Payload Data for API Logs */}
               {!selectedLog.level && selectedLog.payload_details && (
                 <div className="space-y-2">
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Request Payload Details</h4>
-                  <pre className="bg-slate-950 p-4 rounded-xl font-mono text-xs text-indigo-300 overflow-x-auto max-h-60 border border-slate-800">
+                  <h4 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Request Payload Details</h4>
+                  <pre className="bg-slate-900 dark:bg-[#0d1117] p-4 rounded-xl font-mono text-xs text-indigo-300 overflow-x-auto max-h-60 border border-slate-800">
                     {(() => {
                       try {
                         const parsed = typeof selectedLog.payload_details === 'string'
@@ -490,10 +503,10 @@ const DebugConsole = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-6 border-t border-slate-800 flex justify-end bg-slate-950/60">
+            <div className="p-6 border-t border-slate-200 dark:border-github-dark-border flex justify-end bg-slate-50/80 dark:bg-github-dark-subtle/50">
               <button 
                 onClick={() => setSelectedLog(null)}
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-sm font-semibold text-white rounded-xl transition-all"
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-sm font-semibold text-white rounded-xl transition-all cursor-pointer"
               >
                 Close Diagnostic View
               </button>

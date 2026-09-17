@@ -278,7 +278,7 @@ const MapSidebarContent = ({ selectedCluster, onClose }) => {
                                 {selectedUser.user.allStatuses && selectedUser.user.allStatuses.includes('Late') && (
                                     <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm mt-3 animate-in fade-in slide-in-from-top-1 duration-200">
                                         <h5 className="text-[11px] font-semibold text-amber-600 dark:text-amber-500 mb-1 flex items-center gap-1.5">
-                                            <AlertTriangle size={10} /> Late Reason
+                                            <AlertTriangle size={10} /> Reason
                                         </h5>
                                         <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">
                                             {selectedUser.user.lateReason ? `"${selectedUser.user.lateReason}"` : "No reason provided."}

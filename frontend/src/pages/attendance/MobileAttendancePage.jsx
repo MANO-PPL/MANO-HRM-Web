@@ -2072,7 +2072,7 @@ const MobileAttendancePage = () => {
                                                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'COMPLETED');
                                                                             const sStyle = getStatusStyle(sessionStatus);
                                                                             const sDuration = isSessionOpen 
-                                                                                ? (isSessionMissed ? 'Missed Out' : 'In Progress') 
+                                                                                ? (isSessionMissed ? '' : 'In Progress') 
                                                                                 : (s.total_hours ? `${s.total_hours} hrs` : (calculateHours(s.time_in, s.time_out) || 'N/A'));
                                                                             return (
                                                                                 <div key={s.attendance_id || sIdx} className="bg-white dark:bg-github-dark-subtle p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border space-y-2.5 shadow-xs">
@@ -2086,7 +2086,7 @@ const MobileAttendancePage = () => {
                                                                                                 </span>
                                                                                             )}
                                                                                         </div>
-                                                                                        <span className="font-bold text-indigo-600 dark:text-indigo-400 text-[11px]">{sDuration}</span>
+                                                                                        {sDuration && <span className="font-bold text-indigo-600 dark:text-indigo-400 text-[11px]">{sDuration}</span>}
                                                                                     </div>
 
                                                                                     <div className="grid grid-cols-2 gap-2 text-xs">

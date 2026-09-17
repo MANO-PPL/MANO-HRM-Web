@@ -1535,7 +1535,7 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                 {((employee.allStatuses && employee.allStatuses.includes('Late')) || (employee.lateMinutes > 0) || employee.status.includes('Late')) && (
                     <div className="p-3 mb-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
                         <h5 className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-500 tracking-widest mb-1 flex items-center gap-1.5">
-                            <AlertCircle size={10} /> Late Reason {employee.lateMinutes > 0 ? `(${employee.lateMinutes} mins)` : ''}
+                            <AlertCircle size={10} /> Reason
                         </h5>
                         <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed italic">
                             {employee.lateReason ? `"${employee.lateReason}"` : "No reason provided."}

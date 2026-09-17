@@ -54,9 +54,9 @@ export function getStatusStyle(status) {
       };
     case 'LATE':
       return {
-        bg: 'bg-amber-100 dark:bg-amber-900/30',
-        text: 'text-amber-700 dark:text-amber-400',
-        dot: 'bg-amber-500',
+        bg: 'bg-orange-100 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800/40',
+        text: 'text-orange-700 dark:text-orange-400',
+        dot: 'bg-orange-500',
         label: 'LATE',
       };
     case 'HALF_DAY':
@@ -104,9 +104,9 @@ export function getStatusStyle(status) {
       };
     case 'HOLIDAY':
       return {
-        bg: 'bg-sky-100 dark:bg-sky-900/30',
-        text: 'text-sky-700 dark:text-sky-400',
-        dot: 'bg-sky-500',
+        bg: 'bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800/40',
+        text: 'text-yellow-700 dark:text-yellow-400',
+        dot: 'bg-yellow-500',
         label: 'HOLIDAY',
       };
     default:

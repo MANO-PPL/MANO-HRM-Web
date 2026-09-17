@@ -390,7 +390,7 @@ const AttendanceHistoryTab = ({
                                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'CLOSED');
                                                             const sStyle = getStatusStyle(sessionStatus);
                                                             const sDuration = isSessionOpen
-                                                                ? (isSessionMissed ? 'Missed Out' : 'In Progress')
+                                                                ? (isSessionMissed ? '' : 'In Progress')
                                                                 : (session.total_hours ? `${session.total_hours} hrs` : (calculateDuration(session.time_in, session.time_out) || 'N/A'));
 
                                                             return (
@@ -412,9 +412,11 @@ const AttendanceHistoryTab = ({
                                                                                 <span className={`w-1 h-1 rounded-full ${sStyle.dot}`}></span>
                                                                                 {sStyle.label}
                                                                             </span>
-                                                                            <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 font-mono">
-                                                                                {sDuration}
-                                                                            </span>
+                                                                            {sDuration && (
+                                                                                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                                                                                    {sDuration}
+                                                                                </span>
+                                                                            )}
                                                                         </div>
                                                                     </div>
 
