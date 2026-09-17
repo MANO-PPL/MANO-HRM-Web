@@ -1,5 +1,5 @@
 import express from 'express';
-import { askWebsiteChatbot, askInternalChatbot, getAppGuide } from '../../controllers/chatbot/chatbotController.js';
+import { askWebsiteChatbot, askInternalChatbot, getAppGuide } from './chatbotController.js';
 import { authenticateJWT } from '../../middleware/auth.js';
 
 const router = express.Router();

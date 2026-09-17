@@ -1,4 +1,16 @@
 
+import ExcelJS from "exceljs";
+import { attendanceDB } from "../../config/database.js";
+import * as S3Service from "../../services/s3/s3Service.js";
+import EventBus from "../../utils/EventBus.js";
+import * as ShiftService from "../shifts/shiftService.js";
+import * as StatusService from "./statusEvaluationService.js";
+import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
+import { toMySQLDateTime, toMySQLDate, toMySQLTime, pad } from "../../utils/dateUtils.js";
+import { safeJsonParse } from "../../utils/dataUtils.js";
+import * as MapsService from "../../services/google_api_services/maps.js";
+import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttendanceCorrectionApprovedHook } from "../DAR/darReconciliationService.js";
+
 export async function resolveS3ImageUrl(rawKey) {
   if (!rawKey) return null;
   const str = String(rawKey).trim();
@@ -14,18 +26,6 @@ export async function resolveS3ImageUrl(rawKey) {
   }
   return null;
 }
-
-import ExcelJS from "exceljs";
-import { attendanceDB } from "../../config/database.js";
-import * as S3Service from "../../services/s3/s3Service.js";
-import EventBus from "../../utils/EventBus.js";
-import * as ShiftService from "../shifts/shiftService.js";
-import * as StatusService from "./statusEvaluationService.js";
-import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
-import { toMySQLDateTime, toMySQLDate, toMySQLTime, pad } from "../../utils/dateUtils.js";
-import { safeJsonParse } from "../../utils/dataUtils.js";
-import * as MapsService from "../../services/google_api_services/maps.js";
-import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttendanceCorrectionApprovedHook } from "../DAR/darReconciliationService.js";
 
 
 /**

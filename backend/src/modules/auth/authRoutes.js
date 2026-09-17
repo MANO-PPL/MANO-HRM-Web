@@ -1,5 +1,5 @@
 import express from 'express';
-import * as authController from '../../controllers/auth/authController.js';
+import * as authController from './authController.js';
 import { authenticateJWT } from '../../middleware/auth.js';
 import { generateCaptcha, verifyCaptcha } from '../../middleware/verifyCaptcha.js';
 import { authLimiter, loginIpLimiter } from '../../middleware/rateLimiter.js';

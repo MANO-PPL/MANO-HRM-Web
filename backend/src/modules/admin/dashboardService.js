@@ -193,21 +193,25 @@ export async function getDashboardStats(org_id, { range = 'weekly', year, month 
         return { name: dayName, present, late, absent };
     });
 
-    // Resolve each user's timezone: work location > org > UTC
-    const formattedActivities = activities.map(a => {
+    // Deduplicate activities by id (avoid duplicates from multiple work location joins) and resolve timezone
+    const seenActivityIds = new Set();
+    const formattedActivities = [];
+    for (const a of activities) {
+        if (a.id && seenActivityIds.has(a.id)) continue;
+        if (a.id) seenActivityIds.add(a.id);
         let timeZone = a.location_timezone || a.org_timezone || 'UTC';
         try {
             Intl.DateTimeFormat(undefined, { timeZone });
         } catch (_) {
             timeZone = 'UTC';
         }
-        return {
+        formattedActivities.push({
             ...a,
             time: new Date(a.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone }),
             status: a.action.toLowerCase().includes('clocked in') ? 'present' :
                 a.action.toLowerCase().includes('late') ? 'late' : 'absent'
-        };
-    });
+        });
+    }
 
     return {
         stats: { presentToday, totalEmployees, absentToday, lateCheckins },

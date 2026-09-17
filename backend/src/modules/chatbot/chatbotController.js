@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import AppError from '../../utils/AppError.js';
 import catchAsync from '../../utils/catchAsync.js';
-import { answerWebsiteQuestion, answerInternalQuestion } from '../../services/chatbot/websiteRagService.js';
+import { answerWebsiteQuestion, answerInternalQuestion } from './websiteRagService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,7 +80,7 @@ export const askInternalChatbot = catchAsync(async (req, res, next) => {
 export const getAppGuide = catchAsync(async (req, res, next) => {
     let guides = [];
     try {
-        const fileContent = await fs.readFile(path.resolve(__dirname, '../../services/chatbot/internalAppGuide.json'), 'utf-8');
+        const fileContent = await fs.readFile(path.resolve(__dirname, './internalAppGuide.json'), 'utf-8');
         guides = JSON.parse(fileContent);
     } catch (error) {
         console.error('Failed to load internalAppGuide.json:', error);

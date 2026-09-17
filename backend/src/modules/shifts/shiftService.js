@@ -1,6 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import { cacheService } from '../../services/cache/cacheService.js';
-import { verifyUserGeofence } from '../../services/attendance/geofencing.js';
+import { verifyUserGeofence } from '../attendance/geofencing.js';
 import { parseBool, safeJsonParse } from '../../utils/dataUtils.js';
 import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes } from '../../utils/dateUtils.js';
 

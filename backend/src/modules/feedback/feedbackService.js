@@ -1,6 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import { uploadFile, getFileUrl } from '../../services/s3/s3Service.js';
-import { sendEmail } from '../../services/auth/emailService.js';
+import { sendEmail } from '../auth/emailService.js';
 import EventBus from '../../utils/EventBus.js';
 
 /**

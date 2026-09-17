@@ -1,6 +1,6 @@
 import express from 'express';
 import adminRoutes from '../modules/admin/adminRoutes.js';
-import authRoutes from './auth/authRoutes.js';
+import authRoutes from '../modules/auth/authRoutes.js';
 import holidayRoutes from '../modules/holidays/holidayRoutes.js';
 import notificationRoutes from '../modules/notifications/notificationRoutes.js';
 import leaveRoutes from '../modules/leaves/leaveRoutes.js';
@@ -21,7 +21,7 @@ import profileRoutes from '../modules/profile/profileRoutes.js';
 import orgRoutes from '../modules/organisations/orgRoutes.js';
 import systemMonitorRoutes from '../modules/admin/systemMonitorRoutes.js';
 import superAdminRoutes from '../modules/superadmin/superAdminRoutes.js';
-import chatbotRoutes from './chatbot/chatbotRoutes.js';
+import chatbotRoutes from '../modules/chatbot/chatbotRoutes.js';
 import chatRoutes from '../modules/collaboration/chatRoutes.js';
 import labourRoutes from '../modules/labour/labourRoutes.js';
 import payrollRoutes from '../modules/payroll/payrollRoutes.js';

@@ -1,5 +1,5 @@
 import catchAsync from '../../utils/catchAsync.js';
-import * as authService from '../../services/auth/authService.js';
+import * as authService from './authService.js';
 import AppError from '../../utils/AppError.js';
 import { attendanceDB } from '../../config/database.js';
 import bcrypt from 'bcrypt';

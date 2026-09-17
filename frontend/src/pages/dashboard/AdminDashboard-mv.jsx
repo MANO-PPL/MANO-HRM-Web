@@ -496,8 +496,8 @@ const AdminDashboard = () => {
                                 ))}
                             </div>
                         ) : (activities && activities.length > 0) ? (
-                            activities.map((activity) => (
-                                <div key={activity.id} className="flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-white/5 transition-colors">
+                            activities.map((activity, idx) => (
+                                <div key={`act-${activity.id ?? 'item'}-${idx}`} className="flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-white/5 transition-colors">
                                     <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-100 dark:bg-[#1a1f2e] text-indigo-500 font-black text-sm shrink-0 overflow-hidden shadow-sm border border-white dark:border-white/5">
                                         {activity.profile_image_url ? (
                                             <img src={`${activity.profile_image_url}?t=${avatarTimestamp}`} alt={activity.user} className="w-full h-full object-cover" />

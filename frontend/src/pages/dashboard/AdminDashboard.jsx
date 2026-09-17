@@ -756,8 +756,8 @@ const AdminDashboard = () => {
                                             </div>
                                         ))
                                     ) : activities.length > 0 ? (
-                                        activities.map((activity) => (
-                                            <div key={activity.id} className="flex items-start gap-3 pb-4 border-b border-slate-50/50 dark:border-github-dark-border/40 last:border-0 last:pb-0 group/feed relative">
+                                        activities.map((activity, idx) => (
+                                            <div key={`act-${activity.id ?? 'item'}-${idx}`} className="flex items-start gap-3 pb-4 border-b border-slate-50/50 dark:border-github-dark-border/40 last:border-0 last:pb-0 group/feed relative">
                                                 <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0 text-xs font-black text-indigo-600 dark:text-indigo-400 overflow-hidden border border-indigo-100/50 dark:border-indigo-800/50">
                                                     {activity.profile_image_url ? (
                                                         <img src={`${activity.profile_image_url}?t=${avatarTimestamp}`} alt={activity.user} className="w-full h-full object-cover" />

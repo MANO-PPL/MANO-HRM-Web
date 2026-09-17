@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const getInternalGuide = catchAsync(async (req, res) => {
-    const guidePath = path.resolve(__dirname, '../../services/chatbot/internalAppGuide.json');
+    const guidePath = path.resolve(__dirname, '../chatbot/internalAppGuide.json');
     const fileContent = await fs.readFile(guidePath, 'utf-8');
     
     res.json({
