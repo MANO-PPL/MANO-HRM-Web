@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently -k -s all --prefix-colors \"blue,green,magenta\" -n \"server,client,ai\" \"node backend/dev.js\" \"node frontend/dev.js\" \"cd backend/services/ai_summary && py run.py\"",
+    "start": "concurrently -k -s all --prefix-colors \"blue,green,magenta\" -n \"server,client,ai\" \"node backend/dev.js\" \"node frontend/dev.js\" \"npm run ai\"",
     "server": "node backend/dev.js",
     "client": "node frontend/dev.js",
-    "ai": "cd backend/services/ai_summary && py run.py",
+    "ai": "if [ -f .venv/bin/python3 ]; then (cd backend/services/ai_summary && ../../../.venv/bin/python3 run.py); elif [ -f backend/services/ai_summary/venv/bin/python3 ]; then (cd backend/services/ai_summary && ./venv/bin/python3 run.py); else (cd backend/services/ai_summary && python3 run.py); fi",
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
