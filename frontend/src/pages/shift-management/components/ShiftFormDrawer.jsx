@@ -193,9 +193,6 @@ const ShiftFormDrawer = ({
     otThresholdHr,
     otThresholdMin,
     handleOtThresholdChange,
-    otBufferHr,
-    otBufferMin,
-    handleOtBufferChange,
     otMaxHoursHr,
     otMaxHoursMin,
     handleOtMaxHoursChange
@@ -579,6 +576,27 @@ const ShiftFormDrawer = ({
                                     Days allowed for staff to request missed punch corrections.
                                 </p>
                             </div>
+
+                            {/* Missed Punch Check Time */}
+                            <div className="p-3.5 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                        Flag as Missed Punch After
+                                    </label>
+                                    <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                                        {shiftForm.missedPunchCheckTime || 'Auto (Shift End + 8h)'}
+                                    </span>
+                                </div>
+                                <input
+                                    type="time"
+                                    value={shiftForm.missedPunchCheckTime || ''}
+                                    onChange={e => setShiftForm({ ...shiftForm, missedPunchCheckTime: e.target.value || null })}
+                                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-normal text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                                <p className="text-[10px] text-slate-400 font-normal">
+                                    Leave blank to default to 8 hours after shift end. Employees are never blocked from checking out before this time — it only controls when an open session gets auto-flagged as a possible forgotten checkout.
+                                </p>
+                            </div>
                         </div>
 
                         {/* B. Overtime Tracking */}
@@ -639,58 +657,15 @@ const ShiftFormDrawer = ({
                                                 />
                                             </div>
                                         </div>
-                                    </div>
-
-                                    {/* 2. Buffer Window */}
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                                Grace Buffer Window:
-                                            </span>
-                                            <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
-                                                {otBufferHr > 0 ? `${otBufferHr}h ` : ''}{otBufferMin}m grace
-                                            </span>
-                                        </div>
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {[
-                                                    { label: 'None (0m)', hr: 0, min: 0 },
-                                                    { label: '15 mins', hr: 0, min: 15 },
-                                                    { label: '30 mins', hr: 0, min: 30 },
-                                                    { label: '45 mins', hr: 0, min: 45 },
-                                                    { label: '1 hour', hr: 1, min: 0 }
-                                                ].map((preset, i) => (
-                                                    <button
-                                                        key={i}
-                                                        type="button"
-                                                        onClick={() => handleOtBufferChange(preset.hr, preset.min)}
-                                                        className={`h-8 inline-flex items-center px-2.5 text-[11px] font-medium rounded-lg border transition-colors cursor-pointer ${
-                                                            otBufferHr === preset.hr && otBufferMin === preset.min
-                                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                                                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                                                        }`}
-                                                    >
-                                                        {preset.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                                                <span className="text-[11px] text-slate-400 font-normal">Custom:</span>
-                                                <ThemedTimeStepper
-                                                    hours={otBufferHr}
-                                                    minutes={otBufferMin}
-                                                    onHoursChange={newHr => handleOtBufferChange(newHr, otBufferMin)}
-                                                    onMinutesChange={newMin => handleOtBufferChange(otBufferHr, newMin)}
-                                                    maxHours={23}
-                                                />
-                                            </div>
-                                        </div>
                                         <p className="text-[10px] text-slate-400 font-normal">
-                                            Extra time below this buffer will not trigger overtime.
+                                            Work hours below this won't be labeled Overtime. Once crossed, credited OT is still counted from the shift's own {calculateDuration(shiftForm.start, shiftForm.end)} duration, not from this trigger point.
+                                        </p>
+                                        <p className="text-[10px] text-slate-400 font-normal">
+                                            Can't be set below the shift's own {calculateDuration(shiftForm.start, shiftForm.end)} duration — a lower value is automatically raised to match.
                                         </p>
                                     </div>
 
-                                    {/* 3. Daily Max Overtime Cap */}
+                                    {/* 2. Daily Max Overtime Cap */}
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
                                             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">

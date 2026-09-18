@@ -16,6 +16,7 @@ import ShiftDetailsPanel from './components/ShiftDetailsPanel';
 import ShiftStaffAssignment from './components/ShiftStaffAssignment';
 import ShiftFormDrawer from './components/ShiftFormDrawer';
 import DeleteShiftModal from './components/DeleteShiftModal';
+import GlobalAttendanceSettingsPanel from './components/GlobalAttendanceSettingsPanel';
 
 const DEFAULT_MAX_OT_HOURS = 3;
 
@@ -65,10 +66,21 @@ const ShiftManagement = ({ embedded = false }) => {
 
     const [showShiftForm, setShowShiftForm] = useState(false);
     const [editingShift, setEditingShift] = useState(null);
+
+    // Global (org-wide, not per-shift) attendance settings
+    const [showGlobalSettings, setShowGlobalSettings] = useState(false);
+    const [isSavingGlobalSettings, setIsSavingGlobalSettings] = useState(false);
+    const [globalSettingsForm, setGlobalSettingsForm] = useState({
+        halfDayThresholdEnabled: false,
+        halfDayLateAfterTime: null,
+        halfDayEarlyBeforeTime: null
+    });
+
     const [isOtEnabled, setIsOtEnabled] = useState(false);
     const [shiftForm, setShiftForm] = useState({
         name: '', start: '09:00', end: '18:00', grace: 0,
-        otThreshold: 9.0, otBuffer: 0.5, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
+        otThreshold: 9.0, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
+        missedPunchCheckTime: null,
         reqEntrySelfie: true, reqEntryGeofence: true,
         reqExitSelfie: false, reqExitGeofence: true,
         checkpointEnabled: true, reqCheckpointSelfie: false,
@@ -114,9 +126,9 @@ const ShiftManagement = ({ embedded = false }) => {
                     grace: s.grace_period_mins,
                     overtime: !!s.is_overtime_enabled,
                     otThreshold: parseFloat(s.overtime_threshold_hours),
-                    otBuffer: parseFloat(s.overtime_buffer_hours ?? s.policy_rules?.overtime?.buffer ?? 0.5),
                     otMaxHours: normalizeUiMaxOtHours(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime),
                     correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 2),
+                    missedPunchCheckTime: s.policy_rules?.missed_punch_check_time || null,
                     policy_rules: s.policy_rules || {},
                     is_active: s.is_active !== 0
                 }));
@@ -137,10 +149,50 @@ const ShiftManagement = ({ embedded = false }) => {
         finally { setLoadingUsers(false); }
     }, []);
 
+    const loadGlobalSettings = useCallback(async () => {
+        try {
+            const res = await adminService.getGlobalAttendanceSettings();
+            if (res.ok && res.data) {
+                setGlobalSettingsForm({
+                    halfDayThresholdEnabled: !!res.data.half_day_threshold_enabled,
+                    halfDayLateAfterTime: res.data.half_day_late_after_time ? res.data.half_day_late_after_time.slice(0, 5) : null,
+                    halfDayEarlyBeforeTime: res.data.half_day_early_before_time ? res.data.half_day_early_before_time.slice(0, 5) : null
+                });
+            }
+        } catch (e) { toast.error('Failed to load global attendance settings'); }
+    }, []);
+
+    const handleSaveGlobalSettings = async (e) => {
+        e.preventDefault();
+        setIsSavingGlobalSettings(true);
+        try {
+            const res = await adminService.updateGlobalAttendanceSettings({
+                half_day_threshold_enabled: globalSettingsForm.halfDayThresholdEnabled,
+                half_day_late_after_time: globalSettingsForm.halfDayThresholdEnabled && globalSettingsForm.halfDayLateAfterTime
+                    ? `${globalSettingsForm.halfDayLateAfterTime}:00`
+                    : null,
+                half_day_early_before_time: globalSettingsForm.halfDayThresholdEnabled && globalSettingsForm.halfDayEarlyBeforeTime
+                    ? `${globalSettingsForm.halfDayEarlyBeforeTime}:00`
+                    : null
+            });
+            if (res.ok) {
+                toast.success('Global attendance settings updated successfully!');
+                setShowGlobalSettings(false);
+            } else {
+                toast.error(res.message || 'Failed to update settings');
+            }
+        } catch (err) {
+            toast.error(err.message || 'Failed to update settings');
+        } finally {
+            setIsSavingGlobalSettings(false);
+        }
+    };
+
     useEffect(() => {
         loadShifts();
         loadUsers();
-    }, [loadShifts, loadUsers]);
+        loadGlobalSettings();
+    }, [loadShifts, loadUsers, loadGlobalSettings]);
 
 
 
@@ -166,9 +218,9 @@ const ShiftManagement = ({ embedded = false }) => {
             setShiftForm({
                 name: editingShift.name, start: editingShift.start, end: editingShift.end,
                 grace: editingShift.grace, otThreshold: editingShift.otThreshold || 8.0,
-                otBuffer: editingShift.otBuffer ?? 0.5,
                 otMaxHours: normalizeUiMaxOtHours(editingShift.otMaxHours),
                 correctionDeadline: editingShift.correctionDeadline ?? 2,
+                missedPunchCheckTime: editingShift.missedPunchCheckTime || null,
                 reqEntrySelfie: !!rules.entry_requirements?.selfie,
                 reqEntryGeofence: true, // GPS is mandatory
                 reqExitSelfie: !!rules.exit_requirements?.selfie,
@@ -185,7 +237,8 @@ const ShiftManagement = ({ embedded = false }) => {
             setShowAdvancedSettings(false);
         } else if (showShiftForm && !editingShift) {
             setShiftForm({ 
-                name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otBuffer: 0.5, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
+                name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
+                missedPunchCheckTime: null,
                 reqEntrySelfie: true, reqEntryGeofence: true, reqExitSelfie: false, reqExitGeofence: true, // GPS is mandatory
                 checkpointEnabled: true, reqCheckpointSelfie: false,
                 workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], weekOffRules: [], halfDayRules: [],
@@ -208,13 +261,13 @@ const ShiftManagement = ({ embedded = false }) => {
             is_active: shiftForm.is_active,
             shift_timing: { start_time: shiftForm.start, end_time: shiftForm.end },
             grace_period: { minutes: parseInt(shiftForm.grace) || 0 },
-            overtime: { 
-                enabled: isOtEnabled, 
-                threshold: parseFloat(shiftForm.otThreshold) || 0, 
-                buffer: parseFloat(shiftForm.otBuffer) || 0,
+            overtime: {
+                enabled: isOtEnabled,
+                threshold: parseFloat(shiftForm.otThreshold) || 0,
                 max_overtime: maxOvertime
             },
             correction_deadline: parseInt(shiftForm.correctionDeadline) || 2,
+            missed_punch_check_time: shiftForm.missedPunchCheckTime || null,
             entry_requirements: { selfie: shiftForm.reqEntrySelfie, geofence: true }, // GPS is mandatory
             exit_requirements: { selfie: shiftForm.reqExitSelfie, geofence: true }, // GPS is mandatory
             checkpoint_requirements: {
@@ -294,17 +347,6 @@ const ShiftManagement = ({ embedded = false }) => {
         setShiftForm(prev => ({ ...prev, otThreshold: decimal }));
     };
 
-    const otBufferVal = parseFloat(shiftForm.otBuffer) || 0;
-    const otBufferMins = Math.round(otBufferVal * 60);
-    const otBufferHr = Math.floor(otBufferMins / 60);
-    const otBufferMin = otBufferMins % 60;
-
-    const handleOtBufferChange = (hr, min) => {
-        const totalMinutes = (parseInt(hr) || 0) * 60 + (parseInt(min) || 0);
-        const decimal = parseFloat((totalMinutes / 60).toFixed(2));
-        setShiftForm(prev => ({ ...prev, otBuffer: decimal }));
-    };
-
     const otMaxHoursVal = parseFloat(shiftForm.otMaxHours) || 0;
     const otMaxHoursMins = Math.round(otMaxHoursVal * 60);
     const otMaxHoursHr = Math.floor(otMaxHoursMins / 60);
@@ -371,12 +413,21 @@ const ShiftManagement = ({ embedded = false }) => {
                     users={users}
                     selectedUserId={selectedUserId}
                     onOpenAddShift={() => { setEditingShift(null); setShowShiftForm(true); }}
+                    onOpenGlobalSettings={() => setShowGlobalSettings(true)}
                     calculateDuration={calculateDuration}
                 />
 
                 {/* CENTER: Shift Details / Edit Form */}
                 <div className="flex-1 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
-                    {!selectedShift && !showShiftForm ? (
+                    {showGlobalSettings ? (
+                        <GlobalAttendanceSettingsPanel
+                            settingsForm={globalSettingsForm}
+                            setSettingsForm={setGlobalSettingsForm}
+                            onSubmit={handleSaveGlobalSettings}
+                            onClose={() => setShowGlobalSettings(false)}
+                            isSaving={isSavingGlobalSettings}
+                        />
+                    ) : !selectedShift && !showShiftForm ? (
                         <div className="flex-1 flex items-center justify-center flex-col gap-4 text-slate-400">
                             <Briefcase size={48} className="opacity-20" />
                             <p className="text-sm font-normal">Select a shift to view details</p>
@@ -403,9 +454,6 @@ const ShiftManagement = ({ embedded = false }) => {
                             otThresholdHr={otThresholdHr}
                             otThresholdMin={otThresholdMin}
                             handleOtThresholdChange={handleOtThresholdChange}
-                            otBufferHr={otBufferHr}
-                            otBufferMin={otBufferMin}
-                            handleOtBufferChange={handleOtBufferChange}
                             otMaxHoursHr={otMaxHoursHr}
                             otMaxHoursMin={otMaxHoursMin}
                             handleOtMaxHoursChange={handleOtMaxHoursChange}

@@ -3,10 +3,16 @@ import {
     getDayType,
     getExpectedHours,
     getShiftRules,
-    normalizeMaxOvertimeHours
+    normalizeMaxOvertimeHours,
+    getShiftById,
+    getOffPatternFallbackRules,
+    getEffectiveRulesForDate,
+    getOpenShiftFallback
 } from '../../modules/shifts/shiftService.js';
-import { toMySQLTime, toMySQLDate, toMySQLDateTime, calculateDurationHours, pad, DAY_NAMES } from '../../utils/dateUtils.js';
+import { getOrgAttendanceSettings } from '../../modules/attendance/orgAttendanceSettingsService.js';
+import { toMySQLTime, toMySQLDate, toMySQLDateTime, calculateDurationHours, pad, DAY_NAMES, timeToMinutes } from '../../utils/dateUtils.js';
 import { safeJsonParse } from '../../utils/dataUtils.js';
+import { formatDateInTimezone } from '../../utils/timezoneUtils.js';
 
 /**
  * Status Evaluation Service
@@ -57,6 +63,14 @@ export function getLocalTimeString(date = new Date(), timezone = 'UTC') {
 
 //  Late Arrival
 /**
+ * Single shared definition of "late enough to count" — minutes late strictly beyond the grace
+ * period. Used by every status-evaluation path so the threshold behavior can't drift between them.
+ */
+function isLateBeyondGrace(minutesLate, graceMinutes) {
+    return Number(minutesLate || 0) > Number(graceMinutes || 0);
+}
+
+/**
  * Calculate late arrival and grace period compliance.
  * @param {string} localTime - Local time in ISO format
  * @param {Object} rules - Unified shift rules
@@ -66,6 +80,7 @@ export function calculateLateArrival(localTime, rules) {
     let minutesLate = 0;
     const timing = rules?.shift_timing || {};
     const startTimeStr = timing.start_time;
+    const endTimeStr = timing.end_time;
 
     if (startTimeStr && localTime) {
         const timePart = toMySQLTime(localTime);
@@ -76,8 +91,17 @@ export function calculateLateArrival(localTime, rules) {
             const [shiftH, shiftM] = startTimeStr.split(':').map(Number);
             const shiftMinutes = shiftH * 60 + shiftM;
 
-            if (shiftMinutes >= 1080 && currentMinutes < 720) {
-                currentMinutes += 1440;
+            // For a shift that crosses midnight, a punch-in in the early-morning tail (before
+            // the shift's own end time) is a late arrival for the *previous* day's instance —
+            // wrap it forward so the comparison against shiftMinutes is correct. Replaces the
+            // old hardcoded "shift starts >=18:00 and punch before noon" approximation with the
+            // shift's actual crosses_midnight flag and its own end time.
+            if (rules?.crosses_midnight && endTimeStr) {
+                const [endH, endM] = endTimeStr.split(':').map(Number);
+                const endMinutes = endH * 60 + endM;
+                if (currentMinutes < endMinutes) {
+                    currentMinutes += 1440;
+                }
             }
 
             if (currentMinutes > shiftMinutes) {
@@ -87,7 +111,7 @@ export function calculateLateArrival(localTime, rules) {
     }
 
     const gracePeriod = Number(rules?.grace_period?.minutes || 0);
-    const isLate = minutesLate > gracePeriod;
+    const isLate = isLateBeyondGrace(minutesLate, gracePeriod);
 
     return {
         minutesLate,
@@ -127,14 +151,13 @@ export function evaluateStatus(rules, data) {
     // The overtime threshold should not be less than the expected hours of the shift.
     threshold = Math.max(threshold, expectedHours);
 
-    // Buffer: time after shift end before overtime triggers (default 30 min = 0.5 hr)
-    const buffer = Number(rules?.overtime?.buffer ?? 0.5);
     const maxOvertimeVal = rules?.overtime?.max_overtime !== undefined
         ? rules.overtime.max_overtime
         : rules?.overtime?.maxOvertime;
     const maxOvertime = normalizeMaxOvertimeHours(maxOvertimeVal);
 
-    if (rules?.overtime?.enabled !== false && maxOvertime > 0 && totalHours >= (threshold + buffer)) {
+    // "Overtime Starts After" alone decides the label — once crossed, OT is in effect immediately.
+    if (rules?.overtime?.enabled !== false && maxOvertime > 0 && totalHours >= threshold) {
         return "OVERTIME";
     }
 
@@ -148,7 +171,7 @@ export function evaluateStatus(rules, data) {
     const graceMins = Number(rules.grace_period?.minutes || 0);
     const minutesLate = Number(data.minutes_late || 0);
 
-    if (minutesLate > graceMins) {
+    if (isLateBeyondGrace(minutesLate, graceMins)) {
         return "LATE";
     }
 
@@ -160,36 +183,75 @@ export function evaluateStatus(rules, data) {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Calculate overtime hours based on total hours worked and shift rules.
+ * Compute both the real (uncapped) and payable (capped) overtime for a session.
+ * The daily cap only limits what gets counted for pay/reporting — it never discards
+ * the fact that the extra hours were actually worked.
  * @param {number} totalHours
  * @param {Object} rules - Shift rules
- * @returns {number} Overtime hours
+ * @param {boolean} [allowHistorical] - If true, compute OT even when the shift's overtime is
+ *   currently disabled — for reporting on a past date under whatever policy was in effect then.
+ *   Callers that must reflect the shift's CURRENT setting (e.g. live status) must leave this
+ *   false and gate the result themselves; this flag only affects the raw calculation.
+ * @returns {{ actualOvertime: number, cappedOvertime: number, maxOvertime: number }}
  */
-export function calculateOvertime(totalHours, rules) {
+export function computeOvertimeBreakdown(totalHours, rules, allowHistorical = false) {
     const timing = rules?.shift_timing || {};
     const [sH, sM] = (timing.start_time || '09:00:00').split(':').map(Number);
     const [eH, eM] = (timing.end_time || '18:00:00').split(':').map(Number);
     let expectedHours = ((eH * 60 + eM) - (sH * 60 + sM)) / 60;
     if (expectedHours < 0) expectedHours += 24;
 
+    // "Overtime Starts After" — when the OT label triggers. Can be set above the shift's own
+    // duration (e.g. 9h30m on a 9-6 shift) but never below it.
     let threshold = Number(rules?.overtime?.threshold || 8);
     threshold = Math.max(threshold, expectedHours);
 
-    const buffer = Number(rules?.overtime?.buffer ?? 0.5);
-    const isEnabled = rules?.overtime?.enabled !== false;
+    const isEnabled = rules?.overtime?.enabled !== false || allowHistorical;
 
-    if (isEnabled && totalHours >= (threshold + buffer)) {
-        let overtime = parseFloat((totalHours - threshold).toFixed(2));
-        const maxOvertimeVal = rules?.overtime?.max_overtime !== undefined
-            ? rules.overtime.max_overtime
-            : rules?.overtime?.maxOvertime;
-        const maxOvertime = normalizeMaxOvertimeHours(maxOvertimeVal);
-        if (overtime > maxOvertime) {
-            overtime = maxOvertime;
-        }
-        return overtime;
+    const maxOvertimeVal = rules?.overtime?.max_overtime !== undefined
+        ? rules.overtime.max_overtime
+        : rules?.overtime?.maxOvertime;
+    const maxOvertime = normalizeMaxOvertimeHours(maxOvertimeVal);
+
+    if (isEnabled && totalHours >= threshold) {
+        // Credited hours are always measured from the shift's own duration, not from the
+        // (possibly later) "Overtime Starts After" trigger point — so raising the trigger to
+        // avoid noisy OT labels for marginal overruns never shortchanges genuine OT worked.
+        const actualOvertime = parseFloat(Math.max(0, totalHours - expectedHours).toFixed(2));
+        const cappedOvertime = actualOvertime > maxOvertime ? maxOvertime : actualOvertime;
+        return { actualOvertime, cappedOvertime, maxOvertime };
     }
-    return 0;
+    return { actualOvertime: 0, cappedOvertime: 0, maxOvertime };
+}
+
+/**
+ * Calculate payable overtime hours (capped at the shift's daily max) based on
+ * total hours worked and shift rules. See computeOvertimeBreakdown() for the
+ * uncapped/actual figure and the allowHistorical parameter.
+ * @param {number} totalHours
+ * @param {Object} rules - Shift rules
+ * @param {boolean} [allowHistorical]
+ * @returns {number} Overtime hours (capped)
+ */
+export function calculateOvertime(totalHours, rules, allowHistorical = false) {
+    return computeOvertimeBreakdown(totalHours, rules, allowHistorical).cappedOvertime;
+}
+
+/**
+ * Live-gates a stored overtime figure by the shift's CURRENT overtime.enabled setting, without
+ * ever touching the underlying stored value — so disabling OT on a shift hides it everywhere
+ * (Reports, exports) immediately, and re-enabling it restores correct display with no
+ * recomputation needed. Never retroactive to payroll that's already been calculated/closed —
+ * callers decide separately whether a given consumer should apply this gate.
+ * @param {number} storedHours - The already-computed/stored overtime figure
+ * @param {Object} currentRules - The shift's CURRENT rules (not necessarily what was in effect
+ *   when storedHours was computed)
+ * @returns {number}
+ */
+export function formatOvertimeForDisplay(storedHours, currentRules) {
+    const hours = Number(storedHours) || 0;
+    if (currentRules?.overtime?.enabled === false) return 0;
+    return hours;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -386,7 +448,7 @@ function normalizeDate(d) {
  * Evaluate the attendance status for a single user on a single date.
  * Uses cron-processed daily_attendance when available, otherwise derives dynamically.
  */
-function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone = 'UTC' }) {
+function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone = 'UTC', orgAttendanceSettings = null }) {
     let status = null;
     let totalHours = 0;
     let firstIn = null;
@@ -409,7 +471,10 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         totalHours = Number(dailyRecord.total_hours) || 0;
         firstIn = dailyRecord.first_in || null;
         lastOut = dailyRecord.last_out || null;
-        overtimeHours = Number(dailyRecord.overtime_hours) || 0;
+        // Live-gated on the shift's CURRENT overtime.enabled — a stored figure from when OT was
+        // enabled must not keep showing (here or in the OVERTIME status label below) once OT is
+        // disabled, without needing to touch the stored value itself.
+        overtimeHours = formatOvertimeForDisplay(dailyRecord.overtime_hours, rules);
 
         lateMinutes = Number(dailyRecord.late_minutes || 0);
         if (!lateMinutes && dayRecords.length > 0) {
@@ -427,7 +492,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         if (status === 'PRESENT' || status === 'present') {
             if (overtimeHours > 0) {
                 status = 'OVERTIME';
-            } else if (lateMinutes > graceMins) {
+            } else if (isLateBeyondGrace(lateMinutes, graceMins)) {
                 status = 'LATE';
             }
         }
@@ -437,6 +502,12 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         const hasMissedPunch = dayRecords.some(r => r.status === 'MISSED_PUNCH');
 
         const localNow = getLocalNow(timezone);
+
+        // A half-day (Special Weekend & Alternate Rules) is judged against its own
+        // window/duration, not the full shift's — otherwise a completed half-day gets evaluated
+        // as if it fell short of a full day.
+        const dayType = getDayType(dateStr, rules.week_off_policy);
+        const effectiveRules = dayType === 'half_day' ? getEffectiveRulesForDate(dateStr, rules) : rules;
 
         for (const r of dayRecords) {
             if (r.time_in && r.time_out) {
@@ -453,8 +524,8 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
 
         // Calculate dynamic late arrival from firstIn and shift rules
         let dynamicLateMinutes = 0;
-        if (firstIn && rules) {
-            const lateCheck = calculateLateArrival(firstIn, rules);
+        if (firstIn && effectiveRules) {
+            const lateCheck = calculateLateArrival(firstIn, effectiveRules);
             if (lateCheck.isLate) {
                 dynamicLateMinutes = lateCheck.minutesLate;
             }
@@ -463,22 +534,57 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         lateMinutes = Number(dailyRecord?.late_minutes || 0) || dynamicLateMinutes || Number(dayRecords[0].late_minutes || 0);
         lateReason = dayRecords[0].late_reason || dailyRecord?.late_reason || '';
 
-        const calculatedOT = calculateOvertime(totalHours, rules);
+        const calculatedOT = calculateOvertime(totalHours, effectiveRules);
         overtimeHours = Math.max(calculatedOT, Number(dailyRecord?.overtime_hours || 0));
 
         if (hasOpenSession) {
-            status = lateMinutes > graceMins ? 'Late Active' : 'Active';
+            status = isLateBeyondGrace(lateMinutes, graceMins) ? 'Late Active' : 'Active';
         } else if (hasMissedPunch) {
             status = 'MISSED_PUNCH';
+        } else if (dayType === 'half_day') {
+            // Too little time worked (relative to the half-day's own expected hours, not a full
+            // day's) reads ABSENT — same "showed up too briefly to count" idea as a full day,
+            // just proportioned. Otherwise a completed half-day reads HALF_DAY, not a bare
+            // PRESENT indistinguishable from a full day.
+            const halfDayExpectedHours = getExpectedHours(dateStr, rules.week_off_policy, rules);
+            if (totalHours < (halfDayExpectedHours * 0.5)) {
+                status = 'ABSENT';
+            } else if (overtimeHours > 0) {
+                status = 'OVERTIME';
+            } else if (isLateBeyondGrace(lateMinutes, graceMins)) {
+                status = 'LATE';
+            } else {
+                status = 'HALF_DAY';
+            }
         } else {
             const derived = deriveDailyStatus(dayRecords);
-            if (derived === 'PRESENT' && lateMinutes > graceMins) {
+            if (derived === 'PRESENT' && isLateBeyondGrace(lateMinutes, graceMins)) {
                 status = 'LATE';
             } else {
                 status = derived;
             }
             if (overtimeHours > 0 && (status === 'PRESENT' || status === 'LATE')) {
                 status = 'OVERTIME';
+            }
+
+            // Org-wide threshold half-day policy — only ever applies on a date the shift itself
+            // classifies as a normal WORKING day, never stacking with the shift's own
+            // half-day/week-off rule handled above. Only downgrades an otherwise unremarkable
+            // PRESENT/LATE day — never "upgrades" a genuine ABSENT, and never overrides a day
+            // that already earned OVERTIME.
+            if ((status === 'PRESENT' || status === 'LATE') && dayType === 'working' && orgAttendanceSettings?.half_day_threshold_enabled) {
+                const firstInMinutes = firstIn ? timeToMinutes(toMySQLTime(firstIn)) : null;
+                const lastOutMinutes = lastOut ? timeToMinutes(toMySQLTime(lastOut)) : null;
+
+                const lateThresholdMinutes = orgAttendanceSettings.half_day_late_after_time ? timeToMinutes(orgAttendanceSettings.half_day_late_after_time) : null;
+                const earlyThresholdMinutes = orgAttendanceSettings.half_day_early_before_time ? timeToMinutes(orgAttendanceSettings.half_day_early_before_time) : null;
+
+                const arrivedLate = lateThresholdMinutes !== null && firstInMinutes !== null && firstInMinutes > lateThresholdMinutes;
+                const leftEarly = earlyThresholdMinutes !== null && lastOutMinutes !== null && lastOutMinutes < earlyThresholdMinutes;
+
+                if (arrivedLate || leftEarly) {
+                    status = 'HALF_DAY';
+                }
             }
         }
     } else {
@@ -520,6 +626,14 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         return String(v).split('.')[0];
     };
 
+    // Whether an employee (not admin/HR — that bypass lives in the request-submission endpoint
+    // itself) could still submit a correction request for this date, per the shift's configured
+    // correction_deadline. Exposed so the frontend has a real signal instead of re-deriving this
+    // day-diff itself.
+    const correctionDeadlineDays = rules?.correction_deadline ?? 2;
+    const daysSinceDate = Math.ceil((new Date(todayStr) - new Date(dateStr)) / (1000 * 60 * 60 * 24));
+    const isCorrectable = daysSinceDate <= correctionDeadlineDays;
+
     return {
         status,
         total_hours: totalHours,
@@ -529,7 +643,8 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         late_reason: lateReason,
         overtime_hours: overtimeHours,
         overtime_minutes: Math.round(overtimeHours * 60),
-        expected_hours: expectedHours
+        expected_hours: expectedHours,
+        is_correctable: isCorrectable
     };
 }
 
@@ -630,14 +745,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
     if (user_id) usersQuery = usersQuery.where('core_users.user_id', user_id);
     const users = await usersQuery;
 
-    let openShift = null;
-    try {
-        openShift = await attendanceDB("org_shifts")
-            .where({ org_id })
-            .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
-            .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
-            .first();
-    } catch (_) { }
+    const openShift = await getOpenShiftFallback(org_id);
 
     for (const u of users) {
         if (!u.shift_id) {
@@ -755,10 +863,25 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                     const timeOutLocal = outP?.punch_time ? toPlainIso(outP.punch_time) : null;
 
                     const userDayKey = `${uid}_${ds}`;
-                    let lateMins = Number(inMeta.late_minutes || 0);
+                    // This session's own shift (Phase 3: may be pattern-matched or off-pattern,
+                    // not necessarily the user's assigned shift) — falls back to the user's
+                    // assigned rules for punches with no resolution metadata (pre-Phase-3).
+                    let sessionRules = userRules;
+                    if (inMeta.match_type === 'off_pattern_fallback') {
+                        sessionRules = getOffPatternFallbackRules();
+                    } else if (inMeta.resolved_shift_id && userObj) {
+                        const matchedShift = await getShiftById(userObj.org_id, inMeta.resolved_shift_id);
+                        if (matchedShift) sessionRules = getShiftRules(matchedShift);
+                    }
+
+                    // `late_minutes` can legitimately be 0 (on-time) — check whether a value was
+                    // actually stored, not just whether it's truthy, so a correctly-matched
+                    // on-time session doesn't get silently re-evaluated against the wrong rules.
+                    const hasStoredLateMinutes = inMeta.late_minutes !== undefined && inMeta.late_minutes !== null;
+                    let lateMins = hasStoredLateMinutes ? Number(inMeta.late_minutes) : 0;
                     let lateReason = inMeta.late_reason || null;
-                    if (!lateMins && !firstPunchSeenByDay[userDayKey] && userRules) {
-                        const lateCheck = calculateLateArrival(inP.punch_time, userRules);
+                    if (!hasStoredLateMinutes && !firstPunchSeenByDay[userDayKey] && sessionRules) {
+                        const lateCheck = calculateLateArrival(inP.punch_time, sessionRules);
                         if (lateCheck.isLate) {
                             lateMins = lateCheck.minutesLate;
                         }
@@ -781,6 +904,8 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                         late_minutes: lateMins,
                         late_reason: lateReason,
                         status: sessionStatus,
+                        resolved_shift_id: inMeta.resolved_shift_id || null,
+                        match_type: inMeta.match_type || null,
                         metadata: JSON.stringify({
                             time_in: { timezone: inMeta.timezone || 'Asia/Kolkata' },
                             time_out: { timezone: outMeta?.timezone || 'Asia/Kolkata' }
@@ -833,28 +958,20 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
         console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
     }
 
-    let todayStr;
-    try {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: timezone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-        const parts = formatter.formatToParts(new Date());
-        const year = parts.find(p => p.type === 'year').value;
-        const month = parts.find(p => p.type === 'month').value;
-        const day = parts.find(p => p.type === 'day').value;
-        todayStr = `${year}-${month}-${day}`;
-    } catch (e) {
-        todayStr = new Date().toISOString().split('T')[0];
-    }
+    // timezone was already resolved just above for this same org — reuse it instead of a second lookup.
+    const todayStr = formatDateInTimezone(new Date(), timezone);
 
+    // Fetched once for the whole batch (same org for every user/date in this call) rather than
+    // per-user/per-date, to avoid N+1 queries.
+    const orgAttendanceSettings = await getOrgAttendanceSettings(org_id);
 
-    // 5. Evaluate each user × date
-    return users.map(user => {
-        const rules = getShiftRules(user);
-        const days = dates.map(dateStr => {
+    // 5. Evaluate each user × date. Per-day (not per-user-once) rules resolution: a day whose
+    // first session was pattern-matched or off-pattern (Phase 3) must be evaluated against that
+    // session's own resolved shift, not the user's assigned shift — otherwise the live view
+    // (this function) can disagree with what actually gets stored once the day syncs.
+    return Promise.all(users.map(async user => {
+        const assignedRules = getShiftRules(user);
+        const days = await Promise.all(dates.map(async dateStr => {
             const key = `${user.user_id}_${dateStr}`;
             const dayRecords = recordsByUserDate[key] || [];
             const dailyRecord = dailyByUserDate[key];
@@ -866,7 +983,16 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                 return dateStr >= s && dateStr <= e;
             });
 
-            const result = evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone });
+            let rules = assignedRules;
+            const firstRecord = dayRecords[0];
+            if (firstRecord?.match_type === 'off_pattern_fallback') {
+                rules = getOffPatternFallbackRules();
+            } else if (firstRecord?.match_type === 'pattern_matched' && firstRecord?.resolved_shift_id) {
+                const matchedShift = await getShiftById(user.org_id, firstRecord.resolved_shift_id);
+                if (matchedShift) rules = getShiftRules(matchedShift);
+            }
+
+            const result = evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone, orgAttendanceSettings });
             // Serialize time fields to plain strings (prevent UTC shift from JS Date serialization)
             const serializedSessions = dayRecords.map(r => ({
                 ...r,
@@ -882,7 +1008,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                     : null,
             }));
             return { date: dateStr, ...result, sessions: serializedSessions };
-        });
+        }));
 
         return {
             user_id: user.user_id,
@@ -893,5 +1019,5 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
             shift_id: user.shift_id,
             days
         };
-    });
+    }));
 }

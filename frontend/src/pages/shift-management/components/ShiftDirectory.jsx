@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Briefcase, Clock, Users, ArrowRight } from 'lucide-react';
+import { Plus, Search, Briefcase, Clock, Users, ArrowRight, Settings } from 'lucide-react';
 
 const ShiftDirectory = ({
     shifts = [],
@@ -12,6 +12,7 @@ const ShiftDirectory = ({
     users = [],
     selectedUserId,
     onOpenAddShift,
+    onOpenGlobalSettings,
     calculateDuration
 }) => {
     return (
@@ -19,14 +20,23 @@ const ShiftDirectory = ({
             <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50 space-y-3">
                 <div className="flex justify-between items-center">
                     <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Shifts</h3>
-                    <button
-                        data-tour-id="shift-mgmt-add"
-                        onClick={onOpenAddShift}
-                        className="p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer"
-                        title="Create new shift"
-                    >
-                        <Plus size={18} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            onClick={onOpenGlobalSettings}
+                            className="p-1.5 bg-slate-100 dark:bg-github-dark-subtle text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-github-dark-border transition-colors cursor-pointer"
+                            title="Global Attendance Settings"
+                        >
+                            <Settings size={18} />
+                        </button>
+                        <button
+                            data-tour-id="shift-mgmt-add"
+                            onClick={onOpenAddShift}
+                            className="p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer"
+                            title="Create new shift"
+                        >
+                            <Plus size={18} />
+                        </button>
+                    </div>
                 </div>
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />

@@ -267,6 +267,7 @@ const SalaryPackages = ({ embedded = false }) => {
                 lopFactorHalfDay: Number(settingsForm.lopFactorHalfDay),
                 lopFactorAbsent: Number(settingsForm.lopFactorAbsent)
             });
+
             if (res.status === 'success') {
                 toast.success('Payroll settings updated successfully!');
                 setShowSettingsModal(false);

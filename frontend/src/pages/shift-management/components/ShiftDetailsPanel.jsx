@@ -272,9 +272,6 @@ const ShiftDetailsPanel = ({
                         <div className="flex flex-col">
                             <span className="text-xs text-slate-700 dark:text-slate-300 font-semibold">Overtime enabled after {formatDecimalHours(selectedShift.otThreshold)}</span>
                             <div className="flex flex-col gap-0.5 mt-0.5">
-                                {selectedShift.otBuffer > 0 && (
-                                    <span className="text-[10px] text-slate-500 font-normal">Buffer grace period: {formatDecimalHours(selectedShift.otBuffer)}</span>
-                                )}
                                 <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">Max Overtime limit: {formatDecimalHours(Number.isFinite(selectedShift.otMaxHours) ? selectedShift.otMaxHours : DEFAULT_MAX_OT_HOURS)}</span>
                             </div>
                         </div>

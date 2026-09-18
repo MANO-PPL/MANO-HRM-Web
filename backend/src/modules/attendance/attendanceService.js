@@ -4,12 +4,17 @@ import * as S3Service from "../../services/s3/s3Service.js";
 import EventBus from "../../utils/EventBus.js";
 import * as ShiftService from "../shifts/shiftService.js";
 import * as StatusService from "../../services/statusEvalution/statusEvaluationService.js";
+import * as OrgAttendanceSettingsService from "./orgAttendanceSettingsService.js";
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
-import { toMySQLDateTime, toMySQLDate, toMySQLTime, pad } from "../../utils/dateUtils.js";
+import { toMySQLDateTime, toMySQLDate, toMySQLTime, pad, timeToMinutes } from "../../utils/dateUtils.js";
 import { safeJsonParse } from "../../utils/dataUtils.js";
 import * as MapsService from "../../services/google_api_services/maps.js";
 import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttendanceCorrectionApprovedHook } from "../DAR/darReconciliationService.js";
 
+// How long a gap between a closed session and a new check-in still counts as "resuming the same
+// shift instance after a break" rather than "starting a new day" — matters for a shift whose
+// break happens to straddle midnight (see processTimeInSync's break-continuation check).
+const BREAK_CONTINUATION_WINDOW_MINUTES = 120;
 
 /**
  * Fetch User Shift
@@ -29,17 +34,58 @@ export async function getUserShift(user_id) {
     if (assignedShift) return assignedShift;
   }
 
-  const openShift = await attendanceDB("org_shifts")
-    .where({ org_id: user.org_id })
-    .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
-    .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
-    .first();
-
+  const openShift = await ShiftService.getOpenShiftFallback(user.org_id);
   if (openShift) {
     return openShift;
   }
 
   return null;
+}
+
+/**
+ * Resolve which shift's rules govern a specific check-in session — the assigned shift if the
+ * punch is close to its normal start time, another org shift template if the punch matches one
+ * better, or a neutral off-pattern fallback if nothing matches. core_users.shift_id is never
+ * modified. Pattern-matching only applies for employees with a real assigned shift — Open-Shift
+ * and no-shift users always just get their existing (single) shift, unchanged from today.
+ */
+export async function resolveUserShiftForSession(user_id, punchInTimestamp = null) {
+  const assignedShift = await getUserShift(user_id);
+  const assignedRules = ShiftService.getShiftRules(assignedShift);
+
+  if (!punchInTimestamp) {
+    return { shift: assignedShift, rules: assignedRules, matchType: assignedShift ? 'assigned' : 'no_shift' };
+  }
+
+  const userRow = await attendanceDB('core_users').where('user_id', user_id).select('shift_id', 'org_id').first();
+  if (!userRow || !userRow.shift_id) {
+    return { shift: assignedShift, rules: assignedRules, matchType: assignedShift ? 'assigned' : 'no_shift' };
+  }
+
+  return ShiftService.resolveShiftForPunch({ assignedShift, org_id: userRow.org_id, punchInTimestamp });
+}
+
+/**
+ * Reconstruct which shift/rules governed an already-created in-punch, from the resolution it
+ * recorded in its own metadata at check-in time — so checkout/aggregation agree with what
+ * check-in decided rather than risking a different result from re-matching live. Falls back to
+ * live resolution for punches created before this metadata existed.
+ */
+async function resolveShiftFromPunchRecord(inPunchRow) {
+  const meta = safeParseJSON(inPunchRow.metadata);
+  if (meta && meta.match_type === 'off_pattern_fallback') {
+    return { shift: null, rules: ShiftService.getOffPatternFallbackRules(), matchType: 'off_pattern_fallback' };
+  }
+  if (meta && meta.resolved_shift_id) {
+    const userRow = await attendanceDB('core_users').where('user_id', inPunchRow.user_id).select('org_id').first();
+    if (userRow) {
+      const matchedShift = await ShiftService.getShiftById(userRow.org_id, meta.resolved_shift_id);
+      if (matchedShift) {
+        return { shift: matchedShift, rules: ShiftService.getShiftRules(matchedShift), matchType: meta.match_type || 'assigned' };
+      }
+    }
+  }
+  return resolveUserShiftForSession(inPunchRow.user_id, formatLocalDatetime(inPunchRow.punch_time));
 }
 
 /**
@@ -77,7 +123,11 @@ export function pairPunchesForDate(punches, dateStr) {
   let i = 0;
   while (i < punches.length) {
     const p = punches[i];
-    const punchDate = formatLocalDate(p.punch_time);
+    // Use the punch's resolved attendance date (Phase 3/4 late-arrival rollback or
+    // break-continuation can date a punch to a day other than its own raw calendar date),
+    // falling back to the raw date for punches with no such resolution recorded.
+    const meta = safeParseJSON(p.metadata);
+    const punchDate = meta.attendance_date || formatLocalDate(p.punch_time);
 
     if (p.punch_type === 'in' && punchDate === dateStr) {
       const inPunch = p;
@@ -189,7 +239,9 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     nextDate.setDate(nextDate.getDate() + 1);
     const nextDateStr = formatLocalDate(nextDate);
 
-    // 1. Fetch punches: all in/out on target date + out punches on next day (overnight)
+    // 1. Fetch punches: all in/out on target date + out punches on next day (overnight) + any
+    // punch explicitly resolved (Phase 3 late-arrival rollback) to this date regardless of its
+    // own raw calendar date — e.g. a night-shift punch-in that landed just after midnight.
     const punches = await attendanceDB("attn_punches")
       .where({ user_id })
       .whereNull("deleted_at")
@@ -199,7 +251,8 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
           .orWhere(function () {
             this.where("punch_type", "out")
               .whereRaw("DATE(punch_time) = ?", [nextDateStr]);
-          });
+          })
+          .orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.attendance_date')) = ?", [sanitizedDate]);
       })
       .orderBy("punch_time", "asc")
       .orderBy("id", "asc");
@@ -266,9 +319,21 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     }
     totalHours = parseFloat(totalHours.toFixed(2));
 
-    // 4. Shift rules
-    const shift = await getUserShift(user_id);
-    const rules = ShiftService.getShiftRules(shift);
+    // 4. Shift rules — resolved from whichever shift actually matched this session's first
+    // punch-in (assigned, pattern-matched, or off-pattern fallback; Phase 3), not blindly the
+    // employee's assigned shift.
+    let shift, rules;
+    if (sessions.length > 0) {
+      ({ shift, rules } = await resolveShiftFromPunchRecord(sessions[0].in_punch));
+    } else {
+      shift = await getUserShift(user_id);
+      rules = ShiftService.getShiftRules(shift);
+    }
+
+    // A half-day (Special Weekend & Alternate Rules) is judged against its own window/duration,
+    // not the full shift's — otherwise a completed half-day gets evaluated as if it fell short
+    // of a full day.
+    const effectiveRules = ShiftService.getEffectiveRulesForDate(sanitizedDate, rules);
 
     // 5. Late calculation (first session only)
     let lateMinutes = 0;
@@ -276,7 +341,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     if (sessions.length > 0) {
       const firstIn = sessions[0].in_punch;
       const lateCheck = StatusService.calculateLateArrival(
-        formatLocalDatetime(firstIn.punch_time), rules
+        formatLocalDatetime(firstIn.punch_time), effectiveRules
       );
       lateMinutes = lateCheck.isLate ? lateCheck.minutesLate : 0;
 
@@ -285,10 +350,13 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     }
 
     // 6. Overtime
-    const overtimeHours = StatusService.calculateOvertime(totalHours, rules);
+    const { actualOvertime, cappedOvertime } = StatusService.computeOvertimeBreakdown(totalHours, effectiveRules);
+    const overtimeHours = cappedOvertime;
+    const overtimeHoursActual = actualOvertime;
 
     // 7. Status determination
     let finalStatus;
+    const dayTypeForStatus = ShiftService.getDayType(sanitizedDate, rules.week_off_policy);
     if (overrides.status) {
       finalStatus = overrides.status;
     } else if (sessions.some(s => !s.out_punch)) {
@@ -297,13 +365,57 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       finalStatus = isPastDate ? "MISSED_PUNCH" : "PRESENT";
     } else if (sessionCount === 0) {
       finalStatus = "ABSENT";
+    } else if (dayTypeForStatus === 'half_day') {
+      // Half-day: too little time worked (relative to the half-day's own expected hours, not a
+      // full day's) reads ABSENT — same "showed up too briefly to count" idea as a full day,
+      // just proportioned. Otherwise a completed half-day reads HALF_DAY, not a bare PRESENT
+      // indistinguishable from a full day.
+      const halfDayExpectedHours = ShiftService.getExpectedHours(sanitizedDate, rules.week_off_policy, rules);
+      const graceMins = Number(rules?.grace_period?.minutes || 0);
+      if (totalHours < (halfDayExpectedHours * 0.5)) {
+        finalStatus = "ABSENT";
+      } else if (overtimeHours > 0) {
+        finalStatus = "OVERTIME";
+      } else if (lateMinutes > graceMins) {
+        finalStatus = "LATE";
+      } else {
+        finalStatus = "HALF_DAY";
+      }
     } else {
-      finalStatus = StatusService.evaluateStatus(rules, {
+      finalStatus = StatusService.evaluateStatus(effectiveRules, {
         total_hours: totalHours,
         total_hours_today: totalHours,
         minutes_late: lateMinutes,
         event_type: "time_out"
       });
+
+      // Org-wide threshold half-day policy — only ever applies on a date the shift itself
+      // classifies as a normal WORKING day (dayTypeForStatus === 'working'), never stacking with
+      // the shift's own half-day/week-off rule handled above. Only downgrades an otherwise
+      // unremarkable PRESENT/LATE day — never "upgrades" a genuine ABSENT, and never overrides a
+      // day that already earned OVERTIME (working extra hours despite a late start is still a
+      // full, or more than full, day's effort).
+      if ((finalStatus === 'PRESENT' || finalStatus === 'LATE') && dayTypeForStatus === 'working') {
+        const orgIdForSettings = shift?.org_id || (await attendanceDB('core_users').where('user_id', user_id).select('org_id').first())?.org_id;
+        if (orgIdForSettings) {
+          const orgSettings = await OrgAttendanceSettingsService.getOrgAttendanceSettings(orgIdForSettings);
+          if (orgSettings?.half_day_threshold_enabled) {
+            const firstInMinutes = timeToMinutes(toMySQLTime(sessions[0].in_punch.punch_time));
+            const lastSessionWithOut = [...sessions].reverse().find(s => s.out_punch);
+            const lastOutMinutes = lastSessionWithOut ? timeToMinutes(toMySQLTime(lastSessionWithOut.out_punch.punch_time)) : null;
+
+            const lateThresholdMinutes = orgSettings.half_day_late_after_time ? timeToMinutes(orgSettings.half_day_late_after_time) : null;
+            const earlyThresholdMinutes = orgSettings.half_day_early_before_time ? timeToMinutes(orgSettings.half_day_early_before_time) : null;
+
+            const arrivedLate = lateThresholdMinutes !== null && firstInMinutes > lateThresholdMinutes;
+            const leftEarly = earlyThresholdMinutes !== null && lastOutMinutes !== null && lastOutMinutes < earlyThresholdMinutes;
+
+            if (arrivedLate || leftEarly) {
+              finalStatus = 'HALF_DAY';
+            }
+          }
+        }
+      }
     }
 
     // 8. Remarks
@@ -327,6 +439,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
       late_minutes: lateMinutes,
       late_reason: lateReason,
       overtime_hours: overtimeHours,
+      overtime_hours_actual: overtimeHoursActual,
       status: (finalStatus === 'LATE' || finalStatus === 'OVERTIME') ? 'PRESENT' : finalStatus,
       shift_id: shift ? shift.shift_id : null,
       remarks: [...new Set(remarks)].join("; ") || null,
@@ -726,18 +839,66 @@ export async function processTimeInSync(context) {
     user_agent
   } = context;
 
-  const todayDate = localTime ? localTime.split('T')[0] : formatLocalDate(new Date());
   const isSimulation = context.event_source === "SIMULATION" || context.punch_nature === "simulated";
   const punchNature = isSimulation ? "simulated" : (context.punch_nature || "default");
   const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
   const addressStr = (context.address && context.address !== 'Locating...') ? context.address : (isSimulation ? "Simulated Location" : "Pending...");
 
-  // 1. Check for open session on the target date
+  // Resolve which shift governs this session before deciding the attendance date — for a
+  // crosses-midnight shift, a late arrival after midnight still belongs to the day the shift
+  // itself started, not the punch's own raw calendar date (rollback below).
+  const { shift, rules, matchType } = await resolveUserShiftForSession(user_id, localTime);
+
+  const rawPunchDate = localTime ? localTime.split('T')[0] : formatLocalDate(new Date());
+  let todayDate = rawPunchDate;
+
+  // Break continuation: a session closed very recently (within BREAK_CONTINUATION_WINDOW_MINUTES)
+  // on the previous calendar day means this punch-in is resuming that same shift instance after
+  // a break, not starting a fresh day — even if the break itself straddled midnight. This takes
+  // priority over the crosses-midnight rollback below, since it's actual evidence (a real
+  // just-closed session), not an inference from shift timing alone.
+  if (localTime) {
+    const prevDateObj = new Date(rawPunchDate + 'T12:00:00');
+    prevDateObj.setDate(prevDateObj.getDate() - 1);
+    const previousDate = formatLocalDate(prevDateObj);
+
+    const priorClose = await attendanceDB("attn_punches")
+      .where({ user_id, punch_type: "out" })
+      .whereNull("deleted_at")
+      .whereRaw("DATE(punch_time) = ?", [previousDate])
+      .orderBy("punch_time", "desc")
+      .orderBy("id", "desc")
+      .first();
+
+    if (priorClose) {
+      const gapMinutes = (new Date(toSqlDatetime(localTime)).getTime() - new Date(priorClose.punch_time).getTime()) / 60000;
+      if (gapMinutes >= 0 && gapMinutes <= BREAK_CONTINUATION_WINDOW_MINUTES) {
+        todayDate = previousDate; // continuation, not a new day
+      }
+    }
+  }
+
+  // Late-arrival rollback for a crosses-midnight shift — only applies if break-continuation
+  // above didn't already resolve this session to the previous day.
+  if (todayDate === rawPunchDate && rules.crosses_midnight && rules.shift_timing.end_time && localTime) {
+    const punchTimePart = String(localTime).split('T')[1];
+    const punchMinutes = timeToMinutes(punchTimePart);
+    const endMinutes = timeToMinutes(rules.shift_timing.end_time);
+    if (punchMinutes !== null && endMinutes !== null && punchMinutes < endMinutes) {
+      // Late arrival (however many hours late) for the instance that started the PREVIOUS day.
+      const prevDateObj = new Date(rawPunchDate + 'T12:00:00');
+      prevDateObj.setDate(prevDateObj.getDate() - 1);
+      todayDate = formatLocalDate(prevDateObj);
+    }
+  }
+
+  // 1. Check for open session on the target date — match by the resolved attendance date (not
+  // just the punch's own raw date), so a rolled-back late-night arrival is found correctly.
   const lastPunchOnDate = await attendanceDB("attn_punches")
     .where({ user_id })
     .whereNull("deleted_at")
     .whereIn("punch_type", ["in", "out"])
-    .whereRaw("DATE(punch_time) = ?", [todayDate])
+    .whereRaw("(JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.attendance_date')) = ? OR DATE(punch_time) = ?)", [todayDate, todayDate])
     .orderBy("punch_time", "desc")
     .orderBy("id", "desc")
     .first();
@@ -746,7 +907,7 @@ export async function processTimeInSync(context) {
     return { ok: false, status: 400, message: `Already timed in on ${todayDate}. Please time out first.` };
   }
 
-  // If real-time check-in, ensure the latest global punch is not an open in-punch from today
+  // If real-time check-in, ensure the latest global punch is not an open in-punch from a prior day
   if (!isSimulation) {
     const latestGlobal = await attendanceDB("attn_punches")
       .where({ user_id })
@@ -757,7 +918,8 @@ export async function processTimeInSync(context) {
       .first();
 
     if (latestGlobal && latestGlobal.punch_type === "in") {
-      const lastPunchDate = formatLocalDate(latestGlobal.punch_time);
+      const latestMeta = safeParseJSON(latestGlobal.metadata);
+      const lastPunchDate = latestMeta.attendance_date || formatLocalDate(latestGlobal.punch_time);
       if (lastPunchDate === todayDate) {
         return { ok: false, status: 400, message: "Already timed in. Please time out first." };
       }
@@ -775,15 +937,12 @@ export async function processTimeInSync(context) {
   const todayInPunches = await attendanceDB("attn_punches")
     .where({ user_id, punch_type: "in" })
     .whereNull("deleted_at")
-    .whereRaw("DATE(punch_time) = ?", [todayDate]);
+    .whereRaw("(JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.attendance_date')) = ? OR DATE(punch_time) = ?)", [todayDate, todayDate]);
 
   const sessionNumber = todayInPunches.length + 1;
   const isFirstSession = todayInPunches.length === 0;
 
-  // 3. Shift Context & Compliance
-  const shift = await getUserShift(user_id);
-  const rules = ShiftService.getShiftRules(shift);
-
+  // 3. Shift Compliance (shift/rules already resolved above)
   if (!isSimulation) {
     const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.entry_requirements);
     if (!geoCheck.ok) {
@@ -828,7 +987,12 @@ export async function processTimeInSync(context) {
     ip_address: ip,
     user_agent: user_agent,
     timezone: context.timezone || "N/A",
-    local_time: toMySQLDateTime(localTime)
+    local_time: toMySQLDateTime(localTime),
+    // Records what check-in resolved, so checkout/aggregation/live-view agree with it later
+    // instead of risking a different result from re-matching live.
+    attendance_date: todayDate,
+    resolved_shift_id: shift ? shift.shift_id : null,
+    match_type: matchType
   };
 
   // 7. Insert 'in' punch
@@ -875,6 +1039,12 @@ export async function processTimeInSync(context) {
 
   const expectedHours = ShiftService.getExpectedHours(localTime, rules.week_off_policy, rules);
 
+  const timeInMessage = matchType === 'pattern_matched'
+    ? `Timed in successfully (matched to ${shift.shift_name})`
+    : matchType === 'off_pattern_fallback'
+      ? "Timed in successfully (off-pattern session — no matching shift template)"
+      : "Timed in successfully";
+
   return {
     ok: true,
     attendance_id: punch_id,
@@ -886,7 +1056,7 @@ export async function processTimeInSync(context) {
     session_number: sessionNumber,
     is_first_session: isFirstSession,
     working_hours: expectedHours,
-    message: "Timed in successfully",
+    message: timeInMessage,
   };
 }
 
@@ -934,18 +1104,15 @@ export async function processTimeOutSync(context) {
 
   const openInPunch = lastPunch;
 
-  // 2. Check if the open session was flagged as MISSED_PUNCH by aggregator
-  const sessionDate = formatLocalDate(openInPunch.punch_time);
-  const daySummary = await attendanceDB("attn_daily_summary_v2")
-    .where({ user_id, date: sessionDate })
-    .first();
-  if (daySummary && daySummary.status === 'MISSED_PUNCH') {
-    return {
-      ok: false,
-      status: 400,
-      message: "This session has been flagged as a missed punch. Please submit a correction request to adjust your hours."
-    };
-  }
+  // 2. Determine which day this session belongs to — read back from what check-in itself
+  // resolved (Phase 3), not the punch's own raw date, so a late-night arrival rolled back to
+  // the previous day stays on that same day at checkout. Falls back to the raw punch date for
+  // sessions opened before this metadata existed.
+  // Note: an employee is never blocked from checking out just because the cron
+  // pre-emptively flagged this open session as a possible missed punch — only a
+  // genuinely stale session (>24h, checked next) requires a correction request.
+  const openInMeta = safeParseJSON(openInPunch.metadata);
+  const sessionDate = openInMeta.attendance_date || formatLocalDate(openInPunch.punch_time);
 
   // 3. Check session age (> 24h → require correction)
   const durationHours = StatusService.calculateDurationHours(openInPunch.punch_time, localTime);
@@ -957,9 +1124,9 @@ export async function processTimeOutSync(context) {
     };
   }
 
-  // 4. Shift Context & Compliance
-  const shift = await getUserShift(user_id);
-  const rules = ShiftService.getShiftRules(shift);
+  // 4. Shift Context & Compliance — resolved from what check-in itself matched, so checkout
+  // can't disagree with it (e.g. by re-matching a slightly different candidate hours later).
+  const { shift, rules } = await resolveShiftFromPunchRecord(openInPunch);
 
   if (!isSimulation) {
     const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.exit_requirements);
@@ -991,7 +1158,8 @@ export async function processTimeOutSync(context) {
     user_agent: user_agent,
     timezone: context.timezone || "N/A",
     local_time: toMySQLDateTime(localTime),
-    total_hours: parseFloat(totalHours.toFixed(2))
+    total_hours: parseFloat(totalHours.toFixed(2)),
+    attendance_date: sessionDate
   };
 
   // 7. Insert 'out' punch

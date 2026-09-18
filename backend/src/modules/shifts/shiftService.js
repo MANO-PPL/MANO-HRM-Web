@@ -2,7 +2,7 @@ import { attendanceDB } from '../../config/database.js';
 import { cacheService } from '../../services/cache/cacheService.js';
 import { verifyUserGeofence } from './geofencing.js';
 import { parseBool, safeJsonParse } from '../../utils/dataUtils.js';
-import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes } from '../../utils/dateUtils.js';
+import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes, timeToMinutes, minutesToTime } from '../../utils/dateUtils.js';
 
 export const DEFAULT_MAX_OVERTIME_HOURS = 3;
 
@@ -57,7 +57,6 @@ export async function getShiftsForOrg(org_id) {
             grace_period_mins: rules.grace_period?.minutes || 0,
             is_overtime_enabled: rules.overtime?.enabled ? 1 : 0,
             overtime_threshold_hours: rules.overtime?.threshold || 8.0,
-            overtime_buffer_hours: rules.overtime?.buffer ?? 0.5,
             is_active: s.is_active !== undefined && s.is_active !== null ? (s.is_active === 1 || s.is_active === true || s.is_active === '1' ? 1 : 0) : (rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : 1),
             policy_rules: normalizedRules
         };
@@ -89,7 +88,6 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
 
     const resolvedOtEnabled = (is_overtime_enabled ?? rules.overtime?.enabled) ? true : false;
     const resolvedOtThreshold = Number(overtime_threshold_hours ?? rules.overtime?.threshold ?? 8);
-    const resolvedOtBuffer = rules.overtime?.buffer ?? 0.5;
     const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
         ? rules.overtime.max_overtime
         : rules.overtime?.maxOvertime;
@@ -115,7 +113,6 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
             ...(rules.overtime || {}),
             enabled: resolvedOtEnabled,
             threshold: Number.isFinite(resolvedOtThreshold) ? resolvedOtThreshold : 8,
-            buffer: resolvedOtBuffer,
             max_overtime: resolvedMaxOvertime,
         },
         entry_requirements: rules.entry_requirements || { selfie: true, geofence: true },
@@ -186,14 +183,16 @@ export async function updateShift({ shift_id, org_id, shift_name, is_active, pol
                 ? existingRules.overtime.max_overtime
                 : existingRules.overtime?.maxOvertime));
 
+    const mergedShiftTiming = {
+        ...(existingRules.shift_timing || {}),
+        ...(incomingRules.shift_timing || {})
+    };
+
     const finalRules = {
         ...existingRules,
         ...incomingRules,
         is_active: isActiveVal === 1,
-        shift_timing: {
-            ...(existingRules.shift_timing || {}),
-            ...(incomingRules.shift_timing || {})
-        },
+        shift_timing: mergedShiftTiming,
         grace_period: {
             ...(existingRules.grace_period || {}),
             ...(incomingRules.grace_period || {})
@@ -495,6 +494,53 @@ export function getExpectedHours(date, policy, shiftRules) {
 }
 
 /**
+ * Resolve the effective shift rules to use for LATE/OT evaluation on a specific date, accounting
+ * for a per-shift half-day rule (Special Weekend & Alternate Rules). On a working day or week-off
+ * day, returns `rules` unchanged. On a half-day:
+ * - with an explicit custom timing window configured → late/OT are judged against that window.
+ * - with no custom timing (just "half the hours", no defined start/end) → assumes the half-day
+ *   runs from the shift's normal start time for half its normal duration (e.g. a 9-6 shift's
+ *   half-day defaults to 9-1), so lateness/OT still have a well-defined window to compare against.
+ * @param {Date|string} date
+ * @param {Object} rules - Shift rules from getShiftRules()
+ * @returns {Object} Effective rules (same object if no adjustment applies)
+ */
+export function getEffectiveRulesForDate(date, rules) {
+    const dayType = getDayType(date, rules?.week_off_policy);
+    if (dayType !== 'half_day') return rules;
+
+    const entries = normalisePolicyInput(rules?.week_off_policy);
+    let customTiming = null;
+    for (const entry of entries) {
+        if (!entryMatchesDate(entry, date)) continue;
+        if ((entry.type || 'full').toLowerCase() === 'half' && entry.timing?.start_time && entry.timing?.end_time) {
+            customTiming = entry.timing;
+        }
+    }
+
+    if (customTiming) {
+        return {
+            ...rules,
+            shift_timing: { start_time: customTiming.start_time, end_time: customTiming.end_time },
+            crosses_midnight: timeToMinutes(customTiming.end_time) <= timeToMinutes(customTiming.start_time)
+        };
+    }
+
+    const normalStart = rules?.shift_timing?.start_time;
+    const normalEnd = rules?.shift_timing?.end_time;
+    if (!normalStart || !normalEnd) return rules;
+
+    const fullMinutes = diffTimesInMinutes(normalStart, normalEnd);
+    const halfEndMinutes = (timeToMinutes(normalStart) + Math.round(fullMinutes / 2)) % 1440;
+
+    return {
+        ...rules,
+        shift_timing: { start_time: normalStart, end_time: minutesToTime(halfEndMinutes) },
+        crosses_midnight: false
+    };
+}
+
+/**
  * Expand a month into per-day type descriptors for calendar/report views.
  * @param {number} year
  * @param {number} month  1-indexed
@@ -556,26 +602,29 @@ export function getShiftRules(shift) {
     );
 
     const overtimeThreshold = Number(shift.overtime_threshold_hours || rules.overtime?.threshold || 8);
-    // Buffer time (in hours) after shift ends before overtime starts counting
-    // e.g. 0.5 = 30 minutes buffer - employee can stay 30min past shift without triggering OT
-    const overtimeBuffer = Number(shift.overtime_buffer_hours ?? rules.overtime?.buffer ?? 0.5);
     const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
         ? rules.overtime.max_overtime
         : rules.overtime?.maxOvertime;
     const maxOvertime = normalizeMaxOvertimeHours(rawMaxOvertime);
 
+    const resolvedStartTime = shift.start_time || rules.shift_timing?.start_time || "09:00:00";
+    const resolvedEndTime = shift.end_time || rules.shift_timing?.end_time || "18:00:00";
+
+    // Always derived live from the shift's own start/end — never stored, never overridable.
+    const crossesMidnight = timeToMinutes(resolvedEndTime) <= timeToMinutes(resolvedStartTime);
+
     return {
         shift_timing: {
-            start_time: shift.start_time || rules.shift_timing?.start_time || "09:00:00",
-            end_time: shift.end_time || rules.shift_timing?.end_time || "18:00:00"
+            start_time: resolvedStartTime,
+            end_time: resolvedEndTime
         },
+        crosses_midnight: crossesMidnight,
         grace_period: {
             minutes: Number(shift.grace_period_mins !== undefined && shift.grace_period_mins !== null ? shift.grace_period_mins : (rules.grace_period?.minutes || 10))
         },
         overtime: {
             enabled: overtimeEnabled,
             threshold: overtimeThreshold,
-            buffer: overtimeBuffer,
             max_overtime: maxOvertime
         },
         entry_requirements: rules.entry_requirements || {
@@ -591,6 +640,7 @@ export function getShiftRules(shift) {
             selfie: parseBool(rules.checkpoint_requirements?.selfie, false)
         },
         correction_deadline: rules.correction_deadline ?? 2,
+        missed_punch_check_time: rules.missed_punch_check_time || null,
         week_off_policy: normalisePolicyInput(rules.week_off_policy)
     };
 }
@@ -604,13 +654,13 @@ export function getDefaultShiftConfig() {
             start_time: null,
             end_time: null
         },
+        crosses_midnight: false,
         grace_period: {
             minutes: 0
         },
         overtime: {
             enabled: false,
             threshold: 0,
-            buffer: 0,
             max_overtime: DEFAULT_MAX_OVERTIME_HOURS
         },
         entry_requirements: {
@@ -626,10 +676,105 @@ export function getDefaultShiftConfig() {
             selfie: false
         },
         correction_deadline: 2,
+        missed_punch_check_time: null,
         week_off_policy: [
             { day: "Sun", type: "full", frequency: "every" }
         ]
     };
+}
+
+/**
+ * Look up one shift by id via the existing 24h-cached org shift list, instead of a fresh
+ * DB query — used wherever a session's already-resolved shift needs to be re-fetched.
+ */
+export async function getShiftById(org_id, shift_id) {
+    if (!shift_id) return null;
+    const shifts = await getShiftsForOrg(org_id);
+    return shifts.find(s => s.shift_id === shift_id) || null;
+}
+
+/**
+ * The org's "Open Shift" template (active shift whose name contains "open"), used as a fallback
+ * for users with no shift_id assigned. Returns null (never throws) if none exists or the lookup fails.
+ */
+export async function getOpenShiftFallback(org_id) {
+    try {
+        return await attendanceDB("org_shifts")
+            .where({ org_id })
+            .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
+            .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
+            .first() || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+// How close a punch-in must be to a shift's own start time (in either direction) to count as
+// that shift, whether it's the employee's assigned shift or another org shift template.
+export const SHIFT_PATTERN_MATCH_WINDOW_HOURS = 3;
+// OT threshold used only when a punch matches no shift template at all (off-pattern fallback).
+export const OFF_PATTERN_DEFAULT_OT_THRESHOLD_HOURS = 9;
+
+function minutesFromShiftStart(punchLocalTimeStr, shiftStartTimeStr) {
+    const timePart = String(punchLocalTimeStr).split('T')[1] || String(punchLocalTimeStr);
+    const punchMinutes = timeToMinutes(timePart);
+    const startMinutes = timeToMinutes(shiftStartTimeStr);
+    if (punchMinutes === null || startMinutes === null) return Infinity;
+    let diff = Math.abs(punchMinutes - startMinutes);
+    if (diff > 12 * 60) diff = (24 * 60) - diff; // shortest distance on a 24h clock
+    return diff;
+}
+
+/**
+ * Synthetic rules for a punch that matches neither the assigned shift nor any other org shift
+ * template: no late penalty, hours tracked as simple elapsed time, OT judged against a flat
+ * default rather than a shift that doesn't actually apply to this session.
+ */
+export function getOffPatternFallbackRules() {
+    return {
+        ...getDefaultShiftConfig(),
+        shift_timing: { start_time: null, end_time: null },
+        overtime: { enabled: true, threshold: OFF_PATTERN_DEFAULT_OT_THRESHOLD_HOURS, max_overtime: DEFAULT_MAX_OVERTIME_HOURS },
+        crosses_midnight: false
+    };
+}
+
+/**
+ * Resolve which shift's rules should govern one check-in session: the assigned shift if the
+ * punch is close to its normal start time, another org shift template if the punch matches one
+ * better, or a neutral off-pattern fallback if nothing matches. core_users.shift_id is never
+ * modified — this is a per-session decision only. Only called for employees with a real
+ * assigned shift; Open-Shift/no-shift users are intentionally excluded by the caller.
+ */
+export async function resolveShiftForPunch({ assignedShift, org_id, punchInTimestamp }) {
+    const assignedRules = getShiftRules(assignedShift);
+    if (!assignedShift || !assignedRules.shift_timing.start_time) {
+        return { shift: assignedShift, rules: assignedRules, matchType: assignedShift ? 'assigned' : 'no_shift' };
+    }
+
+    const windowMinutes = SHIFT_PATTERN_MATCH_WINDOW_HOURS * 60;
+    if (minutesFromShiftStart(punchInTimestamp, assignedRules.shift_timing.start_time) <= windowMinutes) {
+        return { shift: assignedShift, rules: assignedRules, matchType: 'assigned' };
+    }
+
+    const allShifts = await getShiftsForOrg(org_id);
+    let bestMatch = null;
+    let bestDistance = Infinity;
+    for (const candidate of allShifts) {
+        if (!candidate || candidate.shift_id === assignedShift.shift_id) continue;
+        if (candidate.is_active !== 1) continue;
+        if (!candidate.start_time) continue;
+        const dist = minutesFromShiftStart(punchInTimestamp, candidate.start_time);
+        if (dist <= windowMinutes && dist < bestDistance) {
+            bestMatch = candidate;
+            bestDistance = dist;
+        }
+    }
+    if (bestMatch) {
+        return { shift: bestMatch, rules: getShiftRules(bestMatch), matchType: 'pattern_matched' };
+    }
+
+    return { shift: null, rules: getOffPatternFallbackRules(), matchType: 'off_pattern_fallback' };
 }
 
 /**
