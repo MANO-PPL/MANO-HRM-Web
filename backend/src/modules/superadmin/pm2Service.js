@@ -87,12 +87,13 @@ const CATEGORY_RULES = {
 export const parseLogLine = (line, type = 'stdout') => {
     if (!line || typeof line !== 'string' || line.trim() === '') return null;
 
-    // Check if it fits the new standardized format: [Timestamp] [Severity] [Category] Message
+    // 1. Standard format: [Timestamp] [Severity] [Category] Message
     const stdMatch = line.match(/^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+(.*)$/s);
     if (stdMatch) {
         let timestamp = stdMatch[1];
         try {
-            timestamp = new Date(timestamp).toISOString();
+            const d = new Date(timestamp);
+            if (!isNaN(d.getTime())) timestamp = d.toISOString();
         } catch (e) {}
         
         return {
@@ -104,11 +105,44 @@ export const parseLogLine = (line, type = 'stdout') => {
         };
     }
 
-    // Check if it fits the standardized format without timestamp: [Severity] [Category] Message
-    const stdMatchNoTs = line.match(/^\[(DEBUG|INFO|WARN|ERROR|CRITICAL)\]\s+\[([^\]]+)\]\s+(.*)$/is);
+    // 2. Standard format with unbracketed timestamp (e.g. PM2 --time: 2026-09-18T12:00:00: [Severity] [Category] Message)
+    const pm2StdMatch = line.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z?):?\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+(.*)$/s);
+    if (pm2StdMatch) {
+        let timestamp = pm2StdMatch[1];
+        try {
+            const d = new Date(timestamp);
+            if (!isNaN(d.getTime())) timestamp = d.toISOString();
+        } catch (e) {}
+
+        return {
+            timestamp,
+            severity: pm2StdMatch[2].toUpperCase(),
+            category: pm2StdMatch[3],
+            message: pm2StdMatch[4],
+            source: type === 'stderr' ? 'stderr' : 'stdout'
+        };
+    }
+
+    // 3. Extract any leading timestamp: [Timestamp] message or Timestamp: message
+    let timestamp = null;
+    let message = line;
+
+    const tsMatch = line.match(/^\[?(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z?)\]?:?\s*(.*)/s);
+    if (tsMatch) {
+        try {
+            const parsedD = new Date(tsMatch[1]);
+            if (!isNaN(parsedD.getTime())) {
+                timestamp = parsedD.toISOString();
+                message = tsMatch[2];
+            }
+        } catch (e) {}
+    }
+
+    // 4. Check if message (with or without extracted timestamp) fits [Severity] [Category] Message
+    const stdMatchNoTs = message.match(/^\[(DEBUG|INFO|WARN|ERROR|CRITICAL)\]\s+\[([^\]]+)\]\s+(.*)$/is);
     if (stdMatchNoTs) {
         return {
-            timestamp: new Date().toISOString(),
+            timestamp: timestamp || new Date().toISOString(),
             severity: stdMatchNoTs[1].toUpperCase(),
             category: stdMatchNoTs[2],
             message: stdMatchNoTs[3],
@@ -116,16 +150,9 @@ export const parseLogLine = (line, type = 'stdout') => {
         };
     }
 
-    // Fallback: dynamic parsing for unformatted logs
-    let timestamp = new Date().toISOString();
-    let message = line;
-
-    const tsMatch = line.match(/^\[?(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z?)\]?\s*(.*)/);
-    if (tsMatch) {
-        try {
-            timestamp = new Date(tsMatch[1]).toISOString();
-        } catch (e) {}
-        message = tsMatch[2];
+    // Fallback: dynamic classification
+    if (!timestamp) {
+        timestamp = new Date().toISOString();
     }
 
     let severity = 'INFO';
@@ -302,7 +329,9 @@ export const initLogCapture = (ioInstance) => {
     // Helper to safely append to log file without crashing
     const appendToLogFile = (filePath, text) => {
         try {
-            fs.appendFile(filePath, text + '\n', (err) => {
+            const hasTimestamp = /^\[?\d{4}-\d{2}-\d{2}/.test(text.trim());
+            const lineToWrite = hasTimestamp ? text : `[${new Date().toISOString()}] ${text}`;
+            fs.appendFile(filePath, lineToWrite + '\n', (err) => {
                 if (err) {
                     // Suppress to prevent recursion
                 }

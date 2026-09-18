@@ -2,12 +2,12 @@ import { attendanceDB } from '../../config/database.js';
 import bcrypt from 'bcrypt';
 import AppError from '../../utils/AppError.js';
 import EventBus from '../../utils/EventBus.js';
-import { deleteFile, uploadCompressedImage } from '../../services/s3/s3Service.js';
+import { deleteFile, uploadCompressedImage } from '../s3/s3Service.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { encryptText, decryptText } from '../../utils/encryption.js';
-import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
-import { cacheService } from '../../services/cache/cacheService.js';
+import { normalizeMaxOvertimeHours } from '../../modules/shifts/shiftService.js';
+import { cacheService } from '../cache/cacheService.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js
 

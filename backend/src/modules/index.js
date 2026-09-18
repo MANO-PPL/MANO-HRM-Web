@@ -1,32 +1,31 @@
 import express from 'express';
-import adminRoutes from '../modules/admin/adminRoutes.js';
-import authRoutes from '../modules/auth/authRoutes.js';
-import holidayRoutes from '../modules/holidays/holidayRoutes.js';
-import notificationRoutes from '../modules/notifications/notificationRoutes.js';
-import leaveRoutes from '../modules/leaves/leaveRoutes.js';
-import reportsRoutes from '../modules/reports/reportsRoutes.js';
-import employeeRoutes from '../modules/employees/employeeRoutes.js';
-import workLocationsRoutes from '../modules/locations/workLocationsRoutes.js';
-import darActivityRoutes from '../modules/DAR/activitiesRoutes.js';
-import darEventRoutes from '../modules/DAR/eventsRoutes.js';
-import darRequestRoutes from '../modules/DAR/requestsRoutes.js';
-import darSettingsRoutes from '../modules/DAR/settingsRoutes.js';
-import darReportRoutes from '../modules/DAR/DARReportAPI.js';
-import shiftRoutes from '../modules/shifts/shiftRoutes.js';
-import attendanceRoutes from '../modules/attendance/attendanceRoutes.js';
-import correctionsRoutes from '../modules/corrections/correctionsRoutes.js';
-import feedbackRoutes from '../modules/feedback/feedbackRoutes.js';
-import paymentRoutes from '../modules/payments/paymentRoutes.js';
-import profileRoutes from '../modules/profile/profileRoutes.js';
-import orgRoutes from '../modules/organisations/orgRoutes.js';
-import systemMonitorRoutes from '../modules/admin/systemMonitorRoutes.js';
-import superAdminRoutes from '../modules/superadmin/superAdminRoutes.js';
-import chatbotRoutes from '../modules/chatbot/chatbotRoutes.js';
-import chatRoutes from '../modules/collaboration/chatRoutes.js';
-import labourRoutes from '../modules/labour/labourRoutes.js';
-import payrollRoutes from '../modules/payroll/payrollRoutes.js';
-import geoLocationRoutes from '../modules/locations/locations.js';
-import internalRoutes from '../modules/internal/internalRoutes.js';
+import adminRoutes from './admin/adminRoutes.js';
+import authRoutes from './auth/authRoutes.js';
+import holidayRoutes from './holidays/holidayRoutes.js';
+import notificationRoutes from './notifications/notificationRoutes.js';
+import leaveRoutes from './leaves/leaveRoutes.js';
+import reportsRoutes from './reports/reportsRoutes.js';
+import employeeRoutes from './employees/employeeRoutes.js';
+import workLocationsRoutes from './locations/workLocationsRoutes.js';
+import darActivityRoutes from './DAR/activitiesRoutes.js';
+import darEventRoutes from './DAR/eventsRoutes.js';
+import darRequestRoutes from './DAR/requestsRoutes.js';
+import darSettingsRoutes from './DAR/settingsRoutes.js';
+import darReportRoutes from './DAR/DARReportAPI.js';
+import shiftRoutes from './shifts/shiftRoutes.js';
+import attendanceRoutes from './attendance/attendanceRoutes.js';
+import correctionsRoutes from './corrections/correctionsRoutes.js';
+import feedbackRoutes from './feedback/feedbackRoutes.js';
+import paymentRoutes from './payments/paymentRoutes.js';
+import profileRoutes from './profile/profileRoutes.js';
+import orgRoutes from './organisations/orgRoutes.js';
+import superAdminRoutes from './superadmin/superAdminRoutes.js';
+import chatbotRoutes from './chatbot/chatbotRoutes.js';
+import chatRoutes from './collaboration/chatRoutes.js';
+import labourRoutes from './labour/labourRoutes.js';
+import payrollRoutes from './payroll/payrollRoutes.js';
+import geoLocationRoutes from './locations/locations.js';
+import internalRoutes from './internal/internalRoutes.js';
 
 import { requireActiveOrg } from '../middleware/auth.js';
 
@@ -48,7 +47,6 @@ router.use('/organizations', orgRoutes); // Organization profile & configuration
 router.use('/super-admin', superAdminRoutes); // Super admin system-level operations
 router.use('/admin/reports', reportsRoutes); // Admin reports
 router.use('/attendance/reports', reportsRoutes); // Attendance reports
-router.use('/super-admin/monitor', systemMonitorRoutes); // Moved from /admin/monitor
 router.use('/locations', workLocationsRoutes); // Work location management
 router.use('/dar/activities', darActivityRoutes); // DAR activities
 router.use('/dar/events', darEventRoutes); // DAR events

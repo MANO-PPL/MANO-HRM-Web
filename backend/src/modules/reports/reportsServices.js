@@ -1,7 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../../services/s3/s3Service.js';
 import { getShiftRules, getDayType, getExpectedHours, normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
-import { calculateLateArrival } from '../attendance/statusEvaluationService.js';
+import { calculateLateArrival } from '../../services/statusEvalution/statusEvaluationService.js';
 
 export { getShiftRules, getDayType, getExpectedHours };
 

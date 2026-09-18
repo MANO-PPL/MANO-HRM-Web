@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { attendanceDB } from '../config/database.js';
 import { deleteFile } from '../services/s3/s3Service.js';
-import { permanentlyDeleteUser } from '../modules/users/userService.js';
+import { permanentlyDeleteUser } from '../services/users/userService.js';
 import * as MapsService from '../services/google_api_services/maps.js';
 import { safeJsonParse } from '../utils/dataUtils.js';
 

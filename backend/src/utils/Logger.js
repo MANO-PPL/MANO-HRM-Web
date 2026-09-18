@@ -75,9 +75,9 @@ const shouldFilterLog = (msg) => {
     return /econnrefused|tcpconnectwrap/i.test(msg);
 };
 
-// Format standard telemetry log line: [Severity] [Category] Message (Timestamp removed to keep logs clean)
+// Format standard telemetry log line: [Timestamp] [Severity] [Category] Message
 const formatLogLine = (severity, category, message) => {
-    return `[${severity}] [${category}] ${message}`;
+    return `[${new Date().toISOString()}] [${severity}] [${category}] ${message}`;
 };
 
 export const initializeLogger = () => {

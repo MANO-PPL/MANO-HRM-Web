@@ -12,7 +12,7 @@ import { attendanceDB } from "../../config/database.js";
 import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
 import { calculateWorkHours, deriveStatus, getDetailedRecords } from "../reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../collaboration/chatAlertService.js";
-import { getLocalNow } from "./statusEvaluationService.js";
+import { getLocalNow } from "../../services/statusEvalution/statusEvaluationService.js";
 import { attendanceQueue, redisConnection } from "../../config/queues.js";
 import { processAttendanceJob } from "../../workers/attendanceWorker.js";
 import { uploadFile, getObjectStream } from "../../services/s3/s3Service.js";

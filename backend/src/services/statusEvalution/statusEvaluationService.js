@@ -1,6 +1,10 @@
 import { attendanceDB } from '../../config/database.js';
-import * as ShiftService from '../shifts/shiftService.js';
-import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import {
+    getDayType,
+    getExpectedHours,
+    getShiftRules,
+    normalizeMaxOvertimeHours
+} from '../../modules/shifts/shiftService.js';
 import { toMySQLTime, toMySQLDate, toMySQLDateTime, calculateDurationHours, pad, DAY_NAMES } from '../../utils/dateUtils.js';
 import { safeJsonParse } from '../../utils/dataUtils.js';
 
@@ -479,7 +483,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         }
     } else {
         // ── No punch records - determine from shift policies ──
-        const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
+        const dayType = getDayType(dateStr, rules.week_off_policy);
         const dayIdx = new Date(dateStr + 'T12:00:00').getDay();
         const dayName = DAY_NAMES[dayIdx];
         const isWorkingSunday = Array.isArray(rules?.working_days || rules?.workingDays)
@@ -504,7 +508,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
         }
     }
 
-    const expectedHours = ShiftService.getExpectedHours(dateStr, rules.week_off_policy, rules);
+    const expectedHours = getExpectedHours(dateStr, rules.week_off_policy, rules);
 
     // Serialize Date objects to plain "YYYY-MM-DD HH:mm:ss" strings so the
     // frontend receives the stored local time without UTC re-interpretation.
@@ -558,7 +562,7 @@ export function resolveNoShowStatus({ dateStr, rules, holiday, leave }) {
     let status = 'ABSENT';
     let remarks = 'No show';
 
-    const dayType = ShiftService.getDayType(dateStr, rules?.week_off_policy);
+    const dayType = getDayType(dateStr, rules?.week_off_policy);
     const dayIdx = new Date(dateStr + 'T12:00:00').getDay();
     const dayName = DAY_NAMES[dayIdx];
     const isWorkingSunday = Array.isArray(rules?.working_days || rules?.workingDays)
@@ -707,7 +711,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
         for (const uid of Object.keys(punchesByUser)) {
             const uPunches = punchesByUser[uid];
             const userObj = userMap[uid];
-            const userRules = userObj ? ShiftService.getShiftRules(userObj) : null;
+            const userRules = userObj ? getShiftRules(userObj) : null;
             let i = 0;
             while (i < uPunches.length) {
                 const inP = uPunches[i];
@@ -849,7 +853,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
 
     // 5. Evaluate each user × date
     return users.map(user => {
-        const rules = ShiftService.getShiftRules(user);
+        const rules = getShiftRules(user);
         const days = dates.map(dateStr => {
             const key = `${user.user_id}_${dateStr}`;
             const dayRecords = recordsByUserDate[key] || [];

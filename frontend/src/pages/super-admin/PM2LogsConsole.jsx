@@ -362,11 +362,17 @@ const PM2LogsConsole = () => {
     }
   };
 
-  // Format Date String nicely
+  // Format Date String nicely: YYYY-MM-DD HH:mm:ss.sss
   const formatTime = (ts) => {
     try {
       const date = new Date(ts);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + '.' + String(date.getMilliseconds()).padStart(3, '0');
+      if (isNaN(date.getTime())) return '';
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      const ms = String(date.getMilliseconds()).padStart(3, '0');
+      return `${year}-${month}-${day} ${timeStr}.${ms}`;
     } catch (e) {
       return '';
     }

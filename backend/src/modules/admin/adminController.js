@@ -1,6 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
-import * as userService from '../users/userService.js';
+import * as userService from '../../services/users/userService.js';
 import * as dashboardService from './dashboardService.js';
 import { attendanceDB } from '../../config/database.js';
 

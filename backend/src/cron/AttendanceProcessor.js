@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { attendanceDB } from '../config/database.js';
 import { syncDailyAttendance } from '../modules/attendance/attendanceService.js';
 import * as ShiftService from '../modules/shifts/shiftService.js';
-import { resolveNoShowStatus } from '../modules/attendance/statusEvaluationService.js';
+import { resolveNoShowStatus } from '../services/statusEvalution/statusEvaluationService.js';
 import EventBus from '../utils/EventBus.js';
 import { PayrollCalculationService } from '../modules/payroll/PayrollCalculationService.js';
 import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../modules/shifts/shiftService.js';

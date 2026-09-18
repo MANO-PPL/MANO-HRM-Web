@@ -10,7 +10,7 @@ import AppError from './utils/AppError.js';
 import { apiMonitor } from './middleware/apiMonitor.js';
 
 // Import route definitions
-import routes from './routes/index.js';
+import routes from './modules/index.js';
 
 const app = express();
 

@@ -6,7 +6,7 @@
     "start": "concurrently -k -s all --prefix-colors \"blue,green,magenta\" -n \"server,client,ai\" \"node backend/dev.js\" \"node frontend/dev.js\" \"npm run ai\"",
     "server": "node backend/dev.js",
     "client": "node frontend/dev.js",
-    "ai": "if [ -f .venv/bin/python3 ]; then (cd backend/services/ai_summary && ../../../.venv/bin/python3 run.py); elif [ -f backend/services/ai_summary/venv/bin/python3 ]; then (cd backend/services/ai_summary && ./venv/bin/python3 run.py); else (cd backend/services/ai_summary && python3 run.py); fi",
+    "ai": "node -e \"const {spawnSync}=require('child_process'),path=require('path'),fs=require('fs');const r=process.cwd(),d=path.join(r,'backend','services','ai_summary'),c=[path.join(r,'.venv','Scripts','python.exe'),path.join(r,'.venv','bin','python3'),path.join(d,'venv','Scripts','python.exe'),path.join(d,'venv','bin','python3')];let p='python';for(const x of c)if(fs.existsSync(x)){p=x;break;}const res=spawnSync(p,['run.py'],{cwd:d,stdio:'inherit',shell:false});process.exit(res.status!=null?res.status:1)\"",
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

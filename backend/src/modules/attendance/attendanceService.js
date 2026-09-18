@@ -3,7 +3,7 @@ import { attendanceDB } from "../../config/database.js";
 import * as S3Service from "../../services/s3/s3Service.js";
 import EventBus from "../../utils/EventBus.js";
 import * as ShiftService from "../shifts/shiftService.js";
-import * as StatusService from "./statusEvaluationService.js";
+import * as StatusService from "../../services/statusEvalution/statusEvaluationService.js";
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 import { toMySQLDateTime, toMySQLDate, toMySQLTime, pad } from "../../utils/dateUtils.js";
 import { safeJsonParse } from "../../utils/dataUtils.js";
