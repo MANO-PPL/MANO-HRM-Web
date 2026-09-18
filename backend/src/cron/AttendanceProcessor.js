@@ -5,7 +5,6 @@ import * as ShiftService from '../modules/shifts/shiftService.js';
 import { resolveNoShowStatus } from '../services/statusEvalution/statusEvaluationService.js';
 import EventBus from '../utils/EventBus.js';
 import { PayrollCalculationService } from '../modules/payroll/PayrollCalculationService.js';
-import { DEFAULT_MAX_OVERTIME_HOURS, normalizeMaxOvertimeHours } from '../modules/shifts/shiftService.js';
 import { toMySQLDateTime, toMySQLDate } from '../utils/dateUtils.js';
 import { reconcileUserDarForDate } from '../modules/DAR/darReconciliationService.js';
 import {
@@ -15,11 +14,14 @@ import {
     getNextCronSlotMinutes
 } from '../utils/timezoneUtils.js';
 
-// Grace period (in days) before an uncorrected MISSED_PUNCH becomes ABSENT
-const MISSED_PUNCH_GRACE_DAYS = 2;
 // Time allowed after the configured maximum overtime before an open checkout is flagged.
 const MISSED_PUNCH_BUFFER_MINUTES = 30;
 const CRON_INTERVAL_MINUTES = 30;
+// Safety margin so an off-pattern (Phase 3) session isn't flagged as a possible missed punch
+// just because the cron's assigned-shift-based schedule happened to check it very early
+// relative to its own actual start — a session younger than this is left open and reconsidered
+// on a later cron pass instead.
+const MISSED_PUNCH_MIN_SESSION_AGE_HOURS = 4;
 
 
 /**
@@ -54,35 +56,24 @@ export async function processHourlyAttendance() {
 
         for (const user of users) {
             try {
-                // 1. Calculate target processing slot in-memory first (no DB queries)
-                let endTime = '18:00:00';
-                if (user.end_time) {
-                    endTime = user.end_time;
-                } else {
-                    try {
-                        let rules = user.policy_rules;
-                        if (typeof rules === 'string') rules = JSON.parse(rules);
-                        if (rules?.shift_timing?.end_time) {
-                            endTime = rules.shift_timing.end_time;
-                        }
-                    } catch (e) { }
-                }
+                // 1. Resolve shift rules, then calculate target processing slot in-memory first (no DB queries)
+                const rules = ShiftService.getShiftRules(user);
+                const [startH, startM] = rules.shift_timing.start_time.split(':').map(Number);
+                const [endH, endM] = rules.shift_timing.end_time.split(':').map(Number);
 
-                let maxOvertime = DEFAULT_MAX_OVERTIME_HOURS;
-                try {
-                    let rules = user.policy_rules;
-                    if (typeof rules === 'string') rules = JSON.parse(rules);
-                    if (rules?.overtime?.enabled === false) {
-                        maxOvertime = 0;
-                    } else if (rules?.overtime?.max_overtime !== undefined) {
-                        maxOvertime = normalizeMaxOvertimeHours(rules.overtime.max_overtime);
-                    } else if (rules?.overtime?.maxOvertime !== undefined) {
-                        maxOvertime = normalizeMaxOvertimeHours(rules.overtime.maxOvertime);
+                // "Possibly forgotten checkout" cutoff — deliberately independent of the OT cap, so an
+                // employee legitimately still working past their overtime cap is never treated as a missed
+                // punch. Per-shift configurable (policy_rules.missed_punch_check_time); defaults to shift end + 8h.
+                let latestCheckoutMinutes;
+                if (rules.missed_punch_check_time) {
+                    const [checkH, checkM] = rules.missed_punch_check_time.split(':').map(Number);
+                    latestCheckoutMinutes = checkH * 60 + checkM;
+                    if (latestCheckoutMinutes < (startH * 60 + startM)) {
+                        latestCheckoutMinutes += 24 * 60; // earlier than shift start => meant as "next day"
                     }
-                } catch (e) { }
-
-                const [endH, endM] = endTime.split(':').map(Number);
-                const latestCheckoutMinutes = (endH * 60) + endM + (maxOvertime * 60) + MISSED_PUNCH_BUFFER_MINUTES;
+                } else {
+                    latestCheckoutMinutes = (endH * 60) + endM + (8 * 60) + MISSED_PUNCH_BUFFER_MINUTES;
+                }
                 const calculatedSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
 
                 let targetSlotMinutes = calculatedSlotMinutes;
@@ -98,31 +89,10 @@ export async function processHourlyAttendance() {
                 const nowInUserTZ = new Date(new Date().toLocaleString('en-US', { timeZone }));
                 const currentSlotMinutes = (nowInUserTZ.getHours() * 60) + (Math.floor(nowInUserTZ.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
 
-                // Skip when it is not the user's processing slot in their local timezone
-                if (currentSlotMinutes !== targetSlotMinutes) {
-                    continue;
-                }
-
-                // 4. Determine if shift is night shift / next day check
-                let isNightShift = false;
-                if (user.crosses_midnight === 1 || user.crosses_midnight === true) {
-                    isNightShift = true;
-                } else {
-                    let startTime = '09:00:00';
-                    if (user.start_time) {
-                        startTime = user.start_time;
-                    } else {
-                        try {
-                            let rules = user.policy_rules;
-                            if (typeof rules === 'string') rules = JSON.parse(rules);
-                            if (rules?.shift_timing?.start_time) {
-                                startTime = rules.shift_timing.start_time;
-                            }
-                        } catch (e) { }
-                    }
-                    const [startH] = startTime.split(':').map(Number);
-                    isNightShift = (endH < startH) || (startH >= 17 || startH < 6);
-                }
+                // 4. Determine if shift is night shift / next day check — the shift's own
+                // authoritative crosses_midnight flag (auto-computed, or admin-overridden),
+                // resolved once via the same `rules` object as step 1.
+                const isNightShift = rules.crosses_midnight === true;
 
                 const isNextDayCheck = isNightShift || latestCheckoutMinutes >= (24 * 60);
 
@@ -135,14 +105,35 @@ export async function processHourlyAttendance() {
                 const dd = String(targetDateObj.getDate()).padStart(2, '0');
                 const targetDate = `${yyyy}-${mm}-${dd}`;
 
+                // Normally only the user's exact processing slot runs. If that exact tick was
+                // missed (process down/redeploying at that moment), catch up on a later tick the
+                // same local day instead of silently waiting a full 24h for the slot to recur —
+                // guarded by an existence check so a normal on-time run is never reprocessed.
+                // Deliberately bounded to the same local day: recovering a slot missed right
+                // before local midnight is a known, accepted gap (falls back to today's 24h-wait
+                // behavior) rather than reconstructing "yesterday"'s target date here.
+                const isExactSlot = currentSlotMinutes === targetSlotMinutes;
+                if (!isExactSlot) {
+                    if (currentSlotMinutes < targetSlotMinutes) {
+                        continue; // slot hasn't happened yet today
+                    }
+                    const alreadyProcessed = await attendanceDB('attn_daily_summary_v2')
+                        .where({ user_id: user.user_id, date: targetDate })
+                        .first('user_id');
+                    if (alreadyProcessed) {
+                        continue; // already handled at the normal slot or a prior catch-up tick
+                    }
+                    console.log(`⏱️ Catch-up: processing User ${user.user_id} for ${targetDate} (missed slot ${Math.floor(targetSlotMinutes / 60)}:${String(targetSlotMinutes % 60).padStart(2, '0')}).`);
+                }
+
                 await processUserAttendanceForDate(user, targetDate);
             } catch (err) {
                 console.error(`Failed to process user ${user.user_id}:`, err);
             }
         }
 
-        // --- SECOND PASS: Escalate expired MISSED_PUNCH to ABSENT (Bypassed / disabled since correction deadline is turned off) ---
-        // await escalateExpiredMissedPunches();
+        // --- SECOND PASS: Notify employees whose correction window has closed on expired MISSED_PUNCH records ---
+        await notifyExpiredMissedPunches();
 
         console.log('✅ Attendance Check Completed.');
     } catch (err) {
@@ -213,31 +204,43 @@ async function processUserAttendanceForDate(user, dateStr) {
                 console.error(`Failed to sync daily attendance for open shift user ${user.user_id}:`, err);
             }
         } else {
-            console.log(`⚠️ User ${user.user_id} has open session on ${dateStr}. Marking as MISSED_PUNCH.`);
+            const sessionAgeHours = latestInPunch
+                ? (Date.now() - new Date(latestInPunch.punch_time).getTime()) / (1000 * 60 * 60)
+                : Infinity;
 
-            if (latestInPunch) {
+            if (sessionAgeHours < MISSED_PUNCH_MIN_SESSION_AGE_HOURS) {
+                // Too young to treat as forgotten — likely an off-pattern (Phase 3) session the
+                // cron's assigned-shift-based schedule happened to check before it would
+                // reasonably be expected to finish. Leave it open; a genuinely forgotten
+                // checkout will still be caught on a later cron pass.
+                console.log(`ℹ️ User ${user.user_id} has an open session on ${dateStr} that's only ~${sessionAgeHours.toFixed(1)}h old — skipping missed-punch flag for now.`);
+            } else {
+                console.log(`⚠️ User ${user.user_id} has open session on ${dateStr}. Marking as MISSED_PUNCH.`);
+
+                if (latestInPunch) {
+                    try {
+                        let meta = typeof latestInPunch.metadata === 'string' ? JSON.parse(latestInPunch.metadata) : (latestInPunch.metadata || {});
+                        meta.missed_punch = true;
+                        await attendanceDB('attn_punches').where({ id: latestInPunch.id }).update({ metadata: JSON.stringify(meta) });
+                    } catch (_) { }
+                }
+
                 try {
-                    let meta = typeof latestInPunch.metadata === 'string' ? JSON.parse(latestInPunch.metadata) : (latestInPunch.metadata || {});
-                    meta.missed_punch = true;
-                    await attendanceDB('attn_punches').where({ id: latestInPunch.id }).update({ metadata: JSON.stringify(meta) });
-                } catch (_) { }
-            }
+                    await syncDailyAttendance(user.user_id, dateStr, { status: 'MISSED_PUNCH' });
+                } catch (err) {
+                    console.error(`Failed to sync daily attendance for user ${user.user_id}:`, err);
+                }
 
-            try {
-                await syncDailyAttendance(user.user_id, dateStr, { status: 'MISSED_PUNCH' });
-            } catch (err) {
-                console.error(`Failed to sync daily attendance for user ${user.user_id}:`, err);
+                EventBus.emitNotification({
+                    org_id: user.org_id,
+                    user_id: user.user_id,
+                    title: "Missed Time Out",
+                    message: `You forgot to check out on ${dateStr}. Please submit a correction request to fix your hours, otherwise it will be marked as absent.`,
+                    type: "WARNING",
+                    related_entity_type: "ATTENDANCE",
+                    related_entity_id: null
+                });
             }
-
-            EventBus.emitNotification({
-                org_id: user.org_id,
-                user_id: user.user_id,
-                title: "Missed Time Out",
-                message: `You forgot to check out on ${dateStr}. Please submit a correction request to fix your hours, otherwise it will be marked as absent.`,
-                type: "WARNING",
-                related_entity_type: "ATTENDANCE",
-                related_entity_id: null
-            });
         }
     }
 
@@ -291,14 +294,19 @@ async function processUserAttendanceForDate(user, dateStr) {
 
 
 /**
- * Escalate MISSED_PUNCH sessions that have exceeded the grace period
+ * Notify employees whose MISSED_PUNCH sessions have exceeded the shift's correction_deadline
  * without a correction request being submitted or approved.
- * After MISSED_PUNCH_GRACE_DAYS days, the daily record is changed to ABSENT.
+ *
+ * The status is deliberately NOT changed to ABSENT here. A missed punch means the employee was
+ * actually present and simply didn't log a checkout — converting it to ABSENT would misrepresent
+ * a real attendance day as a no-show, which is exactly backwards. Payroll already treats an
+ * uncorrected MISSED_PUNCH the same as ABSENT for pay purposes (see PayrollCalculationService.js,
+ * `status === 'ABSENT' || status === 'MISSED_PUNCH'`), so no payroll-relevant state changes here
+ * either way — this only closes the employee's self-service correction window (already reflected
+ * live via `is_correctable` on the daily-summary API) and lets them know admin/HR needs to step
+ * in, since admin/HR corrections bypass the deadline entirely.
  */
-async function escalateExpiredMissedPunches() {
-    // Escalation to ABSENT turned off since correction deadline is bypassed/unlimited
-    return;
-    /*
+async function notifyExpiredMissedPunches() {
     // Find all MISSED_PUNCH daily records
     const records = await attendanceDB('attn_daily_summary_v2')
         .where({ status: 'MISSED_PUNCH' });
@@ -332,41 +340,25 @@ async function escalateExpiredMissedPunches() {
 
             const nowInUserTZ = new Date(new Date().toLocaleString('en-US', { timeZone }));
 
-            // Determine escalation slot (latest checkout + 30-minute buffer, rounded to a cron slot)
-            let endTime = '18:00:00';
-            if (user.end_time) {
-                endTime = user.end_time;
-            } else {
-                try {
-                    let rules = user.policy_rules;
-                    if (typeof rules === 'string') rules = JSON.parse(rules);
-                    if (rules?.shift_timing?.end_time) {
-                        endTime = rules.shift_timing.end_time;
-                    }
-                } catch (e) {}
-            }
-
-            let maxOvertime = DEFAULT_MAX_OVERTIME_HOURS;
-            try {
-                let rules = user.policy_rules;
-                if (typeof rules === 'string') rules = JSON.parse(rules);
-                if (rules?.overtime?.enabled === false) {
-                    maxOvertime = 0;
-                } else if (rules?.overtime?.max_overtime !== undefined) {
-                    maxOvertime = normalizeMaxOvertimeHours(rules.overtime.max_overtime);
-                } else if (rules?.overtime?.maxOvertime !== undefined) {
-                    maxOvertime = normalizeMaxOvertimeHours(rules.overtime.maxOvertime);
-                }
-            } catch (e) {}
-
-            const [endH, endM] = endTime.split(':').map(Number);
-            const latestCheckoutMinutes = (endH * 60) + endM + (maxOvertime * 60) + MISSED_PUNCH_BUFFER_MINUTES;
-            const escalationSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
-
+            // Determine the notification slot using the same decoupled, per-shift-configurable
+            // cutoff as the main hourly pass (Phase 1) — never derived from max_overtime.
             const rules = ShiftService.getShiftRules(user);
+            const [startH, startM] = rules.shift_timing.start_time.split(':').map(Number);
+            const [endH, endM] = rules.shift_timing.end_time.split(':').map(Number);
+            let latestCheckoutMinutes;
+            if (rules.missed_punch_check_time) {
+                const [checkH, checkM] = rules.missed_punch_check_time.split(':').map(Number);
+                latestCheckoutMinutes = checkH * 60 + checkM;
+                if (latestCheckoutMinutes < (startH * 60 + startM)) {
+                    latestCheckoutMinutes += 24 * 60;
+                }
+            } else {
+                latestCheckoutMinutes = (endH * 60) + endM + (8 * 60) + MISSED_PUNCH_BUFFER_MINUTES;
+            }
+            const notificationSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
+
             const graceDays = rules.correction_deadline ?? 2;
 
-            // Calculate if the record is expired
             const recordDate = new Date(record.date);
             recordDate.setHours(0, 0, 0, 0);
 
@@ -374,12 +366,12 @@ async function escalateExpiredMissedPunches() {
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
             const currentSlotMinutes = (nowInUserTZ.getHours() * 60) + (Math.floor(nowInUserTZ.getMinutes() / CRON_INTERVAL_MINUTES) * CRON_INTERVAL_MINUTES);
 
-            const isFullyExpired = diffDays > graceDays;
-            if (!isFullyExpired) {
-                const isExpirationDay = diffDays === graceDays;
-                if (!isExpirationDay || currentSlotMinutes !== escalationSlotMinutes) {
-                    continue;
-                }
+            // Only act exactly once, on the day the correction window closes — not on every
+            // tick thereafter. Since the status never changes, nothing removes this record from
+            // the query above on later runs, so there's no other guard against re-notifying.
+            const isExpirationDay = diffDays === graceDays;
+            if (!isExpirationDay || currentSlotMinutes !== notificationSlotMinutes) {
+                continue;
             }
 
             // Check if user submitted a correction request that is pending or approved
@@ -390,40 +382,30 @@ async function escalateExpiredMissedPunches() {
                 .first();
 
             if (correction) {
-                // Correction exists - skip escalation
+                // Correction exists - nothing to notify about
                 continue;
             }
 
-            // No correction submitted - escalate to ABSENT
-            await attendanceDB('attn_daily_summary_v2')
-                .where({ user_id: record.user_id, date: record.date })
-                .update({
-                    status: 'ABSENT',
-                    updated_at: attendanceDB.fn.now()
-                });
+            // No correction submitted - the self-service window has closed. Status stays
+            // MISSED_PUNCH (never overwritten); only admin/HR can resolve it now.
 
-            // Trigger background payroll recalculation
-            PayrollCalculationService.triggerRecalculation(record.user_id, record.date).catch(err => {
-                console.error("Failed to trigger background payroll calculation in escalateMissedPunches:", err);
-            });
-
-            // Notify the user
+            // Notify the user (org_id comes from the user's shift row — attn_daily_summary_v2
+            // itself has no org_id column)
             EventBus.emitNotification({
-                org_id: record.org_id,
+                org_id: user.org_id,
                 user_id: record.user_id,
-                title: "Attendance Marked Absent",
-                message: `Your attendance for ${record.date} has been marked as ABSENT because the missed checkout was not corrected within ${graceDays} days.`,
-                type: "ERROR",
+                title: "Correction Window Closed",
+                message: `Your missed punch for ${record.date} was not corrected within ${graceDays} day(s) and can no longer be self-corrected. Please contact your admin/HR to have it resolved.`,
+                type: "WARNING",
                 related_entity_type: "ATTENDANCE",
                 related_entity_id: null
             });
 
-            console.log(`🚫 Escalated User ${record.user_id} from MISSED_PUNCH to ABSENT for ${record.date} (Grace: ${graceDays}d)`);
+            console.log(`⌛ Correction window closed for User ${record.user_id}'s MISSED_PUNCH on ${record.date} (Grace: ${graceDays}d) — status left as MISSED_PUNCH, notified only.`);
         } catch (err) {
             console.error(`Failed to escalate MISSED_PUNCH for user ${record.user_id} on ${record.date}:`, err);
         }
     }
-    */
 }
 
 /**

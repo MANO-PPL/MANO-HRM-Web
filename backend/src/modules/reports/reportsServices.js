@@ -1,9 +1,10 @@
 import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../../services/s3/s3Service.js';
-import { getShiftRules, getDayType, getExpectedHours, normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
-import { calculateLateArrival } from '../../services/statusEvalution/statusEvaluationService.js';
+import { getShiftRules, getDayType, getExpectedHours, getOpenShiftFallback } from '../shifts/shiftService.js';
+import { calculateLateArrival, calculateOvertime } from '../../services/statusEvalution/statusEvaluationService.js';
+import { getOrgTodayStr } from '../../utils/timezoneUtils.js';
 
-export { getShiftRules, getDayType, getExpectedHours };
+export { getShiftRules, getDayType, getExpectedHours, calculateOvertime };
 
 const isValidDeptId = (deptId) => {
     return deptId && deptId !== 'All' && deptId !== 'undefined' && deptId !== 'null' && String(deptId).trim() !== '';
@@ -19,35 +20,7 @@ const isValidShiftId = (shiftId) => {
 
 
 export async function getTodayStr(org_id) {
-
-    let timezone = 'UTC';
-    try {
-        const org = await attendanceDB('core_organizations')
-            .where('org_id', org_id)
-            .select('timezone')
-            .first();
-        if (org && org.timezone) {
-            timezone = org.timezone;
-        }
-    } catch (err) {
-        console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
-    }
-
-    try {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: timezone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-        const parts = formatter.formatToParts(new Date());
-        const year = parts.find(p => p.type === 'year').value;
-        const month = parts.find(p => p.type === 'month').value;
-        const day = parts.find(p => p.type === 'day').value;
-        return `${year}-${month}-${day}`;
-    } catch (e) {
-        return new Date().toISOString().split('T')[0];
-    }
+    return getOrgTodayStr(org_id, attendanceDB);
 }
 
 
@@ -151,34 +124,6 @@ export const getDateRangeArray = (startDate, endDate) => {
     return dates;
 };
 
-export const calculateOvertime = (totalHours, rules, allowHistorical = false) => {
-    const timing = rules?.shift_timing || {};
-    const [sH, sM] = (timing.start_time || '09:00:00').split(':').map(Number);
-    const [eH, eM] = (timing.end_time || '18:00:00').split(':').map(Number);
-    let expectedHours = ((eH * 60 + eM) - (sH * 60 + sM)) / 60;
-    if (expectedHours < 0) expectedHours += 24;
-
-    let threshold = Number(rules?.overtime?.threshold || 8);
-    threshold = Math.max(threshold, expectedHours);
-
-    const buffer = Number(rules?.overtime?.buffer ?? 0.5);
-    // If allowHistorical is true (e.g. for past dates like August), calculate overtime regardless of current toggle
-    const isEnabled = rules?.overtime?.enabled !== false || allowHistorical;
-
-    if (isEnabled && totalHours >= (threshold + buffer)) {
-        let overtime = parseFloat((totalHours - threshold).toFixed(2));
-        const maxOvertimeVal = rules?.overtime?.max_overtime !== undefined
-            ? rules.overtime.max_overtime
-            : rules?.overtime?.maxOvertime;
-        const maxOvertime = normalizeMaxOvertimeHours(maxOvertimeVal);
-        if (overtime > maxOvertime) {
-            overtime = maxOvertime;
-        }
-        return overtime;
-    }
-    return 0;
-};
-
 export const aggregateDayRecords = (dayRecs, userPolicyRules, customTodayStr) => {
     if (!dayRecs || dayRecs.length === 0) {
         return {
@@ -226,11 +171,15 @@ export const aggregateDayRecords = (dayRecs, userPolicyRules, customTodayStr) =>
     else {
         let graceMins = 0;
         let rules = null;
+        // Whether the shift's OT setting is CURRENTLY enabled — gates OT display live, below,
+        // regardless of what was stored historically or computed via allowHistorical.
+        let otCurrentlyEnabled = true;
         if (userPolicyRules) {
             rules = safeParseRules(userPolicyRules);
             graceMins = Number(rules?.grace_period?.minutes || 0);
+            otCurrentlyEnabled = rules?.overtime?.enabled !== false;
             const calculatedOT = calculateOvertime(worked_hours, rules, isPastDate);
-            overtime_hours = Math.max(originalOvertime, calculatedOT);
+            overtime_hours = otCurrentlyEnabled ? Math.max(originalOvertime, calculatedOT) : 0;
 
             // If late_minutes was 0 in original record, dynamically evaluate against shift start time & grace
             if (first.time_in && rules?.shift_timing?.start_time) {
@@ -251,7 +200,10 @@ export const aggregateDayRecords = (dayRecs, userPolicyRules, customTodayStr) =>
             effectiveLateMinutes = 0;
         }
 
-        if (overtime_hours > 0 || originalHasOvertimeStatus) {
+        // Gate the "Overtime" status label the same way as the number itself — a shift with OT
+        // currently disabled must never show a leftover Overtime label, even if the original
+        // stored record (from when OT was enabled) said otherwise.
+        if (overtime_hours > 0 || (originalHasOvertimeStatus && otCurrentlyEnabled)) {
             status = "Overtime";
         } else if (effectiveLateMinutes > 0 || originalHasLateStatus) {
             status = "Late";
@@ -444,14 +396,7 @@ export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_i
         .orderBy("u.user_name", "asc");
 
     const users = await usersQuery;
-    let openShift = null;
-    try {
-        openShift = await attendanceDB("org_shifts")
-            .where({ org_id })
-            .whereRaw("LOWER(shift_name) LIKE ?", ["%open%"])
-            .where(function () { this.where('is_active', 1).orWhereNull('is_active'); })
-            .first();
-    } catch (_) { }
+    const openShift = await getOpenShiftFallback(org_id);
 
     return users.map(u => {
         if (!u.shift_id) {
@@ -482,6 +427,7 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
             "u.user_name",
             "d.dept_name",
             "s.shift_name",
+            "s.policy_rules",
             attendanceDB.raw("DATE_FORMAT(ap.punch_time, '%Y-%m-%d') as record_date")
         )
         .where("u.org_id", org_id)
@@ -541,7 +487,10 @@ export async function getAttendanceRecords({ org_id, startDate, endDate, targetU
                     const defaultStatus = outPunch ? 'PRESENT' : (isPastPunch ? 'MISSED_PUNCH' : 'PRESENT');
 
                     const workedHours = outPunch ? parseFloat(((new Date(outPunch.punch_time) - new Date(inPunch.punch_time)) / (1000 * 60 * 60)).toFixed(2)) : 0;
-                    const overtimeHours = workedHours > 9 ? parseFloat((workedHours - 9).toFixed(2)) : 0;
+                    // Shift-aware and live-gated on the shift's CURRENT overtime.enabled — not a
+                    // flat ">9h" guess that ignores per-shift OT settings entirely.
+                    const rowRules = inPunch.policy_rules ? safeParseRules(inPunch.policy_rules) : null;
+                    const overtimeHours = rowRules ? calculateOvertime(workedHours, rowRules) : 0;
 
                     records.push({
                         attendance_id: inPunch.attendance_id,

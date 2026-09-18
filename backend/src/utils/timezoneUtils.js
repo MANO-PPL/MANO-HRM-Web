@@ -106,7 +106,7 @@ export function getEffectiveUserTimezone(user, punchMetaMap = null) {
 
 /**
  * Invalidate the timezone cache for a specific user or completely.
- * 
+ *
  * @param {number} [userId]
  */
 export function clearUserTimezoneCache(userId = null) {
@@ -115,4 +115,55 @@ export function clearUserTimezoneCache(userId = null) {
     } else {
         userTimezoneCache.clear();
     }
+}
+
+/**
+ * Format a Date as YYYY-MM-DD in a given IANA timezone (falls back to UTC-based ISO slicing if
+ * the timezone string is invalid).
+ *
+ * @param {Date} date
+ * @param {string} timezone
+ * @returns {string}
+ */
+export function formatDateInTimezone(date, timezone = 'UTC') {
+    try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        const parts = formatter.formatToParts(date);
+        const year = parts.find(p => p.type === 'year').value;
+        const month = parts.find(p => p.type === 'month').value;
+        const day = parts.find(p => p.type === 'day').value;
+        return `${year}-${month}-${day}`;
+    } catch (e) {
+        return date.toISOString().split('T')[0];
+    }
+}
+
+/**
+ * Today's date (YYYY-MM-DD) in an organization's configured timezone. Looks up the org's
+ * timezone itself — if the caller already has it resolved, use formatDateInTimezone(new
+ * Date(), timezone) directly instead to avoid a redundant lookup.
+ *
+ * @param {number} org_id
+ * @param {Object} [db] - Knex instance (defaults to attendanceDB)
+ * @returns {Promise<string>}
+ */
+export async function getOrgTodayStr(org_id, db = attendanceDB) {
+    let timezone = 'UTC';
+    try {
+        const org = await db('core_organizations')
+            .where('org_id', org_id)
+            .select('timezone')
+            .first();
+        if (org && org.timezone) {
+            timezone = org.timezone;
+        }
+    } catch (err) {
+        console.warn(`Failed to fetch organization ${org_id} timezone, defaulting to UTC`, err);
+    }
+    return formatDateInTimezone(new Date(), timezone);
 }
