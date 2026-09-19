@@ -5,7 +5,6 @@ import { permanentlyDeleteUser } from '../services/users/userService.js';
 import * as MapsService from '../services/google_api_services/maps.js';
 import { safeJsonParse } from '../utils/dataUtils.js';
 
-const safeParseJSON = safeJsonParse;
 
 /**
  * Cleanup Old Refresh Tokens
@@ -251,7 +250,7 @@ async function repairStalePunchAddresses() {
 
         for (const punch of stalePunches) {
             try {
-                const loc = safeParseJSON(punch.location);
+                const loc = safeJsonParse(punch.location);
                 if (!loc.lat || !loc.lng || isNaN(loc.lat) || isNaN(loc.lng)) continue;
 
                 const geoRes = await MapsService.coordsToAddress(loc.lat, loc.lng);

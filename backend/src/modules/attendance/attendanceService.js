@@ -1,4 +1,3 @@
-import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
 import * as S3Service from "../../services/s3/s3Service.js";
 import EventBus from "../../utils/EventBus.js";
@@ -16,109 +15,11 @@ import { handleAttendanceCheckinHook, handleAttendanceCheckoutHook, handleAttend
 // break happens to straddle midnight (see processTimeInSync's break-continuation check).
 const BREAK_CONTINUATION_WINDOW_MINUTES = 120;
 
-/**
- * Fetch User Shift
- */
-export async function getUserShift(user_id) {
-  const user = await attendanceDB("core_users")
-    .where("user_id", user_id)
-    .select("shift_id", "org_id")
-    .first();
-
-  if (!user) return null;
-
-  if (user.shift_id) {
-    const assignedShift = await attendanceDB("org_shifts")
-      .where({ shift_id: user.shift_id, org_id: user.org_id })
-      .first();
-    if (assignedShift) return assignedShift;
-  }
-
-  const openShift = await ShiftService.getOpenShiftFallback(user.org_id);
-  if (openShift) {
-    return openShift;
-  }
-
-  return null;
-}
-
-/**
- * Resolve which shift's rules govern a specific check-in session — the assigned shift if the
- * punch is close to its normal start time, another org shift template if the punch matches one
- * better, or a neutral off-pattern fallback if nothing matches. core_users.shift_id is never
- * modified. Pattern-matching only applies for employees with a real assigned shift — Open-Shift
- * and no-shift users always just get their existing (single) shift, unchanged from today.
- */
-export async function resolveUserShiftForSession(user_id, punchInTimestamp = null) {
-  const assignedShift = await getUserShift(user_id);
-  const assignedRules = ShiftService.getShiftRules(assignedShift);
-
-  if (!punchInTimestamp) {
-    return { shift: assignedShift, rules: assignedRules, matchType: assignedShift ? 'assigned' : 'no_shift' };
-  }
-
-  const userRow = await attendanceDB('core_users').where('user_id', user_id).select('shift_id', 'org_id').first();
-  if (!userRow || !userRow.shift_id) {
-    return { shift: assignedShift, rules: assignedRules, matchType: assignedShift ? 'assigned' : 'no_shift' };
-  }
-
-  return ShiftService.resolveShiftForPunch({ assignedShift, org_id: userRow.org_id, punchInTimestamp });
-}
-
-/**
- * Reconstruct which shift/rules governed an already-created in-punch, from the resolution it
- * recorded in its own metadata at check-in time — so checkout/aggregation agree with what
- * check-in decided rather than risking a different result from re-matching live. Falls back to
- * live resolution for punches created before this metadata existed.
- */
-async function resolveShiftFromPunchRecord(inPunchRow) {
-  const meta = safeParseJSON(inPunchRow.metadata);
-  if (meta && meta.match_type === 'off_pattern_fallback') {
-    return { shift: null, rules: ShiftService.getOffPatternFallbackRules(), matchType: 'off_pattern_fallback' };
-  }
-  if (meta && meta.resolved_shift_id) {
-    const userRow = await attendanceDB('core_users').where('user_id', inPunchRow.user_id).select('org_id').first();
-    if (userRow) {
-      const matchedShift = await ShiftService.getShiftById(userRow.org_id, meta.resolved_shift_id);
-      if (matchedShift) {
-        return { shift: matchedShift, rules: ShiftService.getShiftRules(matchedShift), matchType: meta.match_type || 'assigned' };
-      }
-    }
-  }
-  return resolveUserShiftForSession(inPunchRow.user_id, formatLocalDatetime(inPunchRow.punch_time));
-}
-
-/**
- * Format timestamp to MySQL date string (YYYY-MM-DD)
- */
-export function formatLocalDate(val) {
-  return toMySQLDate(val);
-}
-
-export function formatLocalDatetime(val) {
-  return toMySQLDateTime(val);
-}
-
-export function toSqlDatetime(val) {
-  return toMySQLDateTime(val) || toMySQLDateTime(new Date());
-}
-
-/**
- * Format timestamp to time string HH:MM:SS
- */
-export function getTimeStr(d) {
-  return toMySQLTime(d);
-}
-
-/**
- * Safely parse a JSON column value.
- */
-export const safeParseJSON = safeJsonParse;
 
 /**
  * Pair punches sequentially into sessions for a specific date.
  */
-export function pairPunchesForDate(punches, dateStr) {
+function pairPunchesForDate(punches, dateStr) {
   const sessions = [];
   let i = 0;
   while (i < punches.length) {
@@ -126,8 +27,8 @@ export function pairPunchesForDate(punches, dateStr) {
     // Use the punch's resolved attendance date (Phase 3/4 late-arrival rollback or
     // break-continuation can date a punch to a day other than its own raw calendar date),
     // falling back to the raw date for punches with no such resolution recorded.
-    const meta = safeParseJSON(p.metadata);
-    const punchDate = meta.attendance_date || formatLocalDate(p.punch_time);
+    const meta = safeJsonParse(p.metadata);
+    const punchDate = meta.attendance_date || toMySQLDate(p.punch_time);
 
     if (p.punch_type === 'in' && punchDate === dateStr) {
       const inPunch = p;
@@ -168,7 +69,7 @@ export async function processTimeIn(context) {
     try {
       const punch = await attendanceDB("attn_punches").where({ id: result.punch_id }).first();
       if (punch) {
-        const loc = safeParseJSON(punch.location);
+        const loc = safeJsonParse(punch.location);
         loc.address = context.address;
         await attendanceDB("attn_punches").where({ id: result.punch_id }).update({
           location: JSON.stringify(loc)
@@ -203,7 +104,7 @@ export async function processTimeOut(context) {
     try {
       const punch = await attendanceDB("attn_punches").where({ id: result.punch_id }).first();
       if (punch) {
-        const loc = safeParseJSON(punch.location);
+        const loc = safeJsonParse(punch.location);
         loc.address = context.address;
         await attendanceDB("attn_punches").where({ id: result.punch_id }).update({
           location: JSON.stringify(loc)
@@ -237,7 +138,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     // Calculate next date for overnight out-punch matching
     const nextDate = new Date(sanitizedDate + 'T12:00:00');
     nextDate.setDate(nextDate.getDate() + 1);
-    const nextDateStr = formatLocalDate(nextDate);
+    const nextDateStr = toMySQLDate(nextDate);
 
     // 1. Fetch punches: all in/out on target date + out punches on next day (overnight) + any
     // punch explicitly resolved (Phase 3 late-arrival rollback) to this date regardless of its
@@ -324,9 +225,9 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     // employee's assigned shift.
     let shift, rules;
     if (sessions.length > 0) {
-      ({ shift, rules } = await resolveShiftFromPunchRecord(sessions[0].in_punch));
+      ({ shift, rules } = await ShiftService.resolveShiftFromPunchRecord(sessions[0].in_punch));
     } else {
-      shift = await getUserShift(user_id);
+      shift = await ShiftService.getUserShift(user_id);
       rules = ShiftService.getShiftRules(shift);
     }
 
@@ -341,11 +242,11 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     if (sessions.length > 0) {
       const firstIn = sessions[0].in_punch;
       const lateCheck = StatusService.calculateLateArrival(
-        formatLocalDatetime(firstIn.punch_time), effectiveRules
+        toMySQLDateTime(firstIn.punch_time), effectiveRules
       );
       lateMinutes = lateCheck.isLate ? lateCheck.minutesLate : 0;
 
-      const firstMeta = safeParseJSON(firstIn.metadata);
+      const firstMeta = safeJsonParse(firstIn.metadata);
       lateReason = firstMeta?.late_reason || null;
     }
 
@@ -360,7 +261,7 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     if (overrides.status) {
       finalStatus = overrides.status;
     } else if (sessions.some(s => !s.out_punch)) {
-      const todayDateStr = formatLocalDate(new Date());
+      const todayDateStr = toMySQLDate(new Date());
       const isPastDate = sanitizedDate < todayDateStr;
       finalStatus = isPastDate ? "MISSED_PUNCH" : "PRESENT";
     } else if (sessionCount === 0) {
@@ -424,10 +325,10 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
     if (punches.some(p => p.punch_nature === "fabricated")) remarks.push("Manual Entry");
     if (dbOverrides.adjustment_reason) remarks.push(dbOverrides.adjustment_reason);
     for (const s of sessions) {
-      const inLoc = safeParseJSON(s.in_punch.location);
+      const inLoc = safeJsonParse(s.in_punch.location);
       if (inLoc.is_geofence_violation) { remarks.push("Geofence Violation"); break; }
       if (s.out_punch) {
-        const outLoc = safeParseJSON(s.out_punch.location);
+        const outLoc = safeJsonParse(s.out_punch.location);
         if (outLoc.is_geofence_violation) { remarks.push("Geofence Violation"); break; }
       }
     }
@@ -519,7 +420,7 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
   const allSessions = [];
   for (const uid of Object.keys(byUser)) {
     const userPunches = byUser[uid];
-    const userShift = await getUserShift(uid).catch(() => null);
+    const userShift = await ShiftService.getUserShift(uid).catch(() => null);
     const shiftRules = ShiftService.getShiftRules(userShift);
     const seenDaysForLate = new Set();
 
@@ -543,11 +444,11 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
         while (j < userPunches.length && userPunches[j].punch_type !== "in") {
           if (userPunches[j].punch_type === "normal_punch") {
             const chk = userPunches[j];
-            const chkLoc = safeParseJSON(chk.location);
-            const chkMeta = safeParseJSON(chk.metadata);
+            const chkLoc = safeJsonParse(chk.location);
+            const chkMeta = safeJsonParse(chk.metadata);
             checkpoints.push({
               id: chk.id,
-              punch_time: formatLocalDatetime(chk.punch_time),
+              punch_time: toMySQLDateTime(chk.punch_time),
               lat: chkLoc.lat || null,
               lng: chkLoc.lng || null,
               accuracy: chkLoc.accuracy || chkMeta.accuracy || null,
@@ -565,10 +466,10 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
         }
         i = j;
 
-        const inLoc = safeParseJSON(inP.location);
-        const inMeta = safeParseJSON(inP.metadata);
-        const outLoc = outP ? safeParseJSON(outP.location) : {};
-        const outMeta = outP ? safeParseJSON(outP.metadata) : {};
+        const inLoc = safeJsonParse(inP.location);
+        const inMeta = safeJsonParse(inP.metadata);
+        const outLoc = outP ? safeJsonParse(outP.location) : {};
+        const outMeta = outP ? safeJsonParse(outP.metadata) : {};
 
         let totalHours = null;
         if (outP) {
@@ -576,11 +477,11 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
           if (diffMs > 0) totalHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
         }
 
-        const timeInStr = formatLocalDatetime(inP.punch_time);
-        const timeOutStr = outP ? formatLocalDatetime(outP.punch_time) : null;
+        const timeInStr = toMySQLDateTime(inP.punch_time);
+        const timeOutStr = outP ? toMySQLDateTime(outP.punch_time) : null;
 
-        const punchDateStr = formatLocalDate(inP.punch_time);
-        const todayDateStr = formatLocalDate(new Date());
+        const punchDateStr = toMySQLDate(inP.punch_time);
+        const todayDateStr = toMySQLDate(new Date());
         const isPastDay = punchDateStr && todayDateStr && punchDateStr < todayDateStr;
 
         // Evaluate lateness against shift rules only for the first punch-in of each day
@@ -741,57 +642,6 @@ export async function fetchUserRecords({ user_id, date_from, date_to, limit }) {
   return withUrls;
 }
 
-// ========== EXPORT ==========
-
-/**
- * Export attendance records to Excel for a given month
- */
-export async function exportRecordsToExcel({ user_id, org_id, month, year, monthNum }) {
-  const startDate = `${month}-01`;
-  const lastDay = new Date(year, monthNum, 0).getDate();
-  const endDate = `${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
-
-  const records = (await fetchSessionsFromPunches({ user_id, date_from: startDate, date_to: endDate, limit: 1000 }).catch(() => [])) || [];
-
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("My Attendance");
-
-  worksheet.columns = [
-    { header: "Date", key: "date", width: 12 },
-    { header: "Time In", key: "time_in", width: 15 },
-    { header: "Time Out", key: "time_out", width: 15 },
-    { header: "Total Hours", key: "total_hours", width: 12 },
-    { header: "Status", key: "status", width: 15 },
-    { header: "Late (Mins)", key: "late_minutes", width: 12 },
-    { header: "Location (In)", key: "location", width: 40 },
-    { header: "Location (Out)", key: "location_out", width: 40 }
-  ];
-
-  records.forEach(r => {
-    let duration = "0.00";
-    if (r.time_in && r.time_out) {
-      const diffMs = new Date(r.time_out) - new Date(r.time_in);
-      if (diffMs > 0) duration = (diffMs / (1000 * 60 * 60)).toFixed(2);
-    }
-
-    worksheet.addRow({
-      date: new Date(r.time_in).toLocaleDateString(),
-      time_in: r.time_in ? new Date(r.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
-      time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
-      total_hours: duration,
-      status: r.status || "PRESENT",
-      late_minutes: r.late_minutes || 0,
-      location: r.time_in_address || "-",
-      location_out: r.time_out_address || "-"
-    });
-  });
-
-  // Style Header
-  worksheet.getRow(1).font = { bold: true };
-
-  return workbook;
-}
-
 /**
  * Wrapper for daily summary status evaluation service with pre-signed S3 image URLs
  */
@@ -822,6 +672,34 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
 }
 
 /**
+ * Asynchronously reverse geocodes GPS coordinates and updates the punch record if address is missing or pending.
+ * Ensures address resolution succeeds even when Redis BullMQ queue is offline.
+ */
+export function triggerAsyncReverseGeocode({ punchId, latitude, longitude, label = 'Punch' }) {
+  if (!punchId || isNaN(latitude) || isNaN(longitude) || Number(latitude) === 0 || Number(longitude) === 0) {
+    return;
+  }
+  setImmediate(async () => {
+    try {
+      const geoRes = await MapsService.coordsToAddress(latitude, longitude);
+      const resolvedAddress = (geoRes && geoRes.address) ? geoRes.address : 'Unknown Location';
+      const punch = await attendanceDB('attn_punches').where({ id: punchId }).first();
+      if (punch) {
+        const loc = safeJsonParse(punch.location) || {};
+        if (!loc.address || loc.address === 'Locating...' || loc.address === 'Pending...') {
+          loc.address = resolvedAddress;
+          await attendanceDB('attn_punches').where({ id: punchId }).update({
+            location: JSON.stringify(loc)
+          });
+        }
+      }
+    } catch (geoErr) {
+      console.warn(`[${label}] Inline geocoding failed for punch #${punchId}:`, geoErr.message);
+    }
+  });
+}
+
+/**
  * Process Time In (Synchronous Part)
  * Checks compliance and inserts 'in' punch into attn_punches. Returns punch_id.
  */
@@ -841,15 +719,15 @@ export async function processTimeInSync(context) {
 
   const isSimulation = context.event_source === "SIMULATION" || context.punch_nature === "simulated";
   const punchNature = isSimulation ? "simulated" : (context.punch_nature || "default");
-  const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
+  const punchTime = toMySQLDateTime(localTime || new Date());
   const addressStr = (context.address && context.address !== 'Locating...') ? context.address : (isSimulation ? "Simulated Location" : "Pending...");
 
   // Resolve which shift governs this session before deciding the attendance date — for a
   // crosses-midnight shift, a late arrival after midnight still belongs to the day the shift
   // itself started, not the punch's own raw calendar date (rollback below).
-  const { shift, rules, matchType } = await resolveUserShiftForSession(user_id, localTime);
+  const { shift, rules, matchType } = await ShiftService.resolveUserShiftForSession(user_id, localTime);
 
-  const rawPunchDate = localTime ? localTime.split('T')[0] : formatLocalDate(new Date());
+  const rawPunchDate = localTime ? localTime.split('T')[0] : toMySQLDate(new Date());
   let todayDate = rawPunchDate;
 
   // Break continuation: a session closed very recently (within BREAK_CONTINUATION_WINDOW_MINUTES)
@@ -860,7 +738,7 @@ export async function processTimeInSync(context) {
   if (localTime) {
     const prevDateObj = new Date(rawPunchDate + 'T12:00:00');
     prevDateObj.setDate(prevDateObj.getDate() - 1);
-    const previousDate = formatLocalDate(prevDateObj);
+    const previousDate = toMySQLDate(prevDateObj);
 
     const priorClose = await attendanceDB("attn_punches")
       .where({ user_id, punch_type: "out" })
@@ -871,7 +749,7 @@ export async function processTimeInSync(context) {
       .first();
 
     if (priorClose) {
-      const gapMinutes = (new Date(toSqlDatetime(localTime)).getTime() - new Date(priorClose.punch_time).getTime()) / 60000;
+      const gapMinutes = (new Date(toMySQLDateTime(localTime)).getTime() - new Date(priorClose.punch_time).getTime()) / 60000;
       if (gapMinutes >= 0 && gapMinutes <= BREAK_CONTINUATION_WINDOW_MINUTES) {
         todayDate = previousDate; // continuation, not a new day
       }
@@ -888,7 +766,7 @@ export async function processTimeInSync(context) {
       // Late arrival (however many hours late) for the instance that started the PREVIOUS day.
       const prevDateObj = new Date(rawPunchDate + 'T12:00:00');
       prevDateObj.setDate(prevDateObj.getDate() - 1);
-      todayDate = formatLocalDate(prevDateObj);
+      todayDate = toMySQLDate(prevDateObj);
     }
   }
 
@@ -918,8 +796,8 @@ export async function processTimeInSync(context) {
       .first();
 
     if (latestGlobal && latestGlobal.punch_type === "in") {
-      const latestMeta = safeParseJSON(latestGlobal.metadata);
-      const lastPunchDate = latestMeta.attendance_date || formatLocalDate(latestGlobal.punch_time);
+      const latestMeta = safeJsonParse(latestGlobal.metadata);
+      const lastPunchDate = latestMeta.attendance_date || toMySQLDate(latestGlobal.punch_time);
       if (lastPunchDate === todayDate) {
         return { ok: false, status: 400, message: "Already timed in. Please time out first." };
       }
@@ -1013,27 +891,13 @@ export async function processTimeInSync(context) {
     console.error("Daily Sync Error:", dailyErr);
   }
 
-  // 9. Async geocode & image update (runs immediately, independent of BullMQ)
-  //    This ensures address/image are always updated even when Redis is offline.
-  if (!isSimulation && latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
-    const punchIdForGeo = punch_id;
-    setImmediate(async () => {
-      try {
-        const geoRes = await MapsService.coordsToAddress(latitude, longitude);
-        const resolvedAddress = (geoRes && geoRes.address) ? geoRes.address : 'Unknown Location';
-        const punch = await attendanceDB('attn_punches').where({ id: punchIdForGeo }).first();
-        if (punch) {
-          const loc = safeParseJSON(punch.location);
-          if (!loc.address || loc.address === 'Locating...' || loc.address === 'Pending...') {
-            loc.address = resolvedAddress;
-            await attendanceDB('attn_punches').where({ id: punchIdForGeo }).update({
-              location: JSON.stringify(loc)
-            });
-          }
-        }
-      } catch (geoErr) {
-        console.warn('[processTimeInSync] Inline geocoding failed:', geoErr.message);
-      }
+  // 9. Async geocode & address update (runs immediately, independent of BullMQ)
+  if (!isSimulation) {
+    triggerAsyncReverseGeocode({
+      punchId: punch_id,
+      latitude,
+      longitude,
+      label: 'processTimeInSync'
     });
   }
 
@@ -1079,7 +943,7 @@ export async function processTimeOutSync(context) {
 
   const isSimulation = context.event_source === "SIMULATION" || context.punch_nature === "simulated";
   const punchNature = isSimulation ? "simulated" : (context.punch_nature || "default");
-  const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
+  const punchTime = toMySQLDateTime(localTime || new Date());
   const addressStr = (context.address && context.address !== 'Locating...') ? context.address : (isSimulation ? "Simulated Location" : "Pending...");
   const targetDate = localTime ? localTime.split('T')[0] : null;
 
@@ -1111,8 +975,8 @@ export async function processTimeOutSync(context) {
   // Note: an employee is never blocked from checking out just because the cron
   // pre-emptively flagged this open session as a possible missed punch — only a
   // genuinely stale session (>24h, checked next) requires a correction request.
-  const openInMeta = safeParseJSON(openInPunch.metadata);
-  const sessionDate = openInMeta.attendance_date || formatLocalDate(openInPunch.punch_time);
+  const openInMeta = safeJsonParse(openInPunch.metadata);
+  const sessionDate = openInMeta.attendance_date || toMySQLDate(openInPunch.punch_time);
 
   // 3. Check session age (> 24h → require correction)
   const durationHours = StatusService.calculateDurationHours(openInPunch.punch_time, localTime);
@@ -1126,7 +990,7 @@ export async function processTimeOutSync(context) {
 
   // 4. Shift Context & Compliance — resolved from what check-in itself matched, so checkout
   // can't disagree with it (e.g. by re-matching a slightly different candidate hours later).
-  const { shift, rules } = await resolveShiftFromPunchRecord(openInPunch);
+  const { shift, rules } = await ShiftService.resolveShiftFromPunchRecord(openInPunch);
 
   if (!isSimulation) {
     const geoCheck = await ShiftService.checkLocationCompliance(user_id, latitude, longitude, accuracy, rules.exit_requirements);
@@ -1181,25 +1045,12 @@ export async function processTimeOutSync(context) {
   }
 
   // 9. Async geocode for time-out address (independent of BullMQ)
-  if (!isSimulation && latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
-    const outPunchId = punch_id;
-    setImmediate(async () => {
-      try {
-        const geoRes = await MapsService.coordsToAddress(latitude, longitude);
-        const resolvedAddress = (geoRes && geoRes.address) ? geoRes.address : 'Unknown Location';
-        const punch = await attendanceDB('attn_punches').where({ id: outPunchId }).first();
-        if (punch) {
-          const loc = safeParseJSON(punch.location);
-          if (!loc.address || loc.address === 'Locating...' || loc.address === 'Pending...') {
-            loc.address = resolvedAddress;
-            await attendanceDB('attn_punches').where({ id: outPunchId }).update({
-              location: JSON.stringify(loc)
-            });
-          }
-        }
-      } catch (geoErr) {
-        console.warn('[processTimeOutSync] Inline geocoding failed:', geoErr.message);
-      }
+  if (!isSimulation) {
+    triggerAsyncReverseGeocode({
+      punchId: punch_id,
+      latitude,
+      longitude,
+      label: 'processTimeOutSync'
     });
   }
 
@@ -1262,7 +1113,7 @@ export async function recordLocationPing({
   localTime = null
 }) {
   // 1. Shift Policy Enforcement for Checkpoints
-  const shift = await getUserShift(userId);
+  const shift = await ShiftService.getUserShift(userId);
   const rules = ShiftService.getShiftRules(shift);
   const checkpointPolicy = rules?.checkpoint_requirements || { enabled: true, selfie: false };
 
@@ -1284,7 +1135,7 @@ export async function recordLocationPing({
   }
 
   let initialAddress = (address && address !== "Locating...") ? address : null;
-  const punchTime = localTime ? toSqlDatetime(localTime) : toSqlDatetime(new Date());
+  const punchTime = toMySQLDateTime(localTime || new Date());
 
   const metadata = {
     ip,
@@ -1333,19 +1184,12 @@ export async function recordLocationPing({
   }
 
   // Reverse geocode address if missing
-  if (!initialAddress && latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
-    setImmediate(async () => {
-      try {
-        const geoRes = await MapsService.coordsToAddress(latitude, longitude);
-        if (geoRes && geoRes.address) {
-          locationData.address = geoRes.address;
-          await attendanceDB("attn_punches").where({ id: punch_id }).update({
-            location: JSON.stringify(locationData)
-          });
-        }
-      } catch (geoErr) {
-        console.warn(`[Checkpoint] Geocoding error for punch #${punch_id}:`, geoErr.message);
-      }
+  if (!initialAddress) {
+    triggerAsyncReverseGeocode({
+      punchId: punch_id,
+      latitude,
+      longitude,
+      label: 'Checkpoint'
     });
   }
 

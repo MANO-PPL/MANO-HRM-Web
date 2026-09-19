@@ -26,7 +26,6 @@ import { formatDateInTimezone } from '../../utils/timezoneUtils.js';
  */
 
 // Helpers & Backward-Compatibility Re-exports
-export const safeParseJSON = safeJsonParse;
 export { calculateDurationHours };
 
 export function getLocalNow(timezone = 'Asia/Kolkata') {
@@ -833,10 +832,10 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                         i += 1;
                     }
 
-                    const inLoc = safeParseJSON(inP.location);
-                    const inMeta = safeParseJSON(inP.metadata);
-                    const outLoc = outP ? safeParseJSON(outP.location) : {};
-                    const outMeta = outP ? safeParseJSON(outP.metadata) : {};
+                    const inLoc = safeJsonParse(inP.location);
+                    const inMeta = safeJsonParse(inP.metadata);
+                    const outLoc = outP ? safeJsonParse(outP.location) : {};
+                    const outMeta = outP ? safeJsonParse(outP.metadata) : {};
 
                     const punchDate = new Date(inP.punch_time);
                     const today = new Date();

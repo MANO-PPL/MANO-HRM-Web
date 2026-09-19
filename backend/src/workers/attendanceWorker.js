@@ -7,7 +7,6 @@ import * as MapsService from '../services/google_api_services/maps.js';
 import EventBus from '../utils/EventBus.js';
 import { safeJsonParse } from '../utils/dataUtils.js';
 
-const safeParseJSON = safeJsonParse;
 
 export async function processAttendanceJob(jobData) {
     const {
@@ -48,7 +47,7 @@ export async function processAttendanceJob(jobData) {
     try {
         const punch = await attendanceDB('attn_punches').where({ id: attendance_id }).first();
         if (punch) {
-            const loc = safeParseJSON(punch.location);
+            const loc = safeJsonParse(punch.location);
             loc.address = address;
             await attendanceDB('attn_punches').where({ id: attendance_id }).update({
                 location: JSON.stringify(loc)
@@ -97,7 +96,7 @@ export async function processAttendanceJob(jobData) {
             try {
                 const punch = await attendanceDB('attn_punches').where({ id: attendance_id }).first();
                 if (punch) {
-                    const meta = safeParseJSON(punch.metadata);
+                    const meta = safeJsonParse(punch.metadata);
                     meta.image_key = imageKey;
                     await attendanceDB('attn_punches').where({ id: attendance_id }).update({
                         metadata: JSON.stringify(meta)

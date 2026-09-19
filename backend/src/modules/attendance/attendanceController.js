@@ -80,185 +80,184 @@ async function resolveEffectiveTimezone({ req, org_id, userId, latitude, longitu
 }
 
 /**
+ * Standardizes attendance punch request data extraction and resolves local timezone.
+ */
+async function extractPunchContext(req) {
+  const userId = req.user.id || req.user.user_id;
+  const { org_id } = req.user;
+  const latitude = Number(req.body.latitude);
+  const longitude = Number(req.body.longitude);
+  const accuracy = req.body.accuracy !== undefined && req.body.accuracy !== null && !isNaN(req.body.accuracy)
+    ? Number(req.body.accuracy)
+    : null;
+  const address = req.body.address || null;
+  const file = req.file || null;
+  const ip = req.clientIp || req.ip;
+  const userAgent = req.get('User-Agent');
+  const eventSource = getEventSource(req);
+
+  const timezone = await resolveEffectiveTimezone({ req, org_id, userId, latitude, longitude });
+  const nowVal = getLocalNow(timezone);
+  const localTime = req.body.local_time || req.body.localTime || String(nowVal).replace('Z', '');
+
+  return {
+    userId,
+    org_id,
+    latitude,
+    longitude,
+    accuracy,
+    address,
+    file,
+    ip,
+    userAgent,
+    eventSource,
+    timezone,
+    localTime
+  };
+}
+
+/**
+ * Saves an uploaded selfie buffer to a temporary disk location for asynchronous background processing.
+ */
+async function saveTempSelfieFile(file) {
+  if (!file || !file.buffer) return null;
+  try {
+    const tempDir = path.join(process.cwd(), 'uploads', 'temp');
+    await fs.mkdir(tempDir, { recursive: true });
+    const ext = path.extname(file.originalname || '') || '.jpg';
+    const filename = `${crypto.randomUUID()}${ext}`;
+    const tempFilePath = path.join(tempDir, filename);
+    await fs.writeFile(tempFilePath, file.buffer);
+    return tempFilePath;
+  } catch (err) {
+    console.error("Failed to write temp selfie file to disk:", err);
+    return null;
+  }
+}
+
+/**
+ * Queues heavy attendance background tasks (S3 upload, face check, geocoding) to Redis BullMQ
+ * with an automatic direct background fallback when Redis is offline or unavailable.
+ */
+function dispatchAttendanceJob(jobName, jobData) {
+  if (redisConnection && redisConnection.status === 'ready') {
+    attendanceQueue.add(jobName, jobData, {
+      attempts: 3,
+      backoff: 5000
+    }).catch(queueErr => {
+      console.warn(`attendanceQueue.add(${jobName}) failed, processing directly:`, queueErr.message);
+      processAttendanceJob(jobData).catch(directErr => {
+        console.error(`Direct attendance processing error (${jobName}):`, directErr);
+      });
+    });
+  } else {
+    // Redis is offline / disconnected: run in direct async background immediately
+    processAttendanceJob(jobData).catch(directErr => {
+      console.error(`Direct attendance processing error (${jobName}):`, directErr);
+    });
+  }
+}
+
+/**
  * POST /attendance/timein
  * Handle user check-in with location and optional image
  */
 export const timeIn = catchAsync(async (req, res) => {
-  // 1. DATA PREPARATION
-  const userId = req.user.id || req.user.user_id;
-  const { org_id } = req.user;
-  const latitude = Number(req.body.latitude);
-  const longitude = Number(req.body.longitude);
-  const accuracy = Number(req.body.accuracy);
+  const ctx = await extractPunchContext(req);
   const late_reason = req.body.late_reason || null;
-  const address = req.body.address || null;
-  const file = req.file;
 
-  // 2. RESOLVE USER LOCAL TIMEZONE (Org timezone is strictly a fallback if GPS/user tz is absent)
-  const timezone = await resolveEffectiveTimezone({ req, org_id, userId, latitude, longitude });
-
-  const nowVal = getLocalNow(timezone);
-  const localTime = req.body.local_time || req.body.localTime || String(nowVal).replace('Z', '');
-
-  // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB insertion)
+  // 1. FAST SYNCHRONOUS PROCESS (Compliance checks & DB insertion)
   const result = await AttendanceService.processTimeInSync({
-    user_id: userId,
-    org_id,
-    latitude,
-    longitude,
-    accuracy,
-    address,
+    user_id: ctx.userId,
+    org_id: ctx.org_id,
+    latitude: ctx.latitude,
+    longitude: ctx.longitude,
+    accuracy: ctx.accuracy,
+    address: ctx.address,
     late_reason,
-    file,
-    localTime,
-    timezone,
-    ip: req.clientIp || req.ip,
-    user_agent: req.get('User-Agent')
+    file: ctx.file,
+    localTime: ctx.localTime,
+    timezone: ctx.timezone,
+    ip: ctx.ip,
+    user_agent: ctx.userAgent
   });
 
   if (!result.ok) {
     return res.status(result.status || 400).json(result);
   }
 
-  // 4. SAVE UPLOADED SELFIE TO TEMP DISK FILE (Fast buffer write)
-  let tempFilePath = null;
-  if (file) {
-    try {
-      const tempDir = path.join(process.cwd(), 'uploads', 'temp');
-      await fs.mkdir(tempDir, { recursive: true });
-      const ext = path.extname(file.originalname || '') || '.jpg';
-      const filename = `${crypto.randomUUID()}${ext}`;
-      tempFilePath = path.join(tempDir, filename);
-      await fs.writeFile(tempFilePath, file.buffer);
-    } catch (err) {
-      console.error("Failed to write temp check-in selfie to disk:", err);
-    }
-  }
-
-  // 5. QUEUE HEAVY TASKS TO REDIS OR PROCESS DIRECTLY
+  // 2. DISPATCH BACKGROUND HEAVY TASKS (S3 upload, geocoding, face match)
+  const tempFilePath = await saveTempSelfieFile(ctx.file);
   const jobData = {
     attendance_id: result.attendance_id,
     isTimeIn: true,
     tempFilePath,
-    fileBuffer: file ? file.buffer : null,
-    latitude,
-    longitude,
-    accuracy,
-    address,
-    ip: req.clientIp || req.ip,
-    user_agent: req.get('User-Agent'),
-    event_source: getEventSource(req),
-    timezone,
-    org_id,
-    user_id: userId,
+    fileBuffer: ctx.file ? ctx.file.buffer : null,
+    latitude: ctx.latitude,
+    longitude: ctx.longitude,
+    accuracy: ctx.accuracy,
+    address: ctx.address,
+    ip: ctx.ip,
+    user_agent: ctx.userAgent,
+    event_source: ctx.eventSource,
+    timezone: ctx.timezone,
+    org_id: ctx.org_id,
+    user_id: ctx.userId,
     session_number: result.session_number
   };
 
-  if (redisConnection && redisConnection.status === 'ready') {
-    attendanceQueue.add('attendance-checkin', jobData, {
-      attempts: 3,
-      backoff: 5000
-    }).catch(queueErr => {
-      console.warn("attendanceQueue.add failed, processing directly:", queueErr.message);
-      processAttendanceJob(jobData).catch(directErr => {
-        console.error("Direct attendance checkin processing error:", directErr);
-      });
-    });
-  } else {
-    // Redis is offline / disconnected: run in direct async background immediately
-    processAttendanceJob(jobData).catch(directErr => {
-      console.error("Direct attendance checkin processing error:", directErr);
-    });
-  }
+  dispatchAttendanceJob('attendance-checkin', jobData);
 
   return res.json(result);
 });
 
+/**
+ * POST /attendance/timeout
+ * Handle user check-out with location and optional image
+ */
 export const timeOut = catchAsync(async (req, res) => {
-  // 1. DATA PREPARATION
-  const userId = req.user.id || req.user.user_id;
-  const { org_id } = req.user;
-  const latitude = Number(req.body.latitude);
-  const longitude = Number(req.body.longitude);
-  const accuracy = Number(req.body.accuracy);
-  const address = req.body.address || null;
-  const file = req.file;
+  const ctx = await extractPunchContext(req);
 
-  // 2. RESOLVE USER LOCAL TIMEZONE (Org timezone is strictly a fallback if GPS/user tz is absent)
-  const timezone = await resolveEffectiveTimezone({ req, org_id, userId, latitude, longitude });
-
-  const nowVal = getLocalNow(timezone);
-  const localTime = req.body.local_time || req.body.localTime || String(nowVal).replace('Z', '');
-
-  // 3. FAST SYNCHRONOUS PROCESS (Compliance checks & DB checkout status/hours update)
+  // 1. FAST SYNCHRONOUS PROCESS (Compliance checks & DB checkout status/hours update)
   const result = await AttendanceService.processTimeOutSync({
-    user_id: userId,
-    org_id,
-    latitude,
-    longitude,
-    accuracy,
-    address,
-    file,
-    localTime,
-    timezone,
-    ip: req.clientIp || req.ip,
-    user_agent: req.get('User-Agent')
+    user_id: ctx.userId,
+    org_id: ctx.org_id,
+    latitude: ctx.latitude,
+    longitude: ctx.longitude,
+    accuracy: ctx.accuracy,
+    address: ctx.address,
+    file: ctx.file,
+    localTime: ctx.localTime,
+    timezone: ctx.timezone,
+    ip: ctx.ip,
+    user_agent: ctx.userAgent
   });
 
   if (!result.ok) {
     return res.status(result.status || 400).json(result);
   }
 
-  // 4. SAVE UPLOADED SELFIE TO TEMP DISK FILE
-  let tempFilePath = null;
-  if (file) {
-    try {
-      const tempDir = path.join(process.cwd(), 'uploads', 'temp');
-      await fs.mkdir(tempDir, { recursive: true });
-      const ext = path.extname(file.originalname || '') || '.jpg';
-      const filename = `${crypto.randomUUID()}${ext}`;
-      tempFilePath = path.join(tempDir, filename);
-      await fs.writeFile(tempFilePath, file.buffer);
-    } catch (err) {
-      console.error("Failed to write temp check-out selfie to disk:", err);
-    }
-  }
-
-  // 5. QUEUE HEAVY TASKS TO REDIS OR PROCESS DIRECTLY
+  // 2. DISPATCH BACKGROUND HEAVY TASKS
+  const tempFilePath = await saveTempSelfieFile(ctx.file);
   const jobData = {
     attendance_id: result.attendance_id,
     isTimeIn: false,
     tempFilePath,
-    fileBuffer: file ? file.buffer : null,
-    latitude,
-    longitude,
-    accuracy,
-    address,
-    ip: req.clientIp || req.ip,
-    user_agent: req.get('User-Agent'),
-    event_source: getEventSource(req),
-    timezone,
-    org_id,
-    user_id: userId,
+    fileBuffer: ctx.file ? ctx.file.buffer : null,
+    latitude: ctx.latitude,
+    longitude: ctx.longitude,
+    accuracy: ctx.accuracy,
+    address: ctx.address,
+    ip: ctx.ip,
+    user_agent: ctx.userAgent,
+    event_source: ctx.eventSource,
+    timezone: ctx.timezone,
+    org_id: ctx.org_id,
+    user_id: ctx.userId,
     status: result.status
   };
 
-  if (redisConnection && redisConnection.status === 'ready') {
-    attendanceQueue.add('attendance-checkout', jobData, {
-      attempts: 3,
-      backoff: 5000
-    }).catch(queueErr => {
-      console.warn("attendanceQueue.add failed, processing directly:", queueErr.message);
-      processAttendanceJob(jobData).catch(directErr => {
-        console.error("Direct attendance checkout processing error:", directErr);
-      });
-    });
-  } else {
-    // Redis is offline / disconnected: run in direct async background immediately
-    processAttendanceJob(jobData).catch(directErr => {
-      console.error("Direct attendance checkout processing error:", directErr);
-    });
-  }
+  dispatchAttendanceJob('attendance-checkout', jobData);
 
   return res.json(result);
 });
@@ -591,7 +590,7 @@ export async function getMyShift(req, res) {
       return res.status(401).json({ ok: false, message: "Unauthorized: missing authenticated user id" });
     }
 
-    const shift = await AttendanceService.getUserShift(userId);
+    const shift = await ShiftService.getUserShift(userId);
 
     if (!shift) {
       const rules = ShiftService.getShiftRules(null);
@@ -807,32 +806,20 @@ export const getAiSummary = catchAsync(async (req, res) => {
  * Handle presence/location ping (normal_punch)
  */
 export const pingLocation = catchAsync(async (req, res) => {
-  const userId = req.user.id || req.user.user_id;
-  const org_id = req.user.org_id;
-
-  const timezone = await resolveEffectiveTimezone({
-    req,
-    org_id,
-    userId,
-    latitude: Number(req.body.latitude),
-    longitude: Number(req.body.longitude)
-  });
-
-  const nowVal = getLocalNow(timezone);
-  const localTime = String(nowVal).replace('Z', '');
+  const ctx = await extractPunchContext(req);
 
   const result = await AttendanceService.recordLocationPing({
-    userId,
-    latitude: Number(req.body.latitude),
-    longitude: Number(req.body.longitude),
-    accuracy: req.body.accuracy ? Number(req.body.accuracy) : null,
-    address: req.body.address || null,
+    userId: ctx.userId,
+    latitude: ctx.latitude,
+    longitude: ctx.longitude,
+    accuracy: ctx.accuracy,
+    address: ctx.address,
     note: req.body.note ? String(req.body.note).trim() : null,
-    file: req.file || null,
-    ip: req.clientIp || req.ip,
-    userAgent: req.get('User-Agent'),
+    file: ctx.file,
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
     isGeofenceViolation: Boolean(req.body.is_geofence_violation),
-    localTime: req.body.local_time || req.body.localTime || localTime
+    localTime: ctx.localTime
   });
 
   if (!result.ok) {

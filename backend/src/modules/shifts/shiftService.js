@@ -2,7 +2,7 @@ import { attendanceDB } from '../../config/database.js';
 import { cacheService } from '../../services/cache/cacheService.js';
 import { verifyUserGeofence } from './geofencing.js';
 import { parseBool, safeJsonParse } from '../../utils/dataUtils.js';
-import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes, timeToMinutes, minutesToTime, isTimeInShiftRange, getShiftDurationMinutes } from '../../utils/dateUtils.js';
+import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes, timeToMinutes, minutesToTime, isTimeInShiftRange, getShiftDurationMinutes, toMySQLDateTime } from '../../utils/dateUtils.js';
 
 export const DEFAULT_MAX_OVERTIME_HOURS = 3;
 
@@ -737,6 +737,32 @@ export async function getOpenShiftFallback(org_id) {
     }
 }
 
+/**
+ * Fetch assigned shift for a user, or fall back to the organization's open shift.
+ */
+export async function getUserShift(user_id) {
+    const user = await attendanceDB("core_users")
+        .where("user_id", user_id)
+        .select("shift_id", "org_id")
+        .first();
+
+    if (!user) return null;
+
+    if (user.shift_id) {
+        const assignedShift = await attendanceDB("org_shifts")
+            .where({ shift_id: user.shift_id, org_id: user.org_id })
+            .first();
+        if (assignedShift) return assignedShift;
+    }
+
+    const openShift = await getOpenShiftFallback(user.org_id);
+    if (openShift) {
+        return openShift;
+    }
+
+    return null;
+}
+
 // How close a punch-in must be to a shift's own start time (in either direction) to count as
 // that shift, whether it's the employee's assigned shift or another org shift template.
 export const SHIFT_PATTERN_MATCH_WINDOW_HOURS = 3;
@@ -804,6 +830,53 @@ export async function resolveShiftForPunch({ assignedShift, org_id, punchInTimes
 
     return { shift: null, rules: getOffPatternFallbackRules(), matchType: 'off_pattern_fallback' };
 }
+
+/**
+ * Resolve which shift's rules govern a specific check-in session — the assigned shift if the
+ * punch is close to its normal start time, another org shift template if the punch matches one
+ * better, or a neutral off-pattern fallback if nothing matches. core_users.shift_id is never
+ * modified. Pattern-matching only applies for employees with a real assigned shift — Open-Shift
+ * and no-shift users always just get their existing (single) shift, unchanged from today.
+ */
+export async function resolveUserShiftForSession(user_id, punchInTimestamp = null) {
+    const assignedShift = await getUserShift(user_id);
+    const assignedRules = getShiftRules(assignedShift);
+
+    if (!punchInTimestamp) {
+        return { shift: assignedShift, rules: assignedRules, matchType: assignedShift ? 'assigned' : 'no_shift' };
+    }
+
+    const userRow = await attendanceDB('core_users').where('user_id', user_id).select('shift_id', 'org_id').first();
+    if (!userRow || !userRow.shift_id) {
+        return { shift: assignedShift, rules: assignedRules, matchType: assignedShift ? 'assigned' : 'no_shift' };
+    }
+
+    return resolveShiftForPunch({ assignedShift, org_id: userRow.org_id, punchInTimestamp });
+}
+
+/**
+ * Reconstruct which shift/rules governed an already-created in-punch, from the resolution it
+ * recorded in its own metadata at check-in time — so checkout/aggregation agree with what
+ * check-in decided rather than risking a different result from re-matching live. Falls back to
+ * live resolution for punches created before this metadata existed.
+ */
+export async function resolveShiftFromPunchRecord(inPunchRow) {
+    const meta = safeJsonParse(inPunchRow.metadata);
+    if (meta && meta.match_type === 'off_pattern_fallback') {
+        return { shift: null, rules: getOffPatternFallbackRules(), matchType: 'off_pattern_fallback' };
+    }
+    if (meta && meta.resolved_shift_id) {
+        const userRow = await attendanceDB('core_users').where('user_id', inPunchRow.user_id).select('org_id').first();
+        if (userRow) {
+            const matchedShift = await getShiftById(userRow.org_id, meta.resolved_shift_id);
+            if (matchedShift) {
+                return { shift: matchedShift, rules: getShiftRules(matchedShift), matchType: meta.match_type || 'assigned' };
+            }
+        }
+    }
+    return resolveUserShiftForSession(inPunchRow.user_id, toMySQLDateTime(inPunchRow.punch_time));
+}
+
 
 /**
  * Check Location Compliance
