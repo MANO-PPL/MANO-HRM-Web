@@ -1767,7 +1767,7 @@ const MobileAttendancePage = () => {
                                                             </div>
                                                             <div className="min-w-0">
                                                                 <span className="block text-[9px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest leading-none mb-1">Time Out</span>
-                                                                <span className="text-sm font-black text-slate-800 dark:text-github-dark-text truncate block">{s.time_out ? formatTime(s.time_out, s, true) : 'In Progress'}</span>
+                                                                <span className="text-sm font-black text-slate-800 dark:text-github-dark-text truncate block">{s.time_out ? formatTime(s.time_out, s, true) : '--:--'}</span>
                                                             </div>
                                                         </div>
                                                         {s.time_out_image ? (
@@ -2014,7 +2014,7 @@ const MobileAttendancePage = () => {
                                                     const isExpanded = expandedDays.has(day.dateKey);
                                                     const totalHoursDisplay = day.totalDayHours > 0 
                                                         ? `${day.totalDayHours} hrs` 
-                                                        : (day.hasOpenSession ? 'In Progress' : '0 hrs');
+                                                        : (day.hasOpenSession ? '--:--' : '0 hrs');
 
                                                     return (
                                                         <div 
@@ -2051,10 +2051,6 @@ const MobileAttendancePage = () => {
                                                                         </div>
                                                                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mt-1">
                                                                             <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}</span>
-                                                                            <span>•</span>
-                                                                            <span className="truncate max-w-[140px]" title={day.sessions[0]?.time_in_address || 'Office'}>
-                                                                                {day.sessions[0]?.time_in_address || 'Office'}
-                                                                            </span>
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
@@ -2075,7 +2071,7 @@ const MobileAttendancePage = () => {
                                                                     </div>
                                                                     <div className="bg-slate-50/50 dark:bg-github-dark-border/20 p-2.5 rounded-2xl">
                                                                         <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Last Out</span>
-                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.isPastDay ? 'Missed Out' : 'In Progress')}</span>
+                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.isPastDay ? 'Missed Out' : '--:--')}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -2099,17 +2095,17 @@ const MobileAttendancePage = () => {
                                                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'COMPLETED');
                                                                             const sStyle = getStatusStyle(sessionStatus);
                                                                             const sDuration = isSessionOpen 
-                                                                                ? (isSessionMissed ? '' : 'In Progress') 
+                                                                                ? (isSessionMissed ? '' : '--:--') 
                                                                                 : (s.total_hours ? `${s.total_hours} hrs` : (calculateHours(s.time_in, s.time_out) || 'N/A'));
                                                                             return (
                                                                                 <div key={s.attendance_id || sIdx} className="bg-white dark:bg-github-dark-subtle p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border space-y-2.5 shadow-xs">
                                                                                     <div className="flex items-center justify-between text-xs">
                                                                                         <div className="flex items-center gap-1.5">
-                                                                                            <span className="font-bold text-slate-700 dark:text-slate-200">Session #{sIdx + 1}</span>
+                                                                                            <span className="font-bold text-slate-700 dark:text-slate-200">Session {sIdx + 1}</span>
                                                                                             {sessionStatus === 'MISSED_PUNCH' && (
-                                                                                                <span className={`px-1.5 py-0.2 rounded-full text-[8px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${sStyle.bg} ${sStyle.text}`}>
-                                                                                                    <span className={`w-1 h-1 rounded-full ${sStyle.dot}`}></span>
-                                                                                                    {sStyle.label}
+                                                                                                <span className="px-1.5 py-0.2 rounded-full text-[8px] font-bold uppercase tracking-wider inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40 text-slate-800 dark:text-white">
+                                                                                                    <span className="w-1 h-1 rounded-full bg-rose-500"></span>
+                                                                                                    MISSED OUT
                                                                                                 </span>
                                                                                             )}
                                                                                         </div>
@@ -2128,7 +2124,7 @@ const MobileAttendancePage = () => {
                                                                                         </div>
                                                                                         <div className="bg-slate-50/70 dark:bg-white/5 p-2 rounded-xl">
                                                                                             <span className="block text-[8px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Out</span>
-                                                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{s.time_out ? formatTime(s.time_out, s, true) : (s.status === 'MISSED_PUNCH' ? 'Missed Out' : 'In Progress')}</span>
+                                                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{s.time_out ? formatTime(s.time_out, s, true) : (s.status === 'MISSED_PUNCH' ? 'Missed Out' : '--:--')}</span>
                                                                                             {s.time_out_image && (
                                                                                                 <button onClick={() => setPreviewImage(s.time_out_image)} className="mt-1 w-6 h-6 rounded border border-white overflow-hidden block">
                                                                                                     <img src={s.time_out_image} alt="Out" className="w-full h-full object-cover" />

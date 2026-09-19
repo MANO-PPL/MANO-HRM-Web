@@ -150,13 +150,13 @@ const AdminLeaveRequests = ({
                                     {isAdmin && selectedEmployeeBalances.length > 0 && (
                                         <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-4">
                                             <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-2">Employee Leave Balances</span>
-                                            <div className="grid grid-cols-2 gap-3">
+                                            <div className="flex gap-2.5 overflow-x-auto pb-0.5 no-scrollbar">
                                                 {selectedEmployeeBalances.map(bal => (
-                                                    <div key={bal.lb_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-2.5 rounded-lg flex flex-col">
-                                                        <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300 truncate">{bal.leave_type}</span>
-                                                        <div className="flex justify-between items-baseline mt-1">
-                                                            <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{Number(bal.available)} days left</span>
-                                                            <span className="text-[10px] text-slate-400 font-normal">{Number(bal.used)} used</span>
+                                                    <div key={bal.lb_id} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border p-2.5 rounded-lg flex flex-col flex-1 min-w-[120px]">
+                                                        <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300 truncate" title={bal.leave_type}>{bal.leave_type}</span>
+                                                        <div className="flex justify-between items-baseline mt-1 gap-2">
+                                                            <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">{Number(bal.available)} days left</span>
+                                                            <span className="text-[10px] text-slate-400 font-normal whitespace-nowrap">{Number(bal.used)} used</span>
                                                         </div>
                                                     </div>
                                                 ))}

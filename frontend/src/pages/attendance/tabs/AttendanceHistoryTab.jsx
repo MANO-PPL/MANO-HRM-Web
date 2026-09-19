@@ -67,6 +67,10 @@ const AttendanceHistoryTab = ({
         return allDays.filter(d => (d.dayStatus || '').toUpperCase() === 'ABSENT').length;
     }, [allDays]);
 
+    const missedPunchDays = useMemo(() => {
+        return allDays.filter(d => (d.dayStatus || '').toUpperCase() === 'MISSED_PUNCH').length;
+    }, [allDays]);
+
     // Filtered weeks
     const filteredWeeks = useMemo(() => {
         if (statusFilter === 'ALL') return groupedHistoryWeeks;
@@ -79,6 +83,7 @@ const AttendanceHistoryTab = ({
                     if (statusFilter === 'LATE') return st === 'LATE';
                     if (statusFilter === 'HALF_DAY') return st === 'HALF_DAY';
                     if (statusFilter === 'ABSENT') return st === 'ABSENT';
+                    if (statusFilter === 'MISSED_PUNCH') return st === 'MISSED_PUNCH';
                     return true;
                 });
                 return [week, matchingDays];
@@ -198,16 +203,28 @@ const AttendanceHistoryTab = ({
                             Half Day ({halfDays})
                         </button>
                     )}
-                    {absentDays > 0 && (
+                    {(absentDays > 0 || statusFilter === 'ABSENT') && (
                         <button
                             type="button"
                             onClick={() => setStatusFilter('ABSENT')}
                             className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'ABSENT'
-                                ? 'bg-rose-600 text-white shadow-xs'
+                                ? 'bg-red-600 text-white shadow-xs'
                                 : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10'
                                 }`}
                         >
                             Absent ({absentDays})
+                        </button>
+                    )}
+                    {(missedPunchDays > 0 || statusFilter === 'MISSED_PUNCH') && (
+                        <button
+                            type="button"
+                            onClick={() => setStatusFilter('MISSED_PUNCH')}
+                            className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'MISSED_PUNCH'
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10'
+                                }`}
+                        >
+                            Missed Punch ({missedPunchDays})
                         </button>
                     )}
                 </div>
@@ -254,7 +271,7 @@ const AttendanceHistoryTab = ({
                                 const style = getStatusStyle(day.dayStatus);
                                 const totalHoursDisplay = day.totalDayHours > 0
                                     ? `${day.totalDayHours} hrs`
-                                    : (day.hasOpenSession ? 'In Progress' : '0 hrs');
+                                    : (day.hasOpenSession ? '--:--' : '0 hrs');
 
                                 return (
                                     <div
@@ -270,75 +287,60 @@ const AttendanceHistoryTab = ({
                                             className="p-3.5 sm:px-5 sm:py-3.5 cursor-pointer select-none hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
                                         >
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                                                {/* Left: Date & Status */}
-                                                <div className="flex items-center justify-between sm:justify-start gap-3.5 min-w-[190px] shrink-0">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-11 h-11 rounded-xl flex flex-col items-center justify-center font-bold shrink-0 shadow-xs ${style.bg} ${style.text}`}>
-                                                            <span className="text-[9px] uppercase font-black opacity-80 leading-none mb-0.5">
-                                                                {day.date.toLocaleDateString('en-US', { month: 'short' })}
-                                                            </span>
-                                                            <span className="text-base leading-none font-mono font-black">
-                                                                {day.date.getDate()}
-                                                            </span>
+                                                {/* Left Group: Date & Status + First In / Last Out + Sessions Count */}
+                                                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                                                    {/* Date & Status */}
+                                                    <div className="flex items-center justify-between sm:justify-start gap-3.5 min-w-[190px] shrink-0">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-11 h-11 rounded-xl flex flex-col items-center justify-center font-bold shrink-0 shadow-xs ${style.bg} ${style.text}`}>
+                                                                <span className="text-[9px] uppercase font-black opacity-80 leading-none mb-0.5">
+                                                                    {day.date.toLocaleDateString('en-US', { month: 'short' })}
+                                                                </span>
+                                                                <span className="text-base leading-none font-mono font-black">
+                                                                    {day.date.getDate()}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">
+                                                                    {day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                                                </p>
+                                                                <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
+                                                                    {style.label}
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <p className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">
-                                                                {day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+
+                                                        {/* On mobile only, show Total in top row right */}
+                                                        <div className="text-right sm:hidden">
+                                                            <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Total</p>
+                                                            <p className="font-bold text-indigo-600 dark:text-indigo-400 text-sm font-mono leading-none mt-0.5">
+                                                                {totalHoursDisplay}
                                                             </p>
-                                                            <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
-                                                                {style.label}
-                                                            </span>
                                                         </div>
                                                     </div>
 
-                                                    {/* On mobile only, show Total in top row right */}
-                                                    <div className="text-right sm:hidden">
-                                                        <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Total</p>
-                                                        <p className="font-bold text-indigo-600 dark:text-indigo-400 text-sm font-mono leading-none mt-0.5">
-                                                            {totalHoursDisplay}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                {/* Center: Timing Badges */}
-                                                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                                                    <div className="flex-1 sm:flex-initial bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between sm:justify-start gap-2">
-                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">First In</span>
-                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-xs">
-                                                            {formatTime(day.firstIn, day.firstSession, false)}
+                                                    {/* Timing Badges & Sessions Count */}
+                                                    <div className="flex items-center gap-2 sm:gap-3 shrink-0 flex-wrap">
+                                                        <div className="flex-1 sm:flex-initial bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between sm:justify-start gap-2">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">First In</span>
+                                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-xs">
+                                                                {formatTime(day.firstIn, day.firstSession, false)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex-1 sm:flex-initial bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between sm:justify-start gap-2">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last Out</span>
+                                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-xs">
+                                                                {day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : '--:--'}
+                                                            </span>
+                                                        </div>
+                                                        <span className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded-full text-[10px] shrink-0">
+                                                            {day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}
                                                         </span>
                                                     </div>
-                                                    <div className="flex-1 sm:flex-initial bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between sm:justify-start gap-2">
-                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Last Out</span>
-                                                        <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-xs">
-                                                            {day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : '--:--'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Location & Sessions */}
-                                                <div className="hidden lg:flex items-center gap-2 flex-1 min-w-0 px-2">
-                                                    <span className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-full text-[10px] shrink-0">
-                                                        {day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}
-                                                    </span>
-                                                    {day.sessions[0]?.time_in_address && (
-                                                        <span className="truncate text-xs text-slate-500 dark:text-slate-400" title={day.sessions[0]?.time_in_address}>
-                                                            {day.sessions[0]?.time_in_address}
-                                                        </span>
-                                                    )}
                                                 </div>
 
                                                 {/* Right: Total Hours & Chevron */}
-                                                <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
-                                                    <div className="flex sm:hidden items-center gap-1.5 truncate max-w-[200px]">
-                                                        <span className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded-full text-[9px] shrink-0">
-                                                            {day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}
-                                                        </span>
-                                                        {day.sessions[0]?.time_in_address && (
-                                                            <span className="truncate text-[10px] text-slate-500">{day.sessions[0]?.time_in_address}</span>
-                                                        )}
-                                                    </div>
-
+                                                <div className="flex items-center justify-end gap-4 shrink-0">
                                                     <div className="hidden sm:block text-right">
                                                         <p className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Total</p>
                                                         <p className="font-bold text-indigo-600 dark:text-indigo-400 text-sm sm:text-base font-mono leading-none mt-0.5">
@@ -391,7 +393,7 @@ const AttendanceHistoryTab = ({
                                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'CLOSED');
                                                             const sStyle = getStatusStyle(sessionStatus);
                                                             const sDuration = isSessionOpen
-                                                                ? (isSessionMissed ? '' : 'In Progress')
+                                                                ? (isSessionMissed ? '' : '--:--')
                                                                 : (session.total_hours ? `${session.total_hours} hrs` : (calculateDuration(session.time_in, session.time_out) || 'N/A'));
 
                                                             return (
@@ -401,17 +403,14 @@ const AttendanceHistoryTab = ({
                                                                 >
                                                                     <div className="flex items-center justify-between">
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-[10px] font-black">
-                                                                                #{sIdx + 1}
-                                                                            </span>
                                                                             <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
                                                                                 Session {sIdx + 1}
                                                                             </span>
                                                                         </div>
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${sStyle.bg} ${sStyle.text}`}>
-                                                                                <span className={`w-1 h-1 rounded-full ${sStyle.dot}`}></span>
-                                                                                {sStyle.label}
+                                                                            <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${isSessionMissed ? 'bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40 text-slate-800 dark:text-white' : `${sStyle.bg} ${sStyle.text}`}`}>
+                                                                                <span className={`w-1 h-1 rounded-full ${isSessionMissed ? 'bg-rose-500' : sStyle.dot}`}></span>
+                                                                                {isSessionMissed ? 'MISSED OUT' : sStyle.label}
                                                                             </span>
                                                                             {sDuration && (
                                                                                 <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 font-mono">

@@ -30,22 +30,13 @@ const AttendanceTimeLocationHeader = ({
 
             <div className="relative z-10 space-y-5">
                 {/* Greeting & Date Header Bar */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
-                    <div>
-                        <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                            Good {greeting}, {userName}!
-                        </h1>
-                        <p className="text-indigo-200/80 text-xs sm:text-sm font-medium mt-0.5">
-                            {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                        </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-indigo-200 border border-white/15 backdrop-blur-md">
-                            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                            Live Attendance Portal
-                        </span>
-                    </div>
+                <div className="pb-3 border-b border-white/10">
+                    <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                        Good {greeting}, {userName}!
+                    </h1>
+                    <p className="text-indigo-200/80 text-xs sm:text-sm font-medium mt-0.5">
+                        {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                    </p>
                 </div>
 
                 {/* 3-Column Command Grid */}

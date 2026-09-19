@@ -538,13 +538,13 @@ const LeaveApplication = () => {
                             {isAdmin && selectedEmployeeBalances.length > 0 && (
                                 <div className="border-t border-slate-100 dark:border-github-dark-border pt-4">
                                     <span className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-2">Employee Leave Balances</span>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar">
                                         {selectedEmployeeBalances.map(bal => (
-                                            <div key={bal.lb_id} className="bg-slate-50 dark:bg-github-dark-subtle/50 p-2.5 rounded-lg border border-slate-100 dark:border-github-dark-border flex flex-col">
-                                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">{bal.leave_type}</span>
-                                                <div className="flex justify-between items-baseline mt-1">
-                                                    <span className="text-xs font-black text-indigo-650 dark:text-indigo-400">{Number(bal.available)} days left</span>
-                                                    <span className="text-[9px] text-slate-400 uppercase font-bold">{Number(bal.used)} used</span>
+                                            <div key={bal.lb_id} className="bg-slate-50 dark:bg-github-dark-subtle/50 p-2.5 rounded-lg border border-slate-100 dark:border-github-dark-border flex flex-col flex-1 min-w-[120px]">
+                                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate" title={bal.leave_type}>{bal.leave_type}</span>
+                                                <div className="flex justify-between items-baseline mt-1 gap-2">
+                                                    <span className="text-xs font-black text-indigo-650 dark:text-indigo-400 whitespace-nowrap">{Number(bal.available)} days left</span>
+                                                    <span className="text-[9px] text-slate-400 uppercase font-bold whitespace-nowrap">{Number(bal.used)} used</span>
                                                 </div>
                                             </div>
                                         ))}

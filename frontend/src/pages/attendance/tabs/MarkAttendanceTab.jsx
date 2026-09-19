@@ -327,9 +327,9 @@ const MarkAttendanceTab = ({
                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'CLOSED');
                                             const style = getStatusStyle(sessionStatus);
                                             return (
-                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-sm flex items-center gap-2 ${style.bg} ${style.text}`}>
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                                                    {style.label}
+                                                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full shadow-sm flex items-center gap-2 ${isSessionMissed ? 'bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40 text-slate-800 dark:text-white font-bold' : `${style.bg} ${style.text}`}`}>
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${isSessionMissed ? 'bg-rose-500' : style.dot}`} />
+                                                    {isSessionMissed ? 'MISSED OUT' : style.label}
                                                 </span>
                                             );
                                         })()}
