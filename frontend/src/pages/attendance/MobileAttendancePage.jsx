@@ -329,7 +329,20 @@ const MobileAttendancePage = () => {
         return null;
     });
 
+    // Shift deadline & allowed date bounds for the correction date picker
+    const correctionDeadlineDays = useMemo(() => {
+        return myShift?.rules?.correction_deadline ?? 2;
+    }, [myShift]);
 
+    const minAllowedCorrectionDate = useMemo(() => {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - correctionDeadlineDays);
+        return getLocalDateString(cutoff);
+    }, [correctionDeadlineDays]);
+
+    const maxAllowedCorrectionDate = useMemo(() => {
+        return getLocalDateString();
+    }, []);
 
     // Dates
     const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
@@ -1023,6 +1036,20 @@ const MobileAttendancePage = () => {
             toast.error("Reason is required");
             return;
         }
+
+        // Client-side pre-check only (UX convenience) — the backend's own check in
+        // correctionsService.js is the real gate.
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const reqDate = new Date(correctionForm.date);
+        reqDate.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((today - reqDate) / (1000 * 60 * 60 * 24));
+
+        if (diffDays > correctionDeadlineDays) {
+            toast.error(`Correction requests can only be submitted within ${correctionDeadlineDays} days of the attendance date.`);
+            return;
+        }
+
         setShowConfirmSubmit(true);
     };
 
@@ -2665,6 +2692,8 @@ const MobileAttendancePage = () => {
                                         label="Adjustment Date"
                                         value={correctionForm.date}
                                         onChange={(val) => setCorrectionForm({...correctionForm, date: val})}
+                                        minDate={minAllowedCorrectionDate}
+                                        maxDate={maxAllowedCorrectionDate}
                                     />
 
                                     {/* Smart Context Banner */}

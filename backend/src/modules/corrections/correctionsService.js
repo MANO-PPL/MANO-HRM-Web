@@ -1,8 +1,10 @@
 import { attendanceDB } from '../../config/database.js';
 import { toMySQLDate } from '../../utils/dateUtils.js';
 import * as S3Service from '../../services/s3/s3Service.js';
-import { syncDailyAttendance } from '../attendance/attendanceService.js';
+import { syncDailyAttendance, getUserShift } from '../attendance/attendanceService.js';
 import { handleAttendanceCorrectionApprovedHook } from '../DAR/darReconciliationService.js';
+import * as ShiftService from '../shifts/shiftService.js';
+import { getTodayStr } from '../reports/reportsServices.js';
 
 
 
@@ -33,29 +35,25 @@ export async function createCorrectionRequest({
 }) {
   const isAdminOrHr = ["admin", "hr", "superadmin"].includes(String(user_type || "").toLowerCase());
 
-  // DYNAMIC DEADLINE FROM SHIFT RULES (Bypassed / unlimited for testing)
-  /*
+  // Sanitize request date (used both for the deadline check below and the rest of this function)
+  const cleanDate = toMySQLDate(request_date) || request_date;
+
   if (!isAdminOrHr) {
     const userShift = await getUserShift(user_id);
     const rules = ShiftService.getShiftRules(userShift || {});
-    const deadlineDays = rules.correction_deadline || 2;
+    const deadlineDays = rules.correction_deadline ?? 2;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const reqDate = new Date(request_date);
-    reqDate.setHours(0, 0, 0, 0);
-
-    const diffTime = today - reqDate;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // Org-timezone-aware "today" (mirrors reportsServices.js:getTodayStr, used elsewhere for the
+    // same kind of day-boundary comparison) rather than the server/browser's own local time.
+    const todayStr = await getTodayStr(org_id);
+    const diffDays = Math.ceil((new Date(todayStr) - new Date(cleanDate)) / (1000 * 60 * 60 * 24));
 
     if (diffDays > deadlineDays) {
-      throw new Error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
+      const err = new Error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
+      err.statusCode = 400;
+      throw err;
     }
   }
-  */
-
-  // Sanitize request date
-  const cleanDate = toMySQLDate(request_date) || request_date;
 
   // Resolve target_id: for 'summary', find id in attn_daily_summary_v2
   const normType = correction_type === "summary" ? "summary" : "punch";

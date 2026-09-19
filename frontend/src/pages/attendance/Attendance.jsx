@@ -844,14 +844,16 @@ const Attendance = () => {
         return [];
     }, []);
 
-    // Shift deadline & allowed date bounds (temporarily unlimited for testing)
+    // Shift deadline & allowed date bounds
     const correctionDeadlineDays = useMemo(() => {
-        return 3650; // Unlimited for testing
+        return myShift?.rules?.correction_deadline ?? 2;
     }, [myShift]);
 
     const minAllowedCorrectionDate = useMemo(() => {
-        return '2000-01-01'; // Unlimited for testing
-    }, []);
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - correctionDeadlineDays);
+        return getLocalDateString(cutoff);
+    }, [correctionDeadlineDays]);
 
     const maxAllowedCorrectionDate = useMemo(() => {
         return getLocalDateString();
@@ -1875,8 +1877,8 @@ const Attendance = () => {
             return;
         }
 
-        // ENFORCE DYNAMIC CORRECTION DEADLINE (Bypassed / unlimited for testing)
-        /*
+        // Client-side pre-check only (UX convenience, so the picker/toast catch this before a
+        // round-trip) — the backend's own check in correctionsService.js is the real gate.
         const deadlineDays = myShift?.rules?.correction_deadline ?? 2;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -1888,7 +1890,6 @@ const Attendance = () => {
             toast.error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
             return;
         }
-        */
 
         // Validation for sessions (optional: only checked if user customized punches on advanced timeline)
         if (showAdvancedOptions) {

@@ -188,6 +188,10 @@ const EmployeeDashboard = () => {
                 const todayMidnight = new Date(today);
                 todayMidnight.setHours(0, 0, 0, 0);
 
+                // Real per-shift correction window, not a hardcoded guess — matches the same
+                // deadline enforced when actually submitting a correction.
+                const correctionDeadlineDays = shiftRes.value?.shift?.rules?.correction_deadline ?? 2;
+
                 const missedDates = [];
 
                 for (const session of recentRes.data) {
@@ -200,7 +204,7 @@ const EmployeeDashboard = () => {
                             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
                             const isNotProcessed = !['ABSENT', 'REJECTED'].includes(session.status);
-                            if (isNotProcessed && diffDays <= 7) {
+                            if (isNotProcessed && diffDays <= correctionDeadlineDays) {
                                 missedDates.push(sessionDateStr);
                             }
                         }

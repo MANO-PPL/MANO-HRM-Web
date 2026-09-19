@@ -174,9 +174,12 @@ const EmployeeDashboard = () => {
                 const todayMidnight = new Date(today);
                 todayMidnight.setHours(0, 0, 0, 0);
 
-                const thirtyDaysAgo = new Date(todayMidnight);
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+                // Real per-shift correction window, not a hardcoded guess — matches the same
+                // deadline enforced when actually submitting a correction.
+                const correctionDeadlineDays = shiftRes.value?.shift?.rules?.correction_deadline ?? 2;
+                const deadlineCutoff = new Date(todayMidnight);
+                deadlineCutoff.setDate(deadlineCutoff.getDate() - correctionDeadlineDays);
+                const deadlineCutoffStr = deadlineCutoff.toISOString().split('T')[0];
 
                 const missedDates = [];
 
@@ -185,7 +188,7 @@ const EmployeeDashboard = () => {
                         const sessionDate = new Date(session.time_in);
                         const sessionDateStr = sessionDate.toISOString().split('T')[0];
 
-                        if (sessionDateStr < todayDateStr && sessionDateStr >= thirtyDaysAgoStr) {
+                        if (sessionDateStr < todayDateStr && sessionDateStr >= deadlineCutoffStr) {
                             const isNotProcessed = !['ABSENT', 'REJECTED'].includes(session.status);
                             if (isNotProcessed) {
                                 missedDates.push(sessionDateStr);
