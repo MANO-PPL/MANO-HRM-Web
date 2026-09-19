@@ -81,7 +81,6 @@ const ShiftManagement = ({ embedded = false }) => {
     const [shiftForm, setShiftForm] = useState({
         name: '', start: '09:00', end: '18:00', grace: 0,
         otThreshold: 9.0, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
-        missedPunchCheckTime: null,
         reqEntrySelfie: true, reqEntryGeofence: true,
         reqExitSelfie: false, reqExitGeofence: true,
         checkpointEnabled: true, reqCheckpointSelfie: false,
@@ -129,7 +128,6 @@ const ShiftManagement = ({ embedded = false }) => {
                     otThreshold: parseFloat(s.overtime_threshold_hours),
                     otMaxHours: normalizeUiMaxOtHours(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime),
                     correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 2),
-                    missedPunchCheckTime: s.policy_rules?.missed_punch_check_time || null,
                     policy_rules: s.policy_rules || {},
                     is_active: s.is_active !== 0
                 }));
@@ -221,7 +219,6 @@ const ShiftManagement = ({ embedded = false }) => {
                 grace: editingShift.grace ?? 0, otThreshold: editingShift.otThreshold || 8.0,
                 otMaxHours: normalizeUiMaxOtHours(editingShift.otMaxHours),
                 correctionDeadline: editingShift.correctionDeadline ?? 2,
-                missedPunchCheckTime: editingShift.missedPunchCheckTime || null,
                 reqEntrySelfie: !!rules.entry_requirements?.selfie,
                 reqEntryGeofence: true, // GPS is mandatory
                 reqExitSelfie: !!rules.exit_requirements?.selfie,
@@ -239,7 +236,6 @@ const ShiftManagement = ({ embedded = false }) => {
         } else if (showShiftForm && !editingShift) {
             setShiftForm({ 
                 name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
-                missedPunchCheckTime: null,
                 reqEntrySelfie: true, reqEntryGeofence: true, reqExitSelfie: false, reqExitGeofence: true, // GPS is mandatory
                 checkpointEnabled: true, reqCheckpointSelfie: false,
                 workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], weekOffRules: [], halfDayRules: [],
@@ -276,7 +272,7 @@ const ShiftManagement = ({ embedded = false }) => {
                 max_overtime: maxOvertime
             },
             correction_deadline: parseInt(shiftForm.correctionDeadline) || 2,
-            missed_punch_check_time: shiftForm.missedPunchCheckTime || null,
+            missed_punch_check_time: null,
             entry_requirements: { selfie: shiftForm.reqEntrySelfie, geofence: true }, // GPS is mandatory
             exit_requirements: { selfie: shiftForm.reqExitSelfie, geofence: true }, // GPS is mandatory
             checkpoint_requirements: {
@@ -351,7 +347,11 @@ const ShiftManagement = ({ embedded = false }) => {
     const otThresholdMin = otThresholdMins % 60;
 
     const handleOtThresholdChange = (hr, min) => {
-        const totalMinutes = (parseInt(hr) || 0) * 60 + (parseInt(min) || 0);
+        const shiftDurationMins = getShiftDurationMinutes(shiftForm.start, shiftForm.end);
+        let totalMinutes = (parseInt(hr) || 0) * 60 + (parseInt(min) || 0);
+        if (totalMinutes < shiftDurationMins) {
+            totalMinutes = shiftDurationMins;
+        }
         const decimal = parseFloat((totalMinutes / 60).toFixed(2));
         setShiftForm(prev => ({ ...prev, otThreshold: decimal }));
     };

@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import { normalizeMaxOvertimeHours } from '../../modules/shifts/shiftService.js';
+import { isTimeInShiftRange } from '../../utils/dateUtils.js';
 import { cacheService } from '../cache/cacheService.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js
@@ -957,6 +958,12 @@ export const createShift = async (shiftData, orgId) => {
         }
     };
 
+    if (finalRules.missed_punch_check_time && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
+        if (isTimeInShiftRange(finalRules.missed_punch_check_time, finalRules.shift_timing.start_time, finalRules.shift_timing.end_time)) {
+            throw new AppError(`"Flag as Missed Punch After" (${finalRules.missed_punch_check_time}) cannot fall within shift working hours (${finalRules.shift_timing.start_time} - ${finalRules.shift_timing.end_time}).`, 400);
+        }
+    }
+
     const [newId] = await attendanceDB("org_shifts").insert({
         org_id,
         shift_name,
@@ -1040,6 +1047,12 @@ export const updateShift = async (shiftId, shiftData, orgId) => {
             selfie: checkpointReq.selfie !== undefined ? Boolean(checkpointReq.selfie) : false
         }
     };
+
+    if (finalRules.missed_punch_check_time && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
+        if (isTimeInShiftRange(finalRules.missed_punch_check_time, finalRules.shift_timing.start_time, finalRules.shift_timing.end_time)) {
+            throw new AppError(`"Flag as Missed Punch After" (${finalRules.missed_punch_check_time}) cannot fall within shift working hours (${finalRules.shift_timing.start_time} - ${finalRules.shift_timing.end_time}).`, 400);
+        }
+    }
 
     const updates = {
         shift_name: shiftData.shift_name !== undefined ? shiftData.shift_name : existing.shift_name,

@@ -76,7 +76,6 @@ const ShiftManagement = ({ embedded = false }) => {
     const [newOtThreshold, setNewOtThreshold] = useState('8.0');
     const [newOtMaxHours, setNewOtMaxHours] = useState(String(DEFAULT_MAX_OT_HOURS));
     const [newCorrectionDeadline, setNewCorrectionDeadline] = useState('2');
-    const [newMissedPunchCheckTime, setNewMissedPunchCheckTime] = useState(null);
     const [newValCheckInGps, setNewValCheckInGps] = useState(true);
     const [newValCheckInSelfie, setNewValCheckInSelfie] = useState(true);
     const [newValCheckOutGps, setNewValCheckOutGps] = useState(false);
@@ -147,7 +146,6 @@ const ShiftManagement = ({ embedded = false }) => {
                     otThreshold: parseFloat(s.overtime_threshold_hours || 8.0),
                     otMaxHours: normalizeUiMaxOtHours(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime),
                     correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 2),
-                    missedPunchCheckTime: s.policy_rules?.missed_punch_check_time || null,
                     color: 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400',
                     isActive: s.is_active !== undefined ? !!s.is_active : (s.policy_rules?.is_active !== undefined ? !!s.policy_rules.is_active : true),
                     policy_rules: s.policy_rules || {},
@@ -239,7 +237,6 @@ const ShiftManagement = ({ embedded = false }) => {
         setNewOtThreshold('8.0');
         setNewOtMaxHours(String(DEFAULT_MAX_OT_HOURS));
         setNewCorrectionDeadline('2');
-        setNewMissedPunchCheckTime(null);
         setNewValCheckInGps(true);
         setNewValCheckInSelfie(true);
         setNewValCheckOutGps(true); // GPS is mandatory
@@ -267,7 +264,6 @@ const ShiftManagement = ({ embedded = false }) => {
         setNewOtThreshold(selectedShift.otThreshold.toString());
         setNewOtMaxHours(String(normalizeUiMaxOtHours(selectedShift.otMaxHours)));
         setNewCorrectionDeadline(selectedShift.correctionDeadline.toString());
-        setNewMissedPunchCheckTime(selectedShift.missedPunchCheckTime || null);
         setNewValCheckInGps(true); // GPS is mandatory
         setNewValCheckInSelfie(rules.entry_requirements?.selfie ?? true);
         setNewValCheckOutGps(true); // GPS is mandatory
@@ -338,7 +334,7 @@ const ShiftManagement = ({ embedded = false }) => {
             grace_period: { minutes: parseInt(newGracePeriod) || 0 },
             overtime: { enabled: newOvertime, threshold: parseFloat(newOtThreshold) || 0, max_overtime: maxOvertime },
             correction_deadline: parseInt(newCorrectionDeadline) || 2,
-            missed_punch_check_time: newMissedPunchCheckTime || null,
+            missed_punch_check_time: null,
             entry_requirements: { selfie: newValCheckInSelfie, geofence: true }, // GPS is mandatory
             exit_requirements: { selfie: newValCheckOutSelfie, geofence: true }, // GPS is mandatory
             checkpoint_requirements: {
@@ -625,13 +621,6 @@ const ShiftManagement = ({ embedded = false }) => {
                                                      <p className="text-[10px] text-slate-400 mt-1 font-medium italic">Threshold: {formatDecimalHours(selectedShift.otThreshold)} | Max: {formatDecimalHours(Number.isFinite(selectedShift.otMaxHours) ? selectedShift.otMaxHours : DEFAULT_MAX_OT_HOURS)}</p>
                                                 )}
                                             </div>
-                                        </div>
-                                        <div className="flex justify-between items-center pt-3">
-                                            <div className="flex items-center gap-2">
-                                                <AlertTriangle size={16} className="text-amber-500" />
-                                                <span className="text-sm font-semibold text-slate-600 dark:text-github-dark-muted">Missed Punch After</span>
-                                            </div>
-                                            <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle px-3 py-1 rounded-full shadow-sm border border-slate-100 dark:border-github-dark-border">{selectedShift.missedPunchCheckTime || 'Auto (+8h)'}</span>
                                         </div>
                                     </div>
 
@@ -1032,16 +1021,6 @@ const ShiftManagement = ({ embedded = false }) => {
                                                             </div>
                                                         </div>
                                                         <p className="text-[9px] text-slate-400 ml-1">Below this, no Overtime label. Credited OT still counts from the shift's own {calculateDuration(newStartTime, newEndTime)} duration, and can't go below it.</p>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Flag Missed Punch After</label>
-                                                        <input
-                                                            type="time"
-                                                            value={newMissedPunchCheckTime || ''}
-                                                            onChange={(e) => setNewMissedPunchCheckTime(e.target.value || null)}
-                                                            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-2 text-xs font-bold text-slate-800 dark:text-github-dark-text"
-                                                        />
-                                                        <p className="text-[9px] text-slate-400 ml-1">Blank = shift end + 8h. Never blocks checkout early.</p>
                                                     </div>
                                                     <div className="space-y-1 col-span-2">
                                                         <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Maximum Overtime Allowed</label>

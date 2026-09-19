@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { getShiftDurationMinutes } from '../../../utils/dateUtils';
 
 export const ToggleSwitch = ({ checked, onChange, disabled = false, color = 'emerald' }) => {
     const activeColorClasses = {
@@ -60,32 +61,61 @@ export const ThemedTimeStepper = ({
     minutes,
     onHoursChange,
     onMinutesChange,
+    onValueChange,
     maxHours = 23,
+    minTotalMinutes = 0,
     hourLabel = 'h',
     minuteLabel = 'm'
 }) => {
+    const currentTotal = (Number(hours) || 0) * 60 + (Number(minutes) || 0);
+    const canDecrease = currentTotal > minTotalMinutes;
+
+    const emitChange = (newHr, newMin) => {
+        let total = newHr * 60 + newMin;
+        if (total < minTotalMinutes) {
+            newHr = Math.floor(minTotalMinutes / 60);
+            newMin = minTotalMinutes % 60;
+        }
+        if (onValueChange) {
+            onValueChange(newHr, newMin);
+        } else {
+            if (newHr !== hours) onHoursChange(newHr);
+            if (newMin !== minutes) onMinutesChange(newMin);
+        }
+    };
+
     return (
         <div className="inline-flex items-center h-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 shadow-2xs focus-within:ring-2 focus-within:ring-indigo-500/30 focus-within:border-indigo-500 transition-all select-none">
             {/* Hours */}
             <div className="flex items-center">
                 <input
                     type="number"
-                    min={0}
+                    min={Math.floor(minTotalMinutes / 60)}
                     max={maxHours}
                     value={hours}
                     onChange={e => {
                         const val = parseInt(e.target.value, 10);
-                        onHoursChange(isNaN(val) ? 0 : Math.max(0, Math.min(maxHours, val)));
+                        if (isNaN(val)) return;
+                        const targetHr = Math.max(0, Math.min(maxHours, val));
+                        emitChange(targetHr, minutes);
+                    }}
+                    onBlur={() => {
+                        if (currentTotal < minTotalMinutes) {
+                            emitChange(Math.floor(minTotalMinutes / 60), minTotalMinutes % 60);
+                        }
                     }}
                     onKeyDown={e => {
                         if (e.key === 'ArrowUp') {
                             e.preventDefault();
                             const step = e.shiftKey ? 5 : 1;
-                            onHoursChange(Math.min(maxHours, (Number(hours) || 0) + step));
+                            emitChange(Math.min(maxHours, (Number(hours) || 0) + step), minutes);
                         } else if (e.key === 'ArrowDown') {
                             e.preventDefault();
                             const step = e.shiftKey ? 5 : 1;
-                            onHoursChange(Math.max(0, (Number(hours) || 0) - step));
+                            const targetHr = (Number(hours) || 0) - step;
+                            let targetTotal = targetHr * 60 + minutes;
+                            if (targetTotal < minTotalMinutes) targetTotal = minTotalMinutes;
+                            emitChange(Math.floor(targetTotal / 60), targetTotal % 60);
                         }
                     }}
                     title="Hours (Press Arrow Up/Down to adjust, Shift for ±5h)"
@@ -106,17 +136,27 @@ export const ThemedTimeStepper = ({
                     value={minutes}
                     onChange={e => {
                         const val = parseInt(e.target.value, 10);
-                        onMinutesChange(isNaN(val) ? 0 : Math.max(0, Math.min(59, val)));
+                        if (isNaN(val)) return;
+                        const targetMin = Math.max(0, Math.min(59, val));
+                        emitChange(hours, targetMin);
+                    }}
+                    onBlur={() => {
+                        if (currentTotal < minTotalMinutes) {
+                            emitChange(Math.floor(minTotalMinutes / 60), minTotalMinutes % 60);
+                        }
                     }}
                     onKeyDown={e => {
                         if (e.key === 'ArrowUp') {
                             e.preventDefault();
                             const step = e.shiftKey ? 15 : 1;
-                            onMinutesChange(Math.min(59, (Number(minutes) || 0) + step));
+                            let nextTotal = currentTotal + step;
+                            if (nextTotal > maxHours * 60 + 59) nextTotal = maxHours * 60 + 59;
+                            emitChange(Math.floor(nextTotal / 60), nextTotal % 60);
                         } else if (e.key === 'ArrowDown') {
                             e.preventDefault();
                             const step = e.shiftKey ? 15 : 1;
-                            onMinutesChange(Math.max(0, (Number(minutes) || 0) - step));
+                            let nextTotal = Math.max(minTotalMinutes, currentTotal - step);
+                            emitChange(Math.floor(nextTotal / 60), nextTotal % 60);
                         }
                     }}
                     title="Minutes (Press Arrow Up/Down to adjust, Shift for ±15m)"
@@ -131,12 +171,9 @@ export const ThemedTimeStepper = ({
                     type="button"
                     tabIndex={-1}
                     onClick={() => {
-                        if (minutes < 55) {
-                            onMinutesChange(minutes + 5);
-                        } else {
-                            onMinutesChange(0);
-                            onHoursChange(Math.min(maxHours, hours + 1));
-                        }
+                        let nextTotal = currentTotal + 5;
+                        if (nextTotal > maxHours * 60 + 59) nextTotal = maxHours * 60 + 59;
+                        emitChange(Math.floor(nextTotal / 60), nextTotal % 60);
                     }}
                     className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors leading-none p-0.5"
                     aria-label="Increase"
@@ -148,14 +185,92 @@ export const ThemedTimeStepper = ({
                 <button
                     type="button"
                     tabIndex={-1}
+                    disabled={!canDecrease}
                     onClick={() => {
-                        if (minutes >= 5) {
-                            onMinutesChange(minutes - 5);
-                        } else if (hours > 0) {
-                            onMinutesChange(55);
-                            onHoursChange(hours - 1);
+                        if (!canDecrease) return;
+                        let nextTotal = Math.max(minTotalMinutes, currentTotal - 5);
+                        emitChange(Math.floor(nextTotal / 60), nextTotal % 60);
+                    }}
+                    className={`p-0.5 transition-colors leading-none ${
+                        canDecrease
+                            ? 'text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer'
+                            : 'text-slate-300 dark:text-slate-600 opacity-30 cursor-not-allowed'
+                    }`}
+                    aria-label="Decrease"
+                >
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    );
+};
+
+export const ThemedUnitStepper = ({
+    value,
+    onChange,
+    min = 0,
+    max = 999,
+    step = 1,
+    unit = 'm',
+    title = 'Value'
+}) => {
+    const numVal = parseInt(value, 10);
+    const safeVal = isNaN(numVal) ? min : numVal;
+
+    return (
+        <div className="inline-flex items-center h-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 shadow-2xs focus-within:ring-2 focus-within:ring-indigo-500/30 focus-within:border-indigo-500 transition-all select-none">
+            {/* Input Value */}
+            <div className="flex items-center">
+                <input
+                    type="number"
+                    min={min}
+                    max={max}
+                    value={isNaN(numVal) ? '' : numVal}
+                    onChange={e => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                            onChange(min);
+                            return;
+                        }
+                        const val = parseInt(raw, 10);
+                        onChange(isNaN(val) ? min : Math.max(min, Math.min(max, val)));
+                    }}
+                    onKeyDown={e => {
+                        if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            const s = e.shiftKey ? step * 5 : step;
+                            onChange(Math.min(max, safeVal + s));
+                        } else if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            const s = e.shiftKey ? step * 5 : step;
+                            onChange(Math.max(min, safeVal - s));
                         }
                     }}
+                    title={`${title} (Press Arrow Up/Down to adjust)`}
+                    className="w-7 text-xs font-semibold text-center bg-transparent text-slate-800 dark:text-slate-100 focus:outline-hidden [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="text-[11px] font-medium text-slate-400 select-none ml-0.5">{unit}</span>
+            </div>
+
+            {/* Themed Micro Stepper Buttons */}
+            <div className="flex flex-col border-l border-slate-200 dark:border-slate-700 pl-1.5 ml-1.5 -mr-0.5">
+                <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => onChange(Math.min(max, safeVal + step))}
+                    className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors leading-none p-0.5"
+                    aria-label="Increase"
+                >
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => onChange(Math.max(min, safeVal - step))}
                     className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors leading-none p-0.5"
                     aria-label="Decrease"
                 >
@@ -212,6 +327,21 @@ const ShiftFormDrawer = ({
         const m = d % 60;
         return `${h}h ${m > 0 ? `${m}m` : '00m'}`;
     };
+
+    const shiftDurationMins = getShiftDurationMinutes(shiftForm.start, shiftForm.end);
+
+    // Dynamic guard: Overtime threshold cannot be below the shift's actual duration
+    useEffect(() => {
+        if (shiftForm.start && shiftForm.end) {
+            const currentOtMins = Math.round((parseFloat(shiftForm.otThreshold) || 0) * 60);
+            if (currentOtMins < shiftDurationMins) {
+                const minDecimal = parseFloat((shiftDurationMins / 60).toFixed(2));
+                setShiftForm(prev => ({ ...prev, otThreshold: minDecimal }));
+            }
+        }
+    }, [shiftForm.start, shiftForm.end, shiftDurationMins, shiftForm.otThreshold, setShiftForm]);
+
+
 
     // 1-Click Schedule Presets
     const applySchedulePreset = (preset) => {
@@ -345,19 +475,6 @@ const ShiftFormDrawer = ({
                         onChange={e => setShiftForm({ ...shiftForm, name: e.target.value })}
                         placeholder="e.g. General Shift, Morning Shift, Night Shift"
                         className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text transition-all"
-                    />
-                </div>
-
-                {/* 2. Shift Active Status */}
-                <div className="p-4 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border shadow-2xs">
-                    <ToggleRow
-                        label="Shift Status"
-                        subLabel="When active, employees can be assigned to and clock in for this shift"
-                        checked={shiftForm.is_active}
-                        onChange={e => setShiftForm(p => ({ ...p, is_active: e.target.checked }))}
-                        color="emerald"
-                        activeText="Active"
-                        inactiveText="Inactive"
                     />
                 </div>
 
@@ -612,27 +729,6 @@ const ShiftFormDrawer = ({
                                     Days allowed for staff to request missed punch corrections.
                                 </p>
                             </div>
-
-                            {/* Missed Punch Check Time */}
-                            <div className="p-3.5 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                        Flag as Missed Punch After
-                                    </label>
-                                    <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
-                                        {shiftForm.missedPunchCheckTime || 'Auto (Shift End + 8h)'}
-                                    </span>
-                                </div>
-                                <input
-                                    type="time"
-                                    value={shiftForm.missedPunchCheckTime || ''}
-                                    onChange={e => setShiftForm({ ...shiftForm, missedPunchCheckTime: e.target.value || null })}
-                                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-normal text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                />
-                                <p className="text-[10px] text-slate-400 font-normal">
-                                    Leave blank to default to 8 hours after shift end. Employees are never blocked from checking out before this time — it only controls when an open session gets auto-flagged as a possible forgotten checkout.
-                                </p>
-                            </div>
                         </div>
 
                         {/* B. Overtime Tracking */}
@@ -710,10 +806,7 @@ const ShiftFormDrawer = ({
                                             </div>
                                         </div>
                                         <p className="text-[10px] text-slate-400 font-normal">
-                                            Work hours below this won't be labeled Overtime. Once crossed, credited OT is still counted from the shift's own {calculateDuration(shiftForm.start, shiftForm.end)} duration, not from this trigger point.
-                                        </p>
-                                        <p className="text-[10px] text-slate-400 font-normal">
-                                            Can't be set below the shift's own {calculateDuration(shiftForm.start, shiftForm.end)} duration — a lower value is automatically raised to match.
+                                            Work hours below this won't be labeled Overtime.
                                         </p>
                                     </div>
 

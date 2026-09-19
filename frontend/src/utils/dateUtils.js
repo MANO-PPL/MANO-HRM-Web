@@ -59,6 +59,39 @@ export const formatLocalTimeString = (timeVal) => {
     }
 };
 
+/**
+ * Checks whether a given time string (HH:MM) falls inside a shift's working hours [start_time, end_time].
+ * Handles both normal daytime shifts (e.g. 09:00 - 18:00) and overnight shifts crossing midnight (e.g. 22:00 - 06:00).
+ *
+ * @param {string} checkTime - Time to check (e.g. "16:00")
+ * @param {string} startTime - Shift start time (e.g. "09:00")
+ * @param {string} endTime - Shift end time (e.g. "18:00")
+ * @returns {boolean} True if checkTime falls within the shift working window
+ */
+export const isTimeInShiftRange = (checkTime, startTime, endTime) => {
+    if (!checkTime || !startTime || !endTime) return false;
+    const toMins = (t) => {
+        if (!t || typeof t !== 'string') return null;
+        const [h, m] = t.slice(0, 5).split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
+    };
+    const c = toMins(checkTime);
+    const s = toMins(startTime);
+    const e = toMins(endTime);
+    if (c === null || s === null || e === null) return false;
+
+    if (s < e) {
+        // Daytime shift (e.g. 09:00 to 18:00)
+        return c >= s && c <= e;
+    } else if (s > e) {
+        // Overnight shift crossing midnight (e.g. 22:00 to 06:00)
+        return c >= s || c <= e;
+    } else {
+        // Exact same start and end (24h or single point)
+        return c === s;
+    }
+};
 
 /**
  * Calculates the total duration in minutes of a shift given start and end time strings.
@@ -82,3 +115,5 @@ export const getShiftDurationMinutes = (startTime, endTime) => {
     if (diff <= 0) diff += 24 * 60;
     return diff;
 };
+
+

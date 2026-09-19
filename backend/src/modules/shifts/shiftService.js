@@ -2,7 +2,7 @@ import { attendanceDB } from '../../config/database.js';
 import { cacheService } from '../../services/cache/cacheService.js';
 import { verifyUserGeofence } from './geofencing.js';
 import { parseBool, safeJsonParse } from '../../utils/dataUtils.js';
-import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes, timeToMinutes, minutesToTime, getShiftDurationMinutes } from '../../utils/dateUtils.js';
+import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes, timeToMinutes, minutesToTime, isTimeInShiftRange, getShiftDurationMinutes } from '../../utils/dateUtils.js';
 
 export const DEFAULT_MAX_OVERTIME_HOURS = 3;
 
@@ -123,6 +123,11 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
         },
     };
 
+    if (finalRules.missed_punch_check_time && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
+        if (isTimeInShiftRange(finalRules.missed_punch_check_time, finalRules.shift_timing.start_time, finalRules.shift_timing.end_time)) {
+            throw new Error(`"Flag as Missed Punch After" (${finalRules.missed_punch_check_time}) cannot fall within shift working hours (${finalRules.shift_timing.start_time} - ${finalRules.shift_timing.end_time}).`);
+        }
+    }
 
     if (finalRules.overtime?.enabled && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
         const shiftDurationMins = getShiftDurationMinutes(finalRules.shift_timing.start_time, finalRules.shift_timing.end_time);
@@ -225,6 +230,11 @@ export async function updateShift({ shift_id, org_id, shift_name, is_active, pol
         }
     };
 
+    if (finalRules.missed_punch_check_time && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
+        if (isTimeInShiftRange(finalRules.missed_punch_check_time, finalRules.shift_timing.start_time, finalRules.shift_timing.end_time)) {
+            throw new Error(`"Flag as Missed Punch After" (${finalRules.missed_punch_check_time}) cannot fall within shift working hours (${finalRules.shift_timing.start_time} - ${finalRules.shift_timing.end_time}).`);
+        }
+    }
 
     if (finalRules.overtime?.enabled && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
         const shiftDurationMins = getShiftDurationMinutes(finalRules.shift_timing.start_time, finalRules.shift_timing.end_time);
