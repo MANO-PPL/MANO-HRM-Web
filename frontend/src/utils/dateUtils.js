@@ -59,3 +59,26 @@ export const formatLocalTimeString = (timeVal) => {
     }
 };
 
+
+/**
+ * Calculates the total duration in minutes of a shift given start and end time strings.
+ * Handles overnight shifts crossing midnight (e.g. 22:00 to 06:00 -> 480 mins).
+ *
+ * @param {string} startTime - e.g. "09:00"
+ * @param {string} endTime - e.g. "18:00"
+ * @returns {number} Duration in minutes
+ */
+export const getShiftDurationMinutes = (startTime, endTime) => {
+    if (!startTime || !endTime) return 480; // default 8 hours
+    const toMins = (t) => {
+        if (!t || typeof t !== 'string') return 0;
+        const [h, m] = t.slice(0, 5).split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return 0;
+        return h * 60 + m;
+    };
+    const s = toMins(startTime);
+    const e = toMins(endTime);
+    let diff = e - s;
+    if (diff <= 0) diff += 24 * 60;
+    return diff;
+};

@@ -287,3 +287,23 @@ export function calculateDurationHours(start, end) {
     return parseFloat((diff / (1000 * 60 * 60)).toFixed(2));
 }
 
+
+/**
+ * Calculates the total duration of a shift in minutes from start and end times (HH:MM or HH:MM:SS).
+ * Handles overnight shifts crossing midnight seamlessly.
+ *
+ * @param {string} startTime - e.g. "09:00"
+ * @param {string} endTime - e.g. "18:00"
+ * @returns {number} Duration in minutes
+ */
+export function getShiftDurationMinutes(startTime, endTime) {
+    if (!startTime || !endTime) return 0;
+    const s = timeToMinutes(startTime);
+    const e = timeToMinutes(endTime);
+    if (s === null || e === null) return 0;
+    if (e >= s) {
+        return e - s;
+    } else {
+        return (24 * 60 - s) + e;
+    }
+}

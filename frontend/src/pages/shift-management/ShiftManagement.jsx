@@ -11,6 +11,7 @@ import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
 import { useTour } from '../../context/TourContext';
 import { buildPolicy, parsePolicy } from '../../utils/weekOffPolicy';
+import { getShiftDurationMinutes } from '../../utils/dateUtils';
 import ShiftDirectory from './components/ShiftDirectory';
 import ShiftDetailsPanel from './components/ShiftDetailsPanel';
 import ShiftStaffAssignment from './components/ShiftStaffAssignment';
@@ -253,6 +254,14 @@ const ShiftManagement = ({ embedded = false }) => {
     // ── HANDLERS ─────────────────────────────────────────────────────────────
     const handleSaveShift = async (e) => {
         e.preventDefault();
+        if (isOtEnabled) {
+            const shiftDurationMins = getShiftDurationMinutes(shiftForm.start, shiftForm.end);
+            const otMins = Math.round((parseFloat(shiftForm.otThreshold) || 0) * 60);
+            if (otMins < shiftDurationMins) {
+                toast.error(`Overtime trigger cannot be set below the shift's duration (${calculateDuration(shiftForm.start, shiftForm.end)}).`);
+                return;
+            }
+        }
         const baseRules = editingShift ? (editingShift.policy_rules || {}) : {};
         const week_off_policy = buildPolicy(shiftForm.workingDays, shiftForm.weekOffRules, shiftForm.halfDayRules);
         const maxOvertime = normalizeUiMaxOtHours(shiftForm.otMaxHours);

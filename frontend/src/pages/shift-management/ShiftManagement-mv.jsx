@@ -30,6 +30,7 @@ import { adminService } from '../../services/adminService';
 import { buildPolicy, parsePolicy } from '../../utils/weekOffPolicy';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
+import { getShiftDurationMinutes } from '../../utils/dateUtils';
 
 const DEFAULT_MAX_OT_HOURS = 3;
 
@@ -87,6 +88,18 @@ const ShiftManagement = ({ embedded = false }) => {
     const [newHalfDayRules, setNewHalfDayRules] = useState([]);
     const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
+    // Dynamic guard: Overtime threshold cannot be below the shift's actual duration
+    useEffect(() => {
+        if (newStartTime && newEndTime) {
+            const shiftDurationMins = getShiftDurationMinutes(newStartTime, newEndTime);
+            const currentOtMins = Math.round((parseFloat(newOtThreshold) || 0) * 60);
+            if (currentOtMins < shiftDurationMins) {
+                const minDecimal = parseFloat((shiftDurationMins / 60).toFixed(2));
+                setNewOtThreshold(minDecimal.toString());
+            }
+        }
+    }, [newStartTime, newEndTime, newOtThreshold]);
+
     // Helpers
     const formatDecimalHours = (val) => {
         const totalMinutes = Math.round((parseFloat(val) || 0) * 60);
@@ -101,7 +114,11 @@ const ShiftManagement = ({ embedded = false }) => {
     const otThresholdMin = otThresholdMins % 60;
 
     const handleOtThresholdChange = (hr, min) => {
-        const totalMinutes = (parseInt(hr) || 0) * 60 + (parseInt(min) || 0);
+        const shiftDurationMins = getShiftDurationMinutes(newStartTime, newEndTime);
+        let totalMinutes = (parseInt(hr) || 0) * 60 + (parseInt(min) || 0);
+        if (totalMinutes < shiftDurationMins) {
+            totalMinutes = shiftDurationMins;
+        }
         const decimal = parseFloat((totalMinutes / 60).toFixed(2));
         setNewOtThreshold(decimal.toString());
     };
@@ -304,6 +321,14 @@ const ShiftManagement = ({ embedded = false }) => {
     };
 
     const handleSaveShift = async () => {
+        if (newOvertime) {
+            const shiftDurationMins = getShiftDurationMinutes(newStartTime, newEndTime);
+            const otMins = Math.round((parseFloat(newOtThreshold) || 0) * 60);
+            if (otMins < shiftDurationMins) {
+                toast.error(`Overtime trigger cannot be set below the shift's duration (${calculateDuration(newStartTime, newEndTime)}).`);
+                return;
+            }
+        }
         const baseRules = isEditing ? (selectedShift.policy_rules || {}) : {};
         const week_off_policy = buildPolicy(newWorkingDays, newWeekOffRules, newHalfDayRules);
         const maxOvertime = normalizeUiMaxOtHours(newOtMaxHours);

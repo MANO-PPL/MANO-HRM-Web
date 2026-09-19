@@ -626,16 +626,30 @@ const ShiftFormDrawer = ({
                                         <div className="flex flex-wrap items-center justify-between gap-2">
                                             <div className="flex flex-wrap gap-1.5">
                                                 {[
-                                                    { label: 'Shift End', hr: Math.floor((parseFloat(shiftForm.otThreshold) || 8)), min: 0 },
-                                                    { label: '8 hours', hr: 8, min: 0 },
-                                                    { label: '8h 30m', hr: 8, min: 30 },
-                                                    { label: '9 hours', hr: 9, min: 0 },
-                                                    { label: '9h 30m', hr: 9, min: 30 }
+                                                    {
+                                                        label: 'Shift End',
+                                                        hr: Math.floor(shiftDurationMins / 60),
+                                                        min: shiftDurationMins % 60,
+                                                        title: `Shift End (${calculateDuration(shiftForm.start, shiftForm.end)})`
+                                                    },
+                                                    {
+                                                        label: '+15 mins',
+                                                        hr: Math.floor((shiftDurationMins + 15) / 60),
+                                                        min: (shiftDurationMins + 15) % 60,
+                                                        title: `15m after shift end (${Math.floor((shiftDurationMins + 15) / 60)}h ${(shiftDurationMins + 15) % 60 > 0 ? `${(shiftDurationMins + 15) % 60}m` : '00m'})`
+                                                    },
+                                                    {
+                                                        label: '+30 mins',
+                                                        hr: Math.floor((shiftDurationMins + 30) / 60),
+                                                        min: (shiftDurationMins + 30) % 60,
+                                                        title: `30m after shift end (${Math.floor((shiftDurationMins + 30) / 60)}h ${(shiftDurationMins + 30) % 60 > 0 ? `${(shiftDurationMins + 30) % 60}m` : '00m'})`
+                                                    }
                                                 ].map((preset, i) => (
                                                     <button
                                                         key={i}
                                                         type="button"
                                                         onClick={() => handleOtThresholdChange(preset.hr, preset.min)}
+                                                        title={preset.title}
                                                         className={`h-8 inline-flex items-center px-2.5 text-[11px] font-medium rounded-lg border transition-colors cursor-pointer ${
                                                             otThresholdHr === preset.hr && otThresholdMin === preset.min
                                                                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
@@ -653,6 +667,8 @@ const ShiftFormDrawer = ({
                                                     minutes={otThresholdMin}
                                                     onHoursChange={newHr => handleOtThresholdChange(newHr, otThresholdMin)}
                                                     onMinutesChange={newMin => handleOtThresholdChange(otThresholdHr, newMin)}
+                                                    onValueChange={(newHr, newMin) => handleOtThresholdChange(newHr, newMin)}
+                                                    minTotalMinutes={shiftDurationMins}
                                                     maxHours={23}
                                                 />
                                             </div>

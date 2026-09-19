@@ -2,7 +2,7 @@ import { attendanceDB } from '../../config/database.js';
 import { cacheService } from '../../services/cache/cacheService.js';
 import { verifyUserGeofence } from './geofencing.js';
 import { parseBool, safeJsonParse } from '../../utils/dataUtils.js';
-import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes, timeToMinutes, minutesToTime } from '../../utils/dateUtils.js';
+import { DAY_NAMES, getWeekdayOccurrence, diffTimesInMinutes, timeToMinutes, minutesToTime, getShiftDurationMinutes } from '../../utils/dateUtils.js';
 
 export const DEFAULT_MAX_OVERTIME_HOURS = 3;
 
@@ -123,6 +123,15 @@ export async function createShift({ org_id, shift_name, start_time, end_time, gr
         },
     };
 
+
+    if (finalRules.overtime?.enabled && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
+        const shiftDurationMins = getShiftDurationMinutes(finalRules.shift_timing.start_time, finalRules.shift_timing.end_time);
+        const thresholdMins = Math.round((Number(finalRules.overtime.threshold) || 0) * 60);
+        if (thresholdMins < shiftDurationMins) {
+            throw new Error(`Overtime trigger cannot be set below the shift duration (${shiftDurationMins} minutes).`);
+        }
+    }
+
     const [id] = await attendanceDB('org_shifts').insert({
         org_id,
         shift_name,
@@ -215,6 +224,15 @@ export async function updateShift({ shift_id, org_id, shift_name, is_active, pol
             selfie: checkpointReq.selfie !== undefined ? Boolean(checkpointReq.selfie) : false
         }
     };
+
+
+    if (finalRules.overtime?.enabled && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
+        const shiftDurationMins = getShiftDurationMinutes(finalRules.shift_timing.start_time, finalRules.shift_timing.end_time);
+        const thresholdMins = Math.round((Number(finalRules.overtime.threshold) || 0) * 60);
+        if (thresholdMins < shiftDurationMins) {
+            throw new Error(`Overtime trigger cannot be set below the shift duration (${shiftDurationMins} minutes).`);
+        }
+    }
 
     const updates = {
         shift_name: shift_name !== undefined ? shift_name : existing.shift_name,
