@@ -124,7 +124,7 @@ const ShiftManagement = ({ embedded = false }) => {
                     id: s.shift_id, name: s.shift_name,
                     start: (s.start_time || '09:00').substring(0, 5),
                     end: (s.end_time || '18:00').substring(0, 5),
-                    grace: s.grace_period_mins,
+                    grace: s.grace_period_mins ?? 0,
                     overtime: !!s.is_overtime_enabled,
                     otThreshold: parseFloat(s.overtime_threshold_hours),
                     otMaxHours: normalizeUiMaxOtHours(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime),
@@ -218,7 +218,7 @@ const ShiftManagement = ({ embedded = false }) => {
             const parsed = parsePolicy(rules.week_off_policy || rules.week_off || []);
             setShiftForm({
                 name: editingShift.name, start: editingShift.start, end: editingShift.end,
-                grace: editingShift.grace, otThreshold: editingShift.otThreshold || 8.0,
+                grace: editingShift.grace ?? 0, otThreshold: editingShift.otThreshold || 8.0,
                 otMaxHours: normalizeUiMaxOtHours(editingShift.otMaxHours),
                 correctionDeadline: editingShift.correctionDeadline ?? 2,
                 missedPunchCheckTime: editingShift.missedPunchCheckTime || null,

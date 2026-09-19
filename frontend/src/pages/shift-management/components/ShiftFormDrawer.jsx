@@ -522,24 +522,42 @@ const ShiftFormDrawer = ({
                                         Late Grace Period
                                     </label>
                                     <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
-                                        {shiftForm.grace || 0} mins
+                                        {Number(shiftForm.grace) > 0 ? `${shiftForm.grace} mins` : 'None'}
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-1.5">
-                                    {[0, 5, 10, 15, 30].map(m => (
-                                        <button
-                                            key={m}
-                                            type="button"
-                                            onClick={() => setShiftForm({ ...shiftForm, grace: m })}
-                                            className={`flex-1 py-1 text-[11px] font-medium rounded-md border cursor-pointer transition-colors ${
-                                                Number(shiftForm.grace) === m
-                                                    ? 'bg-indigo-600 text-white border-indigo-600'
-                                                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                                            }`}
-                                        >
-                                            {m === 0 ? 'None' : `${m}m`}
-                                        </button>
-                                    ))}
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5">
+                                        {[
+                                            { label: 'None', val: 0 },
+                                            { label: '10m', val: 10 },
+                                            { label: '15m', val: 15 }
+                                        ].map(p => (
+                                            <button
+                                                key={p.val}
+                                                type="button"
+                                                onClick={() => setShiftForm({ ...shiftForm, grace: p.val })}
+                                                className={`h-8 px-3 text-[11px] font-medium rounded-lg border cursor-pointer transition-colors ${
+                                                    Number(shiftForm.grace || 0) === p.val
+                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                }`}
+                                            >
+                                                {p.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                                        <span className="text-[11px] text-slate-400 font-normal">Custom:</span>
+                                        <ThemedUnitStepper
+                                            value={shiftForm.grace ?? 0}
+                                            onChange={val => setShiftForm(prev => ({ ...prev, grace: val }))}
+                                            min={0}
+                                            max={180}
+                                            step={5}
+                                            unit="m"
+                                            title="Grace period in minutes"
+                                        />
+                                    </div>
                                 </div>
                                 <p className="text-[10px] text-slate-400 font-normal">
                                     Employees checking in within this time won't be marked Late.
@@ -553,24 +571,42 @@ const ShiftFormDrawer = ({
                                         Correction Deadline
                                     </label>
                                     <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
-                                        {shiftForm.correctionDeadline || 2} days
+                                        {shiftForm.correctionDeadline || 2} {Number(shiftForm.correctionDeadline) === 1 ? 'day' : 'days'}
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-1.5">
-                                    {[1, 2, 3, 7, 14].map(d => (
-                                        <button
-                                            key={d}
-                                            type="button"
-                                            onClick={() => setShiftForm({ ...shiftForm, correctionDeadline: d })}
-                                            className={`flex-1 py-1 text-[11px] font-medium rounded-md border cursor-pointer transition-colors ${
-                                                Number(shiftForm.correctionDeadline) === d
-                                                    ? 'bg-indigo-600 text-white border-indigo-600'
-                                                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                                            }`}
-                                        >
-                                            {d}d
-                                        </button>
-                                    ))}
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5">
+                                        {[
+                                            { label: '2d', val: 2 },
+                                            { label: '3d', val: 3 },
+                                            { label: '7d', val: 7 }
+                                        ].map(p => (
+                                            <button
+                                                key={p.val}
+                                                type="button"
+                                                onClick={() => setShiftForm({ ...shiftForm, correctionDeadline: p.val })}
+                                                className={`h-8 px-3 text-[11px] font-medium rounded-lg border cursor-pointer transition-colors ${
+                                                    Number(shiftForm.correctionDeadline) === p.val
+                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                }`}
+                                            >
+                                                {p.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                                        <span className="text-[11px] text-slate-400 font-normal">Custom:</span>
+                                        <ThemedUnitStepper
+                                            value={shiftForm.correctionDeadline ?? 2}
+                                            onChange={val => setShiftForm(prev => ({ ...prev, correctionDeadline: val }))}
+                                            min={1}
+                                            max={90}
+                                            step={1}
+                                            unit="d"
+                                            title="Correction deadline in days"
+                                        />
+                                    </div>
                                 </div>
                                 <p className="text-[10px] text-slate-400 font-normal">
                                     Days allowed for staff to request missed punch corrections.
