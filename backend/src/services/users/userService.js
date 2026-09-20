@@ -26,7 +26,7 @@ const ALLOWED_UPDATE_FIELDS = new Set([
 
 export const getAllUsers = async (orgId, options = false) => {
     const includeWorkLocation = typeof options === 'boolean' ? options : !!options?.includeWorkLocation;
-    const { startDate, endDate, dept_id, desg_id, shift_id, include_inactive } = (typeof options === 'object' && options !== null) ? options : {};
+    const { startDate, endDate, dept_id, desg_id, shift_id, include_inactive, activeOnly } = (typeof options === 'object' && options !== null) ? options : {};
 
     let usersQuery = attendanceDB('core_users as u')
         .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
@@ -78,6 +78,15 @@ export const getAllUsers = async (orgId, options = false) => {
                         .whereRaw('da.user_id = u.user_id')
                         .whereRaw('DATE(da.activity_date) >= ? AND DATE(da.activity_date) <= ?', [startDate, endDate]);
                 });
+        });
+    } else if (!include_inactive && activeOnly) {
+        // Explicit active-only filter, independent of any date range — for contexts like a
+        // filter-option dropdown where there's no specific period to check historical
+        // punch/DAR activity against, so the date-range branch above doesn't apply.
+        usersQuery.where(function () {
+            this.where('u.is_active', 1).orWhere('u.is_active', true);
+        }).andWhere(function () {
+            this.whereNull('u.is_deleted').orWhere('u.is_deleted', 0).orWhere('u.is_deleted', false);
         });
     }
 

@@ -11,6 +11,7 @@ export const getAllUsers = catchAsync(async (req, res, next) => {
     }
 
     const includeWorkLocation = req.query.workLocation === 'true';
+    const activeOnly = req.query.active_only === 'true';
     const { startDate: qStart, endDate: qEnd, month, date, dept_id, desg_id, shift_id } = req.query;
     const orgId = req.user.org_id;
 
@@ -32,7 +33,8 @@ export const getAllUsers = catchAsync(async (req, res, next) => {
         endDate,
         dept_id,
         desg_id,
-        shift_id
+        shift_id,
+        activeOnly
     });
 
     res.json({

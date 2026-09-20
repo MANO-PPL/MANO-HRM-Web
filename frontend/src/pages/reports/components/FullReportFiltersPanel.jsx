@@ -3,10 +3,35 @@ import { ChevronDown, Search, Download, History, User } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import DatePicker from '../../../components/DatePicker';
 
+// Which "Columns to Include" toggle each report type actually reads server-side — traced
+// directly against reportsServices.js/reportsController.js's `colsObj.<key> !== false` checks
+// per type, so the picker never offers a toggle that would silently do nothing for that type.
+const COLUMN_TOGGLE_LABELS = {
+    shift: 'Shift',
+    timeIn: 'Time In',
+    timeOut: 'Time Out',
+    status: 'Status',
+    workedHours: 'Worked Hours',
+    requiredHours: 'Required Hours',
+    late: 'Lateness Info',
+    location: 'Locations',
+    attendanceDays: 'Attendance Summary'
+};
+const REPORT_TYPE_COLUMN_KEYS = {
+    matrix_daily: ['timeIn', 'timeOut', 'status', 'workedHours', 'late'],
+    matrix_weekly: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'requiredHours', 'late', 'location', 'attendanceDays'],
+    matrix_monthly: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'requiredHours', 'late', 'location', 'attendanceDays'],
+    attendance_matrix_weekly: ['shift', 'workedHours', 'requiredHours', 'late', 'attendanceDays'],
+    attendance_matrix_monthly: ['shift', 'workedHours', 'requiredHours', 'late', 'attendanceDays'],
+    attendance_detailed: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'location'],
+    attendance_summary: ['workedHours', 'requiredHours', 'late', 'attendanceDays']
+};
+
 const FullReportFiltersPanel = ({
     isEmployee = false,
     currentUser = null,
     reportTypeOptions,
+    reportTypeGroups,
     tableReportType,
     setTableReportType,
     tableIsTypeDropdownOpen,
@@ -104,21 +129,30 @@ const FullReportFiltersPanel = ({
 
                     {tableIsTypeDropdownOpen && (
                         <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
-                            {reportTypeOptions.map((opt) => (
-                                <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() => {
-                                        setTableReportType(opt.value);
-                                        setTableIsTypeDropdownOpen(false);
-                                    }}
-                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors cursor-pointer ${tableReportType === opt.value
-                                        ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                                        : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
-                                        }`}
-                                >
-                                    {opt.label}
-                                </button>
+                            {(reportTypeGroups || [{ group: null, options: reportTypeOptions }]).map((g, gIdx) => (
+                                <div key={g.group || 'ungrouped'} className={gIdx > 0 ? 'pt-1.5 mt-1.5 border-t border-slate-100 dark:border-github-dark-border' : ''}>
+                                    {g.group && (
+                                        <div className="px-3 pt-1 pb-1 text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-github-dark-muted select-none">
+                                            {g.group}
+                                        </div>
+                                    )}
+                                    {g.options.map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => {
+                                                setTableReportType(opt.value);
+                                                setTableIsTypeDropdownOpen(false);
+                                            }}
+                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors cursor-pointer ${tableReportType === opt.value
+                                                ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                                                : 'text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
                             ))}
                         </div>
                     )}
@@ -522,46 +556,37 @@ const FullReportFiltersPanel = ({
                             className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-semibold text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-all text-left shadow-sm select-none hover:bg-slate-100 dark:hover:bg-[#21262d]"
                         >
                             <span className="truncate">
-                                {Object.values(tableExportColumns).filter(Boolean).length} Columns Selected
+                                {(REPORT_TYPE_COLUMN_KEYS[tableReportType] || []).filter(k => tableExportColumns[k]).length} Columns Selected
                             </span>
                             <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-300 ${tableIsColsDropdownOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {tableIsColsDropdownOpen && (
                             <div className="absolute right-0 mt-1 w-full min-w-[220px] bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-3 space-y-2.5">
-                                {[
-                                    { id: 'timeIn', label: 'Time In' },
-                                    { id: 'timeOut', label: 'Time Out' },
-                                    { id: 'status', label: 'Status' },
-                                    { id: 'workedHours', label: 'Worked Hours' },
-                                    { id: 'requiredHours', label: 'Required Hours' },
-                                    { id: 'late', label: 'Lateness Info' },
-                                    { id: 'location', label: 'Locations' },
-                                    { id: 'attendanceDays', label: 'Attendance Summary' }
-                                ].map((col) => (
+                                {(REPORT_TYPE_COLUMN_KEYS[tableReportType] || []).map((key) => (
                                     <button
-                                        key={col.id}
+                                        key={key}
                                         type="button"
                                         onClick={() => {
                                             setTableExportColumns(prev => ({
                                                 ...prev,
-                                                [col.id]: !prev[col.id]
+                                                [key]: !prev[key]
                                             }));
                                         }}
                                         className="w-full flex items-center gap-2.5 cursor-pointer focus:outline-none group text-left"
                                     >
-                                        <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${tableExportColumns[col.id]
+                                        <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${tableExportColumns[key]
                                             ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
                                             : 'bg-white dark:bg-github-dark-subtle border-slate-300 dark:border-github-dark-border group-hover:border-indigo-400 dark:group-hover:border-indigo-500'
                                             }`}>
-                                            {tableExportColumns[col.id] && (
+                                            {tableExportColumns[key] && (
                                                 <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <polyline points="20 6 9 17 4 12" />
                                                 </svg>
                                             )}
                                         </div>
                                         <span className="text-xs font-semibold text-slate-600 dark:text-github-dark-muted select-none">
-                                            {col.label}
+                                            {COLUMN_TOGGLE_LABELS[key]}
                                         </span>
                                     </button>
                                 ))}

@@ -413,6 +413,44 @@ const mvGetStatusLabel = (status) => {
     return s.slice(0, 2);
 };
 
+// Same set/labels/grouping as desktop (Reports.jsx) — grouped by report kind so the
+// categorized dropdown can show section headers.
+const ALL_REPORT_TYPES_MV = [
+    { id: 'matrix_daily', label: 'Daily Attendance Report', group: 'Attendance Reports' },
+    { id: 'matrix_weekly', label: 'Weekly Attendance Report', group: 'Attendance Reports' },
+    { id: 'matrix_monthly', label: 'Monthly Attendance Report', group: 'Attendance Reports' },
+    { id: 'attendance_detailed', label: 'Detailed Attendance Report', group: 'Attendance Reports' },
+    { id: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix', group: 'Attendance Matrix' },
+    { id: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix', group: 'Attendance Matrix' },
+    { id: 'attendance_summary', label: 'Monthly Summary Report', group: 'Summary' },
+    { id: 'employee_master', label: 'Employee Master Data', group: 'Employee Data' }
+];
+const REPORT_TYPE_GROUP_ORDER_MV = ['Attendance Reports', 'Attendance Matrix', 'Summary', 'Employee Data'];
+
+// Which "Columns to Include" toggle each report type actually reads server-side — same mapping
+// as desktop's FullReportFiltersPanel.jsx, traced against reportsServices.js/reportsController.js's
+// `colsObj.<key> !== false` checks per type.
+const COLUMN_TOGGLE_LABELS_MV = {
+    shift: 'Shift',
+    timeIn: 'Time In',
+    timeOut: 'Time Out',
+    status: 'Status',
+    workedHours: 'Worked Hours',
+    requiredHours: 'Required Hours',
+    late: 'Lateness Info',
+    location: 'Locations',
+    attendanceDays: 'Attendance Summary'
+};
+const REPORT_TYPE_COLUMN_KEYS_MV = {
+    matrix_daily: ['timeIn', 'timeOut', 'status', 'workedHours', 'late'],
+    matrix_weekly: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'requiredHours', 'late', 'location', 'attendanceDays'],
+    matrix_monthly: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'requiredHours', 'late', 'location', 'attendanceDays'],
+    attendance_matrix_weekly: ['shift', 'workedHours', 'requiredHours', 'late', 'attendanceDays'],
+    attendance_matrix_monthly: ['shift', 'workedHours', 'requiredHours', 'late', 'attendanceDays'],
+    attendance_detailed: ['shift', 'timeIn', 'timeOut', 'status', 'workedHours', 'location'],
+    attendance_summary: ['workedHours', 'requiredHours', 'late', 'attendanceDays']
+};
+
 const MobileReports = () => {
     const { user } = useAuth();
     const isEmployee = user?.user_type === 'employee';
@@ -438,6 +476,7 @@ const MobileReports = () => {
     const [tableCustomStartDate, setTableCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableCustomEndDate, setTableCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableExportColumns, setTableExportColumns] = useState({
+        shift: true,
         timeIn: true,
         timeOut: true,
         status: true,
@@ -622,7 +661,7 @@ const MobileReports = () => {
             if (isEmployee) return;
             try {
                 const [empRes, deptRes, desgRes, shiftRes] = await Promise.all([
-                    adminService.getAllUsers(),
+                    adminService.getAllUsers({ activeOnly: true }),
                     adminService.getDepartments(),
                     adminService.getDesignations(),
                     adminService.getShifts()
@@ -656,18 +695,12 @@ const MobileReports = () => {
         }));
     }, []);
 
-    const reportTypes = [
-        { id: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
-        { id: 'matrix_daily', label: 'Daily Attendance Report' },
-        { id: 'attendance_detailed', label: 'Detailed Log' },
-        ...(!isEmployee ? [{ id: 'employee_master', label: 'Employee Master Data' }] : []),
-        { id: 'lateness_report', label: 'Lateness Report' },
-        { id: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix' },
-        { id: 'matrix_monthly', label: 'Monthly Attendance Report' },
-        { id: 'attendance_summary', label: 'Monthly Summary Report' },
-        { id: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix' },
-        { id: 'matrix_weekly', label: 'Weekly Attendance Report' }
-    ];
+    const reportTypes = isEmployee
+        ? ALL_REPORT_TYPES_MV.filter(t => t.id !== 'employee_master')
+        : ALL_REPORT_TYPES_MV;
+    const reportTypeGroups = REPORT_TYPE_GROUP_ORDER_MV
+        .map(group => ({ group, options: reportTypes.filter(t => t.group === group) }))
+        .filter(g => g.options.length > 0);
 
     const fileFormats = [
         { id: 'xlsx', label: 'XLSX', icon: FileSpreadsheet, color: 'emerald' },
@@ -718,7 +751,6 @@ const MobileReports = () => {
         dataRows.sort((a, b) => compareSortValues(a[colIdx], b[colIdx], tableSortColumn, tableSortDirection));
         return [...dataRows, ...totalsRows];
     }, [previewData, tableSortColumn, tableSortDirection]);
-
 
     // Compute activeFilters based on previewMode (card vs table)
     const activeFilters = React.useMemo(() => {
@@ -1212,21 +1244,28 @@ const MobileReports = () => {
 
                                     {tableIsTypeDropdownOpen && (
                                         <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-2 max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
-                                            {reportTypes.map((t) => (
-                                                <button
-                                                    key={t.id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setTableReportType(t.id);
-                                                        setTableIsTypeDropdownOpen(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableReportType === t.id
-                                                            ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
-                                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                                                        }`}
-                                                >
-                                                    {t.label}
-                                                </button>
+                                            {reportTypeGroups.map((g, gIdx) => (
+                                                <div key={g.group} className={gIdx > 0 ? 'pt-1.5 mt-1.5 border-t border-slate-100 dark:border-white/5' : ''}>
+                                                    <div className="px-3 pt-1 pb-1 text-[9px] font-black uppercase tracking-widest text-slate-400 select-none">
+                                                        {g.group}
+                                                    </div>
+                                                    {g.options.map((t) => (
+                                                        <button
+                                                            key={t.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTableReportType(t.id);
+                                                                setTableIsTypeDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-xs rounded-lg font-bold transition-colors ${tableReportType === t.id
+                                                                    ? 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400'
+                                                                    : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                                                }`}
+                                                        >
+                                                            {t.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             ))}
                                         </div>
                                     )}
@@ -1653,46 +1692,37 @@ const MobileReports = () => {
                                         className="w-full flex items-center justify-between pl-3 pr-4 h-10 bg-slate-50 dark:bg-black/20 border border-slate-100 dark:border-white/5 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-800 dark:text-white cursor-pointer text-left"
                                     >
                                         <span className="truncate">
-                                            {Object.values(tableExportColumns).filter(Boolean).length} Columns Selected
+                                            {(REPORT_TYPE_COLUMN_KEYS_MV[tableReportType] || []).filter(k => tableExportColumns[k]).length} Columns Selected
                                         </span>
                                         <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${tableIsColsDropdownOpen ? 'rotate-180' : ''}`} />
                                     </button>
 
                                     {tableIsColsDropdownOpen && (
                                         <div className="absolute left-0 mt-1 w-full bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-white/5 rounded-xl shadow-xl z-50 p-3 space-y-3">
-                                            {[
-                                                { id: 'timeIn', label: 'Time In' },
-                                                { id: 'timeOut', label: 'Time Out' },
-                                                { id: 'status', label: 'Status' },
-                                                { id: 'workedHours', label: 'Worked Hours' },
-                                                { id: 'requiredHours', label: 'Required Hours' },
-                                                { id: 'late', label: 'Lateness Info' },
-                                                { id: 'location', label: 'Locations' },
-                                                { id: 'attendanceDays', label: 'Attendance Summary' }
-                                            ].map((col) => (
+                                            {(REPORT_TYPE_COLUMN_KEYS_MV[tableReportType] || []).map((key) => (
                                                 <button
-                                                    key={col.id}
+                                                    key={key}
                                                     type="button"
                                                     onClick={() => {
                                                         setTableExportColumns(prev => ({
                                                             ...prev,
-                                                            [col.id]: !prev[col.id]
+                                                            [key]: !prev[key]
                                                         }));
                                                     }}
                                                     className="w-full flex items-center gap-2.5 cursor-pointer focus:outline-none group text-left"
                                                 >
-                                                    <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${tableExportColumns[col.id]
+                                                    <div className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${tableExportColumns[key]
                                                             ? 'bg-indigo-500 border-indigo-500 text-white shadow-sm shadow-indigo-500/20'
                                                             : 'bg-white dark:bg-black border-slate-300 dark:border-white/10 group-hover:border-indigo-400'
                                                         }`}>
-                                                        {tableExportColumns[col.id] && (
+                                                        {tableExportColumns[key] && (
                                                             <svg className="w-2.5 h-2.5 stroke-[3] stroke-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                 <polyline points="20 6 9 17 4 12" />
                                                             </svg>
                                                         )}
                                                     </div>
                                                     <span className="text-[10px] font-bold text-slate-600 dark:text-github-dark-muted select-none">
-                                                        {col.label}
+                                                        {COLUMN_TOGGLE_LABELS_MV[key]}
                                                     </span>
                                                 </button>
                                             ))}

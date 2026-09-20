@@ -27,6 +27,21 @@ const PAGE_KEY = 'admin_reports';
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const attendanceViewCache = new Map();
 
+// Each option's `group` drives the categorized Report Type dropdown — grouped by report kind
+// (Attendance Reports / Attendance Matrix / Summary / Employee Data) so the group is
+// predictable from the label's own suffix word.
+const ALL_REPORT_TYPE_OPTIONS = [
+    { value: 'matrix_daily', label: 'Daily Attendance Report', group: 'Attendance Reports' },
+    { value: 'matrix_weekly', label: 'Weekly Attendance Report', group: 'Attendance Reports' },
+    { value: 'matrix_monthly', label: 'Monthly Attendance Report', group: 'Attendance Reports' },
+    { value: 'attendance_detailed', label: 'Detailed Attendance Report', group: 'Attendance Reports' },
+    { value: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix', group: 'Attendance Matrix' },
+    { value: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix', group: 'Attendance Matrix' },
+    { value: 'attendance_summary', label: 'Monthly Summary Report', group: 'Summary' },
+    { value: 'employee_master', label: 'Employee Master Data', group: 'Employee Data' }
+];
+const REPORT_TYPE_GROUP_ORDER = ['Attendance Reports', 'Attendance Matrix', 'Summary', 'Employee Data'];
+
 const Reports = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -62,6 +77,7 @@ const Reports = () => {
     const [tableCustomStartDate, setTableCustomStartDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableCustomEndDate, setTableCustomEndDate] = useState(new Date().toISOString().slice(0, 10));
     const [tableExportColumns, setTableExportColumns] = useState({
+        shift: true,
         timeIn: true,
         timeOut: true,
         status: true,
@@ -267,7 +283,7 @@ const Reports = () => {
         const fetchEmployeesAndDepts = async () => {
             try {
                 const [empRes, deptRes, desgRes, shiftRes] = await Promise.all([
-                    adminService.getAllUsers(),
+                    adminService.getAllUsers({ activeOnly: true }),
                     adminService.getDepartments(),
                     adminService.getDesignations(),
                     adminService.getShifts()
@@ -589,24 +605,19 @@ const Reports = () => {
         return () => clearInterval(interval);
     }, [exportHistory]);
 
-    const allReportTypeOptions = [
-        { value: 'attendance_detailed', label: 'Detailed Attendance Report' },
-        { value: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
-        { value: 'matrix_daily', label: 'Daily Attendance Report' },
-        { value: 'employee_master', label: 'Employee Master Data' },
-        { value: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix' },
-        { value: 'matrix_monthly', label: 'Monthly Attendance Report' },
-        { value: 'attendance_summary', label: 'Monthly Summary Report' },
-        { value: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix' },
-        { value: 'matrix_weekly', label: 'Weekly Attendance Report' }
-    ];
-
     const reportTypeOptions = useMemo(() => {
         if (isEmployee) {
-            return allReportTypeOptions.filter(opt => opt.value !== 'employee_master');
+            return ALL_REPORT_TYPE_OPTIONS.filter(opt => opt.value !== 'employee_master');
         }
-        return allReportTypeOptions;
+        return ALL_REPORT_TYPE_OPTIONS;
     }, [isEmployee]);
+
+    // Grouped view of the same options, for the categorized dropdown UI.
+    const reportTypeGroups = useMemo(() => {
+        return REPORT_TYPE_GROUP_ORDER
+            .map(group => ({ group, options: reportTypeOptions.filter(opt => opt.group === group) }))
+            .filter(g => g.options.length > 0);
+    }, [reportTypeOptions]);
 
     const reportsSummary = useMemo(() => {
         const summary = {
@@ -897,6 +908,7 @@ const Reports = () => {
                         isEmployee={isEmployee}
                         currentUser={user}
                         reportTypeOptions={reportTypeOptions}
+                        reportTypeGroups={reportTypeGroups}
                         tableReportType={tableReportType}
                         setTableReportType={setTableReportType}
                         tableIsTypeDropdownOpen={tableIsTypeDropdownOpen}

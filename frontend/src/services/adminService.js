@@ -71,11 +71,11 @@ export const adminService = {
     async getAllUsers(options = false) {
         const isLegacyBool = typeof options === 'boolean';
         const includeWorkLocation = isLegacyBool ? options : !!options?.includeWorkLocation;
-        const { startDate, endDate, month, date, dept_id, desg_id, shift_id } = (!isLegacyBool && typeof options === 'object' && options !== null) ? options : {};
+        const { startDate, endDate, month, date, dept_id, desg_id, shift_id, activeOnly } = (!isLegacyBool && typeof options === 'object' && options !== null) ? options : {};
 
-        const hasFilters = !!(startDate || endDate || month || date || dept_id || desg_id || shift_id);
+        const hasFilters = !!(startDate || endDate || month || date || dept_id || desg_id || shift_id || activeOnly);
         const cacheKey = hasFilters
-            ? `filtered_${includeWorkLocation}_${startDate || ''}_${endDate || ''}_${month || ''}_${date || ''}_${dept_id || ''}_${desg_id || ''}_${shift_id || ''}`
+            ? `filtered_${includeWorkLocation}_${startDate || ''}_${endDate || ''}_${month || ''}_${date || ''}_${dept_id || ''}_${desg_id || ''}_${shift_id || ''}_${activeOnly ? '1' : '0'}`
             : String(includeWorkLocation);
 
         if (cache.users.has(cacheKey)) {
@@ -93,6 +93,7 @@ export const adminService = {
                 if (dept_id) params.append('dept_id', dept_id);
                 if (desg_id) params.append('desg_id', desg_id);
                 if (shift_id) params.append('shift_id', shift_id);
+                if (activeOnly) params.append('active_only', 'true');
 
                 const queryString = params.toString() ? `?${params.toString()}` : '';
                 const res = await api.get(`${ADMIN_API_URL}/users${queryString}`);
