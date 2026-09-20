@@ -1,6 +1,11 @@
-import React from 'react';
-import { Table } from 'lucide-react';
-import { getAlignmentClass, getCellStyle } from './reportsUtils';
+import React, { useState, useMemo } from 'react';
+import { Table, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { getAlignmentClass, getCellStyle, compareSortValues } from './reportsUtils';
+
+const rowIsTotals = (row) => {
+    const firstCell = row[0]?.toString().toUpperCase();
+    return firstCell === 'TOTALS' || firstCell === 'TOTAL';
+};
 
 const FullReportPreviewTable = ({
     activeFilters,
@@ -8,6 +13,47 @@ const FullReportPreviewTable = ({
     loadingPreview,
     cacheHit
 }) => {
+    // Click-to-sort only applies to the simple single-header-row tables (previewData.columns) —
+    // the merged two-row header grid (previewData.headers, Weekly/Monthly Attendance Report's
+    // per-day columns) is left unsorted, out of scope for this pass. Preview-only: never affects
+    // the downloaded file's row order.
+    const [sortColumn, setSortColumn] = useState(null);
+    const [sortDirection, setSortDirection] = useState('asc');
+
+    // A fresh preview fetch (new report type or filters) replaces previewData — drop any active
+    // sort rather than silently applying it to different data. Reset in render (React's own
+    // pattern for "adjusting state when a prop changes"), not an effect, so it takes effect
+    // before this render commits instead of one render late.
+    const [prevPreviewData, setPrevPreviewData] = useState(previewData);
+    if (previewData !== prevPreviewData) {
+        setPrevPreviewData(previewData);
+        setSortColumn(null);
+        setSortDirection('asc');
+    }
+
+    const handleSort = (colName) => {
+        if (sortColumn === colName) {
+            setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortColumn(colName);
+            setSortDirection('asc');
+        }
+    };
+
+    const sortedRows = useMemo(() => {
+        const rows = previewData.rows || [];
+        if (!sortColumn || previewData.headers) return rows;
+        const colIdx = previewData.columns?.indexOf(sortColumn);
+        if (colIdx === undefined || colIdx === -1) return rows;
+
+        const dataRows = [];
+        const totalsRows = [];
+        rows.forEach(row => (rowIsTotals(row) ? totalsRows.push(row) : dataRows.push(row)));
+
+        dataRows.sort((a, b) => compareSortValues(a[colIdx], b[colIdx], sortColumn, sortDirection));
+        return [...dataRows, ...totalsRows];
+    }, [previewData, sortColumn, sortDirection]);
+
     return (
         <div className="w-full flex flex-col bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border overflow-hidden">
             {/* Card Header */}
@@ -97,10 +143,12 @@ const FullReportPreviewTable = ({
                                                 className="px-2 py-3 text-center text-[9px] font-bold uppercase">#</th>
                                             {previewData.columns.map((col, idx) => {
                                                 const alignment = getAlignmentClass(col);
+                                                const isSorted = sortColumn === col;
                                                 return (
                                                     <th
                                                         key={idx}
-                                                        className="px-4 py-3 whitespace-nowrap tracking-wide text-[10px] font-black uppercase"
+                                                        onClick={() => handleSort(col)}
+                                                        className="px-4 py-3 whitespace-nowrap tracking-wide text-[10px] font-black uppercase cursor-pointer select-none group"
                                                         style={{
                                                             backgroundColor: '#1F4E78',
                                                             color: '#FFFFFF',
@@ -108,10 +156,20 @@ const FullReportPreviewTable = ({
                                                             textAlign: alignment,
                                                             letterSpacing: '0.04em'
                                                         }}
+                                                        title="Click to sort"
                                                     >
-                                                        {col?.toString().split('\n').map((line, lIdx) => (
-                                                            <div key={lIdx} className="leading-snug">{line}</div>
-                                                        ))}
+                                                        <div className={`flex items-center gap-1 ${alignment === 'left' ? 'justify-start' : 'justify-center'}`}>
+                                                            <span>
+                                                                {col?.toString().split('\n').map((line, lIdx) => (
+                                                                    <div key={lIdx} className="leading-snug">{line}</div>
+                                                                ))}
+                                                            </span>
+                                                            {isSorted ? (
+                                                                sortDirection === 'asc' ? <ChevronUp size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />
+                                                            ) : (
+                                                                <ChevronsUpDown size={12} className="shrink-0 opacity-0 group-hover:opacity-50 transition-opacity" />
+                                                            )}
+                                                        </div>
                                                     </th>
                                                 );
                                             })}
@@ -119,7 +177,7 @@ const FullReportPreviewTable = ({
                                     )}
                                 </thead>
                                 <tbody>
-                                    {previewData.rows.map((row, rIdx) => {
+                                    {sortedRows.map((row, rIdx) => {
                                         const isTotalsRow = row[0]?.toString().toUpperCase() === 'TOTALS';
                                         const isEven = rIdx % 2 === 0;
                                         return (

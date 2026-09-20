@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import {
     Download,
     Calendar,
     ChevronDown,
+    ChevronUp,
+    ChevronsUpDown,
     History as HistoryIcon,
     Eye,
     FileText,
@@ -28,6 +30,7 @@ import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 import MonthPicker from '../../components/MonthPicker';
 import MobileDatePicker from '../../components/MobileDatePicker';
+import { compareSortValues } from './components/reportsUtils';
 
 const getAlignmentClass = (colHeader) => {
     if (!colHeader) return 'center';
@@ -686,6 +689,37 @@ const MobileReports = () => {
     const [previewData, setPreviewData] = useState({ columns: [], rows: [] });
     const [loadingPreview, setLoadingPreview] = useState(false);
 
+    // Click-to-sort state for the Full Report preview table (simple single-header-row tables
+    // only — same scope/behavior as desktop's FullReportPreviewTable.jsx). Preview-only, never
+    // affects the downloaded file's row order.
+    const [tableSortColumn, setTableSortColumn] = useState(null);
+    const [tableSortDirection, setTableSortDirection] = useState('asc');
+    const handleTableSort = (colName) => {
+        if (tableSortColumn === colName) {
+            setTableSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setTableSortColumn(colName);
+            setTableSortDirection('asc');
+        }
+    };
+    const sortedPreviewRows = useMemo(() => {
+        const rows = previewData.rows || [];
+        if (!tableSortColumn || previewData.headers) return rows;
+        const colIdx = previewData.columns?.indexOf(tableSortColumn);
+        if (colIdx === undefined || colIdx === -1) return rows;
+
+        const dataRows = [];
+        const totalsRows = [];
+        rows.forEach(row => {
+            const firstCell = row[0]?.toString().toUpperCase();
+            (firstCell === 'TOTALS' || firstCell === 'TOTAL' ? totalsRows : dataRows).push(row);
+        });
+
+        dataRows.sort((a, b) => compareSortValues(a[colIdx], b[colIdx], tableSortColumn, tableSortDirection));
+        return [...dataRows, ...totalsRows];
+    }, [previewData, tableSortColumn, tableSortDirection]);
+
+
     // Compute activeFilters based on previewMode (card vs table)
     const activeFilters = React.useMemo(() => {
         const isCard = previewMode === 'card';
@@ -762,6 +796,8 @@ const MobileReports = () => {
                 );
                 if (!cancelled && res.ok) {
                     setPreviewData(res.data);
+                    setTableSortColumn(null);
+                    setTableSortDirection('asc');
                 }
             } catch (error) {
                 if (!cancelled) {
@@ -2266,19 +2302,30 @@ const MobileReports = () => {
                                                     <tr className="text-[10px] uppercase font-bold border-b border-slate-200 dark:border-[#30363d]">
                                                         {previewData.columns.map((col, idx) => {
                                                             const alignment = getAlignmentClass(col);
+                                                            const isSorted = tableSortColumn === col;
                                                             return (
                                                                 <th
                                                                     key={idx}
-                                                                    className="px-3 py-2.5 whitespace-nowrap tracking-wider border border-[#3A6085]"
+                                                                    onClick={() => handleTableSort(col)}
+                                                                    className="px-3 py-2.5 whitespace-nowrap tracking-wider border border-[#3A6085] cursor-pointer select-none"
                                                                     style={{
                                                                         backgroundColor: '#1F4E78',
                                                                         color: '#FFFFFF',
                                                                         textAlign: alignment
                                                                     }}
                                                                 >
-                                                                    {col?.toString().split('\n').map((line, lIdx) => (
-                                                                        <div key={lIdx} className="leading-tight">{line}</div>
-                                                                    ))}
+                                                                    <div className={`flex items-center gap-1 ${alignment === 'left' ? 'justify-start' : 'justify-center'}`}>
+                                                                        <span>
+                                                                            {col?.toString().split('\n').map((line, lIdx) => (
+                                                                                <div key={lIdx} className="leading-tight">{line}</div>
+                                                                            ))}
+                                                                        </span>
+                                                                        {isSorted ? (
+                                                                            tableSortDirection === 'asc' ? <ChevronUp size={11} className="shrink-0" /> : <ChevronDown size={11} className="shrink-0" />
+                                                                        ) : (
+                                                                            <ChevronsUpDown size={11} className="shrink-0 opacity-50" />
+                                                                        )}
+                                                                    </div>
                                                                 </th>
                                                             );
                                                         })}
@@ -2286,7 +2333,7 @@ const MobileReports = () => {
                                                 )}
                                             </thead>
                                             <tbody>
-                                                {previewData.rows.map((row, rIdx) => {
+                                                {sortedPreviewRows.map((row, rIdx) => {
                                                     const isTotalsRow = row[0]?.toString().toUpperCase() === 'TOTALS';
                                                     const isEven = rIdx % 2 === 0;
                                                     return (

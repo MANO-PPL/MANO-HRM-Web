@@ -117,6 +117,69 @@ export const isDateColumn = (colName) => {
     return /^\d+/.test(cleanName) || ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].some(m => cleanName.toLowerCase().includes(m));
 };
 
+// ─── Sortable preview columns ──────────────────────────────────────────────
+// A column whose header names it a clock-time field needs chronological
+// (earliest → latest) comparison, not alphabetical — a plain string sort of
+// 12-hour "hh:mm AM/PM" values breaks the moment a column mixes AM and PM
+// (e.g. "01:15 PM" sorts before "11:45 AM" alphabetically).
+const isTimeColumn = (colHeader) => {
+    const h = (colHeader || '').toString().toLowerCase();
+    return h.includes('time in') || h.includes('time out') || h.includes('in time') || h.includes('out time');
+};
+
+// Parses a formatted 12-hour time string ("09:04 AM") into minutes-since-midnight.
+// Returns null for anything that doesn't match (blank, "-", "N/A", ...).
+const parseTimeToMinutes = (val) => {
+    const s = (val ?? '').toString().trim();
+    const m = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+    if (!m) return null;
+    let hh = parseInt(m[1], 10);
+    const mm = parseInt(m[2], 10);
+    const ampm = m[3];
+    if (ampm) {
+        const isPM = ampm.toUpperCase() === 'PM';
+        if (hh === 12) hh = isPM ? 12 : 0;
+        else if (isPM) hh += 12;
+    }
+    return hh * 60 + mm;
+};
+
+// Classifies + extracts a comparable value from a raw preview cell for a given column.
+// `isBlank` cells (empty/"-"/"N/A", or an unparseable time) always sort last regardless
+// of direction — handled by the caller, compareSortValues.
+const parseSortValue = (cell, columnName) => {
+    const raw = (cell === null || cell === undefined) ? '' : cell.toString().trim();
+    const isBlank = raw === '' || raw === '-' || raw.toUpperCase() === 'N/A';
+
+    if (isTimeColumn(columnName)) {
+        const mins = isBlank ? null : parseTimeToMinutes(raw);
+        return { type: 'time', value: mins, isBlank: mins === null };
+    }
+
+    if (!isBlank) {
+        const num = Number(raw.replace(/,/g, ''));
+        if (raw !== '' && !isNaN(num)) {
+            return { type: 'number', value: num, isBlank: false };
+        }
+    }
+
+    return { type: 'text', value: raw.toLowerCase(), isBlank };
+};
+
+// Comparator for Array.prototype.sort: compares two raw cell values from the same column.
+// `direction` is 'asc' or 'desc'. Blank/unparseable values always sort last either way.
+export const compareSortValues = (cellA, cellB, columnName, direction) => {
+    const a = parseSortValue(cellA, columnName);
+    const b = parseSortValue(cellB, columnName);
+
+    if (a.isBlank && b.isBlank) return 0;
+    if (a.isBlank) return 1;
+    if (b.isBlank) return -1;
+
+    const result = a.type === 'text' ? a.value.localeCompare(b.value) : a.value - b.value;
+    return direction === 'desc' ? -result : result;
+};
+
 // Normalize attendance status: prioritize Overtime over Late & Overtime
 export const normalizeAttendanceStatus = (status) => {
     const s = status || '';
