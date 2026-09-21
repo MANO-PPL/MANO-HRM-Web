@@ -166,10 +166,6 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 | `POST` | `/admin/designations` | Create a new designation | Admin / HR |
 | `PUT` | `/admin/designations/:desg_id` | Update designation details | Admin / HR |
 | `DELETE` | `/admin/designations/:desg_id` | Delete designation | Admin / HR |
-| `GET` | `/admin/shifts` | GET operation on /admin/shifts | Admin / HR |
-| `POST` | `/admin/shifts` | POST operation on /admin/shifts | Admin / HR |
-| `PUT` | `/admin/shifts/:shift_id` | PUT operation on /admin/shifts/:shift_id | Admin / HR |
-| `DELETE` | `/admin/shifts/:shift_id` | DELETE operation on /admin/shifts/:shift_id | Admin / HR |
 | `GET` | `/admin/locations` | List configured work locations & branch coordinates | Admin / HR |
 | `GET` | `/admin/dashboard-stats` | GET operation on /admin/dashboard-stats | Admin / HR |
 

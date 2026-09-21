@@ -2,7 +2,6 @@ import express from 'express';
 import multer from 'multer';
 import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
 import * as adminController from './adminController.js';
-import * as shiftController from '../shifts/shiftController.js';
 
 const router = express.Router();
 const upload = multer({
@@ -52,16 +51,7 @@ router.post('/designations', adminController.createDesignation);
 router.put('/designations/:desg_id', adminController.updateDesignation);
 router.delete('/designations/:desg_id', adminController.deleteDesignation);
 
-// Shifts - Use dedicated shift controller
-router.get('/shifts', shiftController.getShifts);
-router.post('/shifts', shiftController.createShift);
-router.put('/shifts/:shift_id', shiftController.updateShift);
-router.delete('/shifts/:shift_id', shiftController.deleteShift);
-
 // Locations (Frontend might use /locations or /api/locations depending on proxy, mounting here first)
 router.get('/locations', adminController.getWorkLocations);
-
-// Dashboard
-router.get('/dashboard-stats', adminController.getDashboardStats);
 
 export default router;

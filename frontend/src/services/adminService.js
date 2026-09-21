@@ -347,7 +347,7 @@ export const adminService = {
         if (cache.shifts) return cache.shifts;
         const promise = (async () => {
             try {
-                const res = await api.get(`${ADMIN_API_URL}/shifts`);
+                const res = await api.get(`${POLICY_API_URL}/shifts`);
                 adminCacheData.shifts = res.data;
                 return res.data;
             } catch (error) {

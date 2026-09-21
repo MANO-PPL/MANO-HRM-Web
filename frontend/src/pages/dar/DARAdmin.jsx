@@ -58,7 +58,7 @@ const DARAdmin = ({ embedded = false, activeTab: propActiveTab, setActiveTab: pr
 
             // 2. Shifts
             try {
-                const res = await api.get('/admin/shifts');
+                const res = await api.get('/policies/shifts');
                 if (res.data.success) {
                     setShifts(res.data.shifts);
                 }

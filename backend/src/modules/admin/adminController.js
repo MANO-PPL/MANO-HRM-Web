@@ -258,26 +258,6 @@ export const deleteDesignation = catchAsync(async (req, res, next) => {
     res.json({ success: true, message: "Designation deleted successfully" });
 });
 
-export const getShifts = catchAsync(async (req, res, next) => {
-    const shifts = await userService.getShifts(req.user.org_id);
-    res.json({ success: true, shifts: shifts, data: shifts });
-});
-
-export const createShift = catchAsync(async (req, res, next) => {
-    const shift = await userService.createShift(req.body, req.user.org_id);
-    res.status(201).json({ success: true, message: "Shift created", shift });
-});
-
-export const updateShift = catchAsync(async (req, res, next) => {
-    await userService.updateShift(req.params.shift_id, req.body, req.user.org_id);
-    res.json({ success: true, message: "Shift updated" });
-});
-
-export const deleteShift = catchAsync(async (req, res, next) => {
-    await userService.deleteShift(req.params.shift_id, req.user.org_id);
-    res.json({ success: true, message: "Shift deleted" });
-});
-
 export const getWorkLocations = catchAsync(async (req, res, next) => {
     const locations = await userService.getWorkLocations(req.user.org_id);
     res.json({ ok: true, locations });
