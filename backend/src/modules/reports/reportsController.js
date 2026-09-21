@@ -427,7 +427,7 @@ export const previewReport = catchAsync(async (req, res) => {
             return res.status(400).json({ ok: false, message: "Month is required" });
         }
 
-        if (["matrix_weekly", "matrix_daily", "attendance_matrix_weekly", "attendance_matrix_daily"].includes(type) && !date) {
+        if (["matrix_weekly", "matrix_daily", "attendance_matrix_weekly"].includes(type) && !date) {
             return res.status(400).json({ ok: false, message: "Date is required" });
         }
     }
@@ -507,7 +507,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             });
 
         } else if (type === "matrix_daily") {
-            pdfCols = ["Name", "Dept"];
+            pdfCols = ["Name", "Position"];
             const pdfColIndices = [];
 
             const pushPdfCol = (name, check, index) => {
@@ -521,92 +521,22 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             pushPdfCol("Out Time", "timeOut", 3);
             pushPdfCol("Work Hrs", "workedHours", 4);
             pushPdfCol("Status", "status", 5);
-            pushPdfCol("In Location", "location", 6);
-            pushPdfCol("Out Location", "location", 7);
+            pushPdfCol("Late (mins)", "late", 6);
 
             pdfRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
                 const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
                 const fullRow = [
                     u.user_name,
-                    u.dept_name || "-",
+                    u.desg_name || "-",
                     reportsService.formatLocalTimeStr(aggregated.time_in),
                     reportsService.formatLocalTimeStr(aggregated.time_out),
                     aggregated.worked_hours.toFixed(2),
                     aggregated.status,
-                    aggregated.time_in_address,
-                    aggregated.time_out_address
+                    aggregated.late_minutes || 0
                 ];
 
                 const row = [fullRow[0], fullRow[1]];
-                pdfColIndices.forEach(idx => {
-                    row.push(fullRow[idx]);
-                });
-                return row;
-            });
-
-        } else if (type === "attendance_matrix_daily") {
-            pdfCols = ["Name", "Dept", "Attendance"];
-            const pdfColIndices = [];
-
-            const pushPdfCol = (name, check, index) => {
-                if (colsObj[check] !== false) {
-                    pdfCols.push(name);
-                    pdfColIndices.push(index);
-                }
-            };
-
-            pushPdfCol("Req Hrs", "requiredHours", 3);
-            pushPdfCol("Worked Hrs", "workedHours", 4);
-            pushPdfCol("Late Hrs", "late", 5);
-            pushPdfCol("Late Count", "late", 6);
-            pushPdfCol("Present Days", "attendanceDays", 7);
-            pushPdfCol("Absent Days", "attendanceDays", 8);
-            pushPdfCol("In Location", "location", 9);
-            pushPdfCol("Out Location", "location", 10);
-
-            pdfRows = users.map(u => {
-                const userRecs = records.filter(r => r.user_id === u.user_id);
-                const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
-                const rules = reportsService.getShiftRules(u);
-                const dayType = reportsService.getDayType(startDate, rules.week_off_policy);
-                const dayOfWeek = new Date(startDate + 'T00:00:00Z').getUTCDay();
-                const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
-                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, startDate);
-                const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' ? 1 : 0;
-
-                let attendanceStatus = isPresent.toString() + ".0";
-                if (!isPresent) {
-                    if (leaveOnDate) {
-                        attendanceStatus = "On Leave";
-                    } else if (startDate > todayStr && dayType !== 'week_off') {
-                        attendanceStatus = "Not Recorded";
-                    } else if (dayType === 'week_off') {
-                        attendanceStatus = dayOfWeek === 0 ? "Sun" : dayOfWeek === 6 ? "Sat" : "WEEK_OFF";
-                    }
-                }
-                const isAbsent = !isPresent && !leaveOnDate && dayType !== 'week_off' && attendanceStatus !== "Not Recorded" ? 1 : 0;
-
-                const reqHrs = reportsService.getExpectedHours(startDate, rules.week_off_policy, rules);
-                const workedHrs = aggregated.worked_hours;
-                const lateMins = aggregated.late_minutes;
-                const lateHrs = lateMins / 60;
-                const lateCount = lateMins > 0 ? 1 : 0;
-                const fullRow = [
-                    u.user_name,
-                    u.dept_name || "-",
-                    attendanceStatus,
-                    reqHrs.toFixed(2),
-                    workedHrs.toFixed(2),
-                    lateHrs.toFixed(2),
-                    lateCount,
-                    isPresent,
-                    isAbsent,
-                    aggregated.time_in_address || "-",
-                    aggregated.time_out_address || "-"
-                ];
-
-                const row = [fullRow[0], fullRow[1], fullRow[2]];
                 pdfColIndices.forEach(idx => {
                     row.push(fullRow[idx]);
                 });
@@ -704,6 +634,10 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 }
             };
 
+            if (colsObj.requiredHours !== false) {
+                pdfCols.push("Req Hrs");
+                pdfColIndices.push(12);
+            }
             if (colsObj.attendanceDays !== false) {
                 pdfCols.push("Present", "Absent", "Half Day", "Leave");
                 pdfColIndices.push(3, 4, 5, 6);
@@ -792,6 +726,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 });
 
                 const payableDays = presentDays - (0.5 * halfDayCount) + leaveCount;
+                const requiredHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings);
 
                 const fullRow = [
                     u.user_name,
@@ -805,7 +740,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     totalLateMins,
                     totalOvertimeHrs.toFixed(2),
                     totalHrs.toFixed(2),
-                    Math.round(payableDays).toFixed(0)
+                    Math.round(payableDays).toFixed(0),
+                    requiredHrs.toFixed(2)
                 ];
 
                 const row = [fullRow[0], fullRow[1], fullRow[2]];
@@ -839,6 +775,13 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         if (mappedIdx !== -1) sum += parseFloat(r[mappedIdx]) || 0;
                     });
                     totalsRow.push(sum.toFixed(2));
+                } else if (idx === 12) {
+                    let sum = 0;
+                    baseRows.forEach(r => {
+                        const mappedIdx = pdfCols.indexOf("Req Hrs");
+                        if (mappedIdx !== -1) sum += parseFloat(r[mappedIdx]) || 0;
+                    });
+                    totalsRow.push(sum.toFixed(2));
                 }
             });
             pdfRows = [...baseRows, totalsRow];
@@ -861,7 +804,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
     if (type === "matrix_daily") {
         const cols = [];
         cols.push({ header: "Name", key: "name", width: 25 });
-        cols.push({ header: "Department", key: "dept", width: 20 });
+        cols.push({ header: "Position", key: "position", width: 20 });
 
         const pushCol = (header, key, check, width) => {
             if (colsObj[check] !== false) {
@@ -873,8 +816,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         pushCol("Time Out", "time_out", "timeOut", 15);
         pushCol("Work Hours", "work_hrs", "workedHours", 12);
         pushCol("Status", "status", "status", 15);
-        pushCol("In Location", "time_in_address", "location", 40);
-        pushCol("Out Location", "time_out_address", "location", 40);
+        pushCol("Late (mins)", "late_mins", "late", 12);
 
         worksheet.columns = cols;
         users.forEach(u => {
@@ -883,17 +825,14 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
             const rowData = {
                 name: u.user_name,
-                dept: u.dept_name || "-"
+                position: u.desg_name || "-"
             };
 
             if (colsObj.timeIn !== false) rowData.time_in = reportsService.formatLocalTimeStr(aggregated.time_in);
             if (colsObj.timeOut !== false) rowData.time_out = reportsService.formatLocalTimeStr(aggregated.time_out);
             if (colsObj.workedHours !== false) rowData.work_hrs = parseFloat(aggregated.worked_hours.toFixed(2));
             if (colsObj.status !== false) rowData.status = aggregated.status;
-            if (colsObj.location !== false) {
-                rowData.time_in_address = aggregated.time_in_address || "-";
-                rowData.time_out_address = aggregated.time_out_address || "-";
-            }
+            if (colsObj.late !== false) rowData.late_mins = aggregated.late_minutes || 0;
 
             worksheet.addRow(rowData);
         });
@@ -906,92 +845,6 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 const workHrsColLetter = getColLetter(workHrsColIdx);
                 totalsRowData.work_hrs = { formula: `SUM(${workHrsColLetter}2:${workHrsColLetter}${lastRow})` };
             }
-            worksheet.addRow(totalsRowData);
-        }
-    } else if (type === "attendance_matrix_daily") {
-        const cols = [];
-        cols.push({ header: "Name", key: "name", width: 25 });
-        cols.push({ header: "Department", key: "dept", width: 20 });
-        cols.push({ header: "Attendance", key: "attendance", width: 15 });
-
-        const pushCol = (header, key, check, width) => {
-            if (colsObj[check] !== false) {
-                cols.push({ header, key, width });
-            }
-        };
-
-        pushCol("Required Hours", "req_hrs", "requiredHours", 18);
-        pushCol("Worked Hours", "worked_hrs", "workedHours", 15);
-        pushCol("Late Hours", "late_hrs", "late", 15);
-        pushCol("Late Count", "late_count", "late", 15);
-        pushCol("Present Days", "present_days", "attendanceDays", 15);
-        pushCol("Absent Days", "absent_days", "attendanceDays", 15);
-        pushCol("In Location", "time_in_address", "location", 40);
-        pushCol("Out Location", "time_out_address", "location", 40);
-
-        worksheet.columns = cols;
-        users.forEach(u => {
-            const userRecs = records.filter(r => r.user_id === u.user_id);
-            const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
-            const rules = reportsService.getShiftRules(u);
-            const dayType = reportsService.getDayType(startDate, rules.week_off_policy);
-            const dayOfWeek = new Date(startDate + 'T00:00:00Z').getUTCDay();
-            const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
-            const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, startDate);
-            const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' ? 1 : 0;
-
-            let attendanceStatus = isPresent.toString() + ".0";
-            if (!isPresent) {
-                if (leaveOnDate) {
-                    attendanceStatus = "On Leave";
-                } else if (startDate > todayStr && dayType !== 'week_off') {
-                    attendanceStatus = "Not Recorded";
-                } else if (dayType === 'week_off') {
-                    attendanceStatus = dayOfWeek === 0 ? "Sun" : dayOfWeek === 6 ? "Sat" : "WEEK_OFF";
-                }
-            }
-            const isAbsent = !isPresent && !leaveOnDate && dayType !== 'week_off' && attendanceStatus !== "Not Recorded" ? 1 : 0;
-
-            const reqHrs = reportsService.getExpectedHours(startDate, rules.week_off_policy, rules);
-            const workedHrs = aggregated.worked_hours;
-            const lateMins = aggregated.late_minutes;
-            const lateHrs = lateMins / 60;
-            const lateCount = lateMins > 0 ? 1 : 0;
-
-            const rowData = {
-                name: u.user_name,
-                dept: u.dept_name || "-",
-                attendance: attendanceStatus
-            };
-
-            if (colsObj.requiredHours !== false) rowData.req_hrs = parseFloat(reqHrs.toFixed(2));
-            if (colsObj.workedHours !== false) rowData.worked_hrs = parseFloat(workedHrs.toFixed(2));
-            if (colsObj.late !== false) {
-                rowData.late_hrs = parseFloat(lateHrs.toFixed(2));
-                rowData.late_count = lateCount;
-            }
-            if (colsObj.attendanceDays !== false) {
-                rowData.present_days = isPresent;
-                rowData.absent_days = isAbsent;
-            }
-            if (colsObj.location !== false) {
-                rowData.time_in_address = aggregated.time_in_address || "-";
-                rowData.time_out_address = aggregated.time_out_address || "-";
-            }
-
-            worksheet.addRow(rowData);
-        });
-
-        if (users.length > 0) {
-            const lastRow = worksheet.rowCount;
-            const totalsRowData = { name: "TOTALS" };
-            worksheet.columns.forEach((col, idx) => {
-                const key = col.key;
-                if (["req_hrs", "worked_hrs", "late_hrs", "late_count", "present_days", "absent_days"].includes(key)) {
-                    const letter = getColLetter(idx + 1);
-                    totalsRowData[key] = { formula: `SUM(${letter}2:${letter}${lastRow})` };
-                }
-            });
             worksheet.addRow(totalsRowData);
         }
     } else if (type === "attendance_matrix_weekly" || type === "attendance_matrix_monthly") {
@@ -1210,6 +1063,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             cols.push({ header, key, width });
         };
 
+        if (colsObj.requiredHours !== false) {
+            pushCol("Required Hrs", "required_hrs", 14);
+        }
         if (colsObj.attendanceDays !== false) {
             pushCol("Present", "present", 10);
             pushCol("Absent", "absent", 10);
@@ -1306,6 +1162,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 total_days: totalDaysInMonth
             };
 
+            if (colsObj.requiredHours !== false) {
+                rowData.required_hrs = parseFloat(reportsService.getRequiredHoursForPeriod(u, dateStrings).toFixed(2));
+            }
             if (colsObj.attendanceDays !== false) {
                 rowData.present = presentDays;
                 rowData.absent = absentDays;
@@ -1625,11 +1484,6 @@ import crypto from 'crypto';
 export const downloadReport = catchAsync(async (req, res) => {
     const { month, date, type, format = "xlsx", startDate, endDate, columns, dept_id, desg_id, shift_id } = req.query;
 
-    // TEMPORARY DEBUG LOGGING
-    try {
-        const fs = await import('fs');
-        fs.appendFileSync('request-debug.log', `[${new Date().toISOString()}] downloadReport req.query: ${JSON.stringify(req.query)}\n`);
-    } catch (e) { }
     const org_id = req.user.org_id;
     const isEmployee = req.user.user_type === "employee";
     const isUserReport = req.originalUrl.includes("/attendance/") || isEmployee;
@@ -1648,7 +1502,7 @@ export const downloadReport = catchAsync(async (req, res) => {
             return res.status(400).json({ ok: false, message: "Month is required" });
         }
 
-        if (["matrix_weekly", "matrix_daily", "attendance_matrix_weekly", "attendance_matrix_daily"].includes(type) && !date) {
+        if (["matrix_weekly", "matrix_daily", "attendance_matrix_weekly"].includes(type) && !date) {
             return res.status(400).json({ ok: false, message: "Date is required" });
         }
     }

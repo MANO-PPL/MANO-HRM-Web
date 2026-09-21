@@ -144,3 +144,8 @@ __pycache__/
 venv/
 env/
 chroma_data/
+
+# Antigravity & Agent Rules
+antigravity.md
+GEMINI.md
+.agents/

@@ -468,16 +468,6 @@ export const adminService = {
         }
     },
 
-    async downloadReport(month, type, format = "xlsx", userId = "", date = "", startDate = "", endDate = "", deptId = "", desgId = "", shiftId = "") {
-        try {
-            const url = `${ADMIN_API_URL}/reports/download?month=${month}&type=${type}&format=${format}${userId ? `&user_id=${userId}` : ""}${date ? `&date=${date}` : ""}${startDate ? `&startDate=${startDate}` : ""}${endDate ? `&endDate=${endDate}` : ""}${deptId ? `&dept_id=${deptId}` : ""}${desgId ? `&desg_id=${desgId}` : ""}${shiftId ? `&shift_id=${shiftId}` : ""}&_t=${Date.now()}`;
-            const response = await api.get(url, { responseType: 'blob' });
-            return response.data;
-        } catch (error) {
-            throw new Error(error.response?.data?.message || "Failed to download report");
-        }
-    },
-
     async queueReport(month, type, format = "xlsx", userId = "", date = "", startDate = "", endDate = "", columns = "", deptId = "", desgId = "", shiftId = "") {
         try {
             const url = `${ADMIN_API_URL}/reports/download?month=${month}&type=${type}&format=${format}${userId ? `&user_id=${userId}` : ""}${date ? `&date=${date}` : ""}${startDate ? `&startDate=${startDate}` : ""}${endDate ? `&endDate=${endDate}` : ""}${columns ? `&columns=${encodeURIComponent(columns)}` : ""}${deptId ? `&dept_id=${deptId}` : ""}${desgId ? `&desg_id=${desgId}` : ""}${shiftId ? `&shift_id=${shiftId}` : ""}&_t=${Date.now()}`;
