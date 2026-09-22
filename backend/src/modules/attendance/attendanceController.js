@@ -10,7 +10,7 @@ import * as ShiftService from "../shifts/shiftService.js";
 import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
 import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
-import { calculateWorkHours, deriveStatus, getDetailedRecords } from "../reports/reportsServices.js";
+import { getDetailedRecords, getUsers, getTodayStr, groupRecordsByUserAndDay } from "../reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../collaboration/chatAlertService.js";
 import { getLocalNow } from "../../services/statusEvalution/statusEvaluationService.js";
 import { attendanceQueue, redisConnection } from "../../config/queues.js";
@@ -494,6 +494,9 @@ export const exportRecords = catchAsync(async (req, res) => {
   const endDate = `${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
 
   const records = await getDetailedRecords({ org_id, startDate, endDate, targetUserId: user_id });
+  const users = await getUsers({ org_id, targetUserId: user_id, startDate, endDate });
+  const todayStr = await getTodayStr(org_id);
+  const dayRows = groupRecordsByUserAndDay(records, users, todayStr);
 
   const sanitizedUserName = user_name.replace(/\s+/g, '_');
 
@@ -501,12 +504,12 @@ export const exportRecords = catchAsync(async (req, res) => {
   if (format === "pdf") {
     const pdfTitle = `Attendance Report - ${user_name} (${month})`;
     const pdfCols = ["Date", "Time In", "Time Out", "Work Hours", "Status", "Late (Mins)", "In Location", "Out Location"];
-    const pdfRows = records.map(r => [
+    const pdfRows = dayRows.map(r => [
       new Date(r.time_in).toLocaleDateString(),
       r.time_in ? new Date(r.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
       r.time_out ? new Date(r.time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
-      calculateWorkHours(r.time_in, r.time_out),
-      deriveStatus(r),
+      r.worked_hours.toFixed(2),
+      r.status,
       r.late_minutes || 0,
       r.time_in_address || "-",
       r.time_out_address || "-"
@@ -535,13 +538,13 @@ export const exportRecords = catchAsync(async (req, res) => {
     { header: "Out Location", key: "out_location", width: 40 }
   ];
 
-  records.forEach(r => {
+  dayRows.forEach(r => {
     worksheet.addRow({
       date: new Date(r.time_in).toLocaleDateString(),
       time_in: r.time_in ? new Date(r.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
       time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
-      work_hours: parseFloat(calculateWorkHours(r.time_in, r.time_out)) || 0,
-      status: deriveStatus(r),
+      work_hours: parseFloat(r.worked_hours.toFixed(2)) || 0,
+      status: r.status,
       late_minutes: r.late_minutes || 0,
       in_location: r.time_in_address || "-",
       out_location: r.time_out_address || "-"

@@ -587,6 +587,35 @@ export async function getDetailedRecords({ org_id, startDate, endDate, targetUse
     return getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 }
 
+// Groups getAttendanceRecords()'s raw per-session rows into one row per (user, day), reusing
+// aggregateDayRecords' proven day-merge (first time-in, last time-out, summed hours) and its
+// shift-aware, grace-period-checked status — instead of deriveStatus's naive per-session read of
+// possibly-stale/zero stored late_minutes. Users with no punches in range are simply omitted
+// (matches this report's existing sparse, session-log style — it has never shown absent/leave days).
+export function groupRecordsByUserAndDay(records, users, todayStr) {
+    const byUserDate = {};
+    for (const r of records) {
+        const dateKey = getRecordDateStr(r);
+        (byUserDate[r.user_id] ??= {});
+        (byUserDate[r.user_id][dateKey] ??= []).push(r);
+    }
+    const rows = [];
+    for (const u of users) {
+        const dateMap = byUserDate[u.user_id];
+        if (!dateMap) continue;
+        Object.keys(dateMap).sort().forEach(dateStr => {
+            const aggregated = aggregateDayRecords(dateMap[dateStr], u.policy_rules, todayStr);
+            rows.push({
+                user_id: u.user_id, user_name: u.user_name, dept_name: u.dept_name, shift_name: u.shift_name,
+                time_in: aggregated.time_in, time_out: aggregated.time_out, worked_hours: aggregated.worked_hours,
+                status: aggregated.status, late_minutes: aggregated.late_minutes,
+                time_in_address: aggregated.time_in_address, time_out_address: aggregated.time_out_address
+            });
+        });
+    }
+    return rows;
+}
+
 export async function getCardRecords({ org_id, targetUserId, startDate, endDate, dept_id, desg_id, shift_id }) {
     const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate });
     const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
@@ -1113,7 +1142,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             });
         }
     } else if (type === "attendance_detailed") {
+        const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate });
         const records = await getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
+        const dayRows = groupRecordsByUserAndDay(records, users, todayStr);
         const cols = ["Date", "Name", "Dept"];
         const colIndices = [];
 
@@ -1133,7 +1164,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         pushCol("Out Location", "location", 9);
 
         data.columns = cols;
-        data.rows = records.map(r => {
+        data.rows = dayRows.map(r => {
             const fullRow = [
                 formatLocalDateStr(r.time_in),
                 r.user_name,
@@ -1141,8 +1172,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 r.shift_name || "-",
                 formatLocalTimeStr(r.time_in, true),
                 formatLocalTimeStr(r.time_out, true),
-                calculateWorkHours(r.time_in, r.time_out),
-                deriveStatus(r, todayStr),
+                r.worked_hours.toFixed(2),
+                r.status,
                 r.time_in_address || "-",
                 r.time_out_address || "-"
             ];

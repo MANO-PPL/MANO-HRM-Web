@@ -468,7 +468,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         let pdfCols, pdfRows;
 
         if (type === "attendance_detailed") {
-            const detailedRecords = await reportsService.getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
+            const dayRows = reportsService.groupRecordsByUserAndDay(records, users, todayStr);
             pdfCols = ["Date", "Name", "Dept"];
             const pdfColIndices = [];
 
@@ -487,7 +487,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             pushPdfCol("In Location", "location", 8);
             pushPdfCol("Out Location", "location", 9);
 
-            pdfRows = detailedRecords.map(r => {
+            pdfRows = dayRows.map(r => {
                 const fullRow = [
                     reportsService.formatLocalDateStr(r.time_in),
                     r.user_name,
@@ -495,8 +495,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     r.shift_name || "-",
                     reportsService.formatLocalTimeStr(r.time_in, true),
                     reportsService.formatLocalTimeStr(r.time_out, true),
-                    reportsService.calculateWorkHours(r.time_in, r.time_out),
-                    reportsService.deriveStatus(r),
+                    r.worked_hours.toFixed(2),
+                    r.status,
                     r.time_in_address || "-",
                     r.time_out_address || "-"
                 ];
@@ -1053,8 +1053,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         pushCol("Out Location", "time_out_address", "location", 40);
 
         worksheet.columns = cols;
-        const detailedRecords = await reportsService.getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
-        detailedRecords.forEach(r => {
+        const dayRows = reportsService.groupRecordsByUserAndDay(records, users, todayStr);
+        dayRows.forEach(r => {
             const rowData = {
                 date: reportsService.formatLocalDateStr(r.time_in),
                 name: r.user_name,
@@ -1064,8 +1064,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             if (colsObj.shift !== false) rowData.shift = r.shift_name || "-";
             if (colsObj.timeIn !== false) rowData.time_in = reportsService.formatLocalTimeStr(r.time_in, true);
             if (colsObj.timeOut !== false) rowData.time_out = reportsService.formatLocalTimeStr(r.time_out, true);
-            if (colsObj.workedHours !== false) rowData.work_hrs = reportsService.calculateWorkHours(r.time_in, r.time_out);
-            if (colsObj.status !== false) rowData.status = reportsService.deriveStatus(r);
+            if (colsObj.workedHours !== false) rowData.work_hrs = r.worked_hours.toFixed(2);
+            if (colsObj.status !== false) rowData.status = r.status;
             if (colsObj.location !== false) {
                 rowData.time_in_address = r.time_in_address || "-";
                 rowData.time_out_address = r.time_out_address || "-";
