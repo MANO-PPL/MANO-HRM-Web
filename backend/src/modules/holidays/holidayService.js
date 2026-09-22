@@ -10,22 +10,33 @@ import EventBus from '../../utils/EventBus.js';
 // Helper to notify employees when new holidays are declared
 async function notifyNewHolidays(org_id, holidays) {
     try {
+        if (!holidays || holidays.length === 0) return;
+
         const users = await attendanceDB('core_users')
             .where({ org_id, is_deleted: 0, is_active: 1 })
             .select('user_id');
 
-        for (const h of holidays) {
-            for (const user of users) {
-                EventBus.emitNotification({
-                    org_id,
-                    user_id: user.user_id,
-                    title: 'New Holiday Declared',
-                    message: `A new holiday has been declared: ${h.holiday_name} on ${h.holiday_date}.`,
-                    type: 'INFO',
-                    related_entity_type: 'HOLIDAY',
-                    related_entity_id: null
-                });
-            }
+        if (users.length === 0) return;
+
+        const count = holidays.length;
+        const isSingle = count === 1;
+
+        const title = isSingle ? 'New Holiday Declared' : 'New Holidays Declared';
+        const message = isSingle
+            ? `A new holiday has been declared: ${holidays[0].holiday_name} on ${holidays[0].holiday_date}.`
+            : `${count} new holidays have been added to your company calendar.`;
+
+        for (const user of users) {
+            EventBus.emitNotification({
+                org_id,
+                user_id: user.user_id,
+                title,
+                message,
+                type: 'INFO',
+                related_entity_type: 'HOLIDAY',
+                related_entity_id: null,
+                send_push: false
+            });
         }
     } catch (err) {
         console.error('Error in notifyNewHolidays:', err);

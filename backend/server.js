@@ -163,6 +163,7 @@ EventBus.on('notification_saved', async (notification) => {
         .where('id', notification.related_entity_id)
         .first();
       if (room && room.last_message_id) {
+        enrichedNotification.message_id = room.last_message_id;
         const lastMsg = await attendanceDB('chat_messages')
           .where('id', room.last_message_id)
           .first();
@@ -181,11 +182,11 @@ EventBus.on('notification_saved', async (notification) => {
     }
   }
 
-  io.to(`user_${notification.user_id}`).emit('new-notification', enrichedNotification);
   io.to(`user_${notification.user_id}`).emit('new_notification', enrichedNotification);
   console.log(`📡 Real-time notification push sent to user_${notification.user_id} for alert #${notification.notification_id}`);
   
-  // Trigger FCM push notification to user's registered devices
+  if (notification.send_push === false) return;
+
   sendPushNotification(
     notification.user_id,
     notification.title,

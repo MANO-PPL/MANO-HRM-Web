@@ -13,6 +13,7 @@ import {
     getEffectiveUserTimezone,
     getNextCronSlotMinutes
 } from '../utils/timezoneUtils.js';
+import { sendPushNotification } from '../modules/notifications/fcmService.js';
 
 // Time allowed after the configured maximum overtime before an open checkout is flagged.
 const MISSED_PUNCH_BUFFER_MINUTES = 30;
@@ -58,8 +59,10 @@ export async function processHourlyAttendance() {
             try {
                 // 1. Resolve shift rules, then calculate target processing slot in-memory first (no DB queries)
                 const rules = ShiftService.getShiftRules(user);
-                const [startH, startM] = rules.shift_timing.start_time.split(':').map(Number);
-                const [endH, endM] = rules.shift_timing.end_time.split(':').map(Number);
+                const startTimeStr = rules.shift_timing?.start_time || rules.start_time || "09:00:00";
+                const endTimeStr = rules.shift_timing?.end_time || rules.end_time || "18:00:00";
+                const [startH, startM] = startTimeStr.split(':').map(Number);
+                const [endH, endM] = endTimeStr.split(':').map(Number);
 
                 // "Possibly forgotten checkout" cutoff — deliberately independent of the OT cap, so an
                 // employee legitimately still working past their overtime cap is never treated as a missed
@@ -343,8 +346,10 @@ async function notifyExpiredMissedPunches() {
             // Determine the notification slot using the same decoupled, per-shift-configurable
             // cutoff as the main hourly pass (Phase 1) — never derived from max_overtime.
             const rules = ShiftService.getShiftRules(user);
-            const [startH, startM] = rules.shift_timing.start_time.split(':').map(Number);
-            const [endH, endM] = rules.shift_timing.end_time.split(':').map(Number);
+            const startTimeStr = rules.shift_timing?.start_time || rules.start_time || "09:00:00";
+            const endTimeStr = rules.shift_timing?.end_time || rules.end_time || "18:00:00";
+            const [startH, startM] = startTimeStr.split(':').map(Number);
+            const [endH, endM] = endTimeStr.split(':').map(Number);
             let latestCheckoutMinutes;
             if (rules.missed_punch_check_time) {
                 const [checkH, checkM] = rules.missed_punch_check_time.split(':').map(Number);
@@ -468,15 +473,16 @@ export async function checkAndSendShiftReminders() {
                         .first();
 
                     if (!inPunchToday) {
-                        EventBus.emitNotification({
-                            org_id: user.org_id,
-                            user_id: user.user_id,
-                            title: "Time In Reminder",
-                            message: `Your shift starts in 10 minutes at ${startTime.substring(0, 5)}. Don't forget to time in!`,
-                            type: "INFO",
-                            related_entity_type: "ATTENDANCE",
-                            related_entity_id: null
-                        });
+                        // Send as ephemeral mobile push notification only - do not persist to in-app notification inbox
+                        sendPushNotification(
+                            user.user_id,
+                            "Time In Reminder",
+                            `Your shift starts in 10 minutes at ${startTime.substring(0, 5)}. Don't forget to time in!`,
+                            {
+                                type: "ATTENDANCE_REMINDER",
+                                related_entity_type: "ATTENDANCE"
+                            }
+                        );
                     }
                 }
 
@@ -495,15 +501,16 @@ export async function checkAndSendShiftReminders() {
                         .first();
 
                     if (latestPunch && latestPunch.punch_type === 'in') {
-                        EventBus.emitNotification({
-                            org_id: user.org_id,
-                            user_id: user.user_id,
-                            title: "Time Out Reminder",
-                            message: `Your shift ends in 10 minutes at ${endTime.substring(0, 5)}. Don't forget to time out!`,
-                            type: "INFO",
-                            related_entity_type: "ATTENDANCE",
-                            related_entity_id: null
-                        });
+                        // Send as ephemeral mobile push notification only - do not persist to in-app notification inbox
+                        sendPushNotification(
+                            user.user_id,
+                            "Time Out Reminder",
+                            `Your shift ends in 10 minutes at ${endTime.substring(0, 5)}. Don't forget to time out!`,
+                            {
+                                type: "ATTENDANCE_REMINDER",
+                                related_entity_type: "ATTENDANCE"
+                            }
+                        );
                     }
                 }
             } catch (err) {

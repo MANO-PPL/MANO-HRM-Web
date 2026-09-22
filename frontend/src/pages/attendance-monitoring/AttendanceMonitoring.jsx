@@ -210,7 +210,7 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
         const totalHrs = (status === 'Missed Punch' || status === 'Absent' || status === 'Leave' || status === 'Week Off' || status === 'Holiday')
             ? '0.0 hrs'
             : formatTotalTime(totalMin, u.total_hours > 0 ? Number(u.total_hours) : 0);
-        const expectedHrs = u.expected_hours !== undefined && u.expected_hours !== null && u.expected_hours > 0 ? `${Number(u.expected_hours).toFixed(1)} hrs` : 'N/A';
+        const expectedHrs = u.expected_hours !== undefined && u.expected_hours !== null && Number(u.expected_hours) > 0 ? `${Number(u.expected_hours).toFixed(1)} hrs` : null;
         const lastLocation = u.sessions && u.sessions.length > 0
             ? u.sessions[0].time_in_address || (u.sessions[0].time_in_lat ? `${u.sessions[0].time_in_lat}, ${u.sessions[0].time_in_lng}` : 'N/A')
             : 'N/A';
@@ -831,8 +831,15 @@ const AttendanceMonitoring = () => {
             setCorrectionRequests(sortedData);
             setRequestCount(sortedData.filter(r => r.status === 'pending').length);
 
-            // Auto-select first request if none selected or if previously selected one is gone
-            if (sortedData.length > 0) {
+            // Auto-select request: target from URL if provided, otherwise preserve or pick first
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetReqId = Number(urlParams.get('requestId') || urlParams.get('acr_id') || urlParams.get('id'));
+            const matchingReq = targetReqId ? sortedData.find(r => Number(r.acr_id) === targetReqId || Number(r.id) === targetReqId) : null;
+
+            if (matchingReq) {
+                setSelectedRequestId(matchingReq.acr_id);
+                fetchRequestDetail(matchingReq.acr_id, silent);
+            } else if (sortedData.length > 0) {
                 if (!selectedRequestId || !sortedData.find(r => r.acr_id === selectedRequestId)) {
                     setSelectedRequestId(sortedData[0].acr_id);
                     fetchRequestDetail(sortedData[0].acr_id, silent);
@@ -871,6 +878,15 @@ const AttendanceMonitoring = () => {
             if (!silent) setDetailLoading(false);
         }
     };
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const reqId = Number(params.get('requestId') || params.get('acr_id') || params.get('id'));
+        if (reqId) {
+            setSelectedRequestId(reqId);
+            fetchRequestDetail(reqId);
+        }
+    }, [window.location.search]);
 
     const handleUpdateStatus = async (acr_id, status) => {
         setActionLoading(true);

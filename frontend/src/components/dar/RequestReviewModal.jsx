@@ -331,20 +331,32 @@ const RequestReviewModal = ({ isOpen, onClose, request, onApprove, onReject, inl
             </div>
 
             {/* Footer Actions */}
-            <div className="p-6 border-t border-slate-200 dark:border-github-dark-border bg-white dark:bg-[#0f111a] flex justify-end gap-3">
-                <button
-                    onClick={onReject}
-                    className="px-5 py-2.5 rounded-xl font-medium text-slate-600 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                    Reject Request
-                </button>
-                <button
-                    onClick={onApprove}
-                    className="px-5 py-2.5 rounded-xl font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-500/25 transition-all active:scale-95 flex items-center gap-2"
-                >
-                    <Check size={18} />
-                    Approve Changes
-                </button>
+            <div className="p-6 border-t border-slate-200 dark:border-github-dark-border bg-white dark:bg-[#0f111a] flex justify-end items-center gap-3">
+                {String(data.status).toLowerCase() === 'approved' ? (
+                    <div className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-bold text-sm rounded-xl flex items-center gap-2 border border-emerald-200 dark:border-emerald-800/40">
+                        <Check size={16} /> Request Approved
+                    </div>
+                ) : String(data.status).toLowerCase() === 'rejected' ? (
+                    <div className="px-4 py-2 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 font-bold text-sm rounded-xl flex items-center gap-2 border border-rose-200 dark:border-rose-800/40">
+                        <X size={16} /> Request Rejected
+                    </div>
+                ) : (
+                    <>
+                        <button
+                            onClick={onReject}
+                            className="px-5 py-2.5 rounded-xl font-medium text-slate-600 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                            Reject Request
+                        </button>
+                        <button
+                            onClick={onApprove}
+                            className="px-5 py-2.5 rounded-xl font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-500/25 transition-all active:scale-95 flex items-center gap-2"
+                        >
+                            <Check size={18} />
+                            Approve Changes
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     );

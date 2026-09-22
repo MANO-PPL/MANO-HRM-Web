@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Search, FileText, Filter } from 'lucide-react';
 import RequestReviewModal from '../../dar/RequestReviewModal'; // Ensure path is correct
 import api from '../../../services/api'; // Ensure path is correct
@@ -7,6 +8,7 @@ import { toast } from 'react-toastify';
 import MinimalSelect from '../../MinimalSelect';
 
 const RequestManager = ({ departments = [] }) => {
+    const location = useLocation();
     const [requests, setRequests] = useState([]);
     const [loadingRequests, setLoadingRequests] = useState(false);
     const [requestSearch, setRequestSearch] = useState("");
@@ -17,9 +19,15 @@ const RequestManager = ({ departments = [] }) => {
     const fetchRequests = async () => {
         setLoadingRequests(true);
         try {
-            const res = await api.get('/dar/requests/list');
+            const params = new URLSearchParams(window.location.search);
+            const targetReqId = params.get('requestId') || params.get('req_id') || params.get('id');
+
+            const res = await api.get('/dar/requests/list', {
+                params: targetReqId ? { requestId: targetReqId } : {}
+            });
             // Map API data to UI format
-            const mapped = res.data.data.map(r => ({
+            const rawList = res.data?.data || [];
+            const mapped = rawList.map(r => ({
                 id: r.request_id,
                 user: r.user_name, // from join
                 dept: r.user_dept || 'Unknown',
@@ -27,13 +35,13 @@ const RequestManager = ({ departments = [] }) => {
                 date: r.request_date,
                 changes: (r.proposed_data?.length || 0), // Rough count
                 employeeName: r.user_name,
-                originalTasks: r.original_data.map(t => ({
+                originalTasks: (r.original_data || []).map(t => ({
                     ...t,
                     id: t.id || Math.random(),
                     startTime: t.start_time || t.startTime,
                     endTime: t.end_time || t.endTime
                 })),
-                proposedTasks: r.proposed_data.map(t => ({
+                proposedTasks: (r.proposed_data || []).map(t => ({
                     ...t,
                     id: t.id || Math.random(),
                     startTime: t.start_time || t.startTime,
@@ -44,6 +52,15 @@ const RequestManager = ({ departments = [] }) => {
             }));
 
             setRequests([...mapped]);
+
+            if (targetReqId) {
+                const targetReq = mapped.find(req => String(req.id) === String(targetReqId));
+                if (targetReq) {
+                    setSelectedRequest(targetReq);
+                    setSelectedDepartment("All Departments");
+                    setRequestSearch("");
+                }
+            }
         } catch (err) {
             console.error(err);
             toast.error("Failed to load requests");
@@ -77,6 +94,28 @@ const RequestManager = ({ departments = [] }) => {
     useEffect(() => {
         fetchRequests();
     }, []);
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const targetReqId = params.get('requestId') || params.get('req_id') || params.get('id');
+        if (targetReqId && requests.length > 0) {
+            const targetReq = requests.find(req => String(req.id) === String(targetReqId));
+            if (targetReq) {
+                setSelectedRequest(targetReq);
+                setSelectedDepartment("All Departments");
+                setRequestSearch("");
+            }
+        }
+    }, [location.search, requests]);
+
+    useEffect(() => {
+        if (selectedRequest?.id) {
+            const el = document.getElementById(`dar-request-card-${selectedRequest.id}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+    }, [selectedRequest]);
 
     return (
         <div className="flex h-full gap-6 pb-6">

@@ -193,7 +193,14 @@ const LeaveApplication = () => {
         if (params.get('apply') === 'true') {
             setShowForm(true);
         }
-    }, []);
+        const targetReqId = Number(params.get('requestId') || params.get('lr_id') || params.get('id'));
+        if (targetReqId && leaves.length > 0) {
+            const matching = leaves.find(l => Number(l.lr_id) === targetReqId || Number(l.id) === targetReqId);
+            if (matching) {
+                setSelectedLeave(matching);
+            }
+        }
+    }, [leaves]);
 
     // Admin: Fetch selected employee's leave balance
     const fetchSelectedEmployeeBalances = async (userId) => {
@@ -238,7 +245,14 @@ const LeaveApplication = () => {
                     : fetchedRaw;
 
                 setLeaves(fetched);
-                // For mobile, do NOT select first item by default to keep list view clean
+                const urlParams = new URLSearchParams(window.location.search);
+                const targetReqId = Number(urlParams.get('requestId') || urlParams.get('lr_id') || urlParams.get('id'));
+                if (targetReqId && fetched.length > 0) {
+                    const matching = fetched.find(l => Number(l.lr_id) === targetReqId || Number(l.id) === targetReqId);
+                    if (matching) {
+                        setSelectedLeave(matching);
+                    }
+                }
             }
 
             // Fetch current employee's leave balances

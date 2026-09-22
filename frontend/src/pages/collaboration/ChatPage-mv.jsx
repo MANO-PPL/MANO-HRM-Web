@@ -340,6 +340,38 @@ const MobileChatPage = () => {
         fetchCoworkers();
     }, []);
 
+    // Auto-select last active room on mount once rooms are loaded
+    const [hasAttemptedAutoSelect, setHasAttemptedAutoSelect] = useState(false);
+    useEffect(() => {
+        if (!loadingRooms && rooms.length > 0 && !selectedRoom && !hasAttemptedAutoSelect) {
+            setHasAttemptedAutoSelect(true);
+            const targetId = localStorage.getItem('lastActiveChatRoomId');
+            if (targetId) {
+                const targetRoom = rooms.find(r => Number(r.room_id) === Number(targetId));
+                if (targetRoom) {
+                    handleRoomSelect(targetRoom);
+                    setShowMobileChatWindow(true);
+                }
+            }
+        }
+    }, [rooms, loadingRooms, selectedRoom, hasAttemptedAutoSelect]);
+
+    // Handle real-time room switch events (e.g. from toast banner click)
+    useEffect(() => {
+        const handleSwitchRoom = (e) => {
+            const targetRoomId = e.detail?.roomId || localStorage.getItem('lastActiveChatRoomId');
+            if (targetRoomId && rooms.length > 0) {
+                const targetRoom = rooms.find(r => Number(r.room_id) === Number(targetRoomId));
+                if (targetRoom) {
+                    handleRoomSelect(targetRoom);
+                    setShowMobileChatWindow(true);
+                }
+            }
+        };
+        window.addEventListener('switch_chat_room', handleSwitchRoom);
+        return () => window.removeEventListener('switch_chat_room', handleSwitchRoom);
+    }, [rooms]);
+
     // Set up Socket listeners
     useEffect(() => {
         if (!socket) return;

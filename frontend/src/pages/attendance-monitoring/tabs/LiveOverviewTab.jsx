@@ -197,7 +197,7 @@ const LiveOverviewTab = ({
                                             <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500">Total Daily Time</span>
                                             <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
                                                 {item.totalHours}
-                                                {item.expectedHours && item.expectedHours !== '-' && (
+                                                {item.expectedHours && item.expectedHours !== '-' && item.expectedHours !== 'N/A' && (
                                                     <span className="text-xs text-slate-400 dark:text-github-dark-muted font-normal">
                                                         (Expected: {item.expectedHours})
                                                     </span>

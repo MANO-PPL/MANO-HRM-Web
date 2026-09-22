@@ -316,15 +316,30 @@ const ChatPage = () => {
     useEffect(() => {
         if (!loadingRooms && rooms.length > 0 && !selectedRoom && !hasAttemptedAutoSelect) {
             setHasAttemptedAutoSelect(true);
-            const lastActiveId = localStorage.getItem('lastActiveChatRoomId');
-            if (lastActiveId) {
-                const targetRoom = rooms.find(r => Number(r.room_id) === Number(lastActiveId));
+            const targetId = localStorage.getItem('lastActiveChatRoomId');
+            if (targetId) {
+                const targetRoom = rooms.find(r => Number(r.room_id) === Number(targetId));
                 if (targetRoom) {
                     handleRoomSelect(targetRoom);
                 }
             }
         }
     }, [rooms, loadingRooms, selectedRoom, hasAttemptedAutoSelect]);
+
+    // Handle real-time room switch events (e.g. when toast is clicked while already on /collaboration)
+    useEffect(() => {
+        const handleSwitchRoom = (e) => {
+            const targetRoomId = e.detail?.roomId || localStorage.getItem('lastActiveChatRoomId');
+            if (targetRoomId && rooms.length > 0) {
+                const targetRoom = rooms.find(r => Number(r.room_id) === Number(targetRoomId));
+                if (targetRoom) {
+                    handleRoomSelect(targetRoom);
+                }
+            }
+        };
+        window.addEventListener('switch_chat_room', handleSwitchRoom);
+        return () => window.removeEventListener('switch_chat_room', handleSwitchRoom);
+    }, [rooms]);
 
     // Set up Socket listeners - registered ONCE per socket instance.
     // We read the current room via selectedRoomRef so we never need to

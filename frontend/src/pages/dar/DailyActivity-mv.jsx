@@ -50,7 +50,12 @@ const getLocalDateString = (dateInput) => {
 
 const DailyActivityMobile = () => {
     const { user } = useAuth();
-    const [selectedDate, setSelectedDate] = useState(getTodayLocalDateString());
+    const [selectedDate, setSelectedDate] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const d = params.get('date');
+        if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+        return getTodayLocalDateString();
+    });
     const [showFullCalendar, setShowFullCalendar] = useState(false);
     const calendarButtonRef = useRef(null);
     const [tasks, setTasks] = useState([]);

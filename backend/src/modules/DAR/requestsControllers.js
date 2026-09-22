@@ -38,7 +38,12 @@ export const createRequest = catchAsync(async (req, res) => {
 
 export const listRequests = catchAsync(async (req, res) => {
     const { org_id } = req.user;
-    const data = await DarRequestService.getPendingRequests({ org_id });
+    const { status, requestId, request_id } = req.query;
+    const data = await DarRequestService.getPendingRequests({
+        org_id,
+        status,
+        request_id: requestId || request_id
+    });
     res.json({ ok: true, data });
 });
 

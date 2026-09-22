@@ -266,8 +266,8 @@ const ThemedSelect = ({ label, value, options, onChange, className = '' }) => {
                                             setIsOpen(false);
                                         }}
                                         className={`w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-normal transition-all mb-0.5 last:mb-0 cursor-pointer ${value === opt.value
-                                                ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                            ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                                             }`}
                                     >
                                         {opt.label}
@@ -490,14 +490,14 @@ const Attendance = () => {
                         handleShiftUpdate();
                     }
                 };
-            } catch (e) {}
+            } catch (e) { }
         }
 
         return () => {
             window.removeEventListener('shift_policy_updated', handleShiftUpdate);
             window.removeEventListener('focus', handleShiftUpdate);
             if (bc) {
-                try { bc.close(); } catch (e) {}
+                try { bc.close(); } catch (e) { }
             }
         };
     }, [refreshMyShiftPolicy]);
@@ -2633,17 +2633,6 @@ const Attendance = () => {
     return (
         <DashboardLayout title="Attendance" hideScrollbar={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
             <div className="pb-10 overflow-x-hidden no-scrollbar" style={{ zoom: 0.8 }}>
-                {/* Browser Permissions Alert & Prompt Banner */}
-                <div className="mb-4">
-                    <AttendancePermissionsBanner
-                        onPermissionsUpdated={(permStatus) => {
-                            if (permStatus.location === 'granted' && (location.error || location.address === 'Location Access Denied')) {
-                                fetchUserLocation();
-                            }
-                        }}
-                    />
-                </div>
-
                 {/* Header & Command Center */}
                 <AttendanceTimeLocationHeader
                     currentTime={currentTime}
@@ -3352,11 +3341,10 @@ const Attendance = () => {
                                                             }
                                                         }
                                                     }}
-                                                    className={`relative flex items-center gap-2.5 bg-white dark:bg-dark-card border rounded-xl px-3 py-2 min-h-[44px] shadow-2xs transition-all ${
-                                                        isDraggingFile
+                                                    className={`relative flex items-center gap-2.5 bg-white dark:bg-dark-card border rounded-xl px-3 py-2 min-h-[44px] shadow-2xs transition-all ${isDraggingFile
                                                             ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/30'
                                                             : 'border-slate-200 dark:border-github-dark-border focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500'
-                                                    }`}
+                                                        }`}
                                                 >
                                                     {/* Textarea */}
                                                     <textarea
@@ -3596,11 +3584,10 @@ const Attendance = () => {
                                             form="correction-form"
                                             data-tour-id="att-correction-submit-btn"
                                             disabled={hasIncompleteSession || submitLoading}
-                                            className={`w-full h-12 font-medium text-sm rounded-xl transition-all flex items-center justify-center gap-2 ${
-                                                hasIncompleteSession || submitLoading
+                                            className={`w-full h-12 font-medium text-sm rounded-xl transition-all flex items-center justify-center gap-2 ${hasIncompleteSession || submitLoading
                                                     ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed opacity-60 shadow-none'
                                                     : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 active:scale-[0.99] cursor-pointer'
-                                            }`}
+                                                }`}
                                             title={hasIncompleteSession ? "Please complete all session punch pairs (Clock IN & OUT) before requesting correction" : undefined}
                                         >
                                             <Plus size={18} strokeWidth={2.5} />

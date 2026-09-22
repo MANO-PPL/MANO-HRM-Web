@@ -79,7 +79,7 @@ const formatMessageDates = (message) => {
 };
 
 const NotificationSidebar = ({ isOpen, onClose }) => {
-    const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotification();
+    const { notifications, unreadCount, markAsRead, markAllAsRead, navigateToNotification } = useNotification();
     const [activeTab, setActiveTab] = useState('all'); // 'all' or 'unread'
 
     const filteredNotifications = activeTab === 'unread' 
@@ -204,7 +204,10 @@ const NotificationSidebar = ({ isOpen, onClose }) => {
                                         <div 
                                             key={notification.notification_id}
                                             className={`p-4 hover:bg-slate-50 dark:hover:bg-indigo-500/5 transition-all cursor-pointer rounded-xl my-1 group relative ${notification.is_read ? 'opacity-60' : 'bg-indigo-50/20 dark:bg-indigo-500/5'}`}
-                                            onClick={() => !notification.is_read && markAsRead(notification.notification_id)}
+                                            onClick={() => {
+                                                if (onClose) onClose();
+                                                navigateToNotification(notification);
+                                            }}
                                         >
                                             <div className="flex gap-4">
                                                 <div className={`mt-1 p-2 rounded-xl h-10 w-10 flex items-center justify-center shrink-0 border border-white dark:border-github-dark-border shadow-sm ${

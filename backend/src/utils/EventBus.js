@@ -94,10 +94,41 @@ class AppEventBus extends EventEmitter {
         // Listen for notifications and save to Database, then emit 'notification_saved' for Socket.IO
         this.on(this.events.NOTIFICATION, async (payload) => {
             try {
-                let dbType = payload.type || 'INFO';
-                if (dbType === 'CHAT' || dbType === 'CHAT_MESSAGE') {
-                    dbType = 'INFO';
+                // Suppress unnecessary notifications: Login alerts, Time-in/out alerts, Shift reminders
+                const titleLower = (payload.title || '').toLowerCase();
+                const ignoredPatterns = [
+                    'new login detected',
+                    'attendance checked in',
+                    'attendance checked out',
+                    'time in reminder',
+                    'time out reminder',
+                    'login detected',
+                    'mentioned in',
+                    'new mention'
+                ];
+                if (ignoredPatterns.some(pat => titleLower.includes(pat))) {
+                    return;
                 }
+
+                const isChat = payload.type === 'CHAT' || payload.type === 'CHAT_MESSAGE' || payload.related_entity_type === 'CHAT_MESSAGE';
+
+                if (isChat) {
+                    // Chat messages are NOT saved to the in-app bell notification inbox (comm_notifications)
+                    // They are pushed strictly for web toast banners and mobile push notifications
+                    this.emit('notification_saved', {
+                        notification_id: `chat_${Date.now()}`,
+                        user_id: payload.user_id,
+                        title: payload.title || '',
+                        message: payload.message || '',
+                        type: 'CHAT',
+                        related_entity_type: 'CHAT_MESSAGE',
+                        related_entity_id: payload.related_entity_id || null,
+                        send_push: payload.send_push !== false
+                    });
+                    return;
+                }
+
+                let dbType = payload.type || 'INFO';
                 const notificationData = {
                     user_id: payload.user_id,
                     title: payload.title || '',
@@ -116,7 +147,10 @@ class AppEventBus extends EventEmitter {
                     .first();
 
                 if (savedNotification) {
-                    this.emit('notification_saved', savedNotification);
+                    this.emit('notification_saved', {
+                        ...savedNotification,
+                        send_push: payload.send_push !== false
+                    });
                 }
             } catch (err) {
                 console.error('[EventBus DB Notification Error]:', err);

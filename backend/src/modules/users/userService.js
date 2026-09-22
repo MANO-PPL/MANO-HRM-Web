@@ -1,0 +1,1314 @@
+import { attendanceDB } from '../../config/database.js';
+import bcrypt from 'bcrypt';
+import AppError from '../../utils/AppError.js';
+import EventBus from '../../utils/EventBus.js';
+import { deleteFile, uploadCompressedImage } from '../../services/s3/s3Service.js';
+import ExcelJS from 'exceljs';
+import { PassThrough } from 'stream';
+import { encryptText, decryptText } from '../../utils/encryption.js';
+import { normalizeMaxOvertimeHours } from '../shifts/shiftService.js';
+import { isTimeInShiftRange } from '../../utils/dateUtils.js';
+import { cacheService } from '../../services/cache/cacheService.js';
+
+// Reuse logic from Admin.js and UserCleanupService.js
+
+const ALLOWED_UPDATE_FIELDS = new Set([
+    "user_name",
+    "user_password",
+    "email",
+    "phone_no",
+    "desg_id",
+    "dept_id",
+    "shift_id",
+    "user_type",
+    "force_password_change"
+]);
+
+export const getAllUsers = async (orgId, options = false) => {
+    const includeWorkLocation = typeof options === 'boolean' ? options : !!options?.includeWorkLocation;
+    const { startDate, endDate, dept_id, desg_id, shift_id, include_inactive } = (typeof options === 'object' && options !== null) ? options : {};
+
+    let usersQuery = attendanceDB('core_users as u')
+        .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
+        .leftJoin('org_departments as dep', 'u.dept_id', 'dep.dept_id')
+        .leftJoin('org_shifts as s', 'u.shift_id', 's.shift_id')
+        .select(
+            'u.user_id', 'u.user_name', 'u.email', 'u.phone_no', 'u.user_type',
+            'd.desg_name', 'd.desg_id', 'dep.dept_name', 'dep.dept_id',
+            's.shift_name', 's.shift_id', 'u.profile_image_url',
+            'u.is_active', 'u.is_deleted', 'u.deleted_at', 'u.force_password_change',
+            'u.created_at', 'u.joining_date'
+        )
+        .where('u.org_id', orgId);
+
+    if (dept_id) {
+        usersQuery.where('u.dept_id', dept_id);
+    }
+    if (desg_id) {
+        usersQuery.where('u.desg_id', desg_id);
+    }
+    if (shift_id) {
+        usersQuery.where('u.shift_id', shift_id);
+    }
+
+    if (!include_inactive && startDate && endDate) {
+        usersQuery.where(function () {
+            // 1. Active employees who joined on or before endDate 
+            this.where(function () {
+                this.where(function () {
+                    this.whereNull('u.is_deleted').orWhere('u.is_deleted', 0).orWhere('u.is_deleted', false);
+                })
+                    .andWhere(function () {
+                        this.where('u.is_active', 1).orWhere('u.is_active', true);
+                    })
+                    .andWhere(attendanceDB.raw('COALESCE(DATE(u.joining_date), DATE(u.created_at)) <= ?', [endDate]));
+            })
+                // 2. OR inactive / soft-deleted users who have at least 1 punch in this period
+                .orWhereExists(function () {
+                    this.select(1)
+                        .from('attn_punches as ap')
+                        .whereRaw('ap.user_id = u.user_id')
+                        .whereNull('ap.deleted_at')
+                        .whereRaw('DATE(ap.punch_time) >= ? AND DATE(ap.punch_time) <= ?', [startDate, endDate]);
+                })
+                // 3. OR users who have at least 1 DAR activity in this period
+                .orWhereExists(function () {
+                    this.select(1)
+                        .from('attn_daily_activities as da')
+                        .whereRaw('da.user_id = u.user_id')
+                        .whereRaw('DATE(da.activity_date) >= ? AND DATE(da.activity_date) <= ?', [startDate, endDate]);
+                });
+        });
+    }
+
+    usersQuery.orderBy('u.user_name', 'asc');
+
+    const users = await usersQuery;
+
+    if (includeWorkLocation) {
+        const workLocationsData = await attendanceDB('org_user_work_locations as uwl')
+            .join('org_work_locations as wl', 'uwl.location_id', 'wl.location_id')
+            .select('uwl.user_id', 'wl.location_id as loc_id', 'wl.location_name as loc_name', 'wl.latitude', 'wl.longitude', 'wl.radius', 'wl.is_active');
+
+        const workLocationMap = {};
+        for (const row of workLocationsData) {
+            if (!workLocationMap[row.user_id]) workLocationMap[row.user_id] = [];
+            workLocationMap[row.user_id].push({
+                loc_id: row.loc_id, loc_name: row.loc_name, latitude: row.latitude, longitude: row.longitude, radius: row.radius, is_active: row.is_active
+            });
+        }
+
+        return users.map(u => ({ ...u, work_locations: workLocationMap[u.user_id] || [] }));
+    }
+
+    return users;
+};
+
+export const getUserById = async (userId, orgId) => {
+    const user = await attendanceDB('core_users as u')
+        .leftJoin('org_designations as d', 'u.desg_id', 'd.desg_id')
+        .leftJoin('org_departments as dep', 'u.dept_id', 'dep.dept_id')
+        .leftJoin('org_shifts as s', 'u.shift_id', 's.shift_id')
+        .select(
+            'u.user_id', 'u.user_name', 'u.email', 'u.phone_no', 'u.user_type', 'u.desg_id', 'u.dept_id', 'u.shift_id', 'u.org_id',
+            'u.profile_image_url', 'u.is_active', 'u.is_deleted', 'u.deleted_at', 'u.force_password_change',
+            'd.desg_name', 'dep.dept_name', 's.shift_name'
+        )
+        .where('u.user_id', userId)
+        .andWhere('u.org_id', orgId)
+        .first();
+
+    if (!user) throw new AppError("User not found", 404);
+
+    const workLocations = await attendanceDB('org_user_work_locations as uwl')
+        .join('org_work_locations as wl', 'uwl.location_id', 'wl.location_id')
+        .select('wl.location_id', 'wl.location_name', 'wl.latitude', 'wl.longitude', 'wl.radius')
+        .where('uwl.user_id', userId);
+
+    user.work_locations = workLocations;
+    return user;
+};
+
+export const createUser = async (userData, authInfo, profileImageBuffer = null) => {
+    const { user_name, user_password, email, phone_no, desg_id, dept_id, shift_id, user_type, force_password_change } = userData;
+
+    if (user_type === 'admin') throw new AppError("Cannot create Admin users via the panel", 403);
+    if (authInfo.initiatorRole === 'hr' && user_type !== 'employee') throw new AppError("HR can only create Employees", 403);
+    if (!user_name || !user_password || (!email && !phone_no)) throw new AppError("Missing required fields (Name, Password, Email or Phone)", 400);
+
+    if (email) {
+        const existingEmail = await attendanceDB("core_users").where({ email }).first();
+        if (existingEmail) throw new AppError("Email is already taken", 400);
+    }
+
+    const phoneToSave = phone_no?.trim() || null;
+    if (phoneToSave) {
+        const existingPhone = await attendanceDB("core_users").where({ phone_no: phoneToSave }).first();
+        if (existingPhone) throw new AppError("Mobile number is already taken", 400);
+    }
+
+    const hashedPassword = await bcrypt.hash(user_password, 12);
+    let newUserId;
+    let userCode;
+
+    await attendanceDB.transaction(async (trx) => {
+        const org = await trx("core_organizations").where({ org_id: authInfo.orgId }).forUpdate().first();
+        if (!org) throw new AppError("Organization not found", 404);
+
+        const currentUsersResult = await trx("core_users")
+            .where({ org_id: authInfo.orgId })
+            .where(function () {
+                this.where('is_active', 1).orWhere('is_active', true);
+            })
+            .where(function () {
+                this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+            })
+            .count('user_id as count')
+            .first();
+        const currentCount = parseInt(currentUsersResult.count || 0, 10);
+
+        if (currentCount >= org.max_users) {
+            throw new AppError(`Organization has reached its active user limit (${org.max_users}). Please upgrade your plan or deactivate unused users to add more.`, 403);
+        }
+
+        const nextNumber = org.last_user_number + 1;
+        userCode = `${org.org_code}-${String(nextNumber).padStart(3, "0")}`;
+
+        await trx("core_organizations").where({ org_id: authInfo.orgId }).update({ last_user_number: nextNumber });
+
+        const [insertedId] = await trx("core_users").insert({
+            org_id: authInfo.orgId, user_name, user_code: userCode, user_password: hashedPassword,
+            email, phone_no: phoneToSave, desg_id: desg_id || null, dept_id: dept_id || null,
+            shift_id: shift_id || null, user_type: user_type || "employee",
+            force_password_change: force_password_change === 1 || force_password_change === true || force_password_change === 'true' ? 1 : 0
+        });
+
+        if (!insertedId) throw new AppError("Failed to create user", 500);
+        newUserId = insertedId;
+
+        try {
+            EventBus.emitActivityLog({
+                user_id: authInfo.initiatorId, org_id: authInfo.orgId, event_type: "CREATE",
+                event_source: "API", object_type: "USER", object_id: newUserId,
+                description: `Created user ${user_name} (${user_type || "employee"})`,
+                request_ip: authInfo.clientIp, user_agent: authInfo.userAgent
+            });
+        } catch (logErr) {
+            console.error("Failed to log activity:", logErr);
+        }
+    });
+
+    // Upload profile picture AFTER user creation (outside transaction)
+    let profileImageUrl = null;
+    if (profileImageBuffer && newUserId) {
+        try {
+            const uploadResult = await uploadCompressedImage({
+                fileBuffer: profileImageBuffer,
+                key: userCode,
+                directory: 'public/profile_pics',
+                quality: 90
+            });
+            profileImageUrl = uploadResult.url;
+            await attendanceDB('core_users').where({ user_id: newUserId }).update({
+                profile_image_url: profileImageUrl
+            });
+        } catch (uploadErr) {
+            console.error("Profile image upload failed:", uploadErr);
+            // User is still created, just without a profile picture
+        }
+    }
+
+    return { newUserId, profileImageUrl };
+};
+
+export const updateUser = async (userId, updatesData, authInfo, profileImageBuffer = null, io = null) => {
+    const updates = {};
+    const targetUser = await attendanceDB("core_users").where({ user_id: userId, org_id: authInfo.orgId }).first();
+
+    if (!targetUser) throw new AppError("User not found", 404);
+
+    const oldName = targetUser.user_name;
+
+    if (targetUser.user_type === 'admin' && authInfo.initiatorId !== targetUser.user_id) {
+        throw new AppError("Admins can only be edited by themselves", 403);
+    }
+
+    if (authInfo.initiatorRole === 'hr') {
+        if (targetUser.user_type === 'admin' || targetUser.user_type === 'hr') throw new AppError("HR can only edit Employees", 403);
+        if (updatesData.user_type && updatesData.user_type !== 'employee') throw new AppError("HR cannot change user role to anything other than Employee", 403);
+    }
+
+    if (updatesData.user_type === 'admin' && targetUser.user_type !== 'admin') throw new AppError("Cannot promote user to Admin", 403);
+
+    if (targetUser.user_type === 'admin' && updatesData.user_type && updatesData.user_type !== 'admin') {
+        throw new AppError("Admins cannot change their own user type to employee or demote their role", 403);
+    }
+
+    if (updatesData.email) {
+        const existing = await attendanceDB("core_users").where({ email: updatesData.email }).andWhereNot({ user_id: userId }).first();
+        if (existing) throw new AppError("Email is already taken", 400);
+    }
+
+    if (updatesData.phone_no?.trim()) {
+        const existing = await attendanceDB("core_users").where({ phone_no: updatesData.phone_no.trim() }).andWhereNot({ user_id: userId }).first();
+        if (existing) throw new AppError("Mobile number is already taken", 400);
+    }
+
+    for (const key of Object.keys(updatesData)) {
+        if (ALLOWED_UPDATE_FIELDS.has(key)) {
+            if (key === "user_password") {
+                if (updatesData.user_password?.trim()) {
+                    updates.user_password = await bcrypt.hash(updatesData.user_password, 12);
+                }
+            } else if (key === "force_password_change") {
+                updates.force_password_change = (updatesData.force_password_change === 1 || updatesData.force_password_change === true || updatesData.force_password_change === 'true') ? 1 : 0;
+            } else {
+                updates[key] = updatesData[key] === "" ? null : updatesData[key];
+            }
+        }
+    }
+
+    await attendanceDB.transaction(async (trx) => {
+        if (Object.keys(updates).length > 0) {
+            const affected = await trx('core_users').where('user_id', userId).andWhere('org_id', authInfo.orgId).update(updates);
+            if (affected === 0) throw new AppError("User not found or unauthorized", 404);
+        }
+    });
+
+    // Upload profile picture if provided
+    let profileImageUrl = null;
+    if (profileImageBuffer) {
+        try {
+            const userCode = targetUser.user_code || `user_${userId}`;
+            const uploadResult = await uploadCompressedImage({
+                fileBuffer: profileImageBuffer,
+                key: userCode,
+                directory: 'public/profile_pics',
+                quality: 90
+            });
+            profileImageUrl = uploadResult.url;
+            await attendanceDB('core_users').where({ user_id: userId }).update({
+                profile_image_url: profileImageUrl
+            });
+        } catch (uploadErr) {
+            console.error('Profile image upload failed:', uploadErr);
+        }
+    }
+
+    const nameChanged = updates.user_name && updates.user_name !== oldName;
+    if (nameChanged && oldName) {
+        try {
+            const newName = updates.user_name.trim();
+            const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const oldMentionRegex = new RegExp('@' + escapeRegExp(oldName) + '(?![a-zA-Z0-9_])', 'gi');
+
+            // Find all messages in the organization
+            const dbMessages = await attendanceDB('chat_messages as cm')
+                .join('chat_conversations as c', 'cm.conversation_id', 'c.id')
+                .where('c.org_id', authInfo.orgId)
+                .select('cm.*');
+
+            for (const msg of dbMessages) {
+                let msgText = null;
+                try {
+                    msgText = decryptText(msg.content);
+                } catch (e) {
+                    continue;
+                }
+
+                if (msgText && typeof msgText === 'string') {
+                    let isUpdated = false;
+                    let newMetadata = null;
+
+                    // 1. Standard mention replace
+                    if (oldMentionRegex.test(msgText)) {
+                        msgText = msgText.replace(oldMentionRegex, `@${newName}`);
+                        isUpdated = true;
+                    }
+
+                    // 2. System card payload replacement
+                    if (msgText.startsWith('[SYSTEM_CARD:')) {
+                        const systemCardRegex = /^\[SYSTEM_CARD:([^:]+):([^:]+):([^\]]+)\]\s*(.*)$/;
+                        const match = msgText.match(systemCardRegex);
+                        if (match) {
+                            const [_, cardType, entityId, status, payloadStr] = match;
+                            try {
+                                const payload = JSON.parse(payloadStr);
+                                let payloadUpdated = false;
+                                if (payload.employee_name && payload.employee_name === oldName) {
+                                    payload.employee_name = newName;
+                                    payloadUpdated = true;
+                                }
+                                if (payload.reviewer_name && payload.reviewer_name === oldName) {
+                                    payload.reviewer_name = newName;
+                                    payloadUpdated = true;
+                                }
+                                if (payloadUpdated) {
+                                    msgText = `[SYSTEM_CARD:${cardType}:${entityId}:${status}] ${JSON.stringify(payload)}`;
+                                    newMetadata = {
+                                        card_type: cardType,
+                                        entity_id: entityId,
+                                        status,
+                                        ...payload
+                                    };
+                                    isUpdated = true;
+                                }
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+                    }
+
+                    if (isUpdated) {
+                        const updatePayload = {
+                            content: encryptText(msgText),
+                            updated_at: attendanceDB.fn.now()
+                        };
+                        if (newMetadata) {
+                            updatePayload.metadata_json = JSON.stringify(newMetadata);
+                        }
+
+                        await attendanceDB('chat_messages')
+                            .where({ id: msg.id })
+                            .update(updatePayload);
+
+                        if (io) {
+                            try {
+                                const sender = await attendanceDB('core_users').where({ user_id: msg.sender_id }).select('user_name', 'profile_image_url').first();
+                                const formattedResponseMsg = {
+                                    message_id: msg.id,
+                                    room_id: Number(msg.conversation_id),
+                                    sender_id: Number(msg.sender_id),
+                                    message_text: msgText,
+                                    created_at: msg.created_at,
+                                    user_name: msg.sender_id === 0 ? 'System' : (sender?.user_name || 'Unknown Colleague'),
+                                    profile_image_url: msg.sender_id === 0 ? null : (sender?.profile_image_url || null)
+                                };
+
+                                // Broadcast to namespaced conversation channel
+                                io.to(`org_${authInfo.orgId}:conversation_${msg.conversation_id}`).emit('message_received', formattedResponseMsg);
+                                io.to(`org_${authInfo.orgId}:conversation_${msg.conversation_id}`).emit('room_updated', { room_id: msg.conversation_id });
+                            } catch (emitErr) {
+                                console.error('Error emitting socket update for name change sync:', emitErr);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (syncErr) {
+            console.error('Failed to sync mentions on username change:', syncErr);
+        }
+    }
+
+    return { success: true, profileImageUrl };
+};
+
+export const softDeleteUser = async (userId, authInfo) => {
+    if (parseInt(userId) === authInfo.initiatorId) throw new AppError("You cannot delete your own account", 400);
+
+    const targetUser = await attendanceDB('core_users').where({ user_id: userId, org_id: authInfo.orgId }).first();
+    if (!targetUser) throw new AppError("User not found", 404);
+    if (targetUser.user_type === 'admin') throw new AppError("Cannot delete Admin users", 403);
+    if (authInfo.initiatorRole === 'hr' && targetUser.user_type === 'hr') throw new AppError("HR cannot delete other HR users", 403);
+
+    const affected = await attendanceDB('core_users').where('user_id', userId).andWhere('org_id', authInfo.orgId).update({
+        is_deleted: true, is_active: false, deleted_at: attendanceDB.fn.now()
+    });
+
+    if (affected === 0) throw new AppError("User not found", 404);
+
+    try {
+        EventBus.emitActivityLog({
+            user_id: authInfo.initiatorId, org_id: authInfo.orgId, event_type: "DELETE", event_source: "API",
+            object_type: "USER", object_id: userId, description: `Soft deleted user ${targetUser.user_name}`,
+            request_ip: authInfo.clientIp, user_agent: authInfo.userAgent
+        });
+    } catch (err) {
+        console.error("Failed to log activity:", err);
+    }
+
+    return true;
+};
+
+export const restoreUser = async (userId, authInfo) => {
+    const targetUser = await attendanceDB('core_users').where({ user_id: userId, org_id: authInfo.orgId }).first();
+    if (!targetUser) throw new AppError("User not found", 404);
+
+    await attendanceDB('core_users').where('user_id', userId).update({ is_deleted: false, deleted_at: null, is_active: false });
+
+    try {
+        EventBus.emitActivityLog({
+            user_id: authInfo.initiatorId, org_id: authInfo.orgId, event_type: "UPDATE", event_source: "API",
+            object_type: "USER", object_id: userId, description: `Restored user ${targetUser.user_name}`,
+            request_ip: authInfo.clientIp, user_agent: authInfo.userAgent
+        });
+    } catch (err) { }
+
+    return true;
+};
+
+export const toggleUserStatus = async (userId, isActive, authInfo) => {
+    const targetUser = await attendanceDB('core_users').where({ user_id: userId, org_id: authInfo.orgId }).select('user_type', 'user_name', 'is_active').first();
+    if (!targetUser) throw new AppError("User not found", 404);
+
+    if (authInfo.initiatorRole === 'hr' && (targetUser.user_type === 'admin' || targetUser.user_type === 'hr')) {
+        throw new AppError("HR cannot change status of Admin or other HR", 403);
+    }
+
+    if (targetUser.user_type === 'admin' && !isActive) {
+        throw new AppError("Cannot deactivate Admin users", 403);
+    }
+
+    // If activating a currently inactive user, ensure organization does not exceed active user limit
+    if (isActive && !targetUser.is_active) {
+        const org = await attendanceDB("core_organizations").where({ org_id: authInfo.orgId }).first();
+        if (org && org.max_users) {
+            const currentUsersResult = await attendanceDB("core_users")
+                .where({ org_id: authInfo.orgId })
+                .where(function () {
+                    this.where('is_active', 1).orWhere('is_active', true);
+                })
+                .where(function () {
+                    this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+                })
+                .count('user_id as count')
+                .first();
+            const currentCount = parseInt(currentUsersResult.count || 0, 10);
+
+            if (currentCount >= org.max_users) {
+                throw new AppError(`Organization has reached its active user limit (${org.max_users}). Please upgrade your plan or deactivate other users first.`, 403);
+            }
+        }
+    }
+
+    await attendanceDB('core_users').where('user_id', userId).where('org_id', authInfo.orgId).update({ is_active: isActive });
+
+    try {
+        EventBus.emitActivityLog({
+            user_id: authInfo.initiatorId,
+            org_id: authInfo.orgId,
+            event_type: "UPDATE",
+            event_source: "API",
+            object_type: "USER",
+            object_id: userId,
+            description: `${isActive ? 'Activated' : 'Deactivated'} user ${targetUser.user_name}`,
+            request_ip: authInfo.clientIp,
+            user_agent: authInfo.userAgent
+        });
+    } catch (err) {
+        console.error("Failed to log activity:", err);
+    }
+
+    return true;
+};
+
+// --- Permanent Delete (from UserCleanupService) ---
+const safeDeleteS3 = async (key) => {
+    try {
+        if (key) await deleteFile({ key });
+    } catch (error) {
+        console.warn(`[UserCleanup] Failed to delete S3 file ${key}:`, error.message);
+    }
+};
+
+const extractKeyFromUrl = (url) => {
+    if (!url) return null;
+    try {
+        const bucketDomain = 's3.amazonaws.com';
+        if (url.includes(bucketDomain)) {
+            const parts = url.split(bucketDomain + '/');
+            if (parts.length > 1) return parts[1];
+        }
+        if (!url.startsWith('http')) return url;
+        return null;
+    } catch (e) {
+        return null;
+    }
+};
+
+export const permanentlyDeleteUser = async (userId) => {
+    const trx = await attendanceDB.transaction();
+    try {
+        const user = await trx('core_users').where('user_id', userId).first();
+        if (!user) {
+            await trx.rollback();
+            return false;
+        }
+
+        await trx('core_refresh_tokens').where('user_id', userId).del();
+        await trx('comm_notifications').where('user_id', userId).del();
+        await trx('sys_activity_logs').where('user_id', userId).del();
+        await trx('sys_error_logs').where('user_id', userId).del();
+
+        try { await trx('attn_corrections').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) { }
+        try { await trx('attn_correction_requests').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) { }
+        try { await trx('attn_daily_summary_v2').where('adjusted_by', userId).update({ adjusted_by: null }); } catch (_) { }
+        try { await trx('leave_request').where('reviewed_by', userId).update({ reviewed_by: null }); } catch (_) { }
+
+        try { await trx('attn_corrections').where('user_id', userId).del(); } catch (_) { }
+        try { await trx('attn_correction_requests').where('user_id', userId).del(); } catch (_) { }
+        await trx('org_user_work_locations').where('user_id', userId).del();
+        await trx('attn_daily_activities').where('user_id', userId).del();
+        await trx('attn_daily_summary_v2').where('user_id', userId).del();
+        await trx('attn_dar_requests').where('user_id', userId).del();
+        await trx('comm_events_meetings').where('user_id', userId).del();
+        await trx('sys_security_alerts').where('user_id', userId).del();
+
+        // Clean up relational chat room memberships and DM rooms
+        const memberships = await trx('chat_conversation_members')
+            .where({ org_id: user.org_id, user_id: userId });
+
+        for (const membership of memberships) {
+            const conversation = await trx('chat_conversations')
+                .where({ org_id: user.org_id, id: membership.conversation_id })
+                .first();
+
+            if (conversation) {
+                if (conversation.type === 'dm') {
+                    // Delete direct DM room completely since one of the two members is gone
+                    await trx('chat_conversations').where({ org_id: user.org_id, id: conversation.id }).del();
+                } else {
+                    // Group/dept room: delete this user's membership
+                    await trx('chat_conversation_members')
+                        .where({ org_id: user.org_id, conversation_id: conversation.id, user_id: userId })
+                        .del();
+
+                    // Check if group is now empty, if so, delete it
+                    const remainingMembers = await trx('chat_conversation_members')
+                        .where({ org_id: user.org_id, conversation_id: conversation.id });
+                    if (remainingMembers.length === 0) {
+                        await trx('chat_conversations').where({ org_id: user.org_id, id: conversation.id }).del();
+                    }
+                }
+            }
+        }
+
+        const leaveRequests = await trx('leave_request').where('user_id', userId).select('lr_id', 'attachments');
+        for (const lr of leaveRequests) {
+            if (lr.attachments) {
+                const atts = typeof lr.attachments === 'string' ? JSON.parse(lr.attachments) : lr.attachments;
+                if (Array.isArray(atts)) {
+                    for (const att of atts) {
+                        if (att.file_key) {
+                            await safeDeleteS3(att.file_key);
+                        }
+                    }
+                }
+            }
+        }
+        await trx('leave_request').where('user_id', userId).del();
+
+        const feedbacks = await trx('feedback_tickets').where('user_id', userId).select('feedback_id');
+        const feedbackIds = feedbacks.map(f => f.feedback_id);
+        if (feedbackIds.length > 0) {
+            const feedbackAttachments = await trx('feedback_attachments').whereIn('feedback_id', feedbackIds).select('file_key');
+            for (const attachment of feedbackAttachments) await safeDeleteS3(attachment.file_key);
+            await trx('feedback_attachments').whereIn('feedback_id', feedbackIds).del();
+            await trx('feedback_tickets').whereIn('feedback_id', feedbackIds).del();
+        }
+
+        const punches = await trx('attn_punches').where('user_id', userId).select('metadata');
+        for (const p of punches) {
+            let meta = {};
+            try { meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {}); } catch (_) { }
+            if (meta.image_key) await safeDeleteS3(meta.image_key);
+        }
+        await trx('attn_punches').where('user_id', userId).del();
+
+        if (user.profile_image_url) {
+            const key = extractKeyFromUrl(user.profile_image_url);
+            if (key) await safeDeleteS3(key);
+        }
+
+        await trx('core_users').where('user_id', userId).del();
+        await trx.commit();
+        return true;
+    } catch (error) {
+        console.error(`[UserCleanup] Failed to delete user ${userId}:`, error);
+        await trx.rollback();
+        throw error;
+    }
+};
+
+// --- Bulk Upload ---
+export const bulkCreateUsers = async (file, authInfo) => {
+    const workbook = new ExcelJS.Workbook();
+    const buffer = file.buffer;
+    const mimeType = file.mimetype;
+    const originalName = file.originalname.toLowerCase();
+
+    if (mimeType.includes("csv") || originalName.endsWith(".csv")) {
+        const bufferStream = new PassThrough();
+        bufferStream.end(buffer);
+        await workbook.csv.read(bufferStream);
+    } else {
+        await workbook.xlsx.load(buffer);
+    }
+
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) throw new AppError("Invalid or empty file", 400);
+
+    const results = { total_processed: 0, success_count: 0, failure_count: 0, errors: [] };
+    const headerMap = {};
+    worksheet.getRow(1).eachCell((cell, colNumber) => {
+        headerMap[cell.value ? cell.value.toString().toLowerCase().trim() : ""] = colNumber;
+    });
+
+    const getVal = (row, key) => {
+        const col = headerMap[key];
+        if (!col) return null;
+        const cell = row.getCell(col);
+        return cell.value ? cell.value.toString().trim() : null;
+    };
+
+    const rowsData = [];
+    worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 1) rowsData.push({ row, rowNumber });
+    });
+
+    const uniqueDepts = new Set(), uniqueDesgs = new Set(), uniqueShifts = new Set();
+    for (const { row } of rowsData) {
+        const dept = getVal(row, "department") || getVal(row, "dept");
+        const desg = getVal(row, "designation") || getVal(row, "role");
+        const shift = getVal(row, "shift");
+        if (dept) uniqueDepts.add(dept);
+        if (desg) uniqueDesgs.add(desg);
+        if (shift) uniqueShifts.add(shift);
+    }
+
+    const deptMap = {}, desgMap = {}, shiftMap = {};
+
+    await attendanceDB.transaction(async (trx) => {
+        const org = await trx("core_organizations").where({ org_id: authInfo.orgId }).forUpdate().first();
+        if (!org) throw new AppError("Organization not found", 404);
+        let nextUserNumber = org.last_user_number;
+
+        const currentUsersResult = await trx("core_users")
+            .where({ org_id: authInfo.orgId })
+            .where(function () {
+                this.where('is_active', 1).orWhere('is_active', true);
+            })
+            .where(function () {
+                this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+            })
+            .count('user_id as count')
+            .first();
+        let currentCount = parseInt(currentUsersResult.count || 0, 10);
+
+        for (const deptName of uniqueDepts) {
+            let dept = await trx("org_departments").where({ dept_name: deptName, org_id: authInfo.orgId }).first();
+            if (!dept) {
+                const [newId] = await trx("org_departments").insert({ dept_name: deptName, org_id: authInfo.orgId });
+                deptMap[deptName.toLowerCase()] = newId;
+            } else {
+                deptMap[deptName.toLowerCase()] = dept.dept_id;
+            }
+        }
+
+        for (const desgName of uniqueDesgs) {
+            let desg = await trx("org_designations").where({ desg_name: desgName, org_id: authInfo.orgId }).first();
+            if (!desg) {
+                const [newId] = await trx("org_designations").insert({ desg_name: desgName, org_id: authInfo.orgId });
+                desgMap[desgName.toLowerCase()] = newId;
+            } else {
+                desgMap[desgName.toLowerCase()] = desg.desg_id;
+            }
+        }
+
+        const allShifts = await trx("org_shifts").where({ org_id: authInfo.orgId }).select("shift_id", "shift_name");
+        for (const sh of allShifts) shiftMap[sh.shift_name.toLowerCase()] = sh.shift_id;
+
+        for (const { row, rowNumber } of rowsData) {
+            results.total_processed++;
+            const name = getVal(row, "name") || getVal(row, "user_name");
+            const email = getVal(row, "email");
+            const phone = getVal(row, "phone") || getVal(row, "phone_no");
+            const type = getVal(row, "type") || "employee";
+            const password = getVal(row, "password") || `${name}-${authInfo.orgId}`;
+            const forcePassVal = getVal(row, "force password change") || getVal(row, "force_password_change") || getVal(row, "force change on first login") || "";
+            const force_password_change = forcePassVal.toLowerCase().trim() === "true" || forcePassVal.trim() === "1";
+
+            if (type.toLowerCase() === 'admin') {
+                results.failure_count++; results.errors.push(`Row ${rowNumber}: Cannot create Admin users`); continue;
+            }
+            if (authInfo.initiatorRole === 'hr' && type.toLowerCase() !== 'employee') {
+                results.failure_count++; results.errors.push(`Row ${rowNumber}: HR can only create Employees`); continue;
+            }
+            if (!name || (!email && !phone)) {
+                results.failure_count++; results.errors.push(`Row ${rowNumber}: Missing Name, Email or Phone`); continue;
+            }
+
+            const existing = await trx("core_users")
+                .where(function () {
+                    if (email) this.orWhere({ email });
+                    if (phone) this.orWhere({ phone_no: phone });
+                })
+                .first();
+
+            if (existing && (email || phone)) {
+                results.failure_count++; results.errors.push(`Row ${rowNumber}: Duplicate Email/Phone`); continue;
+            }
+
+            if (currentCount >= org.max_users) {
+                results.failure_count++; results.errors.push(`Row ${rowNumber}: Organization user limit reached (${org.max_users})`); continue;
+            }
+
+            const hashedPassword = await bcrypt.hash(password, 10);
+            nextUserNumber++;
+            const userCode = `${org.org_code || org.org_name}-${String(nextUserNumber).padStart(3, "0")}`;
+
+            await trx("core_users").insert({
+                org_id: authInfo.orgId, user_name: name, user_code: userCode, email, phone_no: phone || "",
+                user_password: hashedPassword, user_type: type,
+                dept_id: deptMap[(getVal(row, "department") || getVal(row, "dept"))?.toLowerCase()],
+                desg_id: desgMap[(getVal(row, "designation") || getVal(row, "role"))?.toLowerCase()],
+                shift_id: shiftMap[getVal(row, "shift")?.toLowerCase()],
+                force_password_change: force_password_change ? 1 : 0
+            });
+
+            currentCount++;
+            results.success_count++;
+        }
+
+        await trx("core_organizations").where({ org_id: authInfo.orgId }).update({ last_user_number: nextUserNumber });
+    });
+
+    return results;
+};
+
+// --- Lookups & Helpers ---
+export const getDepartments = async (orgId) => {
+    return await attendanceDB("org_departments").where({ org_id: orgId }).select("dept_id", "dept_name");
+};
+
+export const createDepartment = async (deptName, orgId) => {
+    if (!deptName) throw new AppError("Department name is required", 400);
+    const existing = await attendanceDB("org_departments").where({ dept_name: deptName, org_id: orgId }).first();
+    if (existing) throw new AppError("Department already exists", 400);
+
+    const [newId] = await attendanceDB("org_departments").insert({ dept_name: deptName, org_id: orgId });
+    return { dept_id: newId, dept_name: deptName };
+};
+
+export const updateDepartment = async (deptId, deptName, orgId) => {
+    if (!deptName || !deptName.trim()) throw new AppError("Department name is required", 400);
+    const trimmed = deptName.trim();
+
+    const dept = await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).first();
+    if (!dept) throw new AppError("Department not found", 404);
+
+    const existing = await attendanceDB("org_departments")
+        .where({ dept_name: trimmed, org_id: orgId })
+        .whereNot({ dept_id: deptId })
+        .first();
+    if (existing) throw new AppError("Another department with this name already exists", 400);
+
+    await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).update({ dept_name: trimmed });
+    return { dept_id: deptId, dept_name: trimmed };
+};
+
+export const deleteDepartment = async (deptId, orgId) => {
+    const dept = await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).first();
+    if (!dept) throw new AppError("Department not found", 404);
+
+    const userInDept = await attendanceDB('core_users')
+        .where({ dept_id: deptId, org_id: orgId })
+        .where(function () {
+            this.where('is_active', 1).orWhere('is_active', true);
+        })
+        .where(builder => builder.where('is_deleted', false).orWhereNull('is_deleted'))
+        .first();
+    if (userInDept) {
+        throw new AppError("Cannot delete department because it is currently assigned to active employee(s)", 400);
+    }
+
+    // Unassign department from any inactive/deleted users before deletion
+    await attendanceDB('core_users')
+        .where({ dept_id: deptId, org_id: orgId })
+        .update({ dept_id: null });
+
+    await attendanceDB("org_departments").where({ dept_id: deptId, org_id: orgId }).del();
+    return { success: true };
+};
+
+export const getDesignations = async (orgId) => {
+    return await attendanceDB("org_designations").where({ org_id: orgId }).select("desg_id", "desg_name");
+};
+
+export const createDesignation = async (desgName, orgId) => {
+    if (!desgName) throw new AppError("Designation name is required", 400);
+    const existing = await attendanceDB("org_designations").where({ desg_name: desgName, org_id: orgId }).first();
+    if (existing) throw new AppError("Designation already exists", 400);
+
+    const [newId] = await attendanceDB("org_designations").insert({ desg_name: desgName, org_id: orgId });
+    return { desg_id: newId, desg_name: desgName };
+};
+
+export const updateDesignation = async (desgId, desgName, orgId) => {
+    if (!desgName || !desgName.trim()) throw new AppError("Designation name is required", 400);
+    const trimmed = desgName.trim();
+
+    const desg = await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).first();
+    if (!desg) throw new AppError("Designation not found", 404);
+
+    const existing = await attendanceDB("org_designations")
+        .where({ desg_name: trimmed, org_id: orgId })
+        .whereNot({ desg_id: desgId })
+        .first();
+    if (existing) throw new AppError("Another designation with this name already exists", 400);
+
+    await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).update({ desg_name: trimmed });
+    return { desg_id: desgId, desg_name: trimmed };
+};
+
+export const deleteDesignation = async (desgId, orgId) => {
+    const desg = await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).first();
+    if (!desg) throw new AppError("Designation not found", 404);
+
+    const userInDesg = await attendanceDB('core_users')
+        .where({ desg_id: desgId, org_id: orgId })
+        .where(function () {
+            this.where('is_active', 1).orWhere('is_active', true);
+        })
+        .where(builder => builder.where('is_deleted', false).orWhereNull('is_deleted'))
+        .first();
+    if (userInDesg) {
+        throw new AppError("Cannot delete designation because it is currently assigned to active employee(s)", 400);
+    }
+
+    // Unassign designation from any inactive/deleted users before deletion
+    await attendanceDB('core_users')
+        .where({ desg_id: desgId, org_id: orgId })
+        .update({ desg_id: null });
+
+    await attendanceDB("org_designations").where({ desg_id: desgId, org_id: orgId }).del();
+    return { success: true };
+};
+
+
+export const getShifts = async (orgId) => {
+    const shifts = await attendanceDB("org_shifts").where({ org_id: orgId });
+    return shifts.map(s => {
+        const rules = typeof s.policy_rules === 'string' ? JSON.parse(s.policy_rules) : (s.policy_rules || {});
+        const rawMaxOvertime = rules.overtime?.max_overtime !== undefined
+            ? rules.overtime.max_overtime
+            : rules.overtime?.maxOvertime;
+        const normalizedRules = {
+            ...rules,
+            overtime: {
+                ...(rules.overtime || {}),
+                max_overtime: normalizeMaxOvertimeHours(rawMaxOvertime)
+            }
+        };
+        return {
+            shift_id: s.shift_id,
+            shift_name: s.shift_name,
+            org_id: s.org_id,
+            start_time: rules.shift_timing?.start_time || null,
+            end_time: rules.shift_timing?.end_time || null,
+            grace_period_mins: rules.grace_period?.minutes || 0,
+            is_overtime_enabled: rules.overtime?.enabled ? 1 : 0,
+            overtime_threshold_hours: rules.overtime?.threshold || 8.0,
+            is_active: rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : (s.is_active !== undefined ? s.is_active : 1),
+            policy_rules: normalizedRules
+        };
+    });
+};
+
+export const createShift = async (shiftData, orgId) => {
+    const {
+        shift_name, start_time, end_time, grace_period_mins,
+        is_overtime_enabled, overtime_threshold_hours, is_active,
+        policy_rules
+    } = shiftData;
+
+    if (!shift_name) throw new AppError("Missing required shift fields", 400);
+
+    const existing = await attendanceDB("org_shifts").where({ shift_name, org_id }).first();
+    if (existing) throw new AppError("Shift already exists", 400);
+
+    const rules = policy_rules || {};
+    const isActiveVal = is_active !== undefined ? (is_active ? 1 : 0) : (rules.is_active !== undefined ? (rules.is_active ? 1 : 0) : 1);
+
+    const finalRules = {
+        ...rules,
+        is_active: isActiveVal === 1,
+        shift_timing: {
+            start_time: start_time || null,
+            end_time: end_time || null
+        },
+        grace_period: {
+            minutes: Number(grace_period_mins) || 0
+        },
+        overtime: {
+            ...(rules.overtime || {}),
+            enabled: is_overtime_enabled ? true : false,
+            threshold: Number(overtime_threshold_hours) || 8,
+            max_overtime: normalizeMaxOvertimeHours(
+                rules.overtime?.max_overtime !== undefined
+                    ? rules.overtime.max_overtime
+                    : rules.overtime?.maxOvertime
+            )
+        },
+        entry_requirements: rules.entry_requirements || { selfie: true, geofence: true },
+        exit_requirements: rules.exit_requirements || { selfie: true, geofence: true },
+        checkpoint_requirements: {
+            enabled: rules.checkpoint_requirements?.enabled !== undefined ? Boolean(rules.checkpoint_requirements.enabled) : true,
+            selfie: rules.checkpoint_requirements?.selfie !== undefined ? Boolean(rules.checkpoint_requirements.selfie) : false
+        }
+    };
+
+    if (finalRules.missed_punch_check_time && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
+        if (isTimeInShiftRange(finalRules.missed_punch_check_time, finalRules.shift_timing.start_time, finalRules.shift_timing.end_time)) {
+            throw new AppError(`"Flag as Missed Punch After" (${finalRules.missed_punch_check_time}) cannot fall within shift working hours (${finalRules.shift_timing.start_time} - ${finalRules.shift_timing.end_time}).`, 400);
+        }
+    }
+
+    const [newId] = await attendanceDB("org_shifts").insert({
+        org_id,
+        shift_name,
+        is_active: isActiveVal,
+        policy_rules: JSON.stringify(finalRules)
+    });
+    return { shift_id: newId, shift_name };
+};
+
+export const updateShift = async (shiftId, shiftData, orgId) => {
+    const existing = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id: orgId }).first();
+    if (!existing) throw new AppError("Shift not found", 404);
+
+    let existingRules = {};
+    if (existing.policy_rules) {
+        try {
+            existingRules = typeof existing.policy_rules === 'string'
+                ? JSON.parse(existing.policy_rules)
+                : existing.policy_rules;
+        } catch (e) {
+            existingRules = {};
+        }
+    }
+    existingRules = existingRules || {};
+
+    let incomingRules = shiftData.policy_rules;
+    if (typeof incomingRules === 'string') {
+        try {
+            incomingRules = JSON.parse(incomingRules);
+        } catch (e) {
+            incomingRules = {};
+        }
+    }
+    incomingRules = incomingRules || {};
+
+    const checkpointReq = incomingRules.checkpoint_requirements !== undefined
+        ? incomingRules.checkpoint_requirements
+        : (existingRules.checkpoint_requirements || {});
+
+    const isActiveVal = shiftData.is_active !== undefined
+        ? (shiftData.is_active ? 1 : 0)
+        : (incomingRules.is_active !== undefined
+            ? (incomingRules.is_active ? 1 : 0)
+            : (existing.is_active !== undefined ? (existing.is_active ? 1 : 0) : 1));
+
+    const rawMaxOvertime = incomingRules.overtime?.max_overtime !== undefined
+        ? incomingRules.overtime.max_overtime
+        : (incomingRules.overtime?.maxOvertime !== undefined
+            ? incomingRules.overtime.maxOvertime
+            : (existingRules.overtime?.max_overtime !== undefined
+                ? existingRules.overtime.max_overtime
+                : existingRules.overtime?.maxOvertime));
+
+    const finalRules = {
+        ...existingRules,
+        ...incomingRules,
+        is_active: isActiveVal === 1,
+        shift_timing: {
+            ...(existingRules.shift_timing || {}),
+            ...(incomingRules.shift_timing || {})
+        },
+        grace_period: {
+            ...(existingRules.grace_period || {}),
+            ...(incomingRules.grace_period || {})
+        },
+        overtime: {
+            ...(existingRules.overtime || {}),
+            ...(incomingRules.overtime || {}),
+            max_overtime: normalizeMaxOvertimeHours(rawMaxOvertime)
+        },
+        entry_requirements: {
+            ...(existingRules.entry_requirements || { selfie: true, geofence: true }),
+            ...(incomingRules.entry_requirements || {})
+        },
+        exit_requirements: {
+            ...(existingRules.exit_requirements || { selfie: true, geofence: true }),
+            ...(incomingRules.exit_requirements || {})
+        },
+        checkpoint_requirements: {
+            enabled: checkpointReq.enabled !== undefined ? Boolean(checkpointReq.enabled) : true,
+            selfie: checkpointReq.selfie !== undefined ? Boolean(checkpointReq.selfie) : false
+        }
+    };
+
+    if (finalRules.missed_punch_check_time && finalRules.shift_timing?.start_time && finalRules.shift_timing?.end_time) {
+        if (isTimeInShiftRange(finalRules.missed_punch_check_time, finalRules.shift_timing.start_time, finalRules.shift_timing.end_time)) {
+            throw new AppError(`"Flag as Missed Punch After" (${finalRules.missed_punch_check_time}) cannot fall within shift working hours (${finalRules.shift_timing.start_time} - ${finalRules.shift_timing.end_time}).`, 400);
+        }
+    }
+
+    const updates = {
+        shift_name: shiftData.shift_name !== undefined ? shiftData.shift_name : existing.shift_name,
+        is_active: isActiveVal,
+        policy_rules: JSON.stringify(finalRules)
+    };
+
+    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id: orgId }).update(updates);
+    if (affected === 0) throw new AppError("Shift not found", 404);
+
+    if (cacheService && cacheService.del) {
+        await cacheService.del(`mano-cache:shifts:org:${orgId}`);
+    }
+
+    return true;
+};
+
+export const deleteShift = async (shiftId, orgId) => {
+    const usersCount = await attendanceDB('core_users')
+        .where({ shift_id: shiftId })
+        .where(function () {
+            this.where('is_active', 1).orWhere('is_active', true);
+        })
+        .where(function () {
+            this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+        })
+        .count('user_id as count')
+        .first();
+
+    if (usersCount && usersCount.count > 0) {
+        throw new AppError(`Cannot delete shift. It is assigned to ${usersCount.count} active users.`, 400);
+    }
+
+    // Unassign shift from any inactive/deleted users before deletion
+    await attendanceDB('core_users')
+        .where({ shift_id: shiftId, org_id: orgId })
+        .update({ shift_id: null });
+
+    const affected = await attendanceDB("org_shifts").where({ shift_id: shiftId, org_id: orgId }).del();
+    if (affected === 0) throw new AppError("Shift not found", 404);
+
+    if (cacheService && cacheService.del) {
+        await cacheService.del(`mano-cache:shifts:org:${orgId}`);
+    }
+
+    return true;
+};
+
+export const getWorkLocations = async (orgId) => {
+    return await attendanceDB("org_work_locations").where({ org_id: orgId }).select(
+        "location_id", "location_name", "latitude", "longitude", "radius", "is_active"
+    );
+};
+
+export const bulkCreateUsersFromJson = async (users, authInfo) => {
+    const { orgId } = authInfo;
+    const results = {
+        total_processed: 0,
+        success_count: 0,
+        failure_count: 0,
+        errors: []
+    };
+
+    const uniqueDepts = new Set();
+    const uniqueDesgs = new Set();
+    const uniqueShifts = new Set();
+
+    for (const row of users) {
+        const dept = row["Department"] || row["department"] || row["dept"];
+        const desg = row["Designation"] || row["designation"] || row["role"] || row["Role"];
+        const shift = row["Shift"] || row["shift"];
+        if (dept) uniqueDepts.add(dept);
+        if (desg) uniqueDesgs.add(desg);
+        if (shift) uniqueShifts.add(shift);
+    }
+
+    const deptMap = {};
+    const desgMap = {};
+    const shiftMap = {};
+
+    await attendanceDB.transaction(async (trx) => {
+        for (const deptName of uniqueDepts) {
+            if (!deptName) continue;
+            let dept = await trx("org_departments").where({ dept_name: deptName, org_id: orgId }).first();
+            if (!dept) {
+                const [newId] = await trx("org_departments").insert({ dept_name: deptName, org_id: orgId });
+                deptMap[deptName.toLowerCase()] = newId;
+            } else {
+                deptMap[deptName.toLowerCase()] = dept.dept_id;
+            }
+        }
+
+        for (const desgName of uniqueDesgs) {
+            if (!desgName) continue;
+            let desg = await trx("org_designations").where({ desg_name: desgName, org_id: orgId }).first();
+            if (!desg) {
+                const [newId] = await trx("org_designations").insert({ desg_name: desgName, org_id: orgId });
+                desgMap[desgName.toLowerCase()] = newId;
+            } else {
+                desgMap[desgName.toLowerCase()] = desg.desg_id;
+            }
+        }
+
+        const allShifts = await trx("org_shifts").where({ org_id: orgId }).select('shift_id', 'shift_name');
+        for (const sh of allShifts) {
+            shiftMap[sh.shift_name.toLowerCase()] = sh.shift_id;
+        }
+
+        const org = await trx("core_organizations").where({ org_id: orgId }).forUpdate().first();
+        if (!org) throw new AppError("Organization not found", 404);
+
+        const currentUsersResult = await trx("core_users")
+            .where({ org_id: orgId })
+            .where(function () {
+                this.where('is_active', 1).orWhere('is_active', true);
+            })
+            .where(function () {
+                this.where('is_deleted', 0).orWhere('is_deleted', false).orWhereNull('is_deleted');
+            })
+            .count('user_id as count')
+            .first();
+        let currentCount = parseInt(currentUsersResult.count || 0, 10);
+
+        let nextUserNumber = org.last_user_number;
+        let rowNumber = 0;
+
+        for (const row of users) {
+            rowNumber++;
+            results.total_processed++;
+
+            const name = row['Name'] || row['name'] || row['user_name'];
+            const email = row['Email'] || row['email'];
+            const phoneRaw = row['Phone'] || row['phone'] || row['phone_no'];
+            const phone = phoneRaw ? phoneRaw.toString().trim() : null;
+            const deptName = row["Department"] || row["department"] || row["dept"];
+            const desgName = row["Designation"] || row["designation"] || row["role"] || row["Role"];
+            const shiftName = row["Shift"] || row["shift"];
+            const password = row["Password"] || row["password"] || `${name}-${orgId}`;
+            const forcePassVal = row['Force Password Change'] || row['force_password_change'] || row['Force change on first login'] || '';
+            const force_password_change = forcePassVal.toString().toLowerCase().trim() === 'true' || forcePassVal.toString().trim() === '1';
+
+            if (!name || (!email && !phone)) {
+                results.failure_count++;
+                results.errors.push(`Row ${rowNumber}: Missing Name, Email or Phone`);
+                continue;
+            }
+
+            try {
+                let existing = null;
+                if (email || phone) {
+                    existing = await trx("core_users")
+                        .where(function () {
+                            if (email) this.orWhere({ email });
+                            if (phone) this.orWhere({ phone_no: phone });
+                        })
+                        .first();
+                }
+
+                if (existing) {
+                    results.failure_count++;
+                    results.errors.push(`Row ${rowNumber}: Duplicate Email/Phone (${email || phone})`);
+                    continue;
+                }
+
+                if (currentCount >= org.max_users) {
+                    results.failure_count++;
+                    results.errors.push(`Row ${rowNumber}: Organization user limit reached (${org.max_users})`);
+                    continue;
+                }
+
+                const hashedPassword = await bcrypt.hash(password, 10);
+                const deptId = deptName ? deptMap[deptName.toLowerCase()] : null;
+                const desgId = desgName ? desgMap[desgName.toLowerCase()] : null;
+                const shiftId = shiftName ? shiftMap[shiftName.toLowerCase()] : null;
+
+                nextUserNumber++;
+                const userCode = `${org.org_code}-${String(nextUserNumber).padStart(3, "0")}`;
+
+                await trx("core_users").insert({
+                    org_id: orgId,
+                    user_name: name,
+                    user_code: userCode,
+                    email,
+                    phone_no: phone,
+                    user_password: hashedPassword,
+                    user_type: 'employee',
+                    dept_id: deptId,
+                    desg_id: desgId,
+                    shift_id: shiftId,
+                    force_password_change: force_password_change ? 1 : 0
+                });
+
+                currentCount++;
+                results.success_count++;
+            } catch (err) {
+                results.failure_count++;
+                results.errors.push(`Row ${rowNumber}: ${err.message}`);
+            }
+        }
+
+        await trx("core_organizations")
+            .where({ org_id: orgId })
+            .update({ last_user_number: nextUserNumber });
+    });
+
+    return results;
+};
+
+export const bulkValidateUsers = async (users, orgId) => {
+    const response = {
+        total_rows: users.length,
+        new_departments: [],
+        new_designations: []
+    };
+
+    const inputDepts = new Set();
+    const inputDesgs = new Set();
+
+    users.forEach(row => {
+        const dept = row["Department"] || row["department"] || row["dept"];
+        const desg = row["Designation"] || row["designation"] || row["role"] || row["Role"];
+        if (dept) inputDepts.add(dept.toLowerCase());
+        if (desg) inputDesgs.add(desg.toLowerCase());
+    });
+
+    if (inputDepts.size > 0) {
+        const existingDepts = await attendanceDB("org_departments")
+            .where('org_id', orgId)
+            .whereIn(attendanceDB.raw('LOWER(dept_name)'), Array.from(inputDepts))
+            .select('dept_name');
+
+        const existingDeptSet = new Set(existingDepts.map(d => d.dept_name.toLowerCase()));
+
+        inputDepts.forEach(d => {
+            if (!existingDeptSet.has(d)) {
+                const original = users.find(u => (u['Department'] || u['department'] || u['dept'])?.toLowerCase() === d);
+                response.new_departments.push(original ? (original['Department'] || original['department'] || original['dept']) : d);
+            }
+        });
+    }
+
+    if (inputDesgs.size > 0) {
+        const existingDesgs = await attendanceDB("org_designations")
+            .where('org_id', orgId)
+            .whereIn(attendanceDB.raw('LOWER(desg_name)'), Array.from(inputDesgs))
+            .select('desg_name');
+
+        const existingDesgSet = new Set(existingDesgs.map(d => d.desg_name.toLowerCase()));
+
+        inputDesgs.forEach(d => {
+            if (!existingDesgSet.has(d)) {
+                const original = users.find(u => (u['Designation'] || u['designation'] || u['role'] || u['Role'])?.toLowerCase() === d);
+                response.new_designations.push(original ? (original['Designation'] || original['designation'] || original['role'] || original['Role']) : d);
+            }
+        });
+    }
+
+    return response;
+};

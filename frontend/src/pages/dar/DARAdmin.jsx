@@ -1,21 +1,43 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     Activity, Settings, Database, FileText
 } from 'lucide-react';
 import api from '../../services/api';
+import DashboardLayout from '../../components/DashboardLayout';
 import DashboardInsights from '../../components/dar/admin/DashboardInsights';
 import RequestManager from '../../components/dar/admin/RequestManager';
 import MasterDataView from '../../components/dar/admin/MasterDataView';
 import AdminConfigurations from '../../components/dar/admin/AdminConfigurations';
 
 const DARAdmin = ({ embedded = false, activeTab: propActiveTab, setActiveTab: propSetActiveTab }) => {
-    const [localActiveTab, localSetActiveTab] = useState('insights'); // 'insights' | 'requests' | 'data'
+    const location = useLocation();
+
+    const getInitialTab = () => {
+        const params = new URLSearchParams(location.search || window.location.search);
+        const tab = params.get('tab');
+        if (tab && ['insights', 'requests', 'data'].includes(tab)) return tab;
+        if (params.get('requestId') || params.get('req_id') || params.get('id')) return 'requests';
+        return 'insights';
+    };
+
+    const [localActiveTab, localSetActiveTab] = useState(getInitialTab);
     const activeTab = propActiveTab !== undefined ? propActiveTab : localActiveTab;
     const setActiveTab = propSetActiveTab !== undefined ? propSetActiveTab : localSetActiveTab;
     const [isConfigOpen, setIsConfigOpen] = useState(false);
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get('tab');
+        if (tab && ['insights', 'requests', 'data'].includes(tab)) {
+            setActiveTab(tab);
+        } else if (params.get('requestId') || params.get('req_id') || params.get('id')) {
+            setActiveTab('requests');
+        }
+    }, [location.search]);
 
     // --- SHARED DATA STATE ---
     const [departments, setDepartments] = useState([]);
@@ -71,7 +93,7 @@ const DARAdmin = ({ embedded = false, activeTab: propActiveTab, setActiveTab: pr
         fetchDeptsAndShifts();
     }, []);
 
-    return (
+    const content = (
         <div className={`dar-context flex flex-col h-full bg-slate-50 dark:bg-dark-bg transition-colors ${embedded ? '' : 'p-5'}`}>
 
             {/* Header (Only if not embedded, or simplified) */}
@@ -197,6 +219,16 @@ const DARAdmin = ({ embedded = false, activeTab: propActiveTab, setActiveTab: pr
                 )}
             </AnimatePresence>
         </div>
+    );
+
+    if (embedded) {
+        return content;
+    }
+
+    return (
+        <DashboardLayout>
+            {content}
+        </DashboardLayout>
     );
 };
 

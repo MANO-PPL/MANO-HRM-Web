@@ -332,8 +332,23 @@ const LeaveApplication = ({ mode, onSelectLeave, onLeavesChange, onActiveRangeCh
                         return isUserActive && !isUserDeleted;
                     });
                     setAdminLeaves(activeRequests);
-                    if (isApprovalView && activeRequests.length > 0 && !selectedLeave) {
+
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const targetReqId = Number(urlParams.get('requestId') || urlParams.get('lr_id') || urlParams.get('id'));
+                    const matchingAdmin = targetReqId ? activeRequests.find(l => Number(l.lr_id) === targetReqId || Number(l.id) === targetReqId) : null;
+                    if (matchingAdmin) {
+                        setSelectedLeave(matchingAdmin);
+                    } else if (isApprovalView && activeRequests.length > 0 && !selectedLeave) {
                         setSelectedLeave(activeRequests[0]);
+                    }
+                }
+            } else {
+                const urlParams = new URLSearchParams(window.location.search);
+                const targetReqId = Number(urlParams.get('requestId') || urlParams.get('lr_id') || urlParams.get('id'));
+                if (targetReqId && personalLeaves.length > 0) {
+                    const matchingPersonal = personalLeaves.find(l => Number(l.lr_id) === targetReqId || Number(l.id) === targetReqId);
+                    if (matchingPersonal) {
+                        setSelectedLeave(matchingPersonal);
                     }
                 }
             }

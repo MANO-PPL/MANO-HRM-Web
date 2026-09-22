@@ -108,7 +108,7 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                             )}
                             <span className="text-[10px] font-mono font-normal text-slate-500 dark:text-github-dark-muted bg-slate-100 dark:bg-github-dark-subtle/50 px-2 py-0.5 rounded border border-slate-200 dark:border-github-dark-border">
                                 {user.totalHours && (user.totalHours.toLowerCase().includes('hr') || user.totalHours.toLowerCase().includes('min') || user.totalHours === '-') ? user.totalHours : `${user.totalHours} Hrs`}
-                                {user.expectedHours && user.expectedHours !== '-' && ` / ${user.expectedHours}`}
+                                {user.expectedHours && user.expectedHours !== '-' && user.expectedHours !== 'N/A' && ` / ${user.expectedHours}`}
                             </span>
                         </div>
                     </div>

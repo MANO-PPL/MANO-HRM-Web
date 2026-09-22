@@ -293,13 +293,38 @@ const MobileAttendanceMonitoring = () => {
     ];
 
     // UI State
-    const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'requests'
+    const [activeTab, setActiveTab] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab === 'requests') return 'requests';
+        return 'dashboard';
+    });
     const [activeSubTab, setActiveSubTab] = useState(initialSubTab); // 'overview' | 'analytics' | 'timeline' | 'map'
     const [direction, setDirection] = useState(0); // -1 for left, 1 for right
     const [loading, setLoading] = useState(() => !cachedResponse);
     const [lastSynced, setLastSynced] = useState(new Date());
     const [activeTheme, setActiveTheme] = useState('voyager');
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        const reqId = Number(params.get('requestId') || params.get('acr_id') || params.get('id'));
+        if (tab === 'requests') {
+            setActiveTab('requests');
+        } else if (tab === 'dashboard' || tab === 'live') {
+            setActiveTab('dashboard');
+        }
+        if (reqId && correctionRequests.length > 0) {
+            const targetReq = correctionRequests.find(r => Number(r.acr_id) === reqId || Number(r.id) === reqId);
+            if (targetReq) {
+                setSelectedRequest(targetReq);
+                if (targetReq.status && targetReq.status.toUpperCase() !== 'PENDING') {
+                    setRequestSubTab('HISTORY');
+                }
+            }
+        }
+    }, [window.location.search, correctionRequests]);
 
     // Data State
     const [attendanceData, setAttendanceData] = useState(() => {
@@ -499,6 +524,19 @@ const MobileAttendanceMonitoring = () => {
 
             setCorrectionRequests(requests);
             setRequestCount(requests.filter(r => (r.status || '').toLowerCase() === 'pending').length);
+
+            // Auto-open specific request if requestId is in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetReqId = Number(urlParams.get('requestId') || urlParams.get('acr_id') || urlParams.get('id'));
+            if (targetReqId && requests.length > 0) {
+                const targetReq = requests.find(r => Number(r.acr_id) === targetReqId || Number(r.id) === targetReqId);
+                if (targetReq) {
+                    setSelectedRequest(targetReq);
+                    if (targetReq.status && targetReq.status.toUpperCase() !== 'PENDING') {
+                        setRequestSubTab('HISTORY');
+                    }
+                }
+            }
 
         } catch (error) {
             console.error("Sync failed", error);

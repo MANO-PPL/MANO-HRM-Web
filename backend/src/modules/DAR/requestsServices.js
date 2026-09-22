@@ -60,8 +60,8 @@ export async function upsertRequest({ org_id, user_id, request_date, original_da
     return { request_id, isUpdate };
 }
 
-export async function getPendingRequests({ org_id }) {
-    const requests = await attendanceDB("attn_dar_requests")
+export async function getPendingRequests({ org_id, status, request_id }) {
+    let query = attendanceDB("attn_dar_requests")
         .join("core_users", "attn_dar_requests.user_id", "core_users.user_id")
         .leftJoin("org_departments as dep", "core_users.dept_id", "dep.dept_id")
         .select(
@@ -70,11 +70,22 @@ export async function getPendingRequests({ org_id }) {
             "core_users.email as user_email",
             "core_users.user_type as user_role",
             "dep.dept_name as user_dept",
-            attendanceDB.raw("DATE_FORMAT(dar_requests.request_date, '%Y-%m-%d') as request_date_str")
+            attendanceDB.raw("DATE_FORMAT(attn_dar_requests.request_date, '%Y-%m-%d') as request_date_str")
         )
-        .where("core_users.org_id", org_id)
-        .where("attn_dar_requests.status", 'PENDING')
-        .orderBy("attn_dar_requests.created_at", "desc");
+        .where("core_users.org_id", org_id);
+
+    if (request_id) {
+        query = query.where(function () {
+            this.where("attn_dar_requests.status", 'PENDING')
+                .orWhere("attn_dar_requests.request_id", request_id);
+        });
+    } else if (status && status !== 'all') {
+        query = query.where("attn_dar_requests.status", status.toUpperCase());
+    } else if (!status) {
+        query = query.where("attn_dar_requests.status", 'PENDING');
+    }
+
+    const requests = await query.orderBy("attn_dar_requests.created_at", "desc");
 
     return requests.map(r => ({
         ...r,

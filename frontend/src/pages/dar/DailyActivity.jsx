@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -38,9 +39,27 @@ const getLocalDateString = (dateInput) => {
 
 
 const DailyActivity = () => {
-    const [activeMainTab, setActiveMainTab] = useState('daily_activity'); // 'daily_activity' | 'admin'
-    const [adminTab, setAdminTab] = useState('insights');
-    const [selectedDate, setSelectedDate] = useState(getTodayLocalDateString());
+    const location = useLocation();
+    const [activeMainTab, setActiveMainTab] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab === 'admin' || tab === 'requests' || tab === 'insights' || tab === 'data') return 'admin';
+        if (params.get('requestId') || params.get('req_id') || params.get('id')) return 'admin';
+        return 'daily_activity';
+    });
+    const [adminTab, setAdminTab] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (['insights', 'requests', 'data'].includes(tab)) return tab;
+        if (params.get('requestId') || params.get('req_id') || params.get('id')) return 'requests';
+        return 'insights';
+    });
+    const [selectedDate, setSelectedDate] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const d = params.get('date');
+        if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+        return getTodayLocalDateString();
+    });
     const [daysToShow, setDaysToShow] = useState(1);
     const [tasks, setTasks] = useState([]);
     const [attendanceData, setAttendanceData] = useState({});
@@ -128,6 +147,29 @@ const DailyActivity = () => {
 
     // Mode State
     const [sidebarMode, setSidebarMode] = useState('default'); // 'default' | 'create-task'
+
+    // Sync URL search params (tab, requestId, date) dynamically
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get('tab');
+        const reqId = params.get('requestId') || params.get('req_id') || params.get('id');
+        const dateParam = params.get('date');
+
+        if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+            setSelectedDate(dateParam);
+        }
+
+        if (tab === 'admin' || tab === 'requests' || tab === 'insights' || tab === 'data' || reqId) {
+            setActiveMainTab('admin');
+            if (['insights', 'requests', 'data'].includes(tab)) {
+                setAdminTab(tab);
+            } else if (reqId || tab === 'requests') {
+                setAdminTab('requests');
+            }
+        } else if (tab === 'daily_activity') {
+            setActiveMainTab('daily_activity');
+        }
+    }, [location.search]);
 
     // Load data for a range (e.g., selected date + N days)
     useEffect(() => {

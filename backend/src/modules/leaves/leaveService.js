@@ -239,7 +239,8 @@ export async function withdrawLeaveRequest({ id, user_id, org_id }) {
                 message: `${employeeName} has withdrawn their ${statusLabel} leave request for ${startFormatted} to ${endFormatted}.`,
                 type: 'WARNING',
                 related_entity_type: 'LEAVE',
-                related_entity_id: id
+                related_entity_id: id,
+                send_push: false
             });
         }
     } catch (err) {

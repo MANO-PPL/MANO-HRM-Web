@@ -12,25 +12,27 @@ const AddHolidayModal = ({
 }) => {
     const [isTypeOpen, setIsTypeOpen] = useState(false);
 
-    if (!isOpen) return null;
-
     return (
         <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={onClose}
-                className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px]"
-            />
+            {isOpen && (
+                <>
+                    <motion.div
+                        key="add-holiday-backdrop"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={onClose}
+                        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px]"
+                    />
 
-            <motion.div
-                initial={{ x: '100%', opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: '100%', opacity: 0 }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed right-0 top-0 h-full w-full max-w-[460px] z-50 bg-white dark:bg-dark-card border-l border-slate-200 dark:border-github-dark-border shadow-2xl flex flex-col overflow-hidden"
-            >
+                    <motion.div
+                        key="add-holiday-drawer"
+                        initial={{ x: '100%', opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: '100%', opacity: 0 }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        className="fixed right-0 top-0 h-full w-full max-w-[460px] z-50 bg-white dark:bg-dark-card border-l border-slate-200 dark:border-github-dark-border shadow-2xl flex flex-col overflow-hidden"
+                    >
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20">
                     <div className="flex items-center gap-3">
@@ -136,7 +138,9 @@ const AddHolidayModal = ({
                     </div>
                 </form>
             </motion.div>
-        </AnimatePresence>
+        </>
+    )}
+</AnimatePresence>
     );
 };
 

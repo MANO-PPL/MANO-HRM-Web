@@ -1110,6 +1110,14 @@ const MobileAttendancePage = () => {
         }
     };
 
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const reqId = Number(params.get('requestId') || params.get('acr_id') || params.get('id'));
+        if (reqId) {
+            handleRequestClick({ acr_id: reqId });
+        }
+    }, [window.location.search]);
+
     const addSession = () => {
         setCorrectionForm({
             ...correctionForm,

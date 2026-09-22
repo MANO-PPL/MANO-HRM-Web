@@ -10,14 +10,18 @@ import {
     User, 
     AlertCircle,
     ChevronRight,
-    MessageSquare
+    MessageSquare,
+    Volume2,
+    Sparkles,
+    FileText,
+    MapPin
 } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 
 const Notifications = () => {
     const navigate = useNavigate();
-    const { notifications, markAsRead, markAllAsRead, unreadCount } = useNotification();
+    const { notifications, markAsRead, markAllAsRead, unreadCount, triggerMockNotification, navigateToNotification } = useNotification();
     const { avatarTimestamp } = useAuth();
     const [localNotifications, setLocalNotifications] = useState([]);
     const [activeTab, setActiveTab] = useState('all'); // 'all' or 'unread'
@@ -29,28 +33,40 @@ const Notifications = () => {
             // Mock data for visual consistency if real data is missing
             setLocalNotifications([
                 {
-                    id: 1,
-                    title: 'Attendance Checked In',
-                    message: 'You have successfully checked in at 09:45 AM from Mumbai Office.',
-                    created_at: new Date().toISOString(),
+                    id: 'mock_corr',
+                    title: 'Attendance Correction Request',
+                    message: 'New attendance correction request submitted for yesterday punch session.',
+                    created_at: new Date(Date.now() - 1800000).toISOString(),
                     is_read: 0,
-                    type: 'attendance'
+                    type: 'correction',
+                    related_entity_type: 'CORRECTION'
                 },
                 {
-                    id: 2,
-                    title: 'Leave Approved',
+                    id: 'mock_leave',
+                    title: 'Leave Request Approved',
                     message: 'Your leave request for Mar 15 - Mar 18 has been approved by HR.',
                     created_at: new Date(Date.now() - 3600000).toISOString(),
                     is_read: 0,
-                    type: 'leave'
+                    type: 'leave',
+                    related_entity_type: 'LEAVE'
                 },
                 {
-                    id: 3,
+                    id: 'mock_shift',
+                    title: 'New Shift Assigned',
+                    message: 'You have been assigned to Regular Day Shift (09:00 AM - 06:00 PM).',
+                    created_at: new Date(Date.now() - 7200000).toISOString(),
+                    is_read: 0,
+                    type: 'shift',
+                    related_entity_type: 'SHIFT'
+                },
+                {
+                    id: 'mock_policy',
                     title: 'New Policy Update',
                     message: 'A new Work From Home policy has been published. Please review it.',
                     created_at: new Date(Date.now() - 86400000).toISOString(),
                     is_read: 1,
-                    type: 'policy'
+                    type: 'policy',
+                    related_entity_type: 'POLICY'
                 }
             ]);
         }
@@ -81,13 +97,26 @@ const Notifications = () => {
         const lowerType = String(type || '').toLowerCase();
         switch (lowerType) {
             case 'attendance': return <Clock size={16} className="text-emerald-500" />;
+            case 'correction': return <Clock size={16} className="text-amber-500" />;
             case 'leave': return <Calendar size={16} className="text-indigo-500" />;
+            case 'shift': return <Clock size={16} className="text-blue-500" />;
             case 'policy': return <Info size={16} className="text-amber-500" />;
+            case 'location': return <MapPin size={16} className="text-emerald-500" />;
+            case 'dar': return <FileText size={16} className="text-purple-500" />;
             case 'chat':
             case 'chat_message':
                 return <MessageSquare size={16} className="text-blue-500" />;
             default: return <Bell size={16} className="text-slate-500" />;
         }
+    };
+
+    const handleNotificationClick = (n) => {
+        const nid = n.notification_id || n.id;
+        setLocalNotifications(prev => prev.map(item => {
+            const itemId = item.notification_id || item.id;
+            return itemId === nid ? { ...item, is_read: 1 } : item;
+        }));
+        navigateToNotification(n);
     };
 
     return (
@@ -153,23 +182,48 @@ const Notifications = () => {
                     </div>
                 </div>
 
+                {/* Interactive Test Action */}
+                <div className="px-4 pt-3 pb-1">
+                    <button
+                        onClick={() => triggerMockNotification({
+                            title: 'New Message from Jayasurya',
+                            message: 'Hey! Web notifications are now active with sound and desktop banners.',
+                            type: 'CHAT',
+                            related_entity_type: 'CHAT_MESSAGE'
+                        })}
+                        className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 hover:from-indigo-500/15 hover:via-purple-500/15 hover:to-pink-500/15 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-medium text-xs transition-all active:scale-[0.99] group shadow-xs"
+                    >
+                        <div className="flex items-center gap-2">
+                            <span className="p-1.5 rounded-lg bg-indigo-600 text-white shadow-xs group-hover:scale-105 transition-transform">
+                                <Volume2 size={13} />
+                            </span>
+                            <span className="font-semibold text-[12px]">Test Web Alert with Sound</span>
+                        </div>
+                        <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                            <Sparkles size={13} />
+                            Play Preview
+                        </span>
+                    </button>
+                </div>
+
                 {/* List */}
                 <div className="pb-8">
                 {filteredNotifications.length > 0 ? (
                     <div className="divide-y divide-slate-100 dark:divide-github-dark-border">
                         {filteredNotifications.map((n, index) => {
                             const nid = n.notification_id || n.id || index;
+                            const entityType = n.related_entity_type || n.type;
                             return (
                                 <div
                                     key={nid}
-                                    onClick={() => !n.is_read && markAsRead(nid)}
-                                    className={`p-4 flex gap-4 transition-colors active:bg-slate-100 dark:active:bg-github-dark-border ${
+                                    onClick={() => handleNotificationClick(n)}
+                                    className={`p-4 flex gap-4 transition-colors active:bg-slate-100 dark:active:bg-github-dark-border cursor-pointer ${
                                         !n.is_read ? 'bg-indigo-50/30 dark:bg-indigo-500/5' : 'bg-white dark:bg-github-dark-bg'
                                     }`}
                                 >
                                     <div className="relative shrink-0">
                                         <div className="w-12 h-12 rounded-2xl bg-white dark:bg-github-dark-subtle border border-slate-100 dark:border-github-dark-border shadow-sm flex items-center justify-center">
-                                            {getIcon(n.type)}
+                                            {getIcon(entityType)}
                                         </div>
                                         {!n.is_read && (
                                             <div className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-600 rounded-full border-2 border-white dark:border-github-dark-bg" />

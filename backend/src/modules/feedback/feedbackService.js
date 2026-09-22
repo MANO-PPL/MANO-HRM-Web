@@ -1,7 +1,6 @@
 import { attendanceDB } from '../../config/database.js';
 import { uploadFile, getFileUrl } from '../../services/s3/s3Service.js';
 import { sendEmail } from '../auth/emailService.js';
-import EventBus from '../../utils/EventBus.js';
 
 /**
  * Submit new feedback with optional file attachments and email notification.
@@ -73,27 +72,8 @@ export async function submitFeedback(user_id, { title, description, type = 'FEED
             html: emailHtml,
             attachments: emailAttachments
         });
-
-        // Trigger standard browser/push notifications to admins
-        if (user && user.org_id) {
-            const admins = await attendanceDB('core_users')
-                .where({ org_id: user.org_id, user_type: 'admin', is_deleted: 0, is_active: 1 })
-                .select('user_id');
-
-            for (const admin of admins) {
-                EventBus.emitNotification({
-                    org_id: user.org_id,
-                    user_id: admin.user_id,
-                    title: 'Feedback Submitted',
-                    message: `A new feedback/bug report has been submitted by ${user.user_name || 'an employee'}.`,
-                    type: 'INFO',
-                    related_entity_type: 'FEEDBACK',
-                    related_entity_id: feedback_id
-                });
-            }
-        }
     } catch (emailError) {
-        console.error('Failed to send feedback email/push notifications:', emailError);
+        console.error('Failed to send feedback email:', emailError);
     }
 
     return { feedback_id, attachments_count: attachments.length, attachments };
@@ -153,25 +133,6 @@ export async function updateStatus(id, status) {
     const updated = await attendanceDB('feedback_tickets')
         .where('feedback_id', id)
         .update({ status, updated_at: attendanceDB.fn.now() });
-
-    if (updated > 0) {
-        try {
-            const user = await attendanceDB('core_users').where('user_id', feedback.user_id).first();
-            if (user) {
-                EventBus.emitNotification({
-                    org_id: user.org_id,
-                    user_id: feedback.user_id,
-                    title: 'Feedback Status Updated',
-                    message: `The status of your feedback "${feedback.title}" has been updated to ${status}.`,
-                    type: 'INFO',
-                    related_entity_type: 'FEEDBACK',
-                    related_entity_id: id
-                });
-            }
-        } catch (err) {
-            console.error('Error sending feedback status update notification:', err);
-        }
-    }
 
     return updated > 0;
 }

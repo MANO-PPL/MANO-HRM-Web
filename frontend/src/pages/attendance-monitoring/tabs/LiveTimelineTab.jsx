@@ -97,7 +97,7 @@ const LiveTimelineTab = ({
 
                                                         <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-mono font-normal">
                                                             {item.totalHours ? (String(item.totalHours).toLowerCase().includes('hr') || String(item.totalHours).toLowerCase().includes('min') || String(item.totalHours) === '-' ? String(item.totalHours) : `${item.totalHours} Hrs`) : '-'}
-                                                            {item.expectedHours && item.expectedHours !== '-' && ` / ${item.expectedHours}`}
+                                                            {item.expectedHours && item.expectedHours !== '-' && item.expectedHours !== 'N/A' && ` / ${item.expectedHours}`}
                                                         </span>
                                                     </div>
                                                 </div>

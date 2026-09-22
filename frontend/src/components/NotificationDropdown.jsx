@@ -1,9 +1,9 @@
 import React, { useRef, useEffect } from 'react';
-import { Bell, Check, Clock, AlertTriangle, Info, CheckCircle, XCircle } from 'lucide-react';
+import { Bell, Check, Clock, AlertTriangle, Info, CheckCircle, XCircle, Volume2 } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
 
 const NotificationDropdown = ({ isOpen, onClose }) => {
-    const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotification();
+    const { notifications, unreadCount, markAsRead, markAllAsRead, triggerMockNotification, navigateToNotification } = useNotification();
     const dropdownRef = useRef(null);
 
     // Close on click outside
@@ -50,12 +50,22 @@ const NotificationDropdown = ({ isOpen, onClose }) => {
             ref={dropdownRef}
             className="absolute right-0 mt-2 w-80 md:w-96 bg-white dark:bg-dark-card rounded-xl shadow-lg border border-slate-100 dark:border-github-dark-border overflow-hidden z-50 transform origin-top-right transition-all animate-in fade-in slide-in-from-top-2"
         >
-            <div className="p-4 border-b border-slate-100 dark:border-github-dark-border flex justify-between items-center">
-                <h3 className="font-semibold text-slate-800 dark:text-github-dark-text">Notifications</h3>
+            <div className="p-3.5 border-b border-slate-100 dark:border-github-dark-border flex justify-between items-center bg-slate-50/50 dark:bg-github-dark-subtle/30">
+                <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-sm text-slate-800 dark:text-github-dark-text">Notifications</h3>
+                    <button 
+                        onClick={() => triggerMockNotification()}
+                        title="Preview web notification with audio chime"
+                        className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 font-medium transition-colors cursor-pointer"
+                    >
+                        <Volume2 size={12} />
+                        Test Sound
+                    </button>
+                </div>
                 {unreadCount > 0 && (
                     <button 
                         onClick={markAllAsRead}
-                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium flex items-center gap-1"
+                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium flex items-center gap-1 cursor-pointer"
                     >
                         <Check size={14} />
                         Mark all read
@@ -74,7 +84,10 @@ const NotificationDropdown = ({ isOpen, onClose }) => {
                         <div 
                             key={notification.notification_id}
                             className={`p-4 border-b border-slate-50 dark:border-github-dark-border hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer relative group ${notification.is_read ? 'opacity-70' : 'bg-indigo-50/10'}`}
-                            onClick={() => !notification.is_read && markAsRead(notification.notification_id)}
+                            onClick={() => {
+                                if (onClose) onClose();
+                                navigateToNotification(notification);
+                            }}
                         >
                             <div className="flex gap-3">
                                 <div className={`mt-1 p-2 rounded-full h-8 w-8 flex items-center justify-center shrink-0 ${
@@ -108,7 +121,13 @@ const NotificationDropdown = ({ isOpen, onClose }) => {
             
             {notifications.length > 0 && (
                  <div className="p-2 border-t border-slate-100 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/30 text-center">
-                    <button className="text-xs text-slate-500 hover:text-indigo-600 font-medium">
+                    <button 
+                        onClick={() => {
+                            if (onClose) onClose();
+                            navigateToNotification({ related_entity_type: 'NOTIFICATIONS_PAGE' });
+                        }}
+                        className="text-xs text-slate-500 hover:text-indigo-600 font-medium cursor-pointer"
+                    >
                         View earlier notifications
                     </button>
                  </div>

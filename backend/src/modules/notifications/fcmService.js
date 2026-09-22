@@ -131,6 +131,8 @@ export const sendPushNotification = async (userId, title, body, data = {}) => {
         body,
       },
       data: {
+        title: String(title || ''),
+        body: String(body || ''),
         ...data,
         // String values only in FCM data payload
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
@@ -161,6 +163,10 @@ export const sendPushNotification = async (userId, title, body, data = {}) => {
         },
         payload: {
           aps: {
+            alert: {
+              title: String(title || ''),
+              body: String(body || '')
+            },
             sound: 'default',
             badge: 1,
             contentAvailable: true, // Wake the app even when in background on iOS

@@ -75,14 +75,6 @@ const AttendanceCameraModal = ({
                                     </div>
 
                                     {/* Unblock steps */}
-                                    <div className="text-xs bg-white/5 border border-white/10 rounded-xl p-3 text-left text-slate-300 space-y-1.5">
-                                        <div className="font-bold text-amber-400 flex items-center gap-1.5">
-                                            <Lock size={13} /> Browser Permission Instructions:
-                                        </div>
-                                        <p>1. Click the lock/camera icon (🔒/🎥) beside the URL in the address bar.</p>
-                                        <p>2. Change Camera permission to <strong>&quot;Allow&quot;</strong>.</p>
-                                        <p>3. Click <strong>&quot;Ask Browser for Permission&quot;</strong> below.</p>
-                                    </div>
 
                                     <div className="flex items-center justify-center gap-3 pt-2">
                                         <button
