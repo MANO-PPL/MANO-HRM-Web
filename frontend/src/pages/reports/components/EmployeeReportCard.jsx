@@ -74,6 +74,8 @@ const EmployeeReportCard = ({ row, columns }) => {
         statusColor = 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400';
     } else if (status.toLowerCase() === 'on leave' || status.toLowerCase() === 'leave' || status.toLowerCase() === 'half day') {
         statusColor = 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400';
+    } else if (status.toLowerCase() === 'holiday') {
+        statusColor = 'bg-sky-50 text-sky-600 dark:bg-sky-950/30 dark:text-sky-400';
     }
 
     return (
@@ -133,6 +135,8 @@ const EmployeeReportCard = ({ row, columns }) => {
                                 colorClass = 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border border-amber-500/20';
                             } else if (statusVal.toLowerCase() === 'on leave' || statusVal.toLowerCase() === 'leave' || statusVal.toLowerCase() === 'half day') {
                                 colorClass = 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20';
+                            } else if (statusVal.toLowerCase() === 'holiday') {
+                                colorClass = 'bg-sky-50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400 border border-sky-500/20';
                             } else if (statusVal === 'Sun' || statusVal === 'Sat' || statusVal === 'WEEK_OFF') {
                                 colorClass = 'bg-slate-100 dark:bg-slate-800/45 text-slate-400 border border-slate-200 dark:border-slate-700/50';
                             } else if (statusVal === 'Not Recorded') {

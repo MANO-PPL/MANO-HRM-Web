@@ -456,9 +456,11 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
     });
     let records = [];
     let approvedLeaves = [];
+    let holidayByDate = {};
     if (type !== "employee_master") {
         records = await reportsService.getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
         approvedLeaves = await reportsService.getApprovedLeaves({ org_id, startDate, endDate, targetUserId });
+        holidayByDate = await reportsService.getHolidaysByDate({ org_id, startDate, endDate });
     }
 
     if (format === "pdf") {
@@ -526,13 +528,14 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             pdfRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
                 const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
+                const holidayOverride = !aggregated.time_in ? reportsService.getHolidayOverride(startDate, holidayByDate) : null;
                 const fullRow = [
                     u.user_name,
                     u.desg_name || "-",
                     reportsService.formatLocalTimeStr(aggregated.time_in),
                     reportsService.formatLocalTimeStr(aggregated.time_out),
                     aggregated.worked_hours.toFixed(2),
-                    aggregated.status,
+                    holidayOverride ? holidayOverride.status : aggregated.status,
                     aggregated.late_minutes || 0
                 ];
 
@@ -597,7 +600,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
                     const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
                     const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave';
-                    if (!isPresent && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
+                    const isHoliday = !aggregated.time_in && !!reportsService.getHolidayOverride(dateStr, holidayByDate);
+                    if (!isPresent && !isHoliday && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
                         calculatedAbsentDays++;
                     }
                 });
@@ -626,6 +630,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         } else {
             pdfCols = ["Name", "Dept", "Total Days"];
             const pdfColIndices = [];
+            const holidayWorkedHeader = `Holidays Worked (of ${Object.keys(holidayByDate).length})`;
 
             const pushPdfCol = (name, check, index) => {
                 if (colsObj[check] !== false) {
@@ -639,8 +644,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 pdfColIndices.push(12);
             }
             if (colsObj.attendanceDays !== false) {
-                pdfCols.push("Present", "Absent", "Half Day", "Leave");
-                pdfColIndices.push(3, 4, 5, 6);
+                pdfCols.push("Present", "Absent", "Half Day", "Leave", holidayWorkedHeader);
+                pdfColIndices.push(3, 4, 5, 6, 13);
             }
             if (colsObj.late !== false) {
                 pdfCols.push("Late Days", "Late Mins");
@@ -669,6 +674,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 let halfDayCount = 0;
                 let leaveCount = 0;
                 let absentDays = 0;
+                let holidayWorkedCount = 0;
                 let lateCount = 0;
                 let totalLateMins = 0;
                 let totalOvertimeHrs = 0;
@@ -696,6 +702,12 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                             presentDays++;
                         }
 
+                        // Worked-on-holiday is a supplementary tag, not a separate bucket — the
+                        // day above is already counted under Present/Late/Half Day/etc.
+                        if (reportsService.getHolidayOverride(dateStr, holidayByDate)) {
+                            holidayWorkedCount++;
+                        }
+
                         if (aggregated.late_minutes > 0) {
                             lateCount++;
                             totalLateMins += aggregated.late_minutes;
@@ -712,7 +724,10 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         }
                         totalOvertimeHrs += overtime_hours;
                     } else {
-                        if (leaveOnDate) {
+                        if (reportsService.getHolidayOverride(dateStr, holidayByDate)) {
+                            // No punch, declared holiday — excluded from Absent, but nothing was
+                            // worked so it does not add to holidayWorkedCount.
+                        } else if (leaveOnDate) {
                             leaveCount++;
                         } else {
                             const rules = reportsService.getShiftRules(u);
@@ -741,7 +756,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     totalOvertimeHrs.toFixed(2),
                     totalHrs.toFixed(2),
                     Math.round(payableDays).toFixed(0),
-                    requiredHrs.toFixed(2)
+                    requiredHrs.toFixed(2),
+                    holidayWorkedCount
                 ];
 
                 const row = [fullRow[0], fullRow[1], fullRow[2]];
@@ -754,7 +770,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             // Calculate totals dynamically for the PDF rows
             const totalsRow = ["TOTALS", "", ""];
             pdfColIndices.forEach(idx => {
-                if ([3, 4, 5, 6, 7, 8, 11].includes(idx)) {
+                if ([3, 4, 5, 6, 7, 8, 11, 13].includes(idx)) {
                     let sum = 0;
                     baseRows.forEach(r => {
                         const colName = idx === 3 ? "Present" :
@@ -762,7 +778,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                                 idx === 5 ? "Half Day" :
                                     idx === 6 ? "Leave" :
                                         idx === 7 ? "Late Days" :
-                                            idx === 8 ? "Late Mins" : "Payable Days";
+                                            idx === 8 ? "Late Mins" :
+                                                idx === 11 ? "Payable Days" : holidayWorkedHeader;
                         const mappedIdx = pdfCols.indexOf(colName);
                         if (mappedIdx !== -1) sum += parseInt(r[mappedIdx]) || 0;
                     });
@@ -822,6 +839,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         users.forEach(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
             const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
+            const holidayOverride = !aggregated.time_in ? reportsService.getHolidayOverride(startDate, holidayByDate) : null;
 
             const rowData = {
                 name: u.user_name,
@@ -831,7 +849,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             if (colsObj.timeIn !== false) rowData.time_in = reportsService.formatLocalTimeStr(aggregated.time_in);
             if (colsObj.timeOut !== false) rowData.time_out = reportsService.formatLocalTimeStr(aggregated.time_out);
             if (colsObj.workedHours !== false) rowData.work_hrs = parseFloat(aggregated.worked_hours.toFixed(2));
-            if (colsObj.status !== false) rowData.status = aggregated.status;
+            if (colsObj.status !== false) rowData.status = holidayOverride ? holidayOverride.status : aggregated.status;
             if (colsObj.late !== false) rowData.late_mins = aggregated.late_minutes || 0;
 
             worksheet.addRow(rowData);
@@ -916,6 +934,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     if (aggregated.late_minutes > 0) {
                         totalLateMins += aggregated.late_minutes;
                     }
+                } else if (!aggregated.time_in && reportsService.getHolidayOverride(dateStr, holidayByDate)) {
+                    dateCells.push("Holiday");
                 } else if (leaveOnDate) {
                     dateCells.push("L");
                 } else if (dateStr > todayStr) {
@@ -949,7 +969,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
                 const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
                 const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave';
-                if (!isPresent && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
+                const isHoliday = !aggregated.time_in && !!reportsService.getHolidayOverride(dateStr, holidayByDate);
+                if (!isPresent && !isHoliday && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
                     calculatedAbsentDays++;
                 }
             });
@@ -1062,6 +1083,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         const pushCol = (header, key, width) => {
             cols.push({ header, key, width });
         };
+        const holidayWorkedHeader = `Holidays Worked (of ${Object.keys(holidayByDate).length})`;
 
         if (colsObj.requiredHours !== false) {
             pushCol("Required Hrs", "required_hrs", 14);
@@ -1071,6 +1093,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             pushCol("Absent", "absent", 10);
             pushCol("Half Day", "half_day", 10);
             pushCol("On Leave", "leaves", 10);
+            pushCol(holidayWorkedHeader, "holiday", 14);
         }
         if (colsObj.late !== false) {
             pushCol("Late Days", "late_days", 12);
@@ -1098,6 +1121,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let halfDayCount = 0;
             let leaveCount = 0;
             let absentDays = 0;
+            let holidayWorkedCount = 0;
             let lateCount = 0;
             let totalLateMins = 0;
             let totalOvertimeHrs = 0;
@@ -1125,6 +1149,12 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         presentDays++;
                     }
 
+                    // Worked-on-holiday is a supplementary tag, not a separate bucket — the day
+                    // above is already counted under Present/Late/Half Day/etc.
+                    if (reportsService.getHolidayOverride(dateStr, holidayByDate)) {
+                        holidayWorkedCount++;
+                    }
+
                     if (aggregated.late_minutes > 0) {
                         lateCount++;
                         totalLateMins += aggregated.late_minutes;
@@ -1141,7 +1171,10 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     }
                     totalOvertimeHrs += overtime_hours;
                 } else {
-                    if (leaveOnDate) {
+                    if (reportsService.getHolidayOverride(dateStr, holidayByDate)) {
+                        // No punch, declared holiday — excluded from Absent, but nothing was
+                        // worked so it does not add to holidayWorkedCount.
+                    } else if (leaveOnDate) {
                         leaveCount++;
                     } else {
                         const rules = reportsService.getShiftRules(u);
@@ -1170,6 +1203,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 rowData.absent = absentDays;
                 rowData.half_day = halfDayCount;
                 rowData.leaves = leaveCount;
+                rowData.holiday = holidayWorkedCount;
             }
             if (colsObj.late !== false) {
                 rowData.late_days = lateCount;
@@ -1372,7 +1406,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     }
                 } else {
                     let statusStr = "Absent";
-                    if (leaveOnDate) {
+                    if (reportsService.getHolidayOverride(dateStr, holidayByDate)) {
+                        statusStr = "Holiday";
+                    } else if (leaveOnDate) {
                         statusStr = "On Leave";
                     } else if (dateStr > todayStr) {
                         if (dayType === 'week_off') {
@@ -1416,6 +1452,10 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 if (cell.value === "Not Recorded") {
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F3F4' } };
                     cell.font = { color: { argb: 'FF8E8E93' }, bold: true };
+                }
+                if (cell.value === "Holiday") {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE1F0FF' } };
+                    cell.font = { color: { argb: 'FF1967D2' }, bold: true };
                 }
             });
         });

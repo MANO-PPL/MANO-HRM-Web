@@ -553,6 +553,33 @@ export const isDateInApprovedLeave = (userLeaves, dateStr) => {
     });
 };
 
+// Org holidays for a date range, indexed by date string — same query shape already proven
+// correct in statusEvaluationService.js's getDailySummary. Reports rebuilds day status from raw
+// punches independently of that live-view path, and previously never consulted this table at
+// all, which is why a no-punch holiday day used to fall through to "Absent" everywhere in Reports.
+export async function getHolidaysByDate({ org_id, startDate, endDate }) {
+    const holidays = await attendanceDB('org_holidays')
+        .where('org_id', org_id)
+        .where('holiday_date', '>=', startDate)
+        .where('holiday_date', '<=', endDate);
+    const byDate = {};
+    for (const h of holidays) {
+        byDate[getRecordDateStr({ time_in: h.holiday_date })] = h;
+    }
+    return byDate;
+}
+
+// A no-punch day that's a declared organization holiday should show Holiday, taking priority
+// over leave/week-off/absent — matching the priority already proven correct in
+// statusEvaluationService.js's resolveNoShowStatus. Only call this for a day with NO punch
+// record at all; if the employee has any punch data, use their real computed status instead —
+// never let a holiday override an actual worked day (Present/Late/Half Day/Overtime).
+export function getHolidayOverride(dateStr, holidayByDate) {
+    const holiday = holidayByDate?.[dateStr];
+    if (!holiday) return null;
+    return { status: 'Holiday', reason: holiday.holiday_name || 'Organization Holiday' };
+}
+
 export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
     return getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
 }
@@ -561,6 +588,7 @@ export async function getCardRecords({ org_id, targetUserId, startDate, endDate,
     const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate });
     const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
     const approvedLeaves = await getApprovedLeaves({ org_id, startDate, endDate, targetUserId });
+    const holidayByDate = await getHolidaysByDate({ org_id, startDate, endDate });
 
     const dateHeaders = getDateRangeArray(startDate, endDate);
     const todayStr = await getTodayStr(org_id);
@@ -614,7 +642,12 @@ export async function getCardRecords({ org_id, targetUserId, startDate, endDate,
             const rules = getShiftRules(u);
             const dayType = getDayType(dateStr, rules.week_off_policy);
 
-            if (!aggregated.time_in && leaveOnDate) {
+            const holidayOverride = !aggregated.time_in ? getHolidayOverride(dateStr, holidayByDate) : null;
+
+            if (holidayOverride) {
+                status = holidayOverride.status;
+                lateReason = holidayOverride.reason;
+            } else if (!aggregated.time_in && leaveOnDate) {
                 status = "On Leave";
                 lateReason = leaveOnDate.reason || "Approved Leave";
             } else if (dateStr > todayStr) {
@@ -675,6 +708,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         }
         const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
         const approvedLeaves = await getApprovedLeaves({ org_id, startDate, endDate, targetUserId });
+        const holidayByDate = await getHolidaysByDate({ org_id, startDate, endDate });
 
         if (type === "matrix_daily") {
             const cols = [];
@@ -699,13 +733,14 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             data.rows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
                 const aggregated = aggregateDayRecords(userRecs, u.policy_rules, todayStr);
+                const holidayOverride = !aggregated.time_in ? getHolidayOverride(startDate, holidayByDate) : null;
                 const fullRow = [
                     u.user_name,
                     u.desg_name || "-",
                     formatLocalTimeStr(aggregated.time_in),
                     formatLocalTimeStr(aggregated.time_out),
                     aggregated.worked_hours.toFixed(2),
-                    aggregated.status,
+                    holidayOverride ? holidayOverride.status : aggregated.status,
                     aggregated.late_minutes || 0
                 ];
 
@@ -789,6 +824,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     const userStartDate = getUserStartDate(u);
                     const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
 
+                    const holidayOverride = !aggregated.time_in ? getHolidayOverride(dateStr, holidayByDate) : null;
+
                     if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
                         if (aggregated.status === 'Missed Punch') {
                             dateCells.push("MP");
@@ -801,6 +838,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                             totalLateMins += aggregated.late_minutes;
                             lateCount++;
                         }
+                    } else if (holidayOverride) {
+                        dateCells.push("Holiday");
                     } else if (leaveOnDate) {
                         dateCells.push("L");
                     } else if (userStartDate && dateStr < userStartDate) {
@@ -838,7 +877,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
                     const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave' && aggregated.status !== 'Missed Punch';
                     const isMissedPunch = aggregated.status === 'Missed Punch';
-                    if (!isPresent && !isMissedPunch && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
+                    const isHoliday = !aggregated.time_in && !!getHolidayOverride(dateStr, holidayByDate);
+                    if (!isPresent && !isMissedPunch && !isHoliday && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
                         calculatedAbsentDays++;
                     }
                 });
@@ -1031,7 +1071,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                         const day = d.getDay();
                         const userStartDate = getUserStartDate(u);
                         let statusStr = "Absent";
-                        if (leaveOnDate) {
+                        if (getHolidayOverride(dateStr, holidayByDate)) {
+                            statusStr = "Holiday";
+                        } else if (leaveOnDate) {
                             statusStr = "On Leave";
                         } else if (userStartDate && dateStr < userStartDate) {
                             statusStr = "-";
@@ -1117,6 +1159,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         }
         const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
         const approvedLeaves = await getApprovedLeaves({ org_id, startDate, endDate, targetUserId });
+        const holidayByDate = await getHolidaysByDate({ org_id, startDate, endDate });
+        const holidayWorkedHeader = `Holidays Worked (of ${Object.keys(holidayByDate).length})`;
 
         const cols = ["Name", "Dept", "Total Days"];
         const colIndices = [];
@@ -1133,8 +1177,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             colIndices.push(12);
         }
         if (colsObj.attendanceDays !== false) {
-            cols.push("Present", "Absent", "Half Day", "On Leave");
-            colIndices.push(3, 4, 5, 6);
+            cols.push("Present", "Absent", "Half Day", "On Leave", holidayWorkedHeader);
+            colIndices.push(3, 4, 5, 6, 13);
         }
         if (colsObj.late !== false) {
             cols.push("Late Days", "Late Mins");
@@ -1162,6 +1206,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             let halfDayCount = 0;
             let leaveCount = 0;
             let absentDays = 0;
+            let holidayWorkedCount = 0;
             let lateCount = 0;
             let totalLateMins = 0;
             let totalOvertimeHrs = 0;
@@ -1189,6 +1234,13 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                         presentDays++;
                     }
 
+                    // Worked-on-holiday is a supplementary tag, not a separate bucket — the day
+                    // above is already counted under Present/Late/Half Day/etc., so this
+                    // deliberately does not participate in the Total Days reconciliation.
+                    if (getHolidayOverride(dateStr, holidayByDate)) {
+                        holidayWorkedCount++;
+                    }
+
                     if (aggregated.late_minutes > 0) {
                         lateCount++;
                         totalLateMins += aggregated.late_minutes;
@@ -1198,7 +1250,10 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
 
                     totalOvertimeHrs += (aggregated.overtime_hours || 0);
                 } else {
-                    if (leaveOnDate) {
+                    if (getHolidayOverride(dateStr, holidayByDate)) {
+                        // No punch, declared holiday — correctly excluded from Absent (Phase 2),
+                        // but since nothing was worked, it does not add to holidayWorkedCount.
+                    } else if (leaveOnDate) {
                         leaveCount++;
                     } else {
                         const rules = getShiftRules(u);
@@ -1227,7 +1282,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                 totalOvertimeHrs.toFixed(2),
                 totalHrs.toFixed(2),
                 Math.round(payableDays).toFixed(0),
-                requiredHrs.toFixed(2)
+                requiredHrs.toFixed(2),
+                holidayWorkedCount
             ];
 
             const row = [fullRow[0], fullRow[1], fullRow[2]];
@@ -1241,7 +1297,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         if (baseRows.length > 0) {
             const totalsRow = ["TOTALS", "", ""];
             colIndices.forEach(idx => {
-                if ([3, 4, 5, 6, 7, 8, 11].includes(idx)) {
+                if ([3, 4, 5, 6, 7, 8, 11, 13].includes(idx)) {
                     let sum = 0;
                     baseRows.forEach(r => {
                         const mappedIdx = cols.indexOf(
@@ -1250,7 +1306,8 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                                     idx === 5 ? "Half Day" :
                                         idx === 6 ? "On Leave" :
                                             idx === 7 ? "Late Days" :
-                                                idx === 8 ? "Late Mins" : "Payable Days"
+                                                idx === 8 ? "Late Mins" :
+                                                    idx === 11 ? "Payable Days" : holidayWorkedHeader
                         );
                         if (mappedIdx !== -1) sum += parseInt(r[mappedIdx]) || 0;
                     });
