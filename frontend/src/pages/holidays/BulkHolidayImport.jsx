@@ -42,6 +42,15 @@ const BulkHolidayImport = () => {
         }
     };
 
+    // Case-insensitive match against the only two accepted codes; returns null (not a silent
+    // default) for anything else, so an invalid Type is caught here rather than only server-side.
+    const normalizeType = (raw) => {
+        const val = (raw ?? '').toString().trim().toUpperCase();
+        if (val === 'NH') return 'NH';
+        if (val === 'FH') return 'FH';
+        return null;
+    };
+
     const parseCSV = (file) => {
         Papa.parse(file, {
             header: true,
@@ -51,10 +60,11 @@ const BulkHolidayImport = () => {
                 const processed = data.map(row => {
                     const name = row['Holiday Name'] || row['holiday_name'] || row['name'];
                     const date = row['Date'] || row['holiday_date'] || row['date'];
-                    const type = row['Type'] || row['holiday_type'] || row['type'] || 'Public';
+                    const rawType = row['Type'] || row['holiday_type'] || row['type'];
+                    const normalizedType = normalizeType(rawType);
 
-                    let status = (name && date) ? 'Valid' : 'Error';
-                    let errorMsg = !status === 'Valid' ? 'Missing Data' : '';
+                    let status = 'Valid';
+                    let errorMsg = '';
 
                     if (!name) {
                         status = 'Error';
@@ -62,13 +72,16 @@ const BulkHolidayImport = () => {
                     } else if (!date) {
                         status = 'Error';
                         errorMsg = 'Missing Date';
+                    } else if (!normalizedType) {
+                        status = 'Error';
+                        errorMsg = `Invalid Type "${rawType || ''}" — use NH or FH`;
                     }
 
                     return {
                         ...row,
                         name,
                         date,
-                        type,
+                        type: normalizedType || rawType || '',
                         status,
                         errorMsg
                     };
@@ -145,7 +158,7 @@ const BulkHolidayImport = () => {
     };
 
     const downloadSample = () => {
-        const csvContent = "Holiday Name,Date,Type\nNew Year,2025-01-01,Public\nRepublic Day,2025-01-26,Public\nIndependence Day,2025-08-15,Public";
+        const csvContent = "Holiday Name,Date,Type\nRepublic Day,2027-01-26,NH\nIndependence Day,2027-08-15,NH\nDiwali,2027-11-01,FH";
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
@@ -223,6 +236,9 @@ const BulkHolidayImport = () => {
                             <Download size={16} />
                             <span>Download Sample CSV Template</span>
                         </div>
+                        <p className="mt-2 text-xs text-slate-400 dark:text-github-dark-muted">
+                            Type column accepts exactly two values: <span className="font-semibold">NH</span> (National Holiday) or <span className="font-semibold">FH</span> (Festival Holiday).
+                        </p>
                     </div>
                 )}
 
@@ -294,11 +310,21 @@ const BulkHolidayImport = () => {
                                 <div>
                                     <h5 className="text-xs text-slate-500 dark:text-github-dark-muted uppercase tracking-wider mb-2">Holiday Types Found ({uniqueTypes.length})</h5>
                                     <div className="flex flex-wrap gap-2">
-                                        {uniqueTypes.map((t, i) => (
-                                            <span key={i} className="px-2 py-1 text-xs font-medium bg-white dark:bg-slate-700 border border-slate-200 dark:border-github-dark-border rounded-md text-slate-700 dark:text-slate-300">
-                                                {t}
-                                            </span>
-                                        ))}
+                                        {uniqueTypes.map((t, i) => {
+                                            const isValidType = t === 'NH' || t === 'FH';
+                                            return (
+                                                <span
+                                                    key={i}
+                                                    title={isValidType ? undefined : 'Invalid — must be NH or FH'}
+                                                    className={`px-2 py-1 text-xs font-medium rounded-md border ${isValidType
+                                                        ? 'bg-white dark:bg-slate-700 border-slate-200 dark:border-github-dark-border text-slate-700 dark:text-slate-300'
+                                                        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400'
+                                                        }`}
+                                                >
+                                                    {t}
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                                 <div>

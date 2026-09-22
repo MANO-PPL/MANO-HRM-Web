@@ -115,6 +115,17 @@ function getCleanDate(cell) {
     return standardizeDate(val);
 }
 
+// Normalizes a bulk-import "Type" cell to the canonical short code (NH/FH), case-insensitively
+// (so "nh"/"Nh"/"NH " all resolve the same way, but are always stored as uppercase — never as
+// whatever casing was typed). Returns null when the value doesn't resolve to either code —
+// callers must treat that as a validation error and reject the row, not silently default it.
+function normalizeHolidayType(raw) {
+    const val = (raw ?? '').toString().trim().toUpperCase();
+    if (val === 'NH') return 'NH';
+    if (val === 'FH') return 'FH';
+    return null;
+}
+
 //Get All Holidays
 export const getHolidays = async (org_id) => {
     const cacheKey = `mano-cache:holidays:org:${org_id}`;
@@ -311,6 +322,8 @@ export const validateBulkHolidays = async (org_id, holidays) => {
         const name = h['Holiday Name'] || h['holiday_name'] || h['name'];
         const rawDate = h['Date'] || h['holiday_date'] || h['date'];
         const cleanDate = standardizeDate(rawDate);
+        const rawType = h['Type'] || h['holiday_type'] || h['type'];
+        const normalizedType = normalizeHolidayType(rawType);
 
         if (!name || !cleanDate) {
             response.invalid_rows.push({
@@ -320,8 +333,16 @@ export const validateBulkHolidays = async (org_id, holidays) => {
             return null;
         }
 
+        if (!normalizedType) {
+            response.invalid_rows.push({
+                row: index + 1,
+                reason: `Invalid Type "${rawType || ''}" — must be NH (National Holiday) or FH (Festival Holiday)`
+            });
+            return null;
+        }
+
         inputDates.add(cleanDate);
-        return { name, date: cleanDate, type: h['Type'] || h['holiday_type'] || h['type'] || 'Public' };
+        return { name, date: cleanDate, type: normalizedType };
     });
 
     if (inputDates.size > 0) {
@@ -371,7 +392,8 @@ export const bulkCreateFromJson = async (org_id, holidays) => {
     for (const row of holidays) {
         const name = row['Holiday Name'] || row['holiday_name'] || row['name'];
         const date = row['Date'] || row['holiday_date'] || row['date'];
-        const type = row['Type'] || row['holiday_type'] || row['type'] || 'Public';
+        const rawType = row['Type'] || row['holiday_type'] || row['type'];
+        const normalizedType = normalizeHolidayType(rawType);
         const cleanDate = standardizeDate(date);
 
         if (!name || !cleanDate) {
@@ -380,11 +402,17 @@ export const bulkCreateFromJson = async (org_id, holidays) => {
             continue;
         }
 
+        if (!normalizedType) {
+            results.failure_count++;
+            results.errors.push(`Row "${name}": Invalid Type "${rawType || ''}" — must be NH (National Holiday) or FH (Festival Holiday)`);
+            continue;
+        }
+
         prepareData.push({
             org_id,
             holiday_name: name,
             holiday_date: cleanDate,
-            holiday_type: type,
+            holiday_type: normalizedType,
             applicable_json: JSON.stringify(['All Locations'])
         });
     }
@@ -473,7 +501,8 @@ export const bulkUploadFromFile = async (org_id, file) => {
 
     for (const { row, rowNumber } of rowsData) {
         const name = getVal(row, 'holiday name', 'holiday_name', 'name');
-        const type = getVal(row, 'type', 'holiday_type') || 'Public';
+        const rawType = getVal(row, 'type', 'holiday_type');
+        const normalizedType = normalizeHolidayType(rawType);
 
         const dateCol = headerMap['date'] || headerMap['holiday_date'];
         const dateCell = dateCol ? row.getCell(dateCol) : null;
@@ -482,6 +511,12 @@ export const bulkUploadFromFile = async (org_id, file) => {
         if (!name || !cleanDate) {
             results.failure_count++;
             results.errors.push(`Row ${rowNumber}: Missing Holiday Name or Invalid Date`);
+            continue;
+        }
+
+        if (!normalizedType) {
+            results.failure_count++;
+            results.errors.push(`Row ${rowNumber}: Invalid Type "${rawType || ''}" — must be NH (National Holiday) or FH (Festival Holiday)`);
             continue;
         }
 
@@ -496,7 +531,7 @@ export const bulkUploadFromFile = async (org_id, file) => {
             org_id,
             holiday_name: name,
             holiday_date: cleanDate,
-            holiday_type: type,
+            holiday_type: normalizedType,
             applicable_json: JSON.stringify(['All Locations'])
         });
     }

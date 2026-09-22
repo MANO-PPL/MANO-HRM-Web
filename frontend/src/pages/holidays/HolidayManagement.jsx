@@ -178,13 +178,13 @@ const HolidayManagement = () => {
     const [newHoliday, setNewHoliday] = useState({
         name: '',
         date: '',
-        type: 'Public',
+        type: 'Festival Holiday',
     });
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isEditTypeOpen, setIsEditTypeOpen] = useState(false);
     const [editingHoliday, setEditingHoliday] = useState(null);
-    const [editForm, setEditForm] = useState({ name: '', date: '', type: 'Public' });
+    const [editForm, setEditForm] = useState({ name: '', date: '', type: 'Festival Holiday' });
 
     // Confirmation Modal State
     const [confirmModal, setConfirmModal] = useState({
@@ -238,7 +238,7 @@ const HolidayManagement = () => {
             await holidayService.addHoliday(payload);
             toast.success("Holiday added successfully");
             setIsAddModalOpen(false);
-            setNewHoliday({ name: '', date: '', type: 'Public' });
+            setNewHoliday({ name: '', date: '', type: 'Festival Holiday' });
             loadData(); // Reload list
         } catch (error) {
             console.error("Add holiday error", error);

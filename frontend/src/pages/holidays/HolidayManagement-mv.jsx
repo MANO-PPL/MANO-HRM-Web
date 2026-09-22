@@ -136,7 +136,7 @@ const HolidayManagement = () => {
     const [newHoliday, setNewHoliday] = useState({
         name: '',
         date: '',
-        type: 'Public',
+        type: 'Festival Holiday',
     });
 
     const [applyForm, setApplyForm] = useState({
@@ -349,7 +349,7 @@ const HolidayManagement = () => {
                 toast.success("Holiday added successfully");
             }
             setIsAddModalOpen(false);
-            setNewHoliday({ name: '', date: '', type: 'Public' });
+            setNewHoliday({ name: '', date: '', type: 'Festival Holiday' });
             loadData();
         } catch (error) {
             console.error("Holiday operation error", error);
@@ -487,8 +487,8 @@ const HolidayManagement = () => {
                                             </h4>
                                             <div className="flex items-center gap-2 mt-1">
                                                 <span className="text-[10px] font-medium text-slate-400">{parseLocalDate(holiday.holiday_date).toLocaleDateString('en-US', { weekday: 'long' })}</span>
-                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium uppercase tracking-wider ${holiday.holiday_type === 'Public' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'}`}>
-                                                    {holiday.holiday_type || 'Public'}
+                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium uppercase tracking-wider ${(holiday.holiday_type === 'National Holiday' || holiday.holiday_type === 'NH') ? 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'}`}>
+                                                    {holiday.holiday_type || 'Festival Holiday'}
                                                 </span>
                                             </div>
                                         </div>
@@ -520,7 +520,7 @@ const HolidayManagement = () => {
                             <button
                                 onClick={() => {
                                     setIsEditMode(false);
-                                    setNewHoliday({ name: '', date: '', type: 'Public' });
+                                    setNewHoliday({ name: '', date: '', type: 'Festival Holiday' });
                                     setIsAddModalOpen(true);
                                 }}
                                 style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)', right: 20 }}
@@ -782,7 +782,7 @@ const HolidayManagement = () => {
                                     setNewHoliday({
                                         name: holidayActionSheet.holiday_name,
                                         date: holidayActionSheet.holiday_date,
-                                        type: holidayActionSheet.holiday_type || 'Public'
+                                        type: holidayActionSheet.holiday_type || 'Festival Holiday'
                                     });
                                     setIsAddModalOpen(true);
                                     setHolidayActionSheet(null);
@@ -865,7 +865,7 @@ const HolidayManagement = () => {
                             <MobileSelect
                                 label="Category"
                                 value={newHoliday.type}
-                                options={['Public', 'Optional', 'Observance']}
+                                options={['National Holiday', 'Festival Holiday']}
                                 onChange={(val) => setNewHoliday({ ...newHoliday, type: val })}
                             />
 

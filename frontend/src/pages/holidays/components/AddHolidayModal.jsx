@@ -92,7 +92,7 @@ const AddHolidayModal = ({
                                                 className="absolute left-0 right-0 mt-2 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-lg shadow-2xl overflow-hidden z-[110]"
                                             >
                                                 <div className="py-1">
-                                                    {['Public', 'Optional', 'Observance'].map((opt) => {
+                                                    {['National Holiday', 'Festival Holiday'].map((opt) => {
                                                         const isSelected = newHoliday.type === opt;
                                                         return (
                                                             <button

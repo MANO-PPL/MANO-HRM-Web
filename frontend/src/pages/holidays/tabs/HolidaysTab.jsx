@@ -86,7 +86,7 @@ const HolidaysTab = ({
                                                         {holiday.name}
                                                     </h4>
                                                     <div className="flex items-center gap-2 mt-1">
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${holiday.type === 'Public'
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${(holiday.type === 'National Holiday' || holiday.type === 'NH')
                                                             ? 'bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800/50'
                                                             : 'bg-amber-50 text-amber-700 border-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800/50'
                                                             }`}>

@@ -42,6 +42,15 @@ const BulkHolidayImport = () => {
         }
     };
 
+    // Case-insensitive match against the only two accepted codes; returns null (not a silent
+    // default) for anything else, so an invalid Type is caught here rather than only server-side.
+    const normalizeType = (raw) => {
+        const val = (raw ?? '').toString().trim().toUpperCase();
+        if (val === 'NH') return 'NH';
+        if (val === 'FH') return 'FH';
+        return null;
+    };
+
     const parseCSV = (file) => {
         Papa.parse(file, {
             header: true,
@@ -51,10 +60,11 @@ const BulkHolidayImport = () => {
                 const processed = data.map(row => {
                     const name = row['Holiday Name'] || row['holiday_name'] || row['name'];
                     const date = row['Date'] || row['holiday_date'] || row['date'];
-                    const type = row['Type'] || row['holiday_type'] || row['type'] || 'Public';
+                    const rawType = row['Type'] || row['holiday_type'] || row['type'];
+                    const normalizedType = normalizeType(rawType);
 
-                    let status = (name && date) ? 'Valid' : 'Error';
-                    let errorMsg = !status === 'Valid' ? 'Missing Data' : '';
+                    let status = 'Valid';
+                    let errorMsg = '';
 
                     if (!name) {
                         status = 'Error';
@@ -62,13 +72,16 @@ const BulkHolidayImport = () => {
                     } else if (!date) {
                         status = 'Error';
                         errorMsg = 'Missing Date';
+                    } else if (!normalizedType) {
+                        status = 'Error';
+                        errorMsg = `Invalid Type "${rawType || ''}" — use NH or FH`;
                     }
 
                     return {
                         ...row,
                         name,
                         date,
-                        type,
+                        type: normalizedType || rawType || '',
                         status,
                         errorMsg
                     };
@@ -143,7 +156,7 @@ const BulkHolidayImport = () => {
     };
 
     const downloadSample = () => {
-        const csvContent = "Holiday Name,Date,Type\nNew Year,2025-01-01,Public\nRepublic Day,2025-01-26,Public\nIndependence Day,2025-08-15,Public";
+        const csvContent = "Holiday Name,Date,Type\nRepublic Day,2027-01-26,NH\nIndependence Day,2027-08-15,NH\nDiwali,2027-11-01,FH";
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
@@ -219,6 +232,9 @@ const BulkHolidayImport = () => {
                                     <p className="text-xs text-slate-400">Download holidays_import.csv</p>
                                 </div>
                             </div>
+                            <p className="text-xs text-slate-400 text-center -mt-2">
+                                Type column accepts exactly two values: <span className="font-semibold">NH</span> (National Holiday) or <span className="font-semibold">FH</span> (Festival Holiday).
+                            </p>
                         </div>
                     )}
 
