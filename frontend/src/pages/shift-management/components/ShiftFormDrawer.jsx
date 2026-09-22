@@ -894,7 +894,7 @@ const ShiftFormDrawer = ({
                                             : 'text-slate-500 dark:text-slate-400 hover:text-slate-800'
                                     }`}
                                 >
-                                    Half Days
+                                    Scheduled Half-Day
                                 </button>
                             </div>
 
@@ -1136,6 +1136,49 @@ const ShiftFormDrawer = ({
                                                 </button>
                                             </span>
                                         ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* C2. Half-Day Threshold — per-shift late-arrival/early-leave, distinct from
+                            Scheduled Half-Day above. Only ever applies on a date this shift's own
+                            week_off_policy classifies as a normal working day. */}
+                        <div className="p-4 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border space-y-3.5 shadow-2xs">
+                            <ToggleRow
+                                label="Half-Day Threshold"
+                                subLabel="Mark a day Half Day if arrival/departure falls outside these times. Only applies on a normal working day — never overrides Scheduled Half-Day or a week-off above."
+                                checked={!!shiftForm.halfDayThresholdEnabled}
+                                onChange={e => setShiftForm({ ...shiftForm, halfDayThresholdEnabled: e.target.checked })}
+                                color="emerald"
+                                activeText="Enabled"
+                                inactiveText="Disabled"
+                            />
+                            {shiftForm.halfDayThresholdEnabled && (
+                                <div className="pt-3 border-t border-slate-200 dark:border-slate-700/50 grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                            Half Day if arrival after
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={shiftForm.halfDayLateAfterTime || ''}
+                                            onChange={e => setShiftForm({ ...shiftForm, halfDayLateAfterTime: e.target.value || null })}
+                                            className="w-full px-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text font-mono"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-1 font-normal">Leave blank to disable this specific rule.</p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                            Half Day if leaves before
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={shiftForm.halfDayEarlyBeforeTime || ''}
+                                            onChange={e => setShiftForm({ ...shiftForm, halfDayEarlyBeforeTime: e.target.value || null })}
+                                            className="w-full px-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text font-mono"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-1 font-normal">Leave blank to disable this specific rule.</p>
                                     </div>
                                 </div>
                             )}

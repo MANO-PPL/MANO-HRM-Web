@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Briefcase, Clock, Users, ArrowRight, Settings } from 'lucide-react';
+import { Plus, Search, Briefcase, Clock, Users, ArrowRight } from 'lucide-react';
 
 const ShiftDirectory = ({
     shifts = [],
@@ -12,7 +12,6 @@ const ShiftDirectory = ({
     users = [],
     selectedUserId,
     onOpenAddShift,
-    onOpenGlobalSettings,
     calculateDuration
 }) => {
     return (
@@ -21,13 +20,6 @@ const ShiftDirectory = ({
                 <div className="flex justify-between items-center">
                     <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Shifts</h3>
                     <div className="flex items-center gap-1.5">
-                        <button
-                            onClick={onOpenGlobalSettings}
-                            className="p-1.5 bg-slate-100 dark:bg-github-dark-subtle text-slate-500 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-github-dark-border transition-colors cursor-pointer"
-                            title="Global Attendance Settings"
-                        >
-                            <Settings size={18} />
-                        </button>
                         <button
                             data-tour-id="shift-mgmt-add"
                             onClick={onOpenAddShift}

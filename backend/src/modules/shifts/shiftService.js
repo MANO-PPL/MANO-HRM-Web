@@ -669,6 +669,16 @@ export function getShiftRules(shift) {
         },
         correction_deadline: rules.correction_deadline ?? 2,
         missed_punch_check_time: rules.missed_punch_check_time || null,
+        // Per-shift "half day if arrival after X / leaves before Y" — replaces the old org-wide
+        // threshold (which broke for orgs with more than one shift, since one flat clock time
+        // can't fit a morning, evening, and night shift at once). Only ever applied by the caller
+        // on a date this shift's own week_off_policy already classifies as 'working' — never
+        // stacks with this shift's own Scheduled Half-Day or week-off.
+        half_day_threshold: {
+            enabled: Boolean(rules.half_day_threshold?.enabled),
+            late_after_time: rules.half_day_threshold?.late_after_time || null,
+            early_before_time: rules.half_day_threshold?.early_before_time || null
+        },
         week_off_policy: normalisePolicyInput(rules.week_off_policy)
     };
 }
@@ -705,6 +715,11 @@ export function getDefaultShiftConfig() {
         },
         correction_deadline: 2,
         missed_punch_check_time: null,
+        half_day_threshold: {
+            enabled: false,
+            late_after_time: null,
+            early_before_time: null
+        },
         week_off_policy: [
             { day: "Sun", type: "full", frequency: "every" }
         ]

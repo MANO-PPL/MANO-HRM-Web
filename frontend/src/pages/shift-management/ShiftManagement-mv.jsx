@@ -14,7 +14,6 @@ import {
     XCircle,
     CheckCircle2,
     Settings2,
-    Settings,
     Calendar,
     ChevronRight,
     ChevronDown,
@@ -58,15 +57,6 @@ const ShiftManagement = ({ embedded = false }) => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
 
-    // Global (org-wide, not per-shift) attendance settings
-    const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
-    const [isSavingGlobalSettings, setIsSavingGlobalSettings] = useState(false);
-    const [globalSettingsForm, setGlobalSettingsForm] = useState({
-        halfDayThresholdEnabled: false,
-        halfDayLateAfterTime: null,
-        halfDayEarlyBeforeTime: null
-    });
-
     // Create/Edit Shift Form State
     const [newShiftName, setNewShiftName] = useState('');
     const [newStartTime, setNewStartTime] = useState('09:00');
@@ -85,6 +75,9 @@ const ShiftManagement = ({ embedded = false }) => {
     const [newWorkingDays, setNewWorkingDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
     const [newWeekOffRules, setNewWeekOffRules] = useState([]);
     const [newHalfDayRules, setNewHalfDayRules] = useState([]);
+    const [newHalfDayThresholdEnabled, setNewHalfDayThresholdEnabled] = useState(false);
+    const [newHalfDayLateAfterTime, setNewHalfDayLateAfterTime] = useState(null);
+    const [newHalfDayEarlyBeforeTime, setNewHalfDayEarlyBeforeTime] = useState(null);
     const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
     // Dynamic guard: Overtime threshold cannot be below the shift's actual duration
@@ -177,50 +170,10 @@ const ShiftManagement = ({ embedded = false }) => {
         }
     }, []);
 
-    const loadGlobalSettings = useCallback(async () => {
-        try {
-            const res = await adminService.getGlobalAttendanceSettings();
-            if (res.ok && res.data) {
-                setGlobalSettingsForm({
-                    halfDayThresholdEnabled: !!res.data.half_day_threshold_enabled,
-                    halfDayLateAfterTime: res.data.half_day_late_after_time ? res.data.half_day_late_after_time.slice(0, 5) : null,
-                    halfDayEarlyBeforeTime: res.data.half_day_early_before_time ? res.data.half_day_early_before_time.slice(0, 5) : null
-                });
-            }
-        } catch { toast.error('Failed to load global attendance settings'); }
-    }, []);
-
-    const handleSaveGlobalSettings = async (e) => {
-        e.preventDefault();
-        setIsSavingGlobalSettings(true);
-        try {
-            const res = await adminService.updateGlobalAttendanceSettings({
-                half_day_threshold_enabled: globalSettingsForm.halfDayThresholdEnabled,
-                half_day_late_after_time: globalSettingsForm.halfDayThresholdEnabled && globalSettingsForm.halfDayLateAfterTime
-                    ? `${globalSettingsForm.halfDayLateAfterTime}:00`
-                    : null,
-                half_day_early_before_time: globalSettingsForm.halfDayThresholdEnabled && globalSettingsForm.halfDayEarlyBeforeTime
-                    ? `${globalSettingsForm.halfDayEarlyBeforeTime}:00`
-                    : null
-            });
-            if (res.ok) {
-                toast.success('Global attendance settings updated successfully!');
-                setIsGlobalSettingsOpen(false);
-            } else {
-                toast.error(res.message || 'Failed to update settings');
-            }
-        } catch (err) {
-            toast.error(err.message || 'Failed to update settings');
-        } finally {
-            setIsSavingGlobalSettings(false);
-        }
-    };
-
     useEffect(() => {
         loadShifts();
         loadUsers();
-        loadGlobalSettings();
-    }, [loadShifts, loadUsers, loadGlobalSettings]);
+    }, [loadShifts, loadUsers]);
 
     const handleOpenViewModal = (shift) => {
         setSelectedShift(shift);
@@ -246,6 +199,9 @@ const ShiftManagement = ({ embedded = false }) => {
         setNewWorkingDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
         setNewWeekOffRules([]);
         setNewHalfDayRules([]);
+        setNewHalfDayThresholdEnabled(false);
+        setNewHalfDayLateAfterTime(null);
+        setNewHalfDayEarlyBeforeTime(null);
         setShowAdvancedSettings(false);
         setIsAddModalOpen(true);
     };
@@ -273,6 +229,9 @@ const ShiftManagement = ({ embedded = false }) => {
         setNewWorkingDays(parsed.workingDays.length > 0 ? parsed.workingDays : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
         setNewWeekOffRules(parsed.weekOffRules);
         setNewHalfDayRules(parsed.halfDayRules);
+        setNewHalfDayThresholdEnabled(!!rules.half_day_threshold?.enabled);
+        setNewHalfDayLateAfterTime(rules.half_day_threshold?.late_after_time ? rules.half_day_threshold.late_after_time.slice(0, 5) : null);
+        setNewHalfDayEarlyBeforeTime(rules.half_day_threshold?.early_before_time ? rules.half_day_threshold.early_before_time.slice(0, 5) : null);
         setShowAdvancedSettings(false);
         setIsViewModalOpen(false);
         setIsAddModalOpen(true);
@@ -335,6 +294,15 @@ const ShiftManagement = ({ embedded = false }) => {
             overtime: { enabled: newOvertime, threshold: parseFloat(newOtThreshold) || 0, max_overtime: maxOvertime },
             correction_deadline: parseInt(newCorrectionDeadline) || 2,
             missed_punch_check_time: null,
+            half_day_threshold: {
+                enabled: newHalfDayThresholdEnabled,
+                late_after_time: newHalfDayThresholdEnabled && newHalfDayLateAfterTime
+                    ? `${newHalfDayLateAfterTime}:00`
+                    : null,
+                early_before_time: newHalfDayThresholdEnabled && newHalfDayEarlyBeforeTime
+                    ? `${newHalfDayEarlyBeforeTime}:00`
+                    : null
+            },
             entry_requirements: { selfie: newValCheckInSelfie, geofence: true }, // GPS is mandatory
             exit_requirements: { selfie: newValCheckOutSelfie, geofence: true }, // GPS is mandatory
             checkpoint_requirements: {
@@ -390,13 +358,6 @@ const ShiftManagement = ({ embedded = false }) => {
                         <p className="text-[11px] text-slate-500 dark:text-github-dark-muted font-medium mt-0.5">Total {shifts.length} configured shifts</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setIsGlobalSettingsOpen(true)}
-                            className="w-10 h-10 bg-slate-100 dark:bg-github-dark-subtle text-slate-500 dark:text-slate-400 rounded-xl flex items-center justify-center active:scale-90 transition-all"
-                            title="Global Attendance Settings"
-                        >
-                            <Settings size={20} />
-                        </button>
                         <button
                             onClick={handleOpenAddModal}
                             className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 active:scale-90 transition-all"
@@ -893,7 +854,7 @@ const ShiftManagement = ({ embedded = false }) => {
 
                                                 <div className="space-y-3 p-3 bg-blue-50/40 dark:bg-blue-950/20 rounded-2xl border border-blue-200/50 dark:border-blue-900/30">
                                                     <p className="text-[10px] font-black text-blue-700 dark:text-blue-400 uppercase tracking-wider">
-                                                        Half Day Schedule Rules
+                                                        Scheduled Half-Day
                                                     </p>
                                                     <div className="space-y-2">
                                                         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
@@ -937,8 +898,51 @@ const ShiftManagement = ({ embedded = false }) => {
                                                                     )}
                                                                 </div>
                                                             );
-                                                        })}
+                                        })}
                                                     </div>
+                                                </div>
+
+                                                <div className="space-y-3 p-3 bg-emerald-50/40 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200/50 dark:border-emerald-900/30">
+                                                    <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                                                        Half-Day Threshold
+                                                    </p>
+                                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                                        Automatically mark a day Half Day if arrival/departure falls outside these times. Only applies on a normal working day for this shift — never overrides Scheduled Half-Day or a week-off above.
+                                                    </p>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Enable threshold-based Half Day</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setNewHalfDayThresholdEnabled(!newHalfDayThresholdEnabled)}
+                                                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${newHalfDayThresholdEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                                                        >
+                                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${newHalfDayThresholdEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                                        </button>
+                                                    </div>
+                                                    {newHalfDayThresholdEnabled && (
+                                                        <div className="grid grid-cols-2 gap-3 animate-in fade-in">
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Half Day if arrival after</label>
+                                                                <input
+                                                                    type="time"
+                                                                    value={newHalfDayLateAfterTime || ''}
+                                                                    onChange={e => setNewHalfDayLateAfterTime(e.target.value || null)}
+                                                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-2 text-[11px] font-bold text-slate-800 dark:text-github-dark-text"
+                                                                />
+                                                                <p className="text-[9px] text-slate-400 ml-1">Blank disables this rule.</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Half Day if leaves before</label>
+                                                                <input
+                                                                    type="time"
+                                                                    value={newHalfDayEarlyBeforeTime || ''}
+                                                                    onChange={e => setNewHalfDayEarlyBeforeTime(e.target.value || null)}
+                                                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-2 text-[11px] font-bold text-slate-800 dark:text-github-dark-text"
+                                                                />
+                                                                <p className="text-[9px] text-slate-400 ml-1">Blank disables this rule.</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
@@ -1110,93 +1114,6 @@ const ShiftManagement = ({ embedded = false }) => {
                 document.body
             )}
 
-            {/* Bottom Sheet: Global (org-wide) Attendance Settings */}
-            {isGlobalSettingsOpen && createPortal(
-                <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setIsGlobalSettingsOpen(false)}>
-                    <div className="flex min-h-full items-end justify-center">
-                        <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="relative bg-white dark:bg-dark-card w-full rounded-t-[2.5rem] shadow-2xl animate-in slide-in-from-bottom duration-500 border-t border-slate-200/50 dark:border-github-dark-border max-h-[92vh] flex flex-col"
-                        >
-                            <div className="flex justify-center pt-3 pb-2 shrink-0">
-                                <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
-                            </div>
-
-                            <form onSubmit={handleSaveGlobalSettings} className="flex-1 overflow-y-auto px-6 pt-2 pb-8">
-                                <div className="flex justify-between items-center mb-6">
-                                    <div>
-                                        <h2 className="text-xl font-black text-slate-800 dark:text-github-dark-text tracking-tight">Global Attendance Settings</h2>
-                                        <p className="text-xs text-slate-500 font-medium">Org-wide, not per-shift</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsGlobalSettingsOpen(false)}
-                                        className="w-10 h-10 bg-slate-100 dark:bg-github-dark-subtle text-slate-500 dark:text-github-dark-muted rounded-full flex items-center justify-center"
-                                    >
-                                        <X size={20} />
-                                    </button>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <div className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
-                                        <p className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-1">Half-Day Threshold</p>
-                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                                            Automatically mark a day Half Day if arrival/departure falls outside these times. Only applies on a normal working day — never overrides a shift's own half-day or week-off rules.
-                                        </p>
-                                    </div>
-
-                                    <div className="flex items-center justify-between p-3.5 bg-slate-50/70 dark:bg-github-dark-subtle/40 rounded-2xl border border-slate-200/80 dark:border-github-dark-border">
-                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Enable threshold-based Half Day</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => setGlobalSettingsForm({ ...globalSettingsForm, halfDayThresholdEnabled: !globalSettingsForm.halfDayThresholdEnabled })}
-                                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${globalSettingsForm.halfDayThresholdEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                                        >
-                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${globalSettingsForm.halfDayThresholdEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                                        </button>
-                                    </div>
-
-                                    {globalSettingsForm.halfDayThresholdEnabled && (
-                                        <div className="grid grid-cols-2 gap-3 animate-in fade-in">
-                                            <div className="space-y-1">
-                                                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Half Day if arrival after</label>
-                                                <input
-                                                    type="time"
-                                                    value={globalSettingsForm.halfDayLateAfterTime || ''}
-                                                    onChange={e => setGlobalSettingsForm({ ...globalSettingsForm, halfDayLateAfterTime: e.target.value || null })}
-                                                    className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-2xl px-3 py-2.5 text-xs font-bold text-slate-800 dark:text-github-dark-text"
-                                                />
-                                                <p className="text-[9px] text-slate-400 ml-1">Blank disables this rule.</p>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Half Day if leaves before</label>
-                                                <input
-                                                    type="time"
-                                                    value={globalSettingsForm.halfDayEarlyBeforeTime || ''}
-                                                    onChange={e => setGlobalSettingsForm({ ...globalSettingsForm, halfDayEarlyBeforeTime: e.target.value || null })}
-                                                    className="w-full bg-slate-50 dark:bg-github-dark-subtle/50 border border-slate-200 dark:border-github-dark-border rounded-2xl px-3 py-2.5 text-xs font-bold text-slate-800 dark:text-github-dark-text"
-                                                />
-                                                <p className="text-[9px] text-slate-400 ml-1">Blank disables this rule.</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="mt-8 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-                                    <button
-                                        type="submit"
-                                        disabled={isSavingGlobalSettings}
-                                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-60"
-                                    >
-                                        {isSavingGlobalSettings ? 'Saving...' : (<><CheckCircle2 size={18} /> Save Settings</>)}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
         </>
     );
 

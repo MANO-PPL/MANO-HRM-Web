@@ -3,7 +3,6 @@ import * as S3Service from "../../services/s3/s3Service.js";
 import EventBus from "../../utils/EventBus.js";
 import * as ShiftService from "../shifts/shiftService.js";
 import * as StatusService from "../../services/statusEvalution/statusEvaluationService.js";
-import * as OrgAttendanceSettingsService from "./orgAttendanceSettingsService.js";
 import { PayrollCalculationService } from '../payroll/PayrollCalculationService.js';
 import { toMySQLDateTime, toMySQLDate, toMySQLTime, pad, timeToMinutes } from "../../utils/dateUtils.js";
 import { safeJsonParse } from "../../utils/dataUtils.js";
@@ -290,31 +289,27 @@ export async function syncDailyAttendance(user_id, dateStr, overrides = {}) {
         event_type: "time_out"
       });
 
-      // Org-wide threshold half-day policy — only ever applies on a date the shift itself
-      // classifies as a normal WORKING day (dayTypeForStatus === 'working'), never stacking with
-      // the shift's own half-day/week-off rule handled above. Only downgrades an otherwise
-      // unremarkable PRESENT/LATE day — never "upgrades" a genuine ABSENT, and never overrides a
-      // day that already earned OVERTIME (working extra hours despite a late start is still a
-      // full, or more than full, day's effort).
-      if ((finalStatus === 'PRESENT' || finalStatus === 'LATE') && dayTypeForStatus === 'working') {
-        const orgIdForSettings = shift?.org_id || (await attendanceDB('core_users').where('user_id', user_id).select('org_id').first())?.org_id;
-        if (orgIdForSettings) {
-          const orgSettings = await OrgAttendanceSettingsService.getOrgAttendanceSettings(orgIdForSettings);
-          if (orgSettings?.half_day_threshold_enabled) {
-            const firstInMinutes = timeToMinutes(toMySQLTime(sessions[0].in_punch.punch_time));
-            const lastSessionWithOut = [...sessions].reverse().find(s => s.out_punch);
-            const lastOutMinutes = lastSessionWithOut ? timeToMinutes(toMySQLTime(lastSessionWithOut.out_punch.punch_time)) : null;
+      // Half-Day Threshold policy — per-shift ("half day if arrival after X / leaves before Y"),
+      // only ever applies on a date this shift itself classifies as a normal WORKING day
+      // (dayTypeForStatus === 'working'), never stacking with this shift's own Scheduled
+      // Half-Day/week-off rule handled above. Only downgrades an otherwise unremarkable
+      // PRESENT/LATE day — never "upgrades" a genuine ABSENT, and never overrides a day that
+      // already earned OVERTIME (working extra hours despite a late start is still a full, or
+      // more than full, day's effort). Read directly from this shift's own rules — no DB lookup
+      // needed, unlike the old org-wide version, since `rules` is already loaded above.
+      if ((finalStatus === 'PRESENT' || finalStatus === 'LATE') && dayTypeForStatus === 'working' && rules.half_day_threshold?.enabled) {
+        const firstInMinutes = timeToMinutes(toMySQLTime(sessions[0].in_punch.punch_time));
+        const lastSessionWithOut = [...sessions].reverse().find(s => s.out_punch);
+        const lastOutMinutes = lastSessionWithOut ? timeToMinutes(toMySQLTime(lastSessionWithOut.out_punch.punch_time)) : null;
 
-            const lateThresholdMinutes = orgSettings.half_day_late_after_time ? timeToMinutes(orgSettings.half_day_late_after_time) : null;
-            const earlyThresholdMinutes = orgSettings.half_day_early_before_time ? timeToMinutes(orgSettings.half_day_early_before_time) : null;
+        const lateThresholdMinutes = rules.half_day_threshold.late_after_time ? timeToMinutes(rules.half_day_threshold.late_after_time) : null;
+        const earlyThresholdMinutes = rules.half_day_threshold.early_before_time ? timeToMinutes(rules.half_day_threshold.early_before_time) : null;
 
-            const arrivedLate = lateThresholdMinutes !== null && firstInMinutes > lateThresholdMinutes;
-            const leftEarly = earlyThresholdMinutes !== null && lastOutMinutes !== null && lastOutMinutes < earlyThresholdMinutes;
+        const arrivedLate = lateThresholdMinutes !== null && firstInMinutes > lateThresholdMinutes;
+        const leftEarly = earlyThresholdMinutes !== null && lastOutMinutes !== null && lastOutMinutes < earlyThresholdMinutes;
 
-            if (arrivedLate || leftEarly) {
-              finalStatus = 'HALF_DAY';
-            }
-          }
+        if (arrivedLate || leftEarly) {
+          finalStatus = 'HALF_DAY';
         }
       }
     }

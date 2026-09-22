@@ -399,24 +399,6 @@ export const adminService = {
             throw new Error(error.response?.data?.message || "Failed to delete shift");
         }
     },
-    // Global attendance settings (org-wide, not per-shift) — currently just the threshold-based
-    // half-day policy; the home for any future org-wide timing/attendance settings.
-    async getGlobalAttendanceSettings() {
-        try {
-            const res = await api.get('/attendance/org-settings');
-            return res.data;
-        } catch (error) {
-            throw new Error(error.response?.data?.message || "Failed to fetch global attendance settings");
-        }
-    },
-    async updateGlobalAttendanceSettings(data) {
-        try {
-            const res = await api.patch('/attendance/org-settings', data);
-            return res.data;
-        } catch (error) {
-            throw new Error(error.response?.data?.message || "Failed to update global attendance settings");
-        }
-    },
     async getShiftUsers() {
         if (cache.shiftUsers) return cache.shiftUsers;
         const promise = (async () => {

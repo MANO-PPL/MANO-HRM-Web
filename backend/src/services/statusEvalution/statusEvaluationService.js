@@ -9,7 +9,6 @@ import {
     getEffectiveRulesForDate,
     getOpenShiftFallback
 } from '../../modules/shifts/shiftService.js';
-import { getOrgAttendanceSettings } from '../../modules/attendance/orgAttendanceSettingsService.js';
 import { toMySQLTime, toMySQLDate, toMySQLDateTime, calculateDurationHours, pad, DAY_NAMES, timeToMinutes } from '../../utils/dateUtils.js';
 import { safeJsonParse } from '../../utils/dataUtils.js';
 import { formatDateInTimezone } from '../../utils/timezoneUtils.js';
@@ -447,7 +446,7 @@ function normalizeDate(d) {
  * Evaluate the attendance status for a single user on a single date.
  * Uses cron-processed daily_attendance when available, otherwise derives dynamically.
  */
-function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone = 'UTC', orgAttendanceSettings = null }) {
+function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone = 'UTC' }) {
     let status = null;
     let totalHours = 0;
     let firstIn = null;
@@ -566,17 +565,18 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
                 status = 'OVERTIME';
             }
 
-            // Org-wide threshold half-day policy — only ever applies on a date the shift itself
-            // classifies as a normal WORKING day, never stacking with the shift's own
-            // half-day/week-off rule handled above. Only downgrades an otherwise unremarkable
+            // Half-Day Threshold policy — per-shift, only ever applies on a date this shift itself
+            // classifies as a normal WORKING day, never stacking with this shift's own Scheduled
+            // Half-Day/week-off rule handled above. Only downgrades an otherwise unremarkable
             // PRESENT/LATE day — never "upgrades" a genuine ABSENT, and never overrides a day
-            // that already earned OVERTIME.
-            if ((status === 'PRESENT' || status === 'LATE') && dayType === 'working' && orgAttendanceSettings?.half_day_threshold_enabled) {
+            // that already earned OVERTIME. Read directly from this shift's own rules — no
+            // org-level lookup needed, unlike the old org-wide version.
+            if ((status === 'PRESENT' || status === 'LATE') && dayType === 'working' && rules.half_day_threshold?.enabled) {
                 const firstInMinutes = firstIn ? timeToMinutes(toMySQLTime(firstIn)) : null;
                 const lastOutMinutes = lastOut ? timeToMinutes(toMySQLTime(lastOut)) : null;
 
-                const lateThresholdMinutes = orgAttendanceSettings.half_day_late_after_time ? timeToMinutes(orgAttendanceSettings.half_day_late_after_time) : null;
-                const earlyThresholdMinutes = orgAttendanceSettings.half_day_early_before_time ? timeToMinutes(orgAttendanceSettings.half_day_early_before_time) : null;
+                const lateThresholdMinutes = rules.half_day_threshold.late_after_time ? timeToMinutes(rules.half_day_threshold.late_after_time) : null;
+                const earlyThresholdMinutes = rules.half_day_threshold.early_before_time ? timeToMinutes(rules.half_day_threshold.early_before_time) : null;
 
                 const arrivedLate = lateThresholdMinutes !== null && firstInMinutes !== null && firstInMinutes > lateThresholdMinutes;
                 const leftEarly = earlyThresholdMinutes !== null && lastOutMinutes !== null && lastOutMinutes < earlyThresholdMinutes;
@@ -960,10 +960,6 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
     // timezone was already resolved just above for this same org — reuse it instead of a second lookup.
     const todayStr = formatDateInTimezone(new Date(), timezone);
 
-    // Fetched once for the whole batch (same org for every user/date in this call) rather than
-    // per-user/per-date, to avoid N+1 queries.
-    const orgAttendanceSettings = await getOrgAttendanceSettings(org_id);
-
     // 5. Evaluate each user × date. Per-day (not per-user-once) rules resolution: a day whose
     // first session was pattern-matched or off-pattern (Phase 3) must be evaluated against that
     // session's own resolved shift, not the user's assigned shift — otherwise the live view
@@ -991,7 +987,7 @@ export async function getDailySummary({ org_id, user_id = null, date_from, date_
                 if (matchedShift) rules = getShiftRules(matchedShift);
             }
 
-            const result = evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone, orgAttendanceSettings });
+            const result = evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday, leave, rules, timezone });
             // Serialize time fields to plain strings (prevent UTC shift from JS Date serialization)
             const serializedSessions = dayRecords.map(r => ({
                 ...r,

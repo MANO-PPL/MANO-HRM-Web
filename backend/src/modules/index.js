@@ -14,7 +14,6 @@ import darSettingsRoutes from './DAR/settingsRoutes.js';
 import darReportRoutes from './DAR/DARReportAPI.js';
 import shiftRoutes from './shifts/shiftRoutes.js';
 import attendanceRoutes from './attendance/attendanceRoutes.js';
-import orgAttendanceSettingsRoutes from './attendance/orgAttendanceSettingsRoutes.js';
 import correctionsRoutes from './corrections/correctionsRoutes.js';
 import feedbackRoutes from './feedback/feedbackRoutes.js';
 import paymentRoutes from './payments/paymentRoutes.js';
@@ -42,7 +41,6 @@ router.use('/policies', shiftRoutes); // Shift policies & schedule management
 router.use('/notifications', notificationRoutes); // User alerts & notifications
 router.use('/leaves', leaveRoutes); // Leave requests, balances & approvals
 router.use('/attendance', attendanceRoutes); // Attendance records, check-in/out & punches
-router.use('/attendance/org-settings', orgAttendanceSettingsRoutes); // Org-wide threshold half-day policy
 router.use('/corrections', correctionsRoutes); // Attendance corrections & adjustments
 router.use('/attendance', correctionsRoutes); // Backwards compatibility for legacy /attendance/correction-request(s)
 router.use('/organizations', orgRoutes); // Organization profile & configuration
