@@ -587,7 +587,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         }
                     }
                 });
-                const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings);
+                const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings, holidayByDate);
 
                 let calculatedAbsentDays = 0;
                 dateHeaders.forEach((d, dIdx) => {
@@ -639,10 +639,6 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 }
             };
 
-            if (colsObj.requiredHours !== false) {
-                pdfCols.push("Req Hrs");
-                pdfColIndices.push(12);
-            }
             if (colsObj.attendanceDays !== false) {
                 pdfCols.push("Present", "Absent", "Half Day", "Leave", holidayWorkedHeader);
                 pdfColIndices.push(3, 4, 5, 6, 13);
@@ -654,6 +650,10 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             if (colsObj.workedHours !== false) {
                 pdfCols.push("OT Hrs", "Total Hrs");
                 pdfColIndices.push(9, 10);
+            }
+            if (colsObj.requiredHours !== false) {
+                pdfCols.push("Req Hrs");
+                pdfColIndices.push(12);
             }
             if (colsObj.attendanceDays !== false) {
                 pdfCols.push("Payable Days");
@@ -741,7 +741,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 });
 
                 const payableDays = presentDays - (0.5 * halfDayCount) + leaveCount;
-                const requiredHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings);
+                const requiredHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings, holidayByDate);
 
                 const fullRow = [
                     u.user_name,
@@ -953,7 +953,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 }
             });
 
-            const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings);
+            const reqHrs = reportsService.getRequiredHoursForPeriod(u, dateStrings, holidayByDate);
             const workedHrs = totalWorkedHrs;
             const lateHrs = totalLateMins / 60;
             const lateCount = userRecs.filter(r => r.late_minutes > 0).length;
@@ -1085,9 +1085,6 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         };
         const holidayWorkedHeader = `Holidays Worked (of ${Object.keys(holidayByDate).length})`;
 
-        if (colsObj.requiredHours !== false) {
-            pushCol("Required Hrs", "required_hrs", 14);
-        }
         if (colsObj.attendanceDays !== false) {
             pushCol("Present", "present", 10);
             pushCol("Absent", "absent", 10);
@@ -1102,6 +1099,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         if (colsObj.workedHours !== false) {
             pushCol("Overtime Hrs", "overtime_hrs", 15);
             pushCol("Total Hrs", "total_hrs", 12);
+        }
+        if (colsObj.requiredHours !== false) {
+            pushCol("Required Hrs", "required_hrs", 14);
         }
         if (colsObj.attendanceDays !== false) {
             pushCol("Payable Days", "payable_days", 15);
@@ -1196,7 +1196,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             };
 
             if (colsObj.requiredHours !== false) {
-                rowData.required_hrs = parseFloat(reportsService.getRequiredHoursForPeriod(u, dateStrings).toFixed(2));
+                rowData.required_hrs = parseFloat(reportsService.getRequiredHoursForPeriod(u, dateStrings, holidayByDate).toFixed(2));
             }
             if (colsObj.attendanceDays !== false) {
                 rowData.present = presentDays;
@@ -1391,7 +1391,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         else if (sc.label === "Out Time") userRow.push(reportsService.formatLocalTimeStr(aggregated.time_out));
                         else if (sc.label === "Work Hrs") userRow.push(parseFloat(aggregated.worked_hours.toFixed(2)));
                         else if (sc.label === "Req Hrs") {
-                            const req = reportsService.getExpectedHours(dateStr, rules.week_off_policy, rules);
+                            const req = reportsService.getHolidayOverride(dateStr, holidayByDate) ? 0 : reportsService.getExpectedHours(dateStr, rules.week_off_policy, rules);
                             userRow.push(parseFloat(req.toFixed(2)));
                         }
                         else if (sc.label === "Late Mins") userRow.push(aggregated.late_minutes);
@@ -1425,7 +1425,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     subCols.forEach((sc) => {
                         if (sc.label === "Status") userRow.push(statusStr);
                         else if (sc.label === "Req Hrs") {
-                            const req = reportsService.getExpectedHours(dateStr, rules.week_off_policy, rules);
+                            const req = reportsService.getHolidayOverride(dateStr, holidayByDate) ? 0 : reportsService.getExpectedHours(dateStr, rules.week_off_policy, rules);
                             userRow.push(parseFloat(req.toFixed(2)));
                         }
                         else userRow.push("-");

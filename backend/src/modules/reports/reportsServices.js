@@ -279,11 +279,14 @@ export const getShiftHoursForUser = (user) => {
 };
 
 // Helper: Get total required hours for a period
-export const getRequiredHoursForPeriod = (user, dateHeaders) => {
+// `holidayByDate` is optional (defaults to none) so any caller that hasn't been updated to pass
+// it keeps its exact previous behavior — only call sites that explicitly pass it get the fix.
+export const getRequiredHoursForPeriod = (user, dateHeaders, holidayByDate = {}) => {
     let total = 0;
     const rules = getShiftRules(user);
     dateHeaders.forEach(d => {
         const dateStr = typeof d === 'string' ? d : (d.toISOString ? d.toISOString().split('T')[0] : String(d));
+        if (getHolidayOverride(dateStr, holidayByDate)) return; // declared holiday — nothing required that day
         total += getExpectedHours(dateStr, rules.week_off_policy, rules);
     });
     return total;
@@ -861,7 +864,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     }
                 });
 
-                const reqHrs = getRequiredHoursForPeriod(u, dateStrings);
+                const reqHrs = getRequiredHoursForPeriod(u, dateStrings, holidayByDate);
                 const workedHrs = totalWorkedHrs;
                 const lateHrs = totalLateMins / 60;
 
@@ -1054,7 +1057,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                             else if (sc.label === "Out Time") userRow.push(formatLocalTimeStr(aggregated.time_out));
                             else if (sc.label === "Work Hrs") userRow.push(aggregated.worked_hours.toFixed(2));
                             else if (sc.label === "Req Hrs") {
-                                const req = getExpectedHours(dateStr, rules.week_off_policy, rules);
+                                // A declared holiday requires nothing, even on a day the employee
+                                // chose to come in anyway — matches the period total below.
+                                const req = getHolidayOverride(dateStr, holidayByDate) ? 0 : getExpectedHours(dateStr, rules.week_off_policy, rules);
                                 userRow.push(req.toFixed(2));
                             }
                             else if (sc.label === "Late Mins") userRow.push(aggregated.late_minutes.toString());
@@ -1092,7 +1097,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                         subCols.forEach((sc) => {
                             if (sc.label === "Status") userRow.push(statusStr);
                             else if (sc.label === "Req Hrs") {
-                                const req = (userStartDate && dateStr < userStartDate) ? 0 : getExpectedHours(dateStr, rules.week_off_policy, rules);
+                                const req = (userStartDate && dateStr < userStartDate) || getHolidayOverride(dateStr, holidayByDate) ? 0 : getExpectedHours(dateStr, rules.week_off_policy, rules);
                                 userRow.push(req.toFixed(2));
                             }
                             else userRow.push("-");
@@ -1172,10 +1177,6 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             }
         };
 
-        if (colsObj.requiredHours !== false) {
-            cols.push("Required Hrs");
-            colIndices.push(12);
-        }
         if (colsObj.attendanceDays !== false) {
             cols.push("Present", "Absent", "Half Day", "On Leave", holidayWorkedHeader);
             colIndices.push(3, 4, 5, 6, 13);
@@ -1187,6 +1188,10 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
         if (colsObj.workedHours !== false) {
             cols.push("Overtime Hrs", "Total Hrs");
             colIndices.push(9, 10);
+        }
+        if (colsObj.requiredHours !== false) {
+            cols.push("Required Hrs");
+            colIndices.push(12);
         }
         if (colsObj.attendanceDays !== false) {
             cols.push("Payable Days");
@@ -1267,7 +1272,7 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
             });
 
             const payableDays = presentDays - (0.5 * halfDayCount) + leaveCount;
-            const requiredHrs = getRequiredHoursForPeriod(u, dateStrings);
+            const requiredHrs = getRequiredHoursForPeriod(u, dateStrings, holidayByDate);
 
             const fullRow = [
                 u.user_name,
