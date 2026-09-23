@@ -1,8 +1,9 @@
 import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../../services/s3/s3Service.js';
-import { getShiftRules, getDayType, getExpectedHours, getOpenShiftFallback } from '../shifts/shiftService.js';
+import { getShiftRules, getDayType, getExpectedHours, getEffectiveRulesForDate, getOpenShiftFallback } from '../shifts/shiftService.js';
 import { calculateLateArrival, calculateOvertime } from '../../services/statusEvalution/statusEvaluationService.js';
 import { getOrgTodayStr } from '../../utils/timezoneUtils.js';
+import { timeToMinutes, toMySQLTime } from '../../utils/dateUtils.js';
 
 export { getShiftRules, getDayType, getExpectedHours, calculateOvertime };
 
@@ -157,6 +158,15 @@ export const aggregateDayRecords = (dayRecs, userPolicyRules, customTodayStr) =>
     let effectiveLateMinutes = originalLateMinutes;
     let overtime_hours = originalOvertime;
 
+    // Parsed once, up front, so both the Scheduled Half-Day branch below and the normal-day
+    // branch can share it (previously only parsed inside the normal-day branch).
+    const rules = userPolicyRules ? safeParseRules(userPolicyRules) : null;
+    const graceMins = Number(rules?.grace_period?.minutes || 0);
+    // Whether the shift's OT setting is CURRENTLY enabled — gates OT display live, below,
+    // regardless of what was stored historically or computed via allowHistorical.
+    const otCurrentlyEnabled = rules?.overtime?.enabled !== false;
+    const dayType = rules ? getDayType(recDate, rules.week_off_policy) : 'working';
+
     let status = "Present";
     const hasLeave = sorted.some(r => r.status === 'ON_LEAVE' || r.status === 'On Leave');
     const hasHalfDay = sorted.some(r => r.status === 'HALF_DAY' || r.status === 'Half Day');
@@ -168,16 +178,39 @@ export const aggregateDayRecords = (dayRecs, userPolicyRules, customTodayStr) =>
     else if (hasHalfDay) status = "Half Day";
     else if (hasMissedPunch) status = "Missed Punch";
     else if (hasAbsent) status = "Absent";
-    else {
-        let graceMins = 0;
-        let rules = null;
-        // Whether the shift's OT setting is CURRENTLY enabled — gates OT display live, below,
-        // regardless of what was stored historically or computed via allowHistorical.
-        let otCurrentlyEnabled = true;
-        if (userPolicyRules) {
-            rules = safeParseRules(userPolicyRules);
-            graceMins = Number(rules?.grace_period?.minutes || 0);
-            otCurrentlyEnabled = rules?.overtime?.enabled !== false;
+    else if (rules && dayType === 'half_day') {
+        // Scheduled Half-Day — this day is one of the shift's own fixed half-day dates (e.g. 2nd/4th
+        // Saturday). Mirrors syncDailyAttendance's exact bands: too little worked (relative to the
+        // half-day's own expected hours) reads Absent; otherwise Overtime/Late/Half Day, evaluated
+        // against the half-day's own (possibly custom-timed) effective window, not the full-day one.
+        const halfDayExpectedHours = getExpectedHours(recDate, rules.week_off_policy, rules);
+        if (worked_hours < (halfDayExpectedHours * 0.5)) {
+            status = "Absent";
+        } else {
+            const effectiveRules = getEffectiveRulesForDate(recDate, rules);
+            const calculatedOT = calculateOvertime(worked_hours, rules, isPastDate);
+            overtime_hours = otCurrentlyEnabled ? Math.max(originalOvertime, calculatedOT) : 0;
+
+            if (first.time_in && effectiveRules?.shift_timing?.start_time) {
+                const lateCheck = calculateLateArrival(first.time_in, effectiveRules);
+                if (lateCheck.isLate) {
+                    effectiveLateMinutes = Math.max(effectiveLateMinutes, lateCheck.minutesLate);
+                }
+            }
+            if (!originalHasLateStatus && effectiveLateMinutes <= graceMins) {
+                effectiveLateMinutes = 0;
+            }
+
+            if (overtime_hours > 0 || (originalHasOvertimeStatus && otCurrentlyEnabled)) {
+                status = "Overtime";
+            } else if (effectiveLateMinutes > graceMins || originalHasLateStatus) {
+                status = "Late";
+            } else {
+                status = "Half Day";
+            }
+        }
+    } else {
+        if (rules) {
             const calculatedOT = calculateOvertime(worked_hours, rules, isPastDate);
             overtime_hours = otCurrentlyEnabled ? Math.max(originalOvertime, calculatedOT) : 0;
 
@@ -207,6 +240,24 @@ export const aggregateDayRecords = (dayRecs, userPolicyRules, customTodayStr) =>
             status = "Overtime";
         } else if (effectiveLateMinutes > 0 || originalHasLateStatus) {
             status = "Late";
+        }
+
+        // Half-Day Threshold — per-shift "arrival after X / leaves before Y", only ever applies on
+        // a date this shift classifies as a normal WORKING day, never stacking with Scheduled
+        // Half-Day (handled in the branch above) or a week-off. Only downgrades an otherwise
+        // unremarkable Present/Late day — never upgrades a genuine Absent, never overrides Overtime.
+        if ((status === "Present" || status === "Late") && dayType === 'working' && rules?.half_day_threshold?.enabled) {
+            const firstInMinutes = first.time_in ? timeToMinutes(toMySQLTime(first.time_in)) : null;
+            const lastOutMinutes = last.time_out ? timeToMinutes(toMySQLTime(last.time_out)) : null;
+            const lateThresholdMinutes = rules.half_day_threshold.late_after_time ? timeToMinutes(rules.half_day_threshold.late_after_time) : null;
+            const earlyThresholdMinutes = rules.half_day_threshold.early_before_time ? timeToMinutes(rules.half_day_threshold.early_before_time) : null;
+
+            const arrivedLate = lateThresholdMinutes !== null && firstInMinutes !== null && firstInMinutes > lateThresholdMinutes;
+            const leftEarly = earlyThresholdMinutes !== null && lastOutMinutes !== null && lastOutMinutes < earlyThresholdMinutes;
+
+            if (arrivedLate || leftEarly) {
+                status = "Half Day";
+            }
         }
     }
 
@@ -861,6 +912,9 @@ export async function getPreviewData({ type, org_id, month, startDate, endDate, 
                     if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
                         if (aggregated.status === 'Missed Punch') {
                             dateCells.push("MP");
+                        } else if (aggregated.status === 'Half Day') {
+                            dateCells.push("Half Day");
+                            presentDays++;
                         } else {
                             dateCells.push("1.0");
                             presentDays++;

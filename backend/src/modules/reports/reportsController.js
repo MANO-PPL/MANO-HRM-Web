@@ -928,7 +928,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
-                    dateCells.push("1.0");
+                    dateCells.push(aggregated.status === 'Half Day' ? "Half Day" : "1.0");
                     presentDays++;
                     totalWorkedHrs += aggregated.worked_hours;
                     if (aggregated.late_minutes > 0) {
