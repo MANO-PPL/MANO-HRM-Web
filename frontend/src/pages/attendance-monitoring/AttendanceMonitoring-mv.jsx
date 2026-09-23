@@ -166,6 +166,8 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
             'Overtime': 'Overtime',
             'MISSED_PUNCH': 'Missed Punch',
             'Missed Punch': 'Missed Punch',
+            'HALF_DAY': 'Half Day',
+            'Half Day': 'Half Day',
             'Active': 'Active',
             'Late Active': 'Late Active'
         };
@@ -202,6 +204,11 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
             allStatuses.push('Missed Punch');
             if (isLate && !allStatuses.includes('Late')) allStatuses.push('Late');
             if (isOvertime && !allStatuses.includes('Overtime')) allStatuses.push('Overtime');
+        } else if (status === 'Half Day') {
+            // A Half Day is already the backend's final determination for the day (it only ever
+            // replaces what would otherwise have been Present/Late) — shown as its own distinct
+            // badge, not re-decorated with a separate Late tag that would just be confusing.
+            allStatuses.push('Half Day');
         } else if (status === 'Week Off') {
             allStatuses.push('Week Off');
         } else if (status === 'Holiday') {
@@ -244,6 +251,7 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
         'Late': 8,
         'Overtime': 7,
         'Present': 6,
+        'Half Day': 5.5,
         'Missed Punch': 5,
         'Absent': 4,
         'Leave': 3,
@@ -337,15 +345,16 @@ const MobileAttendanceMonitoring = () => {
         if (cachedResponse?.data) {
             const merged = processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC', initialDate);
             return {
-                present: merged.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
+                present: merged.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave' && d.status !== 'Half Day').length,
                 late: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : (d.status.includes('Late') || d.isLate)).length,
                 overtime: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Overtime') : (d.status.includes('Overtime') || d.isOvertime)).length,
                 absent: merged.filter(d => d.status === 'Absent').length,
+                halfDay: merged.filter(d => d.status === 'Half Day').length,
                 active: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
                 total: merged.length
             };
         }
-        return { present: 0, late: 0, overtime: 0, absent: 0, active: 0, total: 0 };
+        return { present: 0, late: 0, overtime: 0, absent: 0, halfDay: 0, active: 0, total: 0 };
     });
     const [correctionRequests, setCorrectionRequests] = useState([]);
     const [requestCount, setRequestCount] = useState(0);
@@ -514,10 +523,11 @@ const MobileAttendanceMonitoring = () => {
 
             setAttendanceData(mergedData);
             setStats({
-                present: mergedData.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
+                present: mergedData.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave' && d.status !== 'Half Day').length,
                 late: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : (d.status.includes('Late') || d.isLate)).length,
                 overtime: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Overtime') : (d.status.includes('Overtime') || d.isOvertime)).length,
                 absent: mergedData.filter(d => d.status === 'Absent').length,
+                halfDay: mergedData.filter(d => d.status === 'Half Day').length,
                 active: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
                 total: mergedData.length
             });
@@ -669,11 +679,13 @@ const MobileAttendanceMonitoring = () => {
         
         let matchesStatus = true;
         if (statusFilter === 'present') {
-            matchesStatus = e.status !== 'Absent' && e.status !== 'Week Off' && e.status !== 'Holiday' && e.status !== 'Leave';
+            matchesStatus = e.status !== 'Absent' && e.status !== 'Week Off' && e.status !== 'Holiday' && e.status !== 'Leave' && e.status !== 'Half Day';
         } else if (statusFilter === 'late') {
             matchesStatus = e.allStatuses ? e.allStatuses.includes('Late') : (e.status.includes('Late') || e.isLate);
         } else if (statusFilter === 'overtime') {
             matchesStatus = e.allStatuses ? e.allStatuses.includes('Overtime') : (e.status.includes('Overtime') || e.isOvertime);
+        } else if (statusFilter === 'halfDay') {
+            matchesStatus = e.status === 'Half Day';
         } else if (statusFilter === 'absent') {
             matchesStatus = e.status === 'Absent';
         } else if (statusFilter === 'active') {
@@ -822,7 +834,7 @@ const MobileAttendanceMonitoring = () => {
                                     onClick={() => setStatusFilter('All')}
                                     className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/20 rounded text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-500/30 transition-colors"
                                 >
-                                    <span>{statusFilter === 'total' ? 'Total' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late' : statusFilter === 'overtime' ? 'Overtime' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Active' : statusFilter}</span>
+                                    <span>{statusFilter === 'total' ? 'Total' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late' : statusFilter === 'overtime' ? 'Overtime' : statusFilter === 'halfDay' ? 'Half Day' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Active' : statusFilter}</span>
                                     <span>×</span>
                                 </button>
                             )}
@@ -1039,6 +1051,7 @@ const MobileAttendanceMonitoring = () => {
                                                 <CompactStatCard label="Late" value={stats.late} color="amber" icon={Clock} isSelected={statusFilter === 'late'} onClick={() => setStatusFilter(statusFilter === 'late' ? 'All' : 'late')} />
                                                 <CompactStatCard label="Overtime" value={stats.overtime} color="violet" icon={TrendingUp} isSelected={statusFilter === 'overtime'} onClick={() => setStatusFilter(statusFilter === 'overtime' ? 'All' : 'overtime')} />
                                                 <CompactStatCard label="Active" value={stats.active} color="blue" icon={Activity} isSelected={statusFilter === 'active'} onClick={() => setStatusFilter(statusFilter === 'active' ? 'All' : 'active')} />
+                                                <CompactStatCard label="Half Day" value={stats.halfDay} color="indigo" icon={Clock} isSelected={statusFilter === 'halfDay'} onClick={() => setStatusFilter(statusFilter === 'halfDay' ? 'All' : 'halfDay')} />
                                                 <div className="col-span-2">
                                                     <CompactStatCard label="Absent" value={stats.absent} color="rose" icon={UserX} isSelected={statusFilter === 'absent'} onClick={() => setStatusFilter(statusFilter === 'absent' ? 'All' : 'absent')} />
                                                 </div>
@@ -1484,6 +1497,7 @@ const CompactEmployeeCard = ({ employee, onClick, avatarTimestamp }) => {
                                     s.includes('Late') ? 'bg-amber-100 text-amber-600' :
                                     s === 'Present' ? 'bg-emerald-100 text-emerald-600' :
                                     s === 'Overtime' ? 'bg-purple-100 text-purple-600' :
+                                    s === 'Half Day' ? 'bg-indigo-100 text-indigo-600' :
                                     s === 'Missed Punch' ? 'bg-rose-100 text-rose-600' :
                                     s === 'Week Off' ? 'bg-slate-100 text-slate-500 border border-dashed border-slate-200' :
                                     s === 'Holiday' ? 'bg-sky-50 text-sky-600 border border-sky-100' :
@@ -1499,6 +1513,7 @@ const CompactEmployeeCard = ({ employee, onClick, avatarTimestamp }) => {
                                 employee.status.includes('Late') ? 'bg-amber-100 text-amber-600' :
                                 employee.status === 'Present' ? 'bg-emerald-100 text-emerald-600' :
                                 employee.status === 'Overtime' ? 'bg-purple-100 text-purple-600' :
+                                employee.status === 'Half Day' ? 'bg-indigo-100 text-indigo-600' :
                                 employee.status === 'Missed Punch' ? 'bg-rose-100 text-rose-600' :
                                 'bg-slate-100 text-slate-500'
                             }`}>

@@ -197,6 +197,8 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
             'Overtime': 'Overtime',
             'MISSED_PUNCH': 'Missed Punch',
             'Missed Punch': 'Missed Punch',
+            'HALF_DAY': 'Half Day',
+            'Half Day': 'Half Day',
             'Active': 'Active',
             'Late Active': 'Late Active'
         };
@@ -234,6 +236,11 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
             allStatuses.push('Missed Punch');
             if (isLate && !allStatuses.includes('Late')) allStatuses.push('Late');
             if (isOvertime && !allStatuses.includes('Overtime')) allStatuses.push('Overtime');
+        } else if (status === 'Half Day') {
+            // A Half Day is already the backend's final determination for the day (it only ever
+            // replaces what would otherwise have been Present/Late) — shown as its own distinct
+            // badge, not re-decorated with a separate Late tag that would just be confusing.
+            allStatuses.push('Half Day');
         } else if (status === 'Week Off') {
             allStatuses.push('Week Off');
         } else if (status === 'Holiday') {
@@ -277,6 +284,7 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
         'Late': 8,
         'Overtime': 7,
         'Present': 6,
+        'Half Day': 5.5,
         'Missed Punch': 5,
         'Absent': 4,
         'Leave': 3,
@@ -381,10 +389,11 @@ const AttendanceMonitoring = () => {
         if (cachedResponse?.data) {
             const merged = processAttendanceData(cachedResponse.data, cachedResponse.timezone || 'UTC', initialDate);
             return {
-                present: merged.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
+                present: merged.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave' && d.status !== 'Half Day').length,
                 late: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : (d.status.includes('Late') || d.isLate)).length,
                 overtime: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Overtime') : (d.status.includes('Overtime') || d.isOvertime)).length,
                 absent: merged.filter(d => d.status === 'Absent').length,
+                halfDay: merged.filter(d => d.status === 'Half Day').length,
                 active: merged.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
                 total: merged.length
             };
@@ -394,6 +403,7 @@ const AttendanceMonitoring = () => {
             late: 0,
             overtime: 0,
             absent: 0,
+            halfDay: 0,
             active: 0,
             total: 0
         };
@@ -773,10 +783,11 @@ const AttendanceMonitoring = () => {
 
             // 3. Calculate Stats precisely from merged data for consistency
             setStats({
-                present: mergedData.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave').length,
+                present: mergedData.filter(d => d.status !== 'Absent' && d.status !== 'Week Off' && d.status !== 'Holiday' && d.status !== 'Leave' && d.status !== 'Half Day').length,
                 late: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Late') : (d.status.includes('Late') || d.isLate)).length,
                 overtime: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Overtime') : (d.status.includes('Overtime') || d.isOvertime)).length,
                 absent: mergedData.filter(d => d.status === 'Absent').length,
+                halfDay: mergedData.filter(d => d.status === 'Half Day').length,
                 active: mergedData.filter(d => d.allStatuses ? d.allStatuses.includes('Active') : d.status.includes('Active')).length,
                 total: mergedData.length
             });
@@ -960,6 +971,7 @@ const AttendanceMonitoring = () => {
         { id: 'present', label: 'Total Present', value: stats.present, icon: <UserCheck size={20} />, bg: 'bg-emerald-50 dark:bg-emerald-500/10', color: 'text-emerald-600 dark:text-emerald-400' },
         { id: 'late', label: 'Late Arrivals', value: stats.late, icon: <Clock size={20} />, bg: 'bg-amber-50 dark:bg-amber-500/10', color: 'text-amber-600 dark:text-amber-400' },
         { id: 'overtime', label: 'Overtime', value: stats.overtime, icon: <TrendingUp size={20} />, bg: 'bg-violet-50 dark:bg-violet-500/10', color: 'text-violet-600 dark:text-violet-400' },
+        { id: 'halfDay', label: 'Half Day', value: stats.halfDay, icon: <Clock size={20} />, bg: 'bg-indigo-50 dark:bg-indigo-500/10', color: 'text-indigo-600 dark:text-indigo-400' },
         { id: 'absent', label: 'Absent', value: stats.absent, icon: <UserX size={20} />, bg: 'bg-rose-50 dark:bg-rose-500/10', color: 'text-rose-600 dark:text-rose-400' },
         { id: 'active', label: 'Currently Active', value: stats.active, icon: <Activity size={20} />, bg: 'bg-blue-50 dark:bg-blue-500/10', color: 'text-blue-600 dark:text-blue-400' },
     ];
@@ -973,11 +985,13 @@ const AttendanceMonitoring = () => {
 
         let matchesStatus = true;
         if (statusFilter === 'present') {
-            matchesStatus = item.status !== 'Absent' && item.status !== 'Week Off' && item.status !== 'Holiday' && item.status !== 'Leave';
+            matchesStatus = item.status !== 'Absent' && item.status !== 'Week Off' && item.status !== 'Holiday' && item.status !== 'Leave' && item.status !== 'Half Day';
         } else if (statusFilter === 'late') {
             matchesStatus = item.allStatuses ? item.allStatuses.includes('Late') : (item.status.includes('Late') || item.isLate);
         } else if (statusFilter === 'overtime') {
             matchesStatus = item.allStatuses ? item.allStatuses.includes('Overtime') : (item.status.includes('Overtime') || item.isOvertime);
+        } else if (statusFilter === 'halfDay') {
+            matchesStatus = item.status === 'Half Day';
         } else if (statusFilter === 'absent') {
             matchesStatus = item.status === 'Absent';
         } else if (statusFilter === 'active') {
@@ -1415,7 +1429,7 @@ const AttendanceMonitoring = () => {
                                         className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/20 rounded-xl text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/30 transition-colors cursor-pointer"
                                         title="Clear status filter"
                                     >
-                                        <span>Filter: {statusFilter === 'total' ? 'Total Employees' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late Arrivals' : statusFilter === 'overtime' ? 'Overtime' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Currently Active' : statusFilter}</span>
+                                        <span>Filter: {statusFilter === 'total' ? 'Total Employees' : statusFilter === 'present' ? 'Present' : statusFilter === 'late' ? 'Late Arrivals' : statusFilter === 'overtime' ? 'Overtime' : statusFilter === 'halfDay' ? 'Half Day' : statusFilter === 'absent' ? 'Absent' : statusFilter === 'active' ? 'Currently Active' : statusFilter}</span>
                                         <span className="text-xs font-normal">×</span>
                                     </button>
                                 )}
