@@ -72,14 +72,14 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hid
     };
 
     return (
-        <div className={`flex min-h-screen bg-slate-50 dark:bg-github-dark-bg font-poppins text-slate-900 dark:text-github-dark-text transition-colors duration-300 ${shouldHideScrollbar ? 'no-scrollbar' : ''}`}>
+        <div className={`flex min-h-screen min-w-[1024px] bg-slate-50 dark:bg-github-dark-bg font-poppins text-slate-900 dark:text-github-dark-text transition-colors duration-300 ${shouldHideScrollbar ? 'no-scrollbar' : ''}`}>
             {/* Sidebar */}
             <Sidebar isMobileMenuOpen={isMobileMenuOpen} setIsMobileMenuOpen={setIsMobileMenuOpen} />
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col relative w-full min-w-0 md:ml-64">
                 {/* Header - Fixed */}
-                <header className="fixed top-0 right-0 left-0 md:left-64 h-16 bg-white dark:bg-github-dark-subtle border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between px-4 sm:px-10 z-40 shadow-sm shrink-0 transition-colors duration-300">
+                <header className="fixed top-0 right-0 left-0 md:left-64 min-w-[768px] h-16 bg-white dark:bg-github-dark-subtle border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between px-4 sm:px-10 z-40 shadow-sm shrink-0 transition-colors duration-300">
                     <div className="flex items-center gap-4">
                         <button
                             className="md:hidden p-2 bg-slate-100 dark:bg-github-dark-subtle rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300"

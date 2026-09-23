@@ -11,50 +11,16 @@ body, button, input, select, textarea {
 
 
 /* 
-  Fluid Viewport Scaling Dashboard
-  Ensuring pixel-perfect backward compatibility with the original layout
-  while adding fluid adaptation for different displays.
+  Stable Desktop Platform Scaling Dashboard
+  Ensuring pixel-perfect consistency across all zoom levels (100%, 125%, 150%, 200%).
+  Keeps fixed 13px base font-size so that browser zoom scales elements linearly
+  without erratic layout compression or media query shifts.
 */
 html.platform-zoomed {
-    font-size: 14.5px; /* Spacious scale for 4K / Ultrawides (> 1920px) */
+    font-size: 13px; /* Original 80% scale equivalent */
     background-color: #f8fafc;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
-}
-
-/* Normal 1080p / Standard View (Maintains exact original design feel) */
-@media (max-width: 1920px) {
-    html.platform-zoomed {
-        font-size: 13px; /* Original 80% scale equivalent */
-    }
-}
-
-/* Mid-sized laptops (1440x900 Macs) */
-@media (max-width: 1536px) {
-    html.platform-zoomed {
-        font-size: 12px; /* ~75% scale */
-    }
-}
-
-/* Standard older laptops (1366x768) */
-@media (max-width: 1366px) {
-    html.platform-zoomed {
-        font-size: 11px; /* ~68% scale */
-    }
-}
-
-/* Compact screens */
-@media (max-width: 1280px) {
-    html.platform-zoomed {
-        font-size: 10.5px; /* ~65% scale */
-    }
-}
-
-/* Very small older screens / Mobile boundary */
-@media (max-width: 1024px) {
-    html.platform-zoomed {
-        font-size: 10px; /* Base 62.5% */
-    }
 }
 
 .dar-context {
@@ -120,6 +86,7 @@ html.platform-zoomed body,
 html.platform-zoomed #root {
     min-height: 100vh !important;
     background-color: inherit;
+    overflow-x: auto;
 }
 
 /* Fix Tailwind units - now standard 100vh works perfectly */

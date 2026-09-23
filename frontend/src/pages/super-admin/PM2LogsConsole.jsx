@@ -12,20 +12,8 @@ import {
 import LoadingScreen from '../../components/LoadingScreen';
 
 const PM2LogsConsole = () => {
-  // Check screen width for mobile vs desktop layout
-  const detectMobile = () => {
-    if (typeof window === 'undefined') return false;
-    const prefersCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    return window.innerWidth < 1024 || prefersCoarse;
-  };
-
-  const [isMobile, setIsMobile] = useState(detectMobile());
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(detectMobile());
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  // Preserved in desktop mode across all zoom levels
+  const isMobile = false;
 
   // Socket
   const socket = useSocket();

@@ -1,40 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
+/**
+ * ResponsiveRoute enforces Desktop Mode across all platform pages.
+ * Prevents browser zoom in / out (100%, 125%, 150%, 200%) from switching
+ * to mobile layouts or causing page re-renders.
+ */
 const ResponsiveRoute = ({ DesktopComponent, MobileComponent }) => {
-    const detectMobile = () => {
-        if (typeof window === 'undefined') return false;
-        const prefersCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-        return window.innerWidth < 1024 || prefersCoarse;
-    };
-
-    const [isMobile, setIsMobile] = useState(detectMobile());
-
-    useEffect(() => {
-        const handleChange = () => setIsMobile(detectMobile());
-        window.addEventListener('resize', handleChange);
-        if (window.matchMedia) {
-            try {
-                const mq = window.matchMedia('(pointer: coarse)');
-                if (mq.addEventListener) mq.addEventListener('change', handleChange);
-                else if (mq.addListener) mq.addListener(handleChange);
-            } catch (e) {
-                // ignore
-            }
-        }
-
-        return () => {
-            window.removeEventListener('resize', handleChange);
-            if (window.matchMedia) {
-                try {
-                    const mq = window.matchMedia('(pointer: coarse)');
-                    if (mq.removeEventListener) mq.removeEventListener('change', handleChange);
-                    else if (mq.removeListener) mq.removeListener(handleChange);
-                } catch (e) {}
-            }
-        };
-    }, []);
-
-    return isMobile ? <MobileComponent /> : <DesktopComponent />;
+    const Component = DesktopComponent || MobileComponent;
+    return Component ? <Component /> : null;
 };
 
 export default ResponsiveRoute;
+

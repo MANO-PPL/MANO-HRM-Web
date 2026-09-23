@@ -478,7 +478,7 @@ const LeavePolicies = () => {
     const { assigned: assignedStaff, available: availableStaff } = getStaffClassification();
 
     return (
-        <div className="flex flex-col lg:flex-row gap-4 h-full w-full overflow-hidden">
+        <div className="flex flex-row gap-4 h-full w-full min-w-[1000px] overflow-hidden">
             {/* COLUMN 1: Policies Directory List */}
             <PolicyDirectory
                 policies={policies}
@@ -493,7 +493,7 @@ const LeavePolicies = () => {
             />
 
             {/* COLUMN 2: Selected Policy & Leave Rules Details */}
-            <div className={`flex-1 h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden ${activeMobileTab !== 'details' ? 'hidden lg:flex' : 'flex'}`}>
+            <div className="flex-1 min-w-[320px] h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
                 {showEditBalanceDrawer ? (
                     <AdjustBalanceDrawer
                         editingBalance={editingBalance}

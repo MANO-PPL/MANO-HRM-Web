@@ -23,9 +23,9 @@ const AdminLeaveRequests = ({
     onOpenApply
 }) => {
     return (
-        <div className="flex flex-col lg:flex-row gap-4 h-full min-h-0">
+        <div className="flex flex-row gap-4 h-full min-h-0">
             {/* LEFT PANEL: LIST */}
-            <div data-tour-id="leave-admin-list" className="w-full lg:w-1/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
+            <div data-tour-id="leave-admin-list" className="w-[320px] shrink-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
                 {/* Header Title & Counter */}
                 <div className="px-4 py-3 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-subtle/10 shrink-0">
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 tracking-wide">
@@ -83,7 +83,7 @@ const AdminLeaveRequests = ({
             </div>
 
             {/* RIGHT PANEL: DETAILS */}
-            <div className="w-full lg:w-2/3 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
+            <div className="flex-1 min-w-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
                 {selectedLeave ? (
                     <>
                         {/* Detail Header */}

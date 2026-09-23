@@ -47,7 +47,7 @@ const PolicyManagement = () => {
 
     return (
         <DashboardLayout title="Policy Management" noPadding={true}>
-            <div className="flex flex-col h-[calc(100vh-64px)] w-full overflow-hidden px-2.5 pt-2 pb-2 bg-slate-50 dark:bg-dark-bg space-y-2">
+            <div className="flex flex-col h-[calc(100vh-64px)] w-full min-w-[1000px] overflow-hidden px-2.5 pt-2 pb-2 bg-slate-50 dark:bg-dark-bg space-y-2">
                 {/* Tabs Strip */}
                 <div className="flex w-fit items-center gap-1.5 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                     <button

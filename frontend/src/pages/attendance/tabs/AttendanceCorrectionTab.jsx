@@ -119,11 +119,11 @@ const AttendanceCorrectionTab = ({
     return (
         <div className="animate-in fade-in slide-in-from-top-4 duration-300">
             {/* Split Panel */}
-            <div className="flex flex-col lg:flex-row gap-6 items-start">
+            <div className="flex flex-row gap-6 items-start min-w-[1000px]">
                 {/* LEFT - Request List Sidebar */}
                 <div
                     data-tour-id="att-correction-list"
-                    className="w-full lg:w-96 xl:w-[420px] bg-white dark:bg-dark-card rounded-2xl shadow-xs border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col lg:sticky lg:top-6 shrink-0"
+                    className="w-[380px] bg-white dark:bg-dark-card rounded-2xl shadow-xs border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col shrink-0"
                     style={{ height: 'calc(100vh - 115px)', minHeight: '740px' }}
                 >
                     {/* Header */}
@@ -271,7 +271,7 @@ const AttendanceCorrectionTab = ({
 
                 {/* RIGHT - Request Detail View */}
                 <div
-                    className="w-full lg:flex-1 min-w-0 bg-white dark:bg-dark-card rounded-2xl shadow-xs border border-slate-200 dark:border-github-dark-border flex flex-col lg:sticky lg:top-6 overflow-hidden"
+                    className="flex-1 min-w-0 bg-white dark:bg-dark-card rounded-2xl shadow-xs border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden"
                     style={{ height: 'calc(100vh - 115px)', minHeight: '740px' }}
                 >
                     {isFetchingDetails ? (

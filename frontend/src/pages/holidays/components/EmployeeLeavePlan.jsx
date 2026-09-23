@@ -44,7 +44,7 @@ const EmployeeLeavePlan = ({
 
                             {/* Horizontal rule cards */}
                             {policy.rules && policy.rules.length > 0 ? (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-2 gap-4">
                                     {policy.rules.map((rule, idx) => {
                                         const palettes = [
                                             { hex: '#6366f1', badgeClass: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400' },

@@ -341,10 +341,10 @@ const HolidayManagement = () => {
 
     return (
         <DashboardLayout title="Holiday Management" noPadding={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>
-            <div className="h-[calc(100vh-64px)] px-2.5 pt-2 pb-2 space-y-2 overflow-hidden flex flex-col">
+            <div className="h-[calc(100vh-64px)] min-w-[1000px] px-2.5 pt-2 pb-2 space-y-2 overflow-hidden flex flex-col">
 
                 {/* Tabs & Action Bar on the same line */}
-                <div className="flex items-center justify-between gap-2 shrink-0 flex-wrap">
+                <div className="flex items-center justify-between gap-2 shrink-0 flex-nowrap">
                     {/* Tabs */}
                     <div className="flex w-fit items-center gap-1.5 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
                         <button
@@ -436,7 +436,7 @@ const HolidayManagement = () => {
                     </div>
                 </div>
 
-                <div className="flex flex-col xl:flex-row gap-3 flex-1 min-h-0">
+                <div className="flex flex-row gap-3 flex-1 min-h-0">
 
                     {/* Left Content Area (Shared) */}
                     <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
@@ -482,7 +482,7 @@ const HolidayManagement = () => {
 
                     {/* Calendar Sidebar */}
                     {(activeTab === 'holidays' || activeTab === 'my_leaves' || (activeTab === 'leaves' && leaveSubTab === 'requests')) && (
-                        <div data-tour-id="holidays-calendar-view" className="w-full xl:w-[350px] shrink-0 overflow-hidden animate-in fade-in slide-in-from-right-10 duration-500">
+                        <div data-tour-id="holidays-calendar-view" className="w-[350px] shrink-0 overflow-hidden animate-in fade-in slide-in-from-right-10 duration-500">
                             <HolidayCalendarView
                                 holidays={holidays}
                                 leaves={(activeTab === 'leaves' || activeTab === 'my_leaves') ? leaves : []}

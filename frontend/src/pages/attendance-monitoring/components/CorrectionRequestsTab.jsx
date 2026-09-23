@@ -303,10 +303,10 @@ const CorrectionRequestsTab = ({
     const isPending = (selectedRequestData?.status || '').toLowerCase() === 'pending';
 
     return (
-        <div data-tour-id="attendance-requests-queue" className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 h-[calc(100vh-160px)] min-h-[680px]">
+        <div data-tour-id="attendance-requests-queue" className="flex-1 min-h-0 flex flex-row gap-4 h-[calc(100vh-160px)] min-h-[680px] min-w-[1000px]">
 
             {/* LEFT SIDEBAR: REQUESTS LIST */}
-            <div className="w-full lg:w-96 xl:w-[420px] bg-white dark:bg-dark-card rounded-xl shadow-xs border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col h-full shrink-0">
+            <div className="w-[380px] bg-white dark:bg-dark-card rounded-xl shadow-xs border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col h-full shrink-0">
                 {/* Header and Search */}
                 <div className="p-3 border-b border-slate-100 dark:border-github-dark-border space-y-2.5 bg-slate-50/50 dark:bg-github-dark-subtle/30">
                     <div className="flex justify-between items-center px-0.5">

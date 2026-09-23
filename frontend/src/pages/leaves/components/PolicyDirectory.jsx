@@ -17,7 +17,7 @@ const PolicyDirectory = ({
     );
 
     return (
-        <div className={`w-full lg:w-1/4 h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0 ${activeMobileTab !== 'list' ? 'hidden lg:flex' : 'flex'}`}>
+        <div className="w-[280px] h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
             <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
                 <div className="flex justify-between items-center">
                     <h3 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text">Leave Policies</h3>

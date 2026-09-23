@@ -18,7 +18,7 @@ const PolicyStaffAssignment = ({
 }) => {
     if (!selectedPolicy) {
         return (
-            <div className={`w-full lg:w-1/3 h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0 ${activeMobileTab !== 'staff' ? 'hidden lg:flex' : 'flex'}`}>
+            <div className="w-[320px] h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400 text-center">
                     <Users size={48} className="opacity-20 mb-3" />
                     <h4 className="font-bold text-xs">No Policy Selected</h4>
@@ -29,7 +29,7 @@ const PolicyStaffAssignment = ({
     }
 
     return (
-        <div className={`w-full lg:w-1/3 h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0 ${activeMobileTab !== 'staff' ? 'hidden lg:flex' : 'flex'}`}>
+        <div className="w-[320px] h-full bg-white dark:bg-dark-card rounded-xl border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden shrink-0">
             {/* Header assigned list */}
             <div className="p-4 border-b border-slate-200 dark:border-github-dark-border space-y-4">
                 <div className="flex justify-between items-center">
