@@ -38,7 +38,7 @@ const Login = () => {
     const [rememberMe, setRememberMe] = useState(false);
     const [captchaToken, setCaptchaToken] = useState(null);
     const [captchaError, setCaptchaError] = useState(false);
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+    const isMobile = false; // Preserved in desktop mode at all zoom levels
     const [isDark, setIsDark] = useState(() => {
         if (typeof window !== 'undefined') {
             const savedTheme = localStorage.getItem('theme');
@@ -51,8 +51,6 @@ const Login = () => {
     useEffect(() => {
         console.log("🔒 [Vite Env Check] VITE_ENABLE_CAPTCHA:", import.meta.env.VITE_ENABLE_CAPTCHA);
         console.log("🔒 CAPTCHA is Enabled on Frontend?", isCaptchaEnabled);
-        const handleResize = () => setIsMobile(window.innerWidth < 1024);
-        window.addEventListener("resize", handleResize);
 
         // Sync theme with HTML element & save preference
         if (isDark) {
@@ -62,8 +60,6 @@ const Login = () => {
             document.documentElement.classList.remove('dark');
             localStorage.setItem('theme', 'light');
         }
-
-        return () => window.removeEventListener("resize", handleResize);
     }, [isDark, isCaptchaEnabled]);
 
     const handleChange = (e) => {
@@ -125,7 +121,7 @@ const Login = () => {
             </button>
 
             {/* --- CORE CONTENT CONTAINER --- */}
-            <div className="flex min-h-screen relative z-10">
+            <div className="flex min-h-screen relative z-10 min-w-[1024px]">
                 {/* --- LEFT SECTION: VISUALS (Desktop only) --- */}
                 {!isMobile && (
                     <div className="relative w-[58%] flex flex-col justify-center p-[7rem] overflow-hidden border-r border-slate-200 dark:border-white/5 transition-colors duration-500 gap-24">

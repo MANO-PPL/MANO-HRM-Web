@@ -34,7 +34,7 @@ export const login = catchAsync(async (req, res, next) => {
 
     res.cookie('refreshToken', refreshToken, cookieOptions);
 
-    res.status(200).json({ accessToken, user });
+    res.status(200).json({ accessToken, refreshToken, user });
 });
 
 export const superAdminLogin = catchAsync(async (req, res, next) => {
@@ -55,7 +55,7 @@ export const superAdminLogin = catchAsync(async (req, res, next) => {
         path: '/'
     });
 
-    res.status(200).json({ accessToken, user });
+    res.status(200).json({ accessToken, refreshToken, user });
 });
 
 export const requestPasswordReset = catchAsync(async (req, res, next) => {
@@ -93,7 +93,7 @@ export const resetPassword = catchAsync(async (req, res, next) => {
 });
 
 export const refreshToken = catchAsync(async (req, res, next) => {
-    const currentRefreshToken = req.cookies.refreshToken;
+    const currentRefreshToken = req.cookies.refreshToken || req.body?.refreshToken || req.headers['x-refresh-token'];
 
     const reqInfo = {
         ip: req.clientIp || req.ip,
@@ -116,7 +116,7 @@ export const refreshToken = catchAsync(async (req, res, next) => {
 
         res.cookie('refreshToken', newRefreshToken, cookieOptions);
 
-        res.json({ accessToken });
+        res.json({ accessToken, refreshToken: newRefreshToken });
     } catch (err) {
         res.clearCookie('refreshToken', { path: '/' });
         throw err; // Passed to the global error handler which will send the AppError
@@ -130,7 +130,7 @@ export const getCurrentUser = catchAsync(async (req, res, next) => {
 });
 
 export const logout = catchAsync(async (req, res, next) => {
-    const refreshToken = req.cookies.refreshToken;
+    const refreshToken = req.cookies.refreshToken || req.body?.refreshToken || req.headers['x-refresh-token'];
     await authService.logoutUser(refreshToken);
 
     res.clearCookie("refreshToken", { path: '/' });

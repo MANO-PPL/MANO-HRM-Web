@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { Clock, Radar, BarChart3, Calendar, MessageSquare, Sparkles, BrainCircuit, MapPin, Settings2, Cpu, ShieldAlert, ArrowRightLeft, TimerReset, Activity, Table2, ShieldCheck, Scale, HeartHandshake } from "lucide-react";
+import { Clock, Radar, BarChart3, Calendar, MessageSquare, Sparkles, BrainCircuit, MapPin, Settings2, Cpu, ShieldAlert, ArrowRightLeft, TimerReset, Activity, Table2, ShieldCheck, Scale, HeartHandshake, ArrowRight } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import { homeData, pageContent } from "../siteData";
 
 const featureIcons = [Clock, Radar, BarChart3, Calendar, MessageSquare, Sparkles, BrainCircuit, MapPin];
@@ -23,6 +24,8 @@ const Section = ({ id, children, title, subtitle }) => (
 );
 
 export default function MobileHomePage() {
+    const { user } = useAuth();
+    const isAuthenticated = Boolean(user || (typeof window !== 'undefined' && (localStorage.getItem('accessToken') || localStorage.getItem('mano_auth_user'))));
     return (
         <div className="site-bg min-h-screen overflow-x-hidden">
 
@@ -45,12 +48,21 @@ export default function MobileHomePage() {
                 </p>
 
                 <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3 px-4">
-                    <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-4 sm:px-10 rounded-2xl shadow-xl active:scale-95 transition-all text-center">
-                        Get Started
-                    </Link>
-                    <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-4 sm:px-10 rounded-2xl active:bg-white/10 transition-all text-center">
-                        Login
-                    </Link>
+                    {isAuthenticated ? (
+                        <Link to="/dashboard" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-4 sm:px-10 rounded-2xl shadow-xl active:scale-95 transition-all text-center flex items-center justify-center gap-2">
+                            <span>Open Platform</span>
+                            <ArrowRight size={18} />
+                        </Link>
+                    ) : (
+                        <>
+                            <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-4 sm:px-10 rounded-2xl shadow-xl active:scale-95 transition-all text-center">
+                                Get Started
+                            </Link>
+                            <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-4 sm:px-10 rounded-2xl active:bg-white/10 transition-all text-center">
+                                Login
+                            </Link>
+                        </>
+                    )}
                 </div>
             </section>
 

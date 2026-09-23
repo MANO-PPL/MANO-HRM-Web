@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Menu, X, Sun, Moon } from "lucide-react";
+import { Menu, X, Sun, Moon, ArrowRight } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 
 const minimalNavLinks = [
     { label: "Home", path: "/#" },
@@ -10,6 +11,8 @@ const minimalNavLinks = [
 ];
 
 export default function Navbar({ theme = "dark", toggleTheme }) {
+    const { user } = useAuth();
+    const isAuthenticated = Boolean(user || (typeof window !== 'undefined' && (localStorage.getItem('accessToken') || localStorage.getItem('mano_auth_user'))));
     const [mobileOpen, setMobileOpen] = useState(false);
     const [activeSection, setActiveSection] = useState('#');
 
@@ -95,8 +98,17 @@ export default function Navbar({ theme = "dark", toggleTheme }) {
                     >
                         {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                     </button>
-                    <NavLink to="/login" className="btn-ghost" style={{ paddingInline: '1.5rem' }}>Login</NavLink>
-                    <NavLink to="/signup" className="btn-primary" style={{ paddingInline: '1.5rem' }}>Sign Up</NavLink>
+                    {isAuthenticated ? (
+                        <NavLink to="/dashboard" className="btn-primary" style={{ paddingInline: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span>Open Platform</span>
+                            <ArrowRight size={16} />
+                        </NavLink>
+                    ) : (
+                        <>
+                            <NavLink to="/login" className="btn-ghost" style={{ paddingInline: '1.5rem' }}>Login</NavLink>
+                            <NavLink to="/signup" className="btn-primary" style={{ paddingInline: '1.5rem' }}>Sign Up</NavLink>
+                        </>
+                    )}
                     <button className="mobile-toggle" onClick={() => setMobileOpen((prev) => !prev)}>
                         {mobileOpen ? <X size={22} /> : <Menu size={22} />}
                     </button>
@@ -119,21 +131,48 @@ export default function Navbar({ theme = "dark", toggleTheme }) {
                         );
                     })}
                     <div className="mobile-actions" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
-                            <button 
-                                onClick={() => {
-                                    toggleTheme();
-                                    setMobileOpen(false);
-                                }}
-                                className="btn-ghost"
-                                style={{ flex: 1, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}
-                            >
-                                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                                <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-                            </button>
-                            <NavLink onClick={() => setMobileOpen(false)} to="/login" className="btn-ghost" style={{ flex: 1 }}>Login</NavLink>
-                        </div>
-                        <NavLink onClick={() => setMobileOpen(false)} to="/signup" className="btn-primary" style={{ width: '100%', textAlign: 'center' }}>Sign Up</NavLink>
+                        {isAuthenticated ? (
+                            <>
+                                <button 
+                                    onClick={() => {
+                                        toggleTheme();
+                                        setMobileOpen(false);
+                                    }}
+                                    className="btn-ghost"
+                                    style={{ width: '100%', display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                    {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                                    <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                                </button>
+                                <NavLink 
+                                    onClick={() => setMobileOpen(false)} 
+                                    to="/dashboard" 
+                                    className="btn-primary" 
+                                    style={{ width: '100%', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                                >
+                                    <span>Open Platform</span>
+                                    <ArrowRight size={16} />
+                                </NavLink>
+                            </>
+                        ) : (
+                            <>
+                                <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+                                    <button 
+                                        onClick={() => {
+                                            toggleTheme();
+                                            setMobileOpen(false);
+                                        }}
+                                        className="btn-ghost"
+                                        style={{ flex: 1, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}
+                                    >
+                                        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                                        <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                                    </button>
+                                    <NavLink onClick={() => setMobileOpen(false)} to="/login" className="btn-ghost" style={{ flex: 1 }}>Login</NavLink>
+                                </div>
+                                <NavLink onClick={() => setMobileOpen(false)} to="/signup" className="btn-primary" style={{ width: '100%', textAlign: 'center' }}>Sign Up</NavLink>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

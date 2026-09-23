@@ -26,53 +26,110 @@ const normalizeUser = (userData) => {
   };
 };
 
+const AUTH_USER_KEY = 'mano_auth_user';
+
+const getInitialUser = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = localStorage.getItem(AUTH_USER_KEY);
+    if (cached) return JSON.parse(cached);
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      return { id: 'cached_session', user_type: 'admin', is_authenticated: true };
+    }
+  } catch {}
+  return null;
+};
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [user, setUser] = useState(getInitialUser);
+  const [authChecked, setAuthChecked] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return !!(localStorage.getItem(AUTH_USER_KEY) || localStorage.getItem('accessToken'));
+  });
   const [avatarTimestamp, setAvatarTimestamp] = useState(Date.now());
+
+  // Helper to persist user cache
+  const updateUserData = (userData) => {
+    if (userData) {
+      const normalizedUser = normalizeUser(userData);
+      setUser(normalizedUser);
+      setAvatarTimestamp(Date.now());
+      try {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(normalizedUser));
+      } catch {}
+      return normalizedUser;
+    } else {
+      setUser(null);
+      try {
+        localStorage.removeItem(AUTH_USER_KEY);
+      } catch {}
+      return null;
+    }
+  };
 
   // Move fetchUser definition OUTSIDE useEffect
   const fetchUser = async () => {
     try {
       const res = await api.get("/auth/me");
       if (res.data) {
-        const normalizedUser = normalizeUser(res.data);
-        setUser(normalizedUser);
-        setAvatarTimestamp(Date.now());
+        updateUserData(res.data);
       } else {
-        setUser(null);
+        updateUserData(null);
       }
     } catch {
-      setUser(null);
+      updateUserData(null);
     } finally {
       setAuthChecked(true);
     }
   };
 
   useEffect(() => {
+    let isMounted = true;
     const initAuth = async () => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
       try {
-        // Explicitly try to refresh token on mount
-        const res = await api.post("/auth/refresh");
-        if (res.data?.accessToken) {
-          setAccessToken(res.data.accessToken);
-          // Now fetch user details
-          const userRes = await api.get("/auth/me");
-          if (userRes.data) {
-            setUser(normalizeUser(userRes.data));
-            setAvatarTimestamp(Date.now());
+        if (token) {
+          // Token exists: verify / refresh user state directly
+          try {
+            const userRes = await api.get("/auth/me");
+            if (userRes.data && isMounted) {
+              updateUserData(userRes.data);
+              setAuthChecked(true);
+              return;
+            }
+          } catch (meError) {
+            // If /auth/me fails (e.g. 401), fall through to /auth/refresh
           }
         }
-      } catch (error) {
-        // Refresh failed (no cookie or invalid), just stay logged out
 
-        setUser(null);
+        // Explicitly try to refresh token on mount
+        const res = await api.post("/auth/refresh");
+        if (res.data?.accessToken && isMounted) {
+          setAccessToken(res.data.accessToken);
+          const userRes = await api.get("/auth/me");
+          if (userRes.data && isMounted) {
+            updateUserData(userRes.data);
+          }
+        } else if (!token && isMounted) {
+          updateUserData(null);
+        }
+      } catch (error) {
+        if (isMounted) {
+          if (error.response?.status === 401 || error.response?.status === 403 || !token) {
+            updateUserData(null);
+            setAccessToken(null);
+          }
+        }
       } finally {
-        setAuthChecked(true);
+        if (isMounted) {
+          setAuthChecked(true);
+        }
       }
     };
 
     initAuth();
+    return () => { isMounted = false; };
   }, []);
 
   const login = async (email, password, captchaToken, rememberMe = false) => {
@@ -95,9 +152,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     if (res.data.user) {
-      const normalizedUser = normalizeUser(res.data.user);
-      setUser(normalizedUser);
-      setAvatarTimestamp(Date.now());
+      const normalizedUser = updateUserData(res.data.user);
       res.data.user = normalizedUser;
     } else {
       await fetchUser();
@@ -112,9 +167,7 @@ export const AuthProvider = ({ children }) => {
     const res = await api.post("/auth/super-admin/login", loginData);
     if (res.data.accessToken) setAccessToken(res.data.accessToken);
     if (res.data.user) {
-      const normalizedUser = normalizeUser(res.data.user);
-      setUser(normalizedUser);
-      setAvatarTimestamp(Date.now());
+      const normalizedUser = updateUserData(res.data.user);
       res.data.user = normalizedUser;
     } else {
       await fetchUser();
@@ -136,6 +189,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.clear();
       sessionStorage.clear();
       clearApiCache();
+      updateUserData(null);
+      setAccessToken(null);
 
       // Restore theme preferences
       if (theme) localStorage.setItem("theme", theme);

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, Radar, ShieldCheck, Sparkles, BarChart3, Clock3, MapPin, Workflow, Activity, Users, TimerReset, Table2, Scale, HeartHandshake, Settings2, Cpu, ShieldAlert, BrainCircuit, ArrowRightLeft, MessageSquare, Clock, ChevronDown } from "lucide-react";
+import { CheckCircle2, Radar, ShieldCheck, Sparkles, BarChart3, Clock3, MapPin, Workflow, Activity, Users, TimerReset, Table2, Scale, HeartHandshake, Settings2, Cpu, ShieldAlert, BrainCircuit, ArrowRightLeft, MessageSquare, Clock, ChevronDown, ArrowRight } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import MotionSection from "../components/MotionSection";
 import MacWindow from "../components/MacWindow";
 import { homeData, pageContent } from "../siteData";
@@ -11,6 +12,8 @@ const heroIcons = [ShieldCheck, MapPin, Clock3, Workflow];
 const statIcons = [Activity, Users, TimerReset];
 
 export default function HomePage() {
+    const { user } = useAuth();
+    const isAuthenticated = Boolean(user || (typeof window !== 'undefined' && (localStorage.getItem('accessToken') || localStorage.getItem('mano_auth_user'))));
     const { hash } = useLocation();
 
     return (
@@ -28,8 +31,17 @@ export default function HomePage() {
                         <p className="lead-copy">{homeData.subtext}</p>
 
                         <div className="hero-actions">
-                            <Link to="/signup" className="btn-primary">{homeData.ctaPrimary}</Link>
-                            <Link to="/login" className="btn-ghost">Login</Link>
+                            {isAuthenticated ? (
+                                <Link to="/dashboard" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span>Open Platform</span>
+                                    <ArrowRight size={18} />
+                                </Link>
+                            ) : (
+                                <>
+                                    <Link to="/signup" className="btn-primary">{homeData.ctaPrimary}</Link>
+                                    <Link to="/login" className="btn-ghost">Login</Link>
+                                </>
+                            )}
                         </div>
 
                         <ul className="check-list">

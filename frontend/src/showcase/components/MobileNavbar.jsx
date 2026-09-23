@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { Menu, X, Sun, Moon } from "lucide-react";
+import { Menu, X, Sun, Moon, ArrowRight } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 
 export default function MobileNavbar({ theme = "dark", toggleTheme }) {
+    const { user } = useAuth();
+    const isAuthenticated = Boolean(user || (typeof window !== 'undefined' && (localStorage.getItem('accessToken') || localStorage.getItem('mano_auth_user'))));
     const [mobileOpen, setMobileOpen] = useState(false);
 
     return (
@@ -15,14 +18,23 @@ export default function MobileNavbar({ theme = "dark", toggleTheme }) {
 
                 <div className="flex items-center gap-2">
                     <button 
-                        onClick={toggleTheme}
+                        onClick={toggleTheme} 
                         className="text-white/70 hover:text-white transition p-2"
                         aria-label="Toggle theme"
                     >
                         {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
-                    <NavLink to="/login" className="text-xs font-semibold text-white/70 hover:text-white transition px-1">Login</NavLink>
-                    <NavLink to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[10px] font-bold px-2 py-1.5 rounded-lg active:scale-95 transition-transform">Sign Up</NavLink>
+                    {isAuthenticated ? (
+                        <NavLink to="/dashboard" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg active:scale-95 transition-transform flex items-center gap-1">
+                            <span>Open</span>
+                            <ArrowRight size={12} />
+                        </NavLink>
+                    ) : (
+                        <>
+                            <NavLink to="/login" className="text-xs font-semibold text-white/70 hover:text-white transition px-1">Login</NavLink>
+                            <NavLink to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[10px] font-bold px-2 py-1.5 rounded-lg active:scale-95 transition-transform">Sign Up</NavLink>
+                        </>
+                    )}
                     <button
                         className="bg-white/10 border border-white/20 text-white p-2 rounded-xl active:scale-95 transition-transform"
                         onClick={() => setMobileOpen(!mobileOpen)}
@@ -59,13 +71,24 @@ export default function MobileNavbar({ theme = "dark", toggleTheme }) {
                             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                             <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
                         </button>
-                        <NavLink
-                            to="/signup"
-                            onClick={() => setMobileOpen(false)}
-                            className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-center py-2 px-3 rounded-xl active:scale-95 transition-transform text-sm font-bold mt-2 flex items-center justify-center"
-                        >
-                            Sign Up
-                        </NavLink>
+                        {isAuthenticated ? (
+                            <NavLink
+                                to="/dashboard"
+                                onClick={() => setMobileOpen(false)}
+                                className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-center py-2 px-3 rounded-xl active:scale-95 transition-transform text-sm font-bold mt-2 flex items-center justify-center gap-1.5"
+                            >
+                                <span>Open Platform</span>
+                                <ArrowRight size={16} />
+                            </NavLink>
+                        ) : (
+                            <NavLink
+                                to="/signup"
+                                onClick={() => setMobileOpen(false)}
+                                className="bg-gradient-to-r from-blue-600 to-blue-500 text-white text-center py-2 px-3 rounded-xl active:scale-95 transition-transform text-sm font-bold mt-2 flex items-center justify-center"
+                            >
+                                Sign Up
+                            </NavLink>
+                        )}
                     </div>
                 </div>
             </nav>

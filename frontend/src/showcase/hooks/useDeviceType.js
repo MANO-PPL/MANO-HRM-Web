@@ -11,8 +11,19 @@ import { useState, useEffect } from "react";
  *   desktop - width ≥ 1200
  */
 function getDevice(w) {
-    if (w < 768) return "mobile";
-    if (w < 1200) return "tablet";
+    if (typeof window !== "undefined") {
+        const ua = navigator.userAgent || "";
+        const isMobilePhone = /Android|iPhone|iPod/i.test(ua);
+        const isTabletDevice = /iPad/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+        // If on desktop or laptop, always maintain desktop layout even when zoomed in (100%, 125%, 150%, 200%)
+        if (!isMobilePhone && !isTabletDevice && (window.screen?.width || 0) >= 1024) {
+            return "desktop";
+        }
+
+        if (isMobilePhone || w < 768) return "mobile";
+        if (isTabletDevice || w < 1200) return "tablet";
+    }
     return "desktop";
 }
 

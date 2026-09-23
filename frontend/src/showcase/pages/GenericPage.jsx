@@ -4,8 +4,11 @@ import { motion } from "framer-motion";
 import { pageContent } from "../siteData";
 import { CheckCircle2, ArrowRight, ChevronRight } from "lucide-react";
 import MacWindow from "../components/MacWindow";
+import { useAuth } from "../../context/AuthContext";
 
 export default function GenericPage() {
+    const { user } = useAuth();
+    const isAuthenticated = Boolean(user || (typeof window !== 'undefined' && (localStorage.getItem('accessToken') || localStorage.getItem('mano_auth_user'))));
     const { pathname } = useLocation();
     const content = pageContent[pathname];
 
@@ -48,8 +51,8 @@ export default function GenericPage() {
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-4">
-                            <Link to="/login" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2">
-                                Get Started <ArrowRight size={18} />
+                            <Link to={isAuthenticated ? "/dashboard" : "/login"} className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2">
+                                {isAuthenticated ? "Open Platform" : "Get Started"} <ArrowRight size={18} />
                             </Link>
                         </div>
                     </motion.div>

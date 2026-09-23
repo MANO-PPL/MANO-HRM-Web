@@ -69,7 +69,7 @@ const SuperAdminLogin = () => {
             </button>
 
             {/* --- CORE CONTENT CONTAINER --- */}
-            <div className="flex min-h-screen relative z-10">
+            <div className="flex min-h-screen relative z-10 min-w-[1024px]">
                 {/* --- LEFT SECTION: VISUALS --- */}
                 <div className="relative w-[58%] flex flex-col justify-center p-[7rem] overflow-hidden border-r border-slate-200 dark:border-white/5 transition-colors duration-500 gap-24">
                     {/* Logo & Branding */}

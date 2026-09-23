@@ -129,6 +129,7 @@ export const setAccessToken = (token) => {
             localStorage.setItem('accessToken', token);
         } else {
             localStorage.removeItem('accessToken');
+            localStorage.removeItem('mano_auth_user');
         }
     }
 };

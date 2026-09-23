@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import {
     Clock, Radar, BarChart3, Calendar, MessageSquare, Sparkles, BrainCircuit, MapPin,
     Settings2, Cpu, ShieldAlert, ArrowRightLeft, TimerReset, Activity, Table2,
-    ShieldCheck, Scale, HeartHandshake, CheckCircle2
+    ShieldCheck, Scale, HeartHandshake, CheckCircle2, ArrowRight
 } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import { homeData, pageContent } from "../siteData";
 import useDeviceType from "../hooks/useDeviceType";
 
@@ -27,6 +28,8 @@ const Section = ({ id, children, title, subtitle }) => (
 );
 
 export default function TabletHomePage() {
+    const { user } = useAuth();
+    const isAuthenticated = Boolean(user || (typeof window !== 'undefined' && (localStorage.getItem('accessToken') || localStorage.getItem('mano_auth_user'))));
     const { isPortrait } = useDeviceType();
 
     return (
@@ -69,12 +72,21 @@ export default function TabletHomePage() {
                             </motion.p>
 
                             <div className="flex flex-row gap-3">
-                                <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3 px-8 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-sm">
-                                    Get Started
-                                </Link>
-                                <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-3 px-8 rounded-2xl hover:bg-white/10 active:scale-95 transition-all text-sm">
-                                    Login
-                                </Link>
+                                {isAuthenticated ? (
+                                    <Link to="/dashboard" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3 px-8 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-sm flex items-center gap-2">
+                                        <span>Open Platform</span>
+                                        <ArrowRight size={16} />
+                                    </Link>
+                                ) : (
+                                    <>
+                                        <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3 px-8 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-sm">
+                                            Get Started
+                                        </Link>
+                                        <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-3 px-8 rounded-2xl hover:bg-white/10 active:scale-95 transition-all text-sm">
+                                            Login
+                                        </Link>
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -123,12 +135,21 @@ export default function TabletHomePage() {
                         </motion.p>
 
                         <div className="flex flex-row gap-4 mb-10">
-                            <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3.5 px-10 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-center">
-                                Get Started
-                            </Link>
-                            <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-3.5 px-10 rounded-2xl hover:bg-white/10 active:scale-95 transition-all text-center">
-                                Login
-                            </Link>
+                            {isAuthenticated ? (
+                                <Link to="/dashboard" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3.5 px-10 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-center flex items-center justify-center gap-2">
+                                    <span>Open Platform</span>
+                                    <ArrowRight size={18} />
+                                </Link>
+                            ) : (
+                                <>
+                                    <Link to="/signup" className="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-3.5 px-10 rounded-2xl shadow-xl hover:shadow-blue-500/25 active:scale-95 transition-all text-center">
+                                        Get Started
+                                    </Link>
+                                    <Link to="/login" className="bg-white/5 border border-white/10 text-white font-semibold py-3.5 px-10 rounded-2xl hover:bg-white/10 active:scale-95 transition-all text-center">
+                                        Login
+                                    </Link>
+                                </>
+                            )}
                         </div>
 
                         <motion.div

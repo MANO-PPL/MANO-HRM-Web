@@ -16,7 +16,7 @@ const ChangePassword = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+    const isMobile = false; // Preserved in desktop mode across all zoom levels
     const [isDark, setIsDark] = useState(() => {
         if (typeof window !== 'undefined') {
             const savedTheme = localStorage.getItem('theme');
@@ -27,9 +27,6 @@ const ChangePassword = () => {
     });
 
     useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth < 1024);
-        window.addEventListener("resize", handleResize);
-
         // Sync theme with HTML element & save preference
         if (isDark) {
             document.documentElement.classList.add('dark');
@@ -38,8 +35,6 @@ const ChangePassword = () => {
             document.documentElement.classList.remove('dark');
             localStorage.setItem('theme', 'light');
         }
-
-        return () => window.removeEventListener("resize", handleResize);
     }, [isDark]);
 
     // Criteria checks
@@ -105,7 +100,7 @@ const ChangePassword = () => {
             </button>
 
             {/* --- CORE CONTENT CONTAINER --- */}
-            <div className="flex min-h-screen relative z-10">
+            <div className="flex min-h-screen relative z-10 min-w-[1024px]">
                 {/* --- LEFT SECTION: VISUALS (Desktop only) --- */}
                 {!isMobile && (
                     <div className="relative w-[58%] flex flex-col justify-center p-[7rem] overflow-hidden border-r border-slate-200 dark:border-white/5 transition-colors duration-500 gap-24">
