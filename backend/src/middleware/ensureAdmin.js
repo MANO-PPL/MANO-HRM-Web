@@ -15,4 +15,7 @@ const ensureAdmin = catchAsync((req, res, next) => {
     next();
 });
 
+// Exposed for route introspection (route-policy test, route inventory)
+ensureAdmin.allowedRoles = ['admin', 'hr'];
+
 export default ensureAdmin;

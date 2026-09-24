@@ -174,12 +174,15 @@ export const requireActiveOrg = catchAsync(async (req, res, next) => {
 
 // Authorization Middleware
 export const authorize = (...roles) => {
-    return (req, res, next) => {
+    const middleware = (req, res, next) => {
         if (!req.user || !roles.includes(req.user.user_type)) {
             return next(new AppError('You do not have permission to perform this action', 403));
         }
         next();
     };
+    // Exposed for route introspection (route-policy test, route inventory)
+    middleware.allowedRoles = roles;
+    return middleware;
 };
 
 // Feature Allowance Middleware

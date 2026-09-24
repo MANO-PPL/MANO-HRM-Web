@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node dev.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test --test-force-exit test/*.test.js",
+    "check": "node scripts/smoke/check-syntax.js && node scripts/smoke/imports.js",
+    "smoke:lifecycle": "node scripts/smoke/lifecycle.js",
+    "routes:inventory": "node scripts/tools/route-inventory.js"
   },
   "keywords": [],
   "author": "",
