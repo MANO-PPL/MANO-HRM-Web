@@ -394,7 +394,7 @@ export const getUserStartDate = (u) => {
 };
 
 export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate, include_inactive }) {
-    return attendanceDB("core_users as u")
+    const usersQuery = attendanceDB("core_users as u")
         .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
         .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
         .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
