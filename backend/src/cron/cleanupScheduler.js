@@ -69,7 +69,7 @@ async function cleanupAttendanceImages() {
             }
         }
 
-        console.log(`✅ Cleanup complete: ${deletedCount} images deleted from ${oldRecords.length} records.`);
+        console.log(`✅ Cleanup complete: ${deletedCount} images deleted from ${oldPunches.length} records.`);
     } catch (error) {
         console.error('❌ Error during attendance image cleanup:', error);
     }

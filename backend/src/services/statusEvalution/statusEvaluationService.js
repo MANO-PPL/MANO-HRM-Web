@@ -397,7 +397,7 @@ export async function buildSessionContext(user_id, localTime, eventType) {
     return {
         is_first_session: isFirstSession,
         session_number: sessionNumber,
-        total_sessions: todaySessions.length,
+        total_sessions: sessions.length,
 
         // Time data
         first_time_in: firstTimeIn,
@@ -405,7 +405,7 @@ export async function buildSessionContext(user_id, localTime, eventType) {
 
         // Aggregates
         total_hours_today: parseFloat(totalHoursToday.toFixed(2)),
-        first_session_late_mins: todaySessions[0]?.late_minutes || 0,
+        first_session_late_mins: sessions[0]?.late_minutes || 0,
 
         // Event context
         event_type: eventType
