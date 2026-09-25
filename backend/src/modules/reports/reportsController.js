@@ -176,18 +176,28 @@ const getColLetter = (col) => {
     return letter;
 };
 
-// Helper: write a value as a real Excel time value (not the old display-string placeholder) so
-// downstream formulas (Work Hrs, Late Mins) can do arithmetic on it directly. `dateVal` is the
-// full underlying timestamp (date + time), not just a time-of-day — subtracting two such cells
-// gives the correct elapsed hours even across midnight, which a time-only value could not do
-// safely. Falls back to a blank cell for a missing punch: blank is safe inside IFERROR(...); the
-// old "-" string placeholder is not (text minus text errors out instead of evaluating to 0).
-// CSV has no `numFmt` concept — a raw Date value would serialize as a full ISO timestamp there,
-// a real regression from today's clean "09:00 AM" text — so CSV keeps writing the same
+// Helper: write a value as a real Excel TIME-OF-DAY value (a plain fraction-of-a-day number,
+// e.g. 0.75 for 6:00 PM — no date component at all), not the old display-string placeholder, so
+// downstream formulas (Work Hrs, Late Mins) can do arithmetic on it directly. Deliberately
+// time-only rather than a full date+time: editing this report by hand means pasting a bare time
+// like "06:00 PM" over an existing value (or into a blank Time Out cell) — if the cell carried a
+// full date, that paste would leave the date component wrong/missing and break the Work Hrs
+// formula. A time-only value accepts a bare time paste directly, matching how someone would
+// actually edit this file. Work Hrs formulas use MOD(out-in, 1) specifically so an overnight
+// shift (out < in as time-of-day) still resolves to the correct positive elapsed hours instead of
+// a negative one — the standard technique for elapsed time with time-only Excel cells. Falls back
+// to a blank cell for a missing punch: blank is safe inside IFERROR(...); the old "-" string
+// placeholder is not (text minus text errors out instead of evaluating to 0).
+// CSV has no `numFmt` concept and can't paste-and-recalculate anyway — it keeps writing the same
 // `formatLocalTimeStr` display string it always has; only `format === 'xlsx'` gets the live value.
 const setTimeCellValue = (cell, dateVal, format, includeSeconds = false) => {
     if (format === 'xlsx') {
-        cell.value = dateVal ? new Date(dateVal) : null;
+        if (dateVal) {
+            const d = new Date(dateVal);
+            cell.value = (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()) / 86400;
+        } else {
+            cell.value = null;
+        }
         cell.numFmt = 'h:mm AM/PM';
     } else {
         cell.value = reportsService.formatLocalTimeStr(dateVal, includeSeconds);
@@ -326,135 +336,59 @@ export const styleExcelWorksheet = (worksheet, type) => {
                 cell.alignment.horizontal = 'left';
             }
 
-            // 4. Conditional Formatting based on cell values
-            // A live-formula cell's value is `{ formula, result }`, not a plain value — without
-            // unwrapping `.result` first, `.toString()` on that object yields the literal string
-            // "[object Object]" and every branch below silently stops matching. This was harmless
-            // before formula cells existed outside totals rows (which return earlier, above) but
-            // matters now that Stage 2+ writes formulas into ordinary data cells too.
-            const rawVal = cell.value;
-            const val = (rawVal && typeof rawVal === 'object' && 'formula' in rawVal)
-                ? (rawVal.result !== undefined && rawVal.result !== null ? String(rawVal.result).trim() : undefined)
-                : rawVal?.toString().trim();
-
-            // Present or 1.0 status (Green)
-            if (val === 'Present' || val === '1.0') {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFE6F4EA' } // Soft Green
-                };
-                cell.font = {
-                    name: 'Segoe UI',
-                    size: 10,
-                    bold: true,
-                    color: { argb: 'FF137333' } // Dark Green
-                };
-            }
-            // Absent or 0.0 status (Red)
-            else if (val === 'Absent' || val === '0.0') {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFFCE8E6' } // Soft Red
-                };
-                cell.font = {
-                    name: 'Segoe UI',
-                    size: 10,
-                    bold: true,
-                    color: { argb: 'FFC5221F' } // Dark Red
-                };
-            }
-            // Late or Late Minutes/Count > 0 (Orange)
-            else if (val?.toLowerCase().includes('late') || (colHeader.includes('late') && Number(val) > 0)) {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFFEF7E0' } // Soft Orange/Yellow
-                };
-                cell.font = {
-                    name: 'Segoe UI',
-                    size: 10,
-                    bold: true,
-                    color: { argb: 'FFB06000' } // Dark Orange/Brown
-                };
-            }
-            // Weekend Sat/Sun/WEEK_OFF (Lavender)
-            else if (val === 'Sun' || val === 'Sat' || val === 'WEEK_OFF') {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFF1F3F4' } // Soft Grey/Lavender
-                };
-                cell.font = {
-                    name: 'Segoe UI',
-                    size: 10,
-                    bold: true,
-                    color: { argb: 'FF5F6368' }
-                };
-            }
-            // Not Recorded status (Soft grey font)
-            else if (val === 'Not Recorded') {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFF1F3F4' }
-                };
-                cell.font = {
-                    name: 'Segoe UI',
-                    size: 10,
-                    bold: true,
-                    color: { argb: 'FF8E8E93' }
-                };
-            }
-            // Leaves status
-            else if (val?.toLowerCase() === 'on leave' || val?.toLowerCase() === 'leave' || val?.toLowerCase() === 'half day') {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFE8F0FE' } // Soft Blue
-                };
-                cell.font = {
-                    name: 'Segoe UI',
-                    size: 10,
-                    bold: true,
-                    color: { argb: 'FF1A73E8' }
-                };
-            }
-            // Holiday status — previously matched no branch here, so a multi-day matrix's own
-            // inline blue Holiday styling (applied before this generic pass runs) was silently
-            // overwritten back to plain zebra stripe. Matched separately from "leave" above
-            // (different color) since it's a distinct concept.
-            else if (val === 'Holiday' || val === 'HOLIDAY') {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFE1F0FF' } // Soft Blue (matches the multi-day matrix's own inline Holiday color)
-                };
-                cell.font = {
-                    name: 'Segoe UI',
-                    size: 10,
-                    bold: true,
-                    color: { argb: 'FF1967D2' }
-                };
-            }
-            // "L" (On Leave, abbreviated) — the multi-day matrix's day-grid writes this short
-            // code, not the full word "Leave", so it never matched the branch above either.
-            else if (val === 'L') {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFE8F0FE' } // Soft Blue, same as "Leave"/"On Leave"
-                };
-                cell.font = {
-                    name: 'Segoe UI',
-                    size: 10,
-                    bold: true,
-                    color: { argb: 'FF1A73E8' }
-                };
-            }
         });
     });
+
+    // 4. Conditional Formatting based on cell values — genuinely LIVE, unlike the static per-cell
+    // coloring this replaced. A static `cell.fill`/`cell.font` is just a one-time snapshot taken
+    // at export time — editing a cell's value later (e.g. retyping "1.0" to "0.0" in the Monthly
+    // Attendance Matrix) never updated its color, since nothing re-evaluates a plain style.
+    // Excel's own Conditional Formatting feature is the only way to make coloring reactive to
+    // future edits — it travels with the workbook and Excel re-evaluates it on every change.
+    // Applied once, broadly, over the whole data range (every row below the header(s), including
+    // the totals row — harmless, since totals cells hold sums/blanks that never literally equal
+    // these status strings) rather than computed per-cell in the loop above.
+    // Known, deliberate gap versus the old static version: the "column header contains 'late' AND
+    // the numeric value is > 0" highlight (used for Late Mins/Late Count number columns) isn't
+    // reproduced here — Conditional Formatting rules don't have header context the way the old
+    // per-cell loop did, and reproducing it would need per-report column-position plumbing for a
+    // secondary highlight, not the status-code coloring this fix is actually about.
+    const lastDataRow = worksheet.rowCount;
+    const lastDataCol = worksheet.columnCount;
+    if (lastDataRow > headerRowsCount && lastDataCol > 0) {
+        const cfRef = `A${headerRowsCount + 1}:${getColLetter(lastDataCol)}${lastDataRow}`;
+        const solidFill = (bg) => ({ type: 'pattern', pattern: 'solid', bgColor: { argb: bg } });
+        let cfPriority = 1;
+        const cfRules = [];
+        const addEqualsRule = (value, bg, font) => {
+            cfRules.push({
+                type: 'cellIs',
+                operator: 'equal',
+                formulae: [`"${value}"`],
+                priority: cfPriority++,
+                style: { fill: solidFill(bg), font: { bold: true, color: { argb: font } } }
+            });
+        };
+        addEqualsRule('Present', 'FFE6F4EA', 'FF137333');       // Green
+        addEqualsRule('1.0', 'FFE6F4EA', 'FF137333');
+        addEqualsRule('Absent', 'FFFCE8E6', 'FFC5221F');        // Red
+        addEqualsRule('0.0', 'FFFCE8E6', 'FFC5221F');
+        cfRules.push({
+            type: 'containsText', operator: 'containsText', text: 'late', priority: cfPriority++,
+            style: { fill: solidFill('FFFEF7E0'), font: { bold: true, color: { argb: 'FFB06000' } } }
+        });
+        addEqualsRule('Sun', 'FFF1F3F4', 'FF5F6368');           // Lavender/grey
+        addEqualsRule('Sat', 'FFF1F3F4', 'FF5F6368');
+        addEqualsRule('WEEK_OFF', 'FFF1F3F4', 'FF5F6368');
+        addEqualsRule('Not Recorded', 'FFF1F3F4', 'FF8E8E93');  // Grey
+        addEqualsRule('On Leave', 'FFE8F0FE', 'FF1A73E8');      // Blue
+        addEqualsRule('Leave', 'FFE8F0FE', 'FF1A73E8');
+        addEqualsRule('Half Day', 'FFE8F0FE', 'FF1A73E8');
+        addEqualsRule('L', 'FFE8F0FE', 'FF1A73E8');
+        addEqualsRule('Holiday', 'FFE1F0FF', 'FF1967D2');       // Soft blue, distinct from Leave
+        addEqualsRule('HOLIDAY', 'FFE1F0FF', 'FF1967D2');
+        worksheet.addConditionalFormatting({ ref: cfRef, rules: cfRules });
+    }
 
     // 5. Dynamic Auto-fit Columns (with a padding)
     const colCount = worksheet.columnCount;
@@ -959,7 +893,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             if (colsObj.workedHours !== false) {
                 const workHrsCell = row.getCell('work_hrs');
                 workHrsCell.value = canLiveWorkHrs
-                    ? liveCell(format, `IFERROR((${timeOutLetter}${row.number}-${timeInLetter}${row.number})*24,0)`, workedHours)
+                    ? liveCell(format, `IFERROR(MOD(${timeOutLetter}${row.number}-${timeInLetter}${row.number},1)*24,0)`, workedHours)
                     : workedHours;
                 workHrsCell.numFmt = '0.00';
             }
@@ -1250,7 +1184,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             if (colsObj.workedHours !== false) {
                 const workHrsCell = row.getCell('work_hrs');
                 workHrsCell.value = canLiveWorkHrs
-                    ? liveCell(format, `IFERROR((${timeOutLetter}${row.number}-${timeInLetter}${row.number})*24,0)`, workedHours)
+                    ? liveCell(format, `IFERROR(MOD(${timeOutLetter}${row.number}-${timeInLetter}${row.number},1)*24,0)`, workedHours)
                     : workedHours;
                 workHrsCell.numFmt = '0.00';
             }
@@ -1742,7 +1676,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     const cell = row.getCell(dayCellCol(dIdx, workHrsOffset));
                     const inRef = dayCellRef(dIdx, inTimeOffset, rowNum);
                     const outRef = dayCellRef(dIdx, outTimeOffset, rowNum);
-                    cell.value = liveCell(format, `IFERROR((${outRef}-${inRef})*24,0)`, workedHoursForDay);
+                    cell.value = liveCell(format, `IFERROR(MOD(${outRef}-${inRef},1)*24,0)`, workedHoursForDay);
                     cell.numFmt = '0.00';
                 }
                 if (canLiveLateMins) {
