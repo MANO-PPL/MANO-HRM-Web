@@ -19,7 +19,9 @@ export const login = catchAsync(async (req, res, next) => {
         userAgent: req.get('User-Agent') || 'Unknown'
     };
 
-    const { accessToken, refreshToken, user } = await authService.authenticateUser(user_input, user_password, reqInfo, rememberMe === true || rememberMe === 'true');
+    const isRememberMe = rememberMe === undefined ? true : (rememberMe === true || rememberMe === 'true');
+
+    const { accessToken, refreshToken, user } = await authService.authenticateUser(user_input, user_password, reqInfo, isRememberMe);
 
     const cookieOptions = {
         httpOnly: true,
@@ -28,7 +30,7 @@ export const login = catchAsync(async (req, res, next) => {
         path: '/'
     };
 
-    if (rememberMe === true || rememberMe === 'true') {
+    if (isRememberMe) {
         cookieOptions.maxAge = REFRESH_TOKEN_COOKIE_MAX_AGE;
     }
 
@@ -118,7 +120,9 @@ export const refreshToken = catchAsync(async (req, res, next) => {
 
         res.json({ accessToken, refreshToken: newRefreshToken });
     } catch (err) {
-        res.clearCookie('refreshToken', { path: '/' });
+        if (err.statusCode === 401 || err.statusCode === 403) {
+            res.clearCookie('refreshToken', { path: '/' });
+        }
         throw err; // Passed to the global error handler which will send the AppError
     }
 });

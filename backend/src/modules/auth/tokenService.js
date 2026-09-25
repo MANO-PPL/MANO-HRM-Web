@@ -66,7 +66,8 @@ export async function verifyRefreshToken(token) {
                     return {
                         user,
                         gracePeriodActive: true,
-                        activeRefreshToken: replacementToken.token
+                        activeRefreshToken: replacementToken.token,
+                        refreshTokenRecord: replacementToken
                     };
                 }
             }
@@ -135,5 +136,5 @@ export async function extendRefreshToken(token) {
 
     await attendanceDB('core_refresh_tokens')
         .where('token', token)
-        .update({ expires_at: expiresAt });
+        .update({ expires_at: toMySQLDateTime(expiresAt) });
 }
