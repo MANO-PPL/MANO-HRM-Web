@@ -49,10 +49,10 @@ export const listRequests = catchAsync(async (req, res) => {
 
 export const approveRequest = catchAsync(async (req, res) => {
     const { id } = req.params;
-    const { org_id } = req.user;
+    const { org_id, id: reviewer_id } = req.user;
 
     try {
-        await DarRequestService.approveRequest({ id, org_id });
+        await DarRequestService.approveRequest({ id, org_id, reviewer_id });
         res.json({ ok: true, message: "Request approved and changes applied." });
     } catch (err) {
         if (err.status) return res.status(err.status).json({ ok: false, message: err.message });
@@ -62,11 +62,11 @@ export const approveRequest = catchAsync(async (req, res) => {
 
 export const rejectRequest = catchAsync(async (req, res) => {
     const { id } = req.params;
-    const { org_id } = req.user;
+    const { org_id, id: reviewer_id } = req.user;
     const { comment } = req.body;
 
     try {
-        await DarRequestService.rejectRequest({ id, org_id, comment });
+        await DarRequestService.rejectRequest({ id, org_id, reviewer_id, comment });
         res.json({ ok: true, message: "Request rejected." });
     } catch (err) {
         if (err.status) return res.status(err.status).json({ ok: false, message: err.message });

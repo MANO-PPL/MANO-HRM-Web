@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { authenticateJWT } from "../../middleware/auth.js";
+import { authenticateJWT, authorize } from "../../middleware/auth.js";
 import * as AttendanceController from "./attendanceController.js";
 
 const router = express.Router();
@@ -66,15 +66,7 @@ router.get("/records/admin",
  * GET /attendance/records
  * User endpoint to fetch their own attendance records
  */
-
-/**
- * GET /attendance/image
- * Fetch and stream attendance image directly from S3
- */
-router.get("/image", AttendanceController.getAttendanceImage);
-router.get("/image/*key", AttendanceController.getAttendanceImage);
-
-router.get("/records", 
+router.get("/records",
   authenticateJWT, 
   AttendanceController.getUserRecords
 );
@@ -85,6 +77,7 @@ router.get("/records",
  */
 router.get("/daily-summary/admin",
   authenticateJWT,
+  authorize("admin", "hr"),
   AttendanceController.getAdminDailySummary
 );
 

@@ -30,14 +30,25 @@ const PUBLIC_ROUTES = new Set([
     'GET /geo/states/:country_code',
     'GET /geo/cities/:country_code/:state_code',
     'ALL /(.*)', // 404 handler
-    // Unauthenticated S3 image proxy (SEC-01) — removed in a later commit
-    'GET /attendance/image',
-    'GET /attendance/image/*key',
     // Payments are deferred by decision until billing is implemented.
     'POST /payment/create-customer',
     'POST /payment/create-order',
     'POST /payment/verify',
 ]);
+
+// Routes that must be limited to admin/HR at the route level.
+const STAFF_ONLY_ROUTES = [
+    'POST /policies/shifts',
+    'PUT /policies/shifts/:shift_id',
+    'DELETE /policies/shifts/:shift_id',
+    'GET /dar/requests/list',
+    'POST /dar/requests/approve/:id',
+    'POST /dar/requests/reject/:id',
+    'POST /dar/settings/update',
+    'GET /attendance/daily-summary/admin',
+];
+
+const REMOVED_ROUTES = ['GET /attendance/image', 'GET /attendance/image/*key'];
 
 let routeMap;
 
@@ -57,3 +68,20 @@ test('every route requires authentication unless explicitly public', () => {
         .map(([key]) => key);
     assert.deepEqual(unexpected, [], `Unauthenticated routes not in PUBLIC_ROUTES:\n${unexpected.join('\n')}`);
 });
+
+test('unauthenticated S3 image proxy is removed (SEC-01)', () => {
+    for (const key of REMOVED_ROUTES) {
+        assert.equal(routeMap.has(key), false, `${key} should not exist`);
+    }
+});
+
+for (const key of STAFF_ONLY_ROUTES) {
+    test(`${key} is limited to admin/HR (SEC-02/03/06)`, () => {
+        const guards = routeMap.get(key);
+        assert.ok(guards, `${key} not found`);
+        assert.ok(guards.authenticated, `${key} must require authentication`);
+        assert.ok(guards.roles, `${key} has no route-level role gate`);
+        const disallowed = guards.roles.filter((r) => !['admin', 'hr'].includes(r));
+        assert.deepEqual(disallowed, [], `${key} also allows: ${disallowed.join(', ')}`);
+    });
+}

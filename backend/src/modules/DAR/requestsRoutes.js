@@ -1,16 +1,17 @@
 import express from 'express';
-import { authenticateJWT } from '../../middleware/auth.js';
+import { authenticateJWT, authorize } from '../../middleware/auth.js';
 import * as DarRequestController from './requestsControllers.js';
 
 const router = express.Router();
+const staff = authorize('admin', 'hr');
 
-// POST /dar/request/create
+// POST /dar/requests/create
 router.post('/create', authenticateJWT, DarRequestController.createRequest);
-// GET /dar/request/list
-router.get('/list', authenticateJWT, DarRequestController.listRequests);
-// GET /dar/request/pending
-router.post('/approve/:id', authenticateJWT, DarRequestController.approveRequest);
-// POST /dar/request/reject/:id
-router.post('/reject/:id', authenticateJWT, DarRequestController.rejectRequest);
+// GET /dar/requests/list
+router.get('/list', authenticateJWT, staff, DarRequestController.listRequests);
+// POST /dar/requests/approve/:id
+router.post('/approve/:id', authenticateJWT, staff, DarRequestController.approveRequest);
+// POST /dar/requests/reject/:id
+router.post('/reject/:id', authenticateJWT, staff, DarRequestController.rejectRequest);
 
 export default router;

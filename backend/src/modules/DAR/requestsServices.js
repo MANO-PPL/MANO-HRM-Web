@@ -95,14 +95,26 @@ export async function getPendingRequests({ org_id, status, request_id }) {
     }));
 }
 
-export async function approveRequest({ id, org_id }) {
-    const request = await attendanceDB("attn_dar_requests")
-        .select("*", attendanceDB.raw("DATE_FORMAT(request_date, '%Y-%m-%d') as request_date_str"))
-        .where({ request_id: id })
+// Loads a pending request for review, scoped to the reviewer's org (through the
+// requester's core_users row, as getPendingRequests does).
+// Reviewers may not act on their own requests.
+async function getReviewableRequest({ id, org_id, reviewer_id }) {
+    const request = await attendanceDB("attn_dar_requests as r")
+        .join("core_users as u", "u.user_id", "r.user_id")
+        .select("r.*", attendanceDB.raw("DATE_FORMAT(r.request_date, '%Y-%m-%d') as request_date_str"))
+        .where({ "r.request_id": id, "u.org_id": org_id })
         .first();
 
     if (!request) throw { status: 404, message: "Request not found" };
+    if (Number(request.user_id) === Number(reviewer_id)) {
+        throw { status: 403, message: "You cannot review your own request" };
+    }
     if (request.status !== 'PENDING') throw { status: 400, message: "Request already processed" };
+    return request;
+}
+
+export async function approveRequest({ id, org_id, reviewer_id }) {
+    const request = await getReviewableRequest({ id, org_id, reviewer_id });
 
     const proposedTasks = typeof request.proposed_data === 'string' ? JSON.parse(request.proposed_data) : request.proposed_data;
     const targetDate = request.request_date_str;
@@ -148,14 +160,8 @@ export async function approveRequest({ id, org_id }) {
     }
 }
 
-export async function rejectRequest({ id, org_id, comment }) {
-    const request = await attendanceDB("attn_dar_requests")
-        .select("*", attendanceDB.raw("DATE_FORMAT(request_date, '%Y-%m-%d') as request_date_str"))
-        .where({ request_id: id })
-        .first();
-
-    if (!request) throw { status: 404, message: "Request not found" };
-    if (request.status !== 'PENDING') throw { status: 400, message: "Request already processed" };
+export async function rejectRequest({ id, org_id, reviewer_id, comment }) {
+    const request = await getReviewableRequest({ id, org_id, reviewer_id });
 
     await attendanceDB("attn_dar_requests")
         .where({ request_id: id })

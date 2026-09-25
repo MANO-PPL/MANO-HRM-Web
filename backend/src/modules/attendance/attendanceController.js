@@ -15,7 +15,7 @@ import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../colla
 import { getLocalNow } from "../../services/statusEvalution/statusEvaluationService.js";
 import { attendanceQueue, redisConnection } from "../../config/queues.js";
 import { processAttendanceJob } from "../../workers/attendanceWorker.js";
-import { uploadFile, getObjectStream } from "../../services/s3/s3Service.js";
+import { uploadFile } from "../../services/s3/s3Service.js";
 
 /**
  * Resolves the user's local timezone.
@@ -830,29 +830,4 @@ export const pingLocation = catchAsync(async (req, res) => {
   }
 
   return res.json(result);
-});
-
-/**
- * GET /attendance/image
- * Fetch and stream image directly from S3 to the frontend
- */
-export const getAttendanceImage = catchAsync(async (req, res) => {
-  let key = req.query.key || req.params.key || req.params[0];
-  if (Array.isArray(key)) {
-    key = key.join('/');
-  }
-  if (!key) {
-    return res.status(400).send("Missing image key");
-  }
-  try {
-    const { stream, contentType, contentLength, lastModified } = await getObjectStream({ key });
-    res.setHeader("Content-Type", contentType);
-    if (contentLength) res.setHeader("Content-Length", contentLength);
-    if (lastModified) res.setHeader("Last-Modified", new Date(lastModified).toUTCString());
-    res.setHeader("Cache-Control", "public, max-age=86400, immutable");
-    stream.pipe(res);
-  } catch (err) {
-    console.error("Failed to fetch image from S3:", err.message);
-    res.status(404).send("Image not found");
-  }
 });
