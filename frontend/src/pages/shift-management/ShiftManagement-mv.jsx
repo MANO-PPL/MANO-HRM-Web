@@ -65,7 +65,7 @@ const ShiftManagement = ({ embedded = false }) => {
     const [newOvertime, setNewOvertime] = useState(false);
     const [newOtThreshold, setNewOtThreshold] = useState('8.0');
     const [newOtMaxHours, setNewOtMaxHours] = useState(String(DEFAULT_MAX_OT_HOURS));
-    const [newCorrectionDeadline, setNewCorrectionDeadline] = useState('2');
+    const [newCorrectionDeadline, setNewCorrectionDeadline] = useState('30');
     const [newValCheckInGps, setNewValCheckInGps] = useState(true);
     const [newValCheckInSelfie, setNewValCheckInSelfie] = useState(true);
     const [newValCheckOutGps, setNewValCheckOutGps] = useState(false);
@@ -138,7 +138,7 @@ const ShiftManagement = ({ embedded = false }) => {
                     overtime: !!s.is_overtime_enabled,
                     otThreshold: parseFloat(s.overtime_threshold_hours || 8.0),
                     otMaxHours: normalizeUiMaxOtHours(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime),
-                    correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 2),
+                    correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 30),
                     color: 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400',
                     isActive: s.is_active !== undefined ? !!s.is_active : (s.policy_rules?.is_active !== undefined ? !!s.policy_rules.is_active : true),
                     policy_rules: s.policy_rules || {},
@@ -189,7 +189,7 @@ const ShiftManagement = ({ embedded = false }) => {
         setNewOvertime(false);
         setNewOtThreshold('8.0');
         setNewOtMaxHours(String(DEFAULT_MAX_OT_HOURS));
-        setNewCorrectionDeadline('2');
+        setNewCorrectionDeadline('30');
         setNewValCheckInGps(true);
         setNewValCheckInSelfie(true);
         setNewValCheckOutGps(true); // GPS is mandatory
@@ -292,7 +292,7 @@ const ShiftManagement = ({ embedded = false }) => {
             shift_timing: { start_time: newStartTime, end_time: newEndTime },
             grace_period: { minutes: parseInt(newGracePeriod) || 0 },
             overtime: { enabled: newOvertime, threshold: parseFloat(newOtThreshold) || 0, max_overtime: maxOvertime },
-            correction_deadline: parseInt(newCorrectionDeadline) || 2,
+            correction_deadline: parseInt(newCorrectionDeadline) || 30,
             missed_punch_check_time: null,
             half_day_threshold: {
                 enabled: newHalfDayThresholdEnabled,
@@ -567,7 +567,7 @@ const ShiftManagement = ({ embedded = false }) => {
                                                 <FileClock size={16} className="text-rose-500" />
                                                 <span className="text-sm font-semibold text-slate-600 dark:text-github-dark-muted">Correction Deadline</span>
                                             </div>
-                                            <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle px-3 py-1 rounded-full shadow-sm border border-slate-100 dark:border-github-dark-border">{selectedShift.correctionDeadline || 2} Days</span>
+                                            <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle px-3 py-1 rounded-full shadow-sm border border-slate-100 dark:border-github-dark-border">{selectedShift.correctionDeadline || 30} Days</span>
                                         </div>
                                         <div className="flex justify-between items-center py-3">
                                             <div className="flex items-center gap-2">

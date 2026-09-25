@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, AlertCircle, CheckSquare, Square, PlusCircle, Clock, RefreshCw, X } from 'lucide-react';
+import { Trash2, AlertCircle, CheckSquare, Square, PlusCircle, Clock, RefreshCw, X, ChevronLeft, ChevronRight} from 'lucide-react';
 import { toast } from 'react-toastify';
 
 function DirectTimeInput({ value, onChange }) {
@@ -270,7 +270,8 @@ export default function VisualCorrectionTimeline({
     shift = null,
     onRemoveOriginalPunch = null,
     frameless = false,
-    hideHeader = false
+    hideHeader = false,
+    scale = 1
 }) {
     if (!requestData) return null;
 
@@ -422,11 +423,55 @@ export default function VisualCorrectionTimeline({
         });
     }, [parseMinutes, isCheckpointPunch]);
 
+    // Extract map of original recorded boundary punches: key -> { origKey, origTime, origType, pairIdx }
+    const originalBoundaryPunches = useMemo(() => {
+        const map = new Map();
+        const boundary = originalPunches.filter(p => p.type !== 'normal');
+        boundary.forEach((p, idx) => {
+            const pairIdx = p.pairIdx ?? Math.floor(idx / 2);
+            const type = p.type;
+            const key = `orig-${pairIdx}-${type}`;
+            map.set(key, {
+                origKey: key,
+                origTime: p.time,
+                origType: type,
+                pairIdx: pairIdx,
+                id: p.id
+            });
+        });
+        return map;
+    }, [originalPunches]);
+
+    // Helper: Find matching original boundary punch for a given punch
+    const findOrigForPunch = useCallback((punch, punchList) => {
+        if (!punch) return null;
+        if (punch.origKey && originalBoundaryPunches.has(punch.origKey)) {
+            return originalBoundaryPunches.get(punch.origKey);
+        }
+        for (const orig of originalBoundaryPunches.values()) {
+            if (orig.origType === punch.type && (orig.pairIdx === punch.pairIdx || orig.origTime === punch.origTime || orig.origTime === punch.time)) {
+                return orig;
+            }
+        }
+        const nonNormals = (punchList || []).filter(p => p.type === punch.type);
+        const idx = nonNormals.findIndex(p => p.id === punch.id);
+        const origMatches = Array.from(originalBoundaryPunches.values()).filter(o => o.origType === punch.type);
+        if (idx !== -1 && origMatches[idx]) {
+            return origMatches[idx];
+        }
+        return null;
+    }, [originalBoundaryPunches]);
+
     // Flatten initial proposed punches with STABLE IDs (never incorporating p.time!)
     const initialProposedPunches = useMemo(() => {
-        if (!Array.isArray(requestData?.proposed_data)) return [];
+        let proposedList = Array.isArray(requestData?.proposed_data) ? requestData.proposed_data : [];
+        if (proposedList.length === 0 && !editable && Array.isArray(requestData?.original_data) && requestData.original_data.length > 0) {
+            // When user sent request without checking advanced option, show the starting punch originally recorded
+            proposedList = requestData.original_data;
+        }
+        if (proposedList.length === 0) return [];
         const list = [];
-        requestData.proposed_data.forEach((s, sIdx) => {
+        proposedList.forEach((s, sIdx) => {
             if (isCheckpointPunch(s)) {
                 const t = extractTimeStr(s.time_in || s.time || s.punch_time);
                 if (t) {
@@ -435,6 +480,10 @@ export default function VisualCorrectionTimeline({
                         time: t,
                         type: 'normal',
                         address: s.address || '',
+                        isConvertedFromOrig: Boolean(s.isConvertedFromOrig),
+                        origKey: s.origKey || null,
+                        origTime: s.origTime || null,
+                        origType: s.origType || null,
                         raw: s
                     });
                 }
@@ -442,10 +491,16 @@ export default function VisualCorrectionTimeline({
                 if (s.time_in) {
                     const t = extractTimeStr(s.time_in);
                     if (t) {
+                        const origIn = originalBoundaryPunches.get(`orig-${sIdx}-in`);
                         list.push({
                             id: s.inPunchId || (s.id ? `${s.id}-in` : `p-sess-${sIdx}-in`),
                             time: t,
                             type: 'in',
+                            origKey: origIn?.origKey || `orig-${sIdx}-in`,
+                            origTime: origIn?.origTime || t,
+                            origType: 'in',
+                            pairIdx: sIdx,
+                            isAltered: origIn ? (t !== origIn.origTime) : false,
                             raw: s
                         });
                     }
@@ -459,6 +514,10 @@ export default function VisualCorrectionTimeline({
                             time: t,
                             type: 'normal',
                             address: chk.address || '',
+                            isConvertedFromOrig: Boolean(chk.isConvertedFromOrig),
+                            origKey: chk.origKey || null,
+                            origTime: chk.origTime || null,
+                            origType: chk.origType || null,
                             raw: chk
                         });
                     }
@@ -466,10 +525,16 @@ export default function VisualCorrectionTimeline({
                 if (s.time_out) {
                     const t = extractTimeStr(s.time_out);
                     if (t) {
+                        const origOut = originalBoundaryPunches.get(`orig-${sIdx}-out`);
                         list.push({
                             id: s.outPunchId || (s.id ? `${s.id}-out` : `p-sess-${sIdx}-out`),
                             time: t,
                             type: 'out',
+                            origKey: origOut?.origKey || `orig-${sIdx}-out`,
+                            origTime: origOut?.origTime || t,
+                            origType: 'out',
+                            pairIdx: sIdx,
+                            isAltered: origOut ? (t !== origOut.origTime) : false,
                             raw: s
                         });
                     }
@@ -478,7 +543,7 @@ export default function VisualCorrectionTimeline({
         });
         const sorted = list.sort((a, b) => (parseMinutes(a.time) ?? 0) - (parseMinutes(b.time) ?? 0));
         return resequencePunches(sorted);
-    }, [requestData, parseMinutes, extractTimeStr, resequencePunches, isCheckpointPunch]);
+    }, [requestData, parseMinutes, extractTimeStr, resequencePunches, isCheckpointPunch, editable, originalBoundaryPunches]);
 
     const [punches, setPunches] = useState(initialProposedPunches);
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -495,13 +560,15 @@ export default function VisualCorrectionTimeline({
     const lastClickRef = useRef({ id: null, time: 0 });
     const hasInitiallyScrolledRef = useRef(false);
     const prevDateRef = useRef(requestData?.request_date || requestData?.date || '');
+    const dismissedCheckpointsRef = useRef(new Set());
 
-    // Reset initial scroll flag if date changes
+    // Reset initial scroll flag and dismissed checkpoints if date changes
     useEffect(() => {
         const curDate = requestData?.request_date || requestData?.date || '';
         if (curDate && curDate !== prevDateRef.current) {
             prevDateRef.current = curDate;
             hasInitiallyScrolledRef.current = false;
+            dismissedCheckpointsRef.current.clear();
         }
     }, [requestData?.request_date, requestData?.date]);
 
@@ -926,6 +993,63 @@ export default function VisualCorrectionTimeline({
         });
     };
 
+    // Helper: When adjusting start time or end time, convert original recorded time into a checkpoint,
+    // or if adjusted back to original time, remove the duplicate converted checkpoint
+    const applyOriginalCheckpointConversion = useCallback((basePunches, targetPunchId, newTimeStr) => {
+        const targetPunch = basePunches.find(p => p.id === targetPunchId);
+        if (!targetPunch || targetPunch.type === 'normal') {
+            return basePunches.map(p => p.id === targetPunchId ? { ...p, time: newTimeStr } : p);
+        }
+
+        const origInfo = findOrigForPunch(targetPunch, basePunches);
+        let updated = basePunches.map(p => {
+            if (p.id !== targetPunchId) return p;
+            return {
+                ...p,
+                time: newTimeStr,
+                origKey: origInfo?.origKey || p.origKey,
+                origTime: origInfo?.origTime || p.origTime,
+                origType: origInfo?.origType || p.type,
+                isAltered: origInfo ? (newTimeStr !== origInfo.origTime) : false
+            };
+        });
+
+        if (origInfo) {
+            const { origKey, origTime, origType, pairIdx } = origInfo;
+            const isTimeAltered = (newTimeStr !== origTime);
+
+            if (isTimeAltered) {
+                const checkpointExists = updated.some(p =>
+                    (p.origKey === origKey && p.type === 'normal') ||
+                    (p.time === origTime && p.type === 'normal')
+                );
+
+                if (!checkpointExists && !dismissedCheckpointsRef.current.has(origKey)) {
+                    const convertedCheckpoint = {
+                        id: `chk-conv-${origKey}`,
+                        time: origTime,
+                        type: 'normal',
+                        isConvertedFromOrig: true,
+                        origKey: origKey,
+                        origTime: origTime,
+                        origType: origType,
+                        pairIdx: pairIdx ?? targetPunch.pairIdx,
+                        address: targetPunch.address || ''
+                    };
+                    updated.push(convertedCheckpoint);
+                    if (typeof toast !== 'undefined') {
+                        toast.info(`Converted original ${origType === 'in' ? 'Clock IN' : 'Clock OUT'} (${formatDisplayTime(origTime)}) to a Checkpoint`, { autoClose: 2500 });
+                    }
+                }
+            } else {
+                updated = updated.filter(p => !(p.origKey === origKey && p.type === 'normal' && p.isConvertedFromOrig));
+                dismissedCheckpointsRef.current.delete(origKey);
+            }
+        }
+
+        return updated;
+    }, [findOrigForPunch, formatDisplayTime]);
+
     const handlePointerMove = useCallback((e) => {
         const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
         const currentMins = getMinutesFromClientX(clientX);
@@ -1088,10 +1212,17 @@ export default function VisualCorrectionTimeline({
         }
 
         if (draggingPunchId) {
+            const draggedPunch = punches.find(p => p.id === draggingPunchId);
+            let nextPunches = punches;
+            if (draggedPunch && draggedPunch.type !== 'normal') {
+                nextPunches = applyOriginalCheckpointConversion(punches, draggingPunchId, draggedPunch.time);
+            }
             setDraggingPunchId(null);
-            emitChanges(punches);
+            const sequenced = resequencePunches(nextPunches);
+            setPunches(sequenced);
+            emitChanges(sequenced);
         }
-    }, [creatingRange, draggingPunchId, punches, parseMinutes, minutesToTimeStr, pendingSessionStart, checkSpanCollision, formatDisplayTime, resequencePunches, incompleteSession]);
+    }, [creatingRange, draggingPunchId, punches, parseMinutes, minutesToTimeStr, pendingSessionStart, checkSpanCollision, formatDisplayTime, resequencePunches, incompleteSession, applyOriginalCheckpointConversion]);
 
     // Global listeners for smooth dragging
     useEffect(() => {
@@ -1105,13 +1236,10 @@ export default function VisualCorrectionTimeline({
         }
     }, [creatingRange, draggingPunchId, handlePointerMove, handlePointerUp]);
 
-    // Update punch time directly via typed input
+    // Update punch time directly via typed input or spin buttons
     const handleTimeChange = (punchId, newTimeStr) => {
         if (!newTimeStr) return;
-        const updated = punches.map(p => {
-            if (p.id !== punchId) return p;
-            return { ...p, time: newTimeStr };
-        });
+        const updated = applyOriginalCheckpointConversion(punches, punchId, newTimeStr);
         const sequenced = resequencePunches(updated);
         setPunches(sequenced);
         emitChanges(sequenced);
@@ -1142,18 +1270,56 @@ export default function VisualCorrectionTimeline({
         if (selectedIds.size === 0) return;
         setPendingSessionStart(null);
 
-        // Expand selected IDs to include paired punches for newly created sessions
+        let nextPunches = [...punches];
         const idsToDelete = new Set(selectedIds);
-        proposedSessions.forEach(session => {
-            if (isNewlyCreatedSession(session)) {
-                const hasSelectedPunch = session.punches.some(p => selectedIds.has(p.id));
-                if (hasSelectedPunch) {
-                    session.punches.forEach(p => idsToDelete.add(p.id));
+
+        // Check if any selected punch is an altered punch whose converted checkpoint is NOT selected
+        selectedIds.forEach(id => {
+            const p = punches.find(item => item.id === id);
+            if (p && (p.type === 'in' || p.type === 'out')) {
+                const origInfo = findOrigForPunch(p, punches);
+                const origKey = p.origKey || origInfo?.origKey;
+                if (origKey) {
+                    const convertedCheckpoint = punches.find(item =>
+                        item.type === 'normal' &&
+                        !selectedIds.has(item.id) &&
+                        (item.origKey === origKey || (item.isConvertedFromOrig && item.origTime === origInfo?.origTime))
+                    );
+                    if (convertedCheckpoint) {
+                        // Turn checkpoint back into 'in' or 'out'
+                        nextPunches = nextPunches.map(item => {
+                            if (item.id === convertedCheckpoint.id) {
+                                return {
+                                    ...item,
+                                    type: p.type,
+                                    isConvertedFromOrig: false,
+                                    isAltered: false
+                                };
+                            }
+                            return item;
+                        });
+                        dismissedCheckpointsRef.current.delete(origKey);
+                    }
                 }
+            } else if (p && p.type === 'normal' && p.origKey) {
+                dismissedCheckpointsRef.current.add(p.origKey);
             }
         });
 
-        const filtered = punches.filter(p => !idsToDelete.has(p.id));
+        // Expand session deletion for whole session pairs only when both boundary punches are not preserved
+        proposedSessions.forEach(session => {
+            const hasSelectedPunch = session.punches.some(p => selectedIds.has(p.id));
+            if (hasSelectedPunch) {
+                session.punches.forEach(p => {
+                    const isPreserved = nextPunches.some(np => np.id === p.id && np.type !== 'normal');
+                    if (!isPreserved && selectedIds.has(p.id)) {
+                        idsToDelete.add(p.id);
+                    }
+                });
+            }
+        });
+
+        const filtered = nextPunches.filter(p => !idsToDelete.has(p.id));
         const sequenced = resequencePunches(filtered);
         setPunches(sequenced);
         setSelectedIds(new Set());
@@ -1176,6 +1342,9 @@ export default function VisualCorrectionTimeline({
 
         // 1. Checkpoint: only remove this single normal punch
         if (targetPunch.type === 'normal') {
+            if (targetPunch.origKey) {
+                dismissedCheckpointsRef.current.add(targetPunch.origKey);
+            }
             const filtered = punches.filter(p => p.id !== punchId);
             const sequenced = resequencePunches(filtered);
             setPunches(sequenced);
@@ -1193,7 +1362,51 @@ export default function VisualCorrectionTimeline({
             return;
         }
 
-        // 2. Find the session this boundary punch belongs to
+        // 2. Boundary punch (IN or OUT):
+        // If this punch is an altered time and has a corresponding converted checkpoint in proposed punches,
+        // removing the altered time restores the converted checkpoint back to time in / time out!
+        const origInfo = findOrigForPunch(targetPunch, punches);
+        const origKey = targetPunch.origKey || origInfo?.origKey;
+        const convertedCheckpoint = origKey
+            ? punches.find(p => p.type === 'normal' && (p.origKey === origKey || (p.isConvertedFromOrig && p.origTime === origInfo?.origTime)))
+            : null;
+
+        if (convertedCheckpoint) {
+            const targetType = targetPunch.type; // 'in' or 'out'
+            const updated = punches
+                .filter(p => p.id !== punchId) // remove altered punch
+                .map(p => {
+                    if (p.id === convertedCheckpoint.id) {
+                        return {
+                            ...p,
+                            type: targetType,
+                            isConvertedFromOrig: false,
+                            isAltered: false
+                        };
+                    }
+                    return p;
+                });
+
+            if (origKey) dismissedCheckpointsRef.current.delete(origKey);
+
+            const sequenced = resequencePunches(updated);
+            setPunches(sequenced);
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(punchId);
+                return next;
+            });
+            emitChanges(sequenced);
+            setHoveredPunchId(null);
+            setDraggingPunchId(null);
+            if (typeof toast !== 'undefined') {
+                const label = targetType === 'in' ? 'Clock IN' : 'Clock OUT';
+                toast.success(`Restored original ${label} at ${formatDisplayTime(convertedCheckpoint.time)}`, { autoClose: 2500 });
+            }
+            return;
+        }
+
+        // 3. Find the session this boundary punch belongs to
         const session = proposedSessions.find(s => s.inP?.id === punchId || s.outP?.id === punchId);
         if (!session) {
             const filtered = punches.filter(p => p.id !== punchId);
@@ -1213,34 +1426,33 @@ export default function VisualCorrectionTimeline({
         const isOrganicSession = Boolean(matchingOrigPair);
         const isOrganicMissedPunch = Boolean(matchingOrigPair && (!matchingOrigPair.inPunch || !matchingOrigPair.outPunch));
 
-        // Case A: Organic session (either complete pair or missed punch)
-        // Removing a punch removes ONLY that punch, preserving the rest of the organic session
-        if (isOrganicSession) {
-            const filtered = punches.filter(p => p.id !== punchId);
-            const sequenced = resequencePunches(filtered);
-            setPunches(sequenced);
-            setSelectedIds(prev => {
-                const next = new Set(prev);
-                next.delete(punchId);
-                return next;
-            });
-            emitChanges(sequenced);
-            setHoveredPunchId(null);
-            setDraggingPunchId(null);
-            if (typeof toast !== 'undefined') {
-                const isAddedMissedPunch = isOrganicMissedPunch && (
-                    (matchingOrigPair.inPunch && !matchingOrigPair.outPunch && session.outP?.id === punchId) ||
-                    (!matchingOrigPair.inPunch && matchingOrigPair.outPunch && session.inP?.id === punchId)
-                );
-                const label = isAddedMissedPunch
-                    ? (targetPunch.type === 'in' ? 'added Clock IN' : 'added Clock OUT')
-                    : (targetPunch.type === 'in' ? 'Clock IN' : 'Clock OUT');
-                toast.info(`Removed ${label} (${formatDisplayTime(targetPunch.time)})`, { autoClose: 2000 });
+        // Case A: Organic missed punch where only one boundary was added by user
+        if (isOrganicMissedPunch) {
+            const isAddedMissedPunch = (
+                (matchingOrigPair.inPunch && !matchingOrigPair.outPunch && session.outP?.id === punchId) ||
+                (!matchingOrigPair.inPunch && matchingOrigPair.outPunch && session.inP?.id === punchId)
+            );
+            if (isAddedMissedPunch) {
+                const filtered = punches.filter(p => p.id !== punchId);
+                const sequenced = resequencePunches(filtered);
+                setPunches(sequenced);
+                setSelectedIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(punchId);
+                    return next;
+                });
+                emitChanges(sequenced);
+                setHoveredPunchId(null);
+                setDraggingPunchId(null);
+                if (typeof toast !== 'undefined') {
+                    const label = targetPunch.type === 'in' ? 'added Clock IN' : 'added Clock OUT';
+                    toast.info(`Removed ${label} (${formatDisplayTime(targetPunch.time)})`, { autoClose: 2000 });
+                }
+                return;
             }
-            return;
         }
 
-        // Case C: Newly created session pair (not organic)
+        // Case B: Session pair (both organic recorded session or newly created session)
         // Deleting either time_in or time_out deletes the ENTIRE session pair!
         const idsToRemove = new Set(session.punches.map(p => p.id));
         const filtered = punches.filter(p => !idsToRemove.has(p.id));
@@ -1335,11 +1547,10 @@ export default function VisualCorrectionTimeline({
                                         style={{ left: `${pct}%` }}
                                     >
                                         <div
-                                            className={`rounded-full -translate-y-1/2 ${
-                                                isMajor
+                                            className={`rounded-full -translate-y-1/2 ${isMajor
                                                     ? 'w-[1.5px] h-3.5 bg-slate-500/80 dark:bg-slate-400/80'
                                                     : 'w-[1px] h-2 bg-slate-300 dark:bg-slate-600'
-                                            }`}
+                                                }`}
                                         />
                                         {isMajor ? (
                                             <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-2 font-mono whitespace-nowrap">
@@ -1438,9 +1649,8 @@ export default function VisualCorrectionTimeline({
                                                 )}
                                             </AnimatePresence>
 
-                                            <div className={`w-4 h-4 rounded-full shadow-xs border-2 border-white dark:border-dark-card flex items-center justify-center transition-transform hover:scale-125 ${
-                                                isNormal ? 'bg-amber-500' : isIn ? 'bg-emerald-500' : 'bg-rose-500'
-                                            }`}>
+                                            <div className={`w-4 h-4 rounded-full shadow-xs border-2 border-white dark:border-dark-card flex items-center justify-center transition-transform hover:scale-125 ${isNormal ? 'bg-amber-500' : isIn ? 'bg-emerald-500' : 'bg-rose-500'
+                                                }`}>
                                                 <div className="w-1 h-1 rounded-full bg-white opacity-80" />
                                             </div>
                                         </div>
@@ -1503,200 +1713,214 @@ export default function VisualCorrectionTimeline({
                     </motion.div>
                 )
             )}
+            {/* TIMELINE CARD CONTAINER (STATIONARY - NEVER SCROLLS HORIZONTALLY) */}
+            <div className="border border-slate-200/80 dark:border-github-dark-border/60 rounded-xl bg-slate-50/50 dark:bg-github-dark-bg/30 p-3.5 sm:p-4 space-y-3">
+                {/* Stationary Header & Legend */}
+                <div className="flex items-center justify-end gap-2 pb-2 border-b border-slate-200/60 dark:border-github-dark-border/40">
+                    {/* Legend (Stationary & Always in sight) */}
+                    <div className="ml-auto flex items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Clock In
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-rose-500" /> Clock Out
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-500" /> Checkpoint
+                        </span>
+                    </div>
+                </div>
 
-            {/* SHARED HORIZONTAL SCROLL CONTAINER FOR BOTH RAILS (PERFECT VERTICAL ALIGNMENT) */}
-            <div
-                ref={scrollContainerRef}
-                className="overflow-x-auto overflow-y-hidden pb-3 pt-1 timeline-scrollbar border border-slate-200/80 dark:border-github-dark-border/60 rounded-xl bg-slate-50/50 dark:bg-github-dark-bg/30"
-            >
-                <div className="min-w-[1150px] space-y-5 px-6 py-4">
+                {/* ONLY THE TIMELINE TRACKS ARE SCROLLABLE */}
+                <div
+                    ref={scrollContainerRef}
+                    className="overflow-x-scroll overflow-y-hidden pb-6 pt-1 table-scrollbar rounded-lg"
+                >
+                    <div className="space-y-5 px-1 pb-2" style={{ minWidth: `${Math.round(1550 * (scale || 1))}px` }}>
 
-                    {/* ─── ROW 1: ORIGINALLY RECORDED TIMELINE (STRICTLY READ-ONLY) ─── */}
-                    <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        {/* ─── ROW 1: ORIGINALLY RECORDED TIMELINE (STRICTLY READ-ONLY) ─── */}
+                        <div className="space-y-1.5">
+                            <div className="sticky left-1 z-10 inline-flex items-center gap-2 px-1">
+                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
                                     Originally Recorded
                                 </span>
-                                <span className="text-[11px] font-normal text-slate-400">
-                                    {isAbsent ? 'No punches logged' : `(${originalPunches.length} punch${originalPunches.length > 1 ? 'es' : ''})`}
-                                </span>
-                                <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-github-dark-bg text-slate-500 dark:text-slate-400">
+                                <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-200/80 dark:bg-github-dark-bg text-slate-600 dark:text-slate-400">
                                     Read-Only Reference
                                 </span>
                             </div>
 
-                            {/* Legend */}
-                            <div className="flex items-center gap-3 text-[11px] font-normal text-slate-400">
-                                <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500" /> Clock In
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-rose-500" /> Clock Out
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-amber-500" /> Checkpoint
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Track Rail */}
-                        <div className="relative h-12 flex items-center bg-white/70 dark:bg-github-dark-subtle/50 rounded-xl px-2 border border-slate-200/60 dark:border-github-dark-border/40">
-                            {/* Scheduled Shift Zone */}
-                            {shiftLeft !== null && (
-                                <div
-                                    style={{ left: `${shiftLeft}%`, width: `${shiftWidth}%` }}
-                                    className="absolute inset-y-1 bg-indigo-50/50 dark:bg-indigo-950/20 border-x border-indigo-200/40 dark:border-indigo-800/30 rounded-xs pointer-events-none"
-                                    title={`Scheduled Shift: ${shift?.start_time ? shift.start_time.slice(0, 5) : '09:00'} - ${shift?.end_time ? shift.end_time.slice(0, 5) : '18:00'}`}
-                                />
-                            )}
-
-                            {/* Background Rail */}
-                            <div className="absolute inset-x-0 h-2 bg-slate-200/80 dark:bg-slate-700/60 rounded-full" />
-
-                            {/* Ticks and Labels */}
-                            {hourlyTicks.map(h => {
-                                const pct = getPosPercent(h * 60);
-                                const isMajor = h % 2 === 0;
-                                const displayHour = h === 0 || h === 24 ? '12 AM' : h === 12 ? '12 PM' : h > 12 ? `${h - 12} PM` : `${h} AM`;
-                                return (
+                            {/* Track Rail */}
+                            <div className="relative h-14 flex items-center bg-white/70 dark:bg-github-dark-subtle/50 rounded-xl px-2 border border-slate-200/60 dark:border-github-dark-border/40">
+                                {/* Scheduled Shift Zone */}
+                                {shiftLeft !== null && (
                                     <div
-                                        key={h}
-                                        className="absolute top-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
-                                        style={{ left: `${pct}%` }}
-                                    >
-                                        <div
-                                            className={`rounded-full -translate-y-1/2 ${
-                                                isMajor
-                                                    ? 'w-[1.5px] h-3.5 bg-slate-500/80 dark:bg-slate-400/80'
-                                                    : 'w-[1px] h-2 bg-slate-300 dark:bg-slate-600'
-                                            }`}
-                                        />
-                                        {isMajor ? (
-                                            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-2 font-mono whitespace-nowrap">
-                                                {displayHour}
-                                            </span>
-                                        ) : (
-                                            <span className="text-[9px] font-normal text-slate-400/80 dark:text-slate-500 mt-2.5 font-mono whitespace-nowrap">
-                                                {h > 12 ? `${h - 12}` : `${h}`}
-                                            </span>
-                                        )}
-                                    </div>
-                                );
-                            })}
-
-                            {/* Original Soft Aura Glow between Paired Punches */}
-                            {originalPunchPairs.map((pair) => {
-                                if (!pair.inPunch || !pair.outPunch) return null;
-                                const inPct = getPosPercent(parseMinutes(pair.inPunch.time));
-                                const outPct = getPosPercent(parseMinutes(pair.outPunch.time));
-
-                                return (
-                                    <div
-                                        key={pair.pairIdx}
-                                        className="absolute top-1/2 -translate-y-1/2 h-6 rounded-lg bg-slate-200/60 dark:bg-slate-700/40 border border-slate-300/70 dark:border-slate-600/40 pointer-events-none transition-all flex items-center justify-center"
-                                        style={{ left: `${inPct}%`, width: `${Math.max(0, outPct - inPct)}%` }}
+                                        style={{ left: `${shiftLeft}%`, width: `${shiftWidth}%` }}
+                                        className="absolute inset-y-1 bg-indigo-50/50 dark:bg-indigo-950/20 border-x border-indigo-200/40 dark:border-indigo-800/30 rounded-xs pointer-events-none"
+                                        title={`Scheduled Shift: ${shift?.start_time ? shift.start_time.slice(0, 5) : '09:00'} - ${shift?.end_time ? shift.end_time.slice(0, 5) : '18:00'}`}
                                     />
-                                );
-                            })}
+                                )}
 
-                            {/* Original Punch Dots (Read-Only: No Removal) */}
-                            {originalPunches.map((p) => {
-                                const mins = parseMinutes(p.time);
-                                const pct = getPosPercent(mins);
-                                const isHovered = hoveredPunchId === `orig-${p.id}`;
-                                const isIn = p.type === 'in';
-                                const isNormal = p.type === 'normal';
+                                {/* Background Rail */}
+                                <div className="absolute inset-x-0 h-2 bg-slate-200/80 dark:bg-slate-700/60 rounded-full" />
 
-                                return (
-                                    <div
-                                        key={p.id}
-                                        className="punch-handle absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10 cursor-default select-none"
-                                        style={{ left: `${pct}%` }}
-                                        onMouseEnter={() => setHoveredPunchId(`orig-${p.id}`)}
-                                        onMouseLeave={() => setHoveredPunchId(null)}
-                                    >
-                                        <AnimatePresence>
-                                            {isHovered && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: 2, scale: 0.95 }}
-                                                    animate={{ opacity: 1, y: -34, scale: 1 }}
-                                                    exit={{ opacity: 0, y: 2, scale: 0.95 }}
-                                                    className="absolute whitespace-nowrap bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-xs text-white text-xs font-mono font-normal px-2.5 py-1 rounded-lg shadow-lg border border-slate-700/60 pointer-events-none z-30 flex items-center gap-1.5"
-                                                >
-                                                    <span className={`w-1.5 h-1.5 rounded-full ${isNormal ? 'bg-amber-400' : isIn ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                                                    <span className={`font-medium ${isNormal ? 'text-amber-300' : isIn ? 'text-emerald-300' : 'text-rose-300'}`}>
-                                                        {isNormal ? 'CHECK:' : isIn ? 'IN:' : 'OUT:'}
-                                                    </span>
-                                                    <span>{formatDisplayTime(p.time)}</span>
-                                                    <span className="text-[10px] text-slate-400 font-sans border-l border-white/20 pl-1.5 ml-0.5">
-                                                        Originally Recorded
-                                                    </span>
-                                                    {isNormal && p.address && (
-                                                        <span className="text-[10px] text-amber-300/90 font-sans border-l border-white/20 pl-1.5 ml-0.5 truncate max-w-[130px]">
-                                                            {p.address}
-                                                        </span>
-                                                    )}
-                                                </motion.div>
+                                {/* Ticks and Labels */}
+                                {hourlyTicks.map(h => {
+                                    const pct = getPosPercent(h * 60);
+                                    const isMajor = h % 2 === 0;
+                                    const isFirst = h === 0;
+                                    const isLast = h === 24;
+                                    const displayHour = h === 0 || h === 24 ? '12 AM' : h === 12 ? '12 PM' : h > 12 ? `${h - 12} PM` : `${h} AM`;
+                                    return (
+                                        <div
+                                            key={h}
+                                            className={`absolute top-1/2 flex flex-col pointer-events-none ${
+                                                isFirst
+                                                    ? 'items-start translate-x-0'
+                                                    : isLast
+                                                        ? 'items-end -translate-x-full'
+                                                        : 'items-center -translate-x-1/2'
+                                            }`}
+                                            style={{ left: `${pct}%` }}
+                                        >
+                                            <div
+                                                className={`rounded-full -translate-y-1/2 ${
+                                                    isFirst ? 'translate-x-1' : isLast ? '-translate-x-1' : ''
+                                                } ${
+                                                    isMajor
+                                                        ? 'w-[1.5px] h-3.5 bg-slate-500/80 dark:bg-slate-400/80'
+                                                        : 'w-[1px] h-2 bg-slate-300 dark:bg-slate-600'
+                                                }`}
+                                            />
+                                            {isMajor ? (
+                                                <span className={`text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-2 font-mono whitespace-nowrap ${
+                                                    isFirst ? 'pl-0.5' : isLast ? 'pr-0.5' : ''
+                                                }`}>
+                                                    {displayHour}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[9px] font-normal text-slate-400/80 dark:text-slate-500 mt-2.5 font-mono whitespace-nowrap">
+                                                    {h > 12 ? `${h - 12}` : `${h}`}
+                                                </span>
                                             )}
-                                        </AnimatePresence>
-
-                                        <div className={`w-4 h-4 rounded-full shadow-xs border-2 border-white dark:border-dark-card flex items-center justify-center transition-transform hover:scale-125 ${
-                                            isNormal ? 'bg-amber-500' : isIn ? 'bg-emerald-500' : 'bg-rose-500'
-                                        }`}>
-                                            <div className="w-1 h-1 rounded-full bg-white opacity-80" />
                                         </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+                                    );
+                                })}
 
-                    {/* ─── ROW 2: PROPOSED CORRECTION TIMELINE (INTERACTIVE) ─── */}
-                    <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                                    Proposed Timeline
-                                </span>
+                                {/* Original Soft Aura Glow between Paired Punches */}
+                                {originalPunchPairs.map((pair) => {
+                                    if (!pair.inPunch || !pair.outPunch) return null;
+                                    const inPct = getPosPercent(parseMinutes(pair.inPunch.time));
+                                    const outPct = getPosPercent(parseMinutes(pair.outPunch.time));
+
+                                    return (
+                                        <div
+                                            key={pair.pairIdx}
+                                            className="absolute top-1/2 -translate-y-1/2 h-6 rounded-lg bg-slate-200/60 dark:bg-slate-700/40 border border-slate-300/70 dark:border-slate-600/40 pointer-events-none transition-all flex items-center justify-center"
+                                            style={{ left: `${inPct}%`, width: `${Math.max(0, outPct - inPct)}%` }}
+                                        />
+                                    );
+                                })}
+
+                                {/* Original Punch Dots (Read-Only: No Removal) */}
+                                {originalPunches.map((p) => {
+                                    const mins = parseMinutes(p.time);
+                                    const pct = getPosPercent(mins);
+                                    const isHovered = hoveredPunchId === `orig-${p.id}`;
+                                    const isIn = p.type === 'in';
+                                    const isNormal = p.type === 'normal';
+
+                                    return (
+                                        <div
+                                            key={p.id}
+                                            className="punch-handle absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10 cursor-default select-none"
+                                            style={{ left: `${pct}%` }}
+                                            onMouseEnter={() => setHoveredPunchId(`orig-${p.id}`)}
+                                            onMouseLeave={() => setHoveredPunchId(null)}
+                                        >
+                                            <AnimatePresence>
+                                                {isHovered && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: 2, scale: 0.95 }}
+                                                        animate={{ opacity: 1, y: -34, scale: 1 }}
+                                                        exit={{ opacity: 0, y: 2, scale: 0.95 }}
+                                                        className="absolute whitespace-nowrap bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-xs text-white text-xs font-mono font-normal px-2.5 py-1 rounded-lg shadow-lg border border-slate-700/60 pointer-events-none z-30 flex items-center gap-1.5"
+                                                    >
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${isNormal ? 'bg-amber-400' : isIn ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                                                        <span className={`font-medium ${isNormal ? 'text-amber-300' : isIn ? 'text-emerald-300' : 'text-rose-300'}`}>
+                                                            {isNormal ? 'CHECK:' : isIn ? 'IN:' : 'OUT:'}
+                                                        </span>
+                                                        <span>{formatDisplayTime(p.time)}</span>
+                                                        <span className="text-xs text-slate-400 font-sans border-l border-white/20 pl-1.5 ml-0.5">
+                                                            Originally Recorded
+                                                        </span>
+                                                        {isNormal && p.address && (
+                                                            <span className="text-xs text-amber-300/90 font-sans border-l border-white/20 pl-1.5 ml-0.5 truncate max-w-[130px]">
+                                                                {p.address}
+                                                            </span>
+                                                        )}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+
+                                            <div className={`w-4 h-4 rounded-full shadow-xs border-2 border-white dark:border-dark-card flex items-center justify-center transition-transform hover:scale-125 ${isNormal ? 'bg-amber-500' : isIn ? 'bg-emerald-500' : 'bg-rose-500'
+                                                }`}>
+                                                <div className="w-1 h-1 rounded-full bg-white opacity-80" />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
+                        </div>
 
-                            {editable && pendingSessionStart !== null ? (
+                        {/* ─── ROW 2: PROPOSED CORRECTION TIMELINE (INTERACTIVE) ─── */}
+                        <div className="space-y-1.5 pt-1">
+                            <div className="sticky left-1 z-10 flex items-center justify-between px-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 animate-pulse">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                                        Start: {formatDisplayTime(minutesToTimeStr(pendingSessionStart))} — Click 2nd point to set Clock Out
+                                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                                        Proposed Timeline
                                     </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setPendingSessionStart(null);
-                                            setWarningMsg(null);
-                                        }}
-                                        className="text-[11px] font-medium text-rose-500 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/40 transition-colors cursor-pointer"
-                                    >
-                                        ✕ Cancel (Esc)
-                                    </button>
-                                </div>
-                            ) : editable && incompleteSession?.inP && !incompleteSession?.outP ? (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
-                                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                        Missed Punch: Clock IN at {formatDisplayTime(incompleteSession.inP.time)} — Click timeline (e.g. 6 PM) to set Clock OUT
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        ({punches.length} punch{punches.length > 1 ? 'es' : ''})
                                     </span>
                                 </div>
-                            ) : editable && !incompleteSession?.inP && incompleteSession?.outP ? (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
-                                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                        Missed Punch: Clock OUT at {formatDisplayTime(incompleteSession.outP.time)} — Click timeline to set Clock IN
+
+                                {editable && pendingSessionStart !== null ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 animate-pulse">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                            Start: {formatDisplayTime(minutesToTimeStr(pendingSessionStart))} — Click 2nd point to set Clock Out
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPendingSessionStart(null);
+                                                setWarningMsg(null);
+                                            }}
+                                            className="text-xs font-medium text-rose-500 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/40 transition-colors cursor-pointer"
+                                        >
+                                            ✕ Cancel (Esc)
+                                        </button>
+                                    </div>
+                                ) : editable && incompleteSession?.inP && !incompleteSession?.outP ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
+                                            <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                            Missed Punch: Clock IN at {formatDisplayTime(incompleteSession.inP.time)} — Click timeline (e.g. 6 PM) to set Clock OUT
+                                        </span>
+                                    </div>
+                                ) : editable && !incompleteSession?.inP && incompleteSession?.outP ? (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
+                                            <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                            Missed Punch: Clock OUT at {formatDisplayTime(incompleteSession.outP.time)} — Click timeline to set Clock IN
+                                        </span>
+                                    </div>
+                                ) : editable ? (
+                                    <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                                        Click 2 points or drag to create session • Click inside session to add checkpoint • Double-click dot to remove
                                     </span>
-                                </div>
-                            ) : editable ? (
-                                <span className="text-[11px] font-normal text-indigo-600 dark:text-indigo-400 font-medium">
-                                    Click 2 points or drag to create session • Click inside session to add checkpoint • Double-click dot to remove
-                                </span>
-                            ) : null}
+                                ) : null}
+                            </div>
                         </div>
 
                         {/* Interactive Track Rail */}
@@ -1704,9 +1928,8 @@ export default function VisualCorrectionTimeline({
                             ref={trackRef}
                             onPointerDown={handleTrackPointerDown}
                             onMouseLeave={() => setHoveredMins(null)}
-                            className={`relative h-12 flex items-center bg-white/90 dark:bg-dark-card rounded-xl px-2 border border-slate-200 dark:border-github-dark-border shadow-xs select-none ${
-                                editable ? 'cursor-crosshair' : 'cursor-default'
-                            }`}
+                            className={`relative h-14 flex items-center bg-white/90 dark:bg-dark-card rounded-xl px-2 border border-slate-200 dark:border-github-dark-border shadow-xs select-none mb-2 ${editable ? 'cursor-crosshair' : 'cursor-default'
+                                }`}
                         >
                             {/* Scheduled Shift Zone */}
                             {shiftLeft !== null && (
@@ -1724,22 +1947,34 @@ export default function VisualCorrectionTimeline({
                             {hourlyTicks.map(h => {
                                 const pct = getPosPercent(h * 60);
                                 const isMajor = h % 2 === 0;
+                                const isFirst = h === 0;
+                                const isLast = h === 24;
                                 const displayHour = h === 0 || h === 24 ? '12 AM' : h === 12 ? '12 PM' : h > 12 ? `${h - 12} PM` : `${h} AM`;
                                 return (
                                     <div
                                         key={h}
-                                        className="absolute top-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
+                                        className={`absolute top-1/2 flex flex-col pointer-events-none ${
+                                            isFirst
+                                                ? 'items-start translate-x-0'
+                                                : isLast
+                                                    ? 'items-end -translate-x-full'
+                                                    : 'items-center -translate-x-1/2'
+                                        }`}
                                         style={{ left: `${pct}%` }}
                                     >
                                         <div
                                             className={`rounded-full -translate-y-1/2 ${
+                                                isFirst ? 'translate-x-1' : isLast ? '-translate-x-1' : ''
+                                            } ${
                                                 isMajor
                                                     ? 'w-[1.5px] h-3.5 bg-slate-500/80 dark:bg-slate-400/80'
                                                     : 'w-[1px] h-2 bg-slate-300 dark:bg-slate-600'
                                             }`}
                                         />
                                         {isMajor ? (
-                                            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-2 font-mono whitespace-nowrap">
+                                            <span className={`text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-2 font-mono whitespace-nowrap ${
+                                                isFirst ? 'pl-0.5' : isLast ? 'pr-0.5' : ''
+                                            }`}>
                                                 {displayHour}
                                             </span>
                                         ) : (
@@ -1770,20 +2005,18 @@ export default function VisualCorrectionTimeline({
                                             if (!editable) return;
                                             setHoveredSessionIdx(null);
                                         }}
-                                        className={`group absolute top-1/2 -translate-y-1/2 h-7 rounded-xl transition-all flex items-center justify-center ${
-                                            editable
-                                                ? `cursor-pointer ${
-                                                    isAuraHovered
-                                                        ? 'bg-gradient-to-r from-emerald-500/25 via-teal-500/25 to-indigo-500/25 border border-emerald-400 dark:border-emerald-400 shadow-xs ring-2 ring-emerald-400/20'
-                                                        : 'bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-indigo-500/15 border border-emerald-300/70 dark:border-emerald-500/40 hover:border-emerald-400'
+                                        className={`group absolute top-1/2 -translate-y-1/2 h-7 rounded-xl transition-all flex items-center justify-center ${editable
+                                                ? `cursor-pointer ${isAuraHovered
+                                                    ? 'bg-gradient-to-r from-emerald-500/25 via-teal-500/25 to-indigo-500/25 border border-emerald-400 dark:border-emerald-400 shadow-xs ring-2 ring-emerald-400/20'
+                                                    : 'bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-indigo-500/15 border border-emerald-300/70 dark:border-emerald-500/40 hover:border-emerald-400'
                                                 }`
                                                 : 'bg-gradient-to-r from-emerald-500/15 to-indigo-500/15 border border-emerald-200 dark:border-emerald-800/40 pointer-events-none'
-                                        }`}
+                                            }`}
                                         style={{ left: `${inPct}%`, width: `${spanWidth}%` }}
                                     >
                                         {/* Middle Hover Prompt to Drop Checkpoint */}
                                         {editable && (
-                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-10 whitespace-nowrap bg-slate-900 text-white text-[11px] font-medium px-2.5 py-0.5 rounded-lg shadow-md flex items-center gap-1 pointer-events-none z-30">
+                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-10 whitespace-nowrap bg-slate-900 text-white text-xs font-medium px-2.5 py-0.5 rounded-lg shadow-md flex items-center gap-1 pointer-events-none z-30">
                                                 <PlusCircle size={12} className="text-amber-400" />
                                                 <span>Click to Add Checkpoint</span>
                                             </div>
@@ -1806,7 +2039,7 @@ export default function VisualCorrectionTimeline({
                                         className="absolute top-1/2 -translate-y-1/2 h-6 rounded-lg bg-amber-500/10 border border-dashed border-amber-400/40 pointer-events-none transition-all flex items-center justify-end pr-2 z-10"
                                         style={{ left: `${inPct}%`, width: `${widthPct}%` }}
                                     >
-                                        <span className="text-[9px] font-medium text-amber-500 dark:text-amber-400 opacity-75 whitespace-nowrap hidden sm:inline">
+                                        <span className="text-xs font-medium text-amber-500 dark:text-amber-400 opacity-75 whitespace-nowrap hidden sm:inline">
                                             Awaiting Clock OUT
                                         </span>
                                     </div>
@@ -1829,7 +2062,7 @@ export default function VisualCorrectionTimeline({
                                         >
                                             {spanWidth >= 5 && (
                                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                                    <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow-xs bg-slate-900/90 text-rose-300 border border-rose-500/40 whitespace-nowrap">
+                                                    <span className="text-xs font-mono font-medium px-1.5 py-0.5 rounded shadow-xs bg-slate-900/90 text-rose-300 border border-rose-500/40 whitespace-nowrap">
                                                         {formatDuration(durMins)} • Click to set Clock OUT ({formatDisplayTime(minutesToTimeStr(hoveredMins))})
                                                     </span>
                                                 </div>
@@ -1862,7 +2095,7 @@ export default function VisualCorrectionTimeline({
                                         >
                                             {spanWidth >= 5 && (
                                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                                    <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow-xs bg-slate-900/90 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
+                                                    <span className="text-xs font-mono font-medium px-1.5 py-0.5 rounded shadow-xs bg-slate-900/90 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
                                                         {formatDuration(durMins)} • Click to set Clock IN ({formatDisplayTime(minutesToTimeStr(hoveredMins))})
                                                     </span>
                                                 </div>
@@ -1917,20 +2150,18 @@ export default function VisualCorrectionTimeline({
                                 return (
                                     <>
                                         <div
-                                            className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-xl border border-dashed pointer-events-none transition-all ${
-                                                collides
+                                            className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-xl border border-dashed pointer-events-none transition-all ${collides
                                                     ? 'bg-rose-500/20 border-rose-400 shadow-xs'
                                                     : 'bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-indigo-500/20 border-emerald-400 shadow-xs'
-                                            }`}
+                                                }`}
                                             style={{ left: `${sPct}%`, width: `${spanWidth}%` }}
                                         >
                                             {spanWidth >= 5 && (
                                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                                    <span className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded shadow-xs ${
-                                                        collides
+                                                    <span className={`text-xs font-mono font-medium px-1.5 py-0.5 rounded shadow-xs ${collides
                                                             ? 'bg-rose-900 text-rose-100 border border-rose-700'
                                                             : 'bg-slate-900/90 text-emerald-300 border border-emerald-500/40'
-                                                    }`}>
+                                                        }`}>
                                                         {collides ? 'Cannot overlap existing session' : `${formatDuration(durMins)} • Click to set ${hoveredMins > pendingSessionStart ? 'OUT' : 'IN'}`}
                                                     </span>
                                                 </div>
@@ -1941,13 +2172,12 @@ export default function VisualCorrectionTimeline({
                                             className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
                                             style={{ left: `${getPosPercent(hoveredMins)}%` }}
                                         >
-                                            <div className={`w-4 h-4 rounded-full border-2 border-white shadow-xs ring-2 ${
-                                                collides
+                                            <div className={`w-4 h-4 rounded-full border-2 border-white shadow-xs ring-2 ${collides
                                                     ? 'bg-rose-500 ring-rose-400/40'
                                                     : hoveredMins > pendingSessionStart
                                                         ? 'bg-rose-500 ring-rose-400/40'
                                                         : 'bg-emerald-500 ring-emerald-400/40'
-                                            }`} />
+                                                }`} />
                                         </div>
                                     </>
                                 );
@@ -1972,7 +2202,7 @@ export default function VisualCorrectionTimeline({
                                             <div className="w-1.5 h-1.5 rounded-full bg-white" />
                                         </div>
                                     </div>
-                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900 text-white text-[10px] font-mono font-medium px-2 py-0.5 rounded shadow-sm pointer-events-none z-40">
+                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900 text-white text-xs font-mono font-medium px-2 py-0.5 rounded shadow-sm pointer-events-none z-40">
                                         Start: {formatDisplayTime(minutesToTimeStr(pendingSessionStart))}
                                     </div>
                                 </div>
@@ -2003,11 +2233,10 @@ export default function VisualCorrectionTimeline({
                                 return (
                                     <div
                                         key={p.id}
-                                        className={`punch-handle absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 select-none ${
-                                            editable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                                        }`}
+                                        className={`punch-handle absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 select-none ${editable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                                            }`}
                                         style={{ left: `${pct}%` }}
-                                        title={editable ? (isNormal ? "Double-click to remove checkpoint, or drag along rail to adjust" : isNewSession ? "Double-click to remove session pair, or drag along rail to adjust" : "Double-click to remove, or drag along rail to adjust") : undefined}
+                                        title={editable ? (isNormal ? "Double-click to remove checkpoint, or drag along rail to adjust" : "Double-click to remove session, or drag along rail to adjust") : undefined}
                                         onPointerDown={(e) => {
                                             if (!editable) return;
                                             if (e.target.closest('input') || e.target.closest('button')) return;
@@ -2058,13 +2287,30 @@ export default function VisualCorrectionTimeline({
                                                         {isNormal ? 'CHECK:' : isIn ? 'IN:' : 'OUT:'}
                                                     </span>
                                                     <span>{formatDisplayTime(p.time)}</span>
+                                                    {p.isConvertedFromOrig ? (
+                                                        <span className="text-xs text-amber-300 font-sans border-l border-white/20 pl-1.5 ml-0.5">
+                                                            Original {p.origType === 'in' ? 'Clock IN' : 'Clock OUT'} (Converted Checkpoint)
+                                                        </span>
+                                                    ) : p.isAltered && p.origTime ? (
+                                                        <span className="text-xs text-indigo-300 font-sans border-l border-white/20 pl-1.5 ml-0.5">
+                                                            Altered from {formatDisplayTime(p.origTime)}
+                                                        </span>
+                                                    ) : null}
                                                     {editable && (
-                                                        <span className="text-[10px] text-slate-400 font-sans border-l border-white/20 pl-1.5 ml-0.5">
-                                                            {isNormal ? 'Double-click to remove checkpoint' : isNewSession ? 'Double-click to remove session pair' : 'Double-click to remove'}
+                                                        <span className="text-xs text-slate-400 font-sans border-l border-white/20 pl-1.5 ml-0.5">
+                                                            {p.isConvertedFromOrig
+                                                                ? 'Double-click to remove checkpoint'
+                                                                : isNormal
+                                                                    ? 'Double-click to remove checkpoint'
+                                                                    : punches.some(chk => chk.type === 'normal' && (chk.origKey === p.origKey || (chk.isConvertedFromOrig && chk.origType === p.type && chk.origTime === p.origTime)))
+                                                                        ? 'Double-click to restore original checkpoint'
+                                                                        : isNewSession
+                                                                            ? 'Double-click to remove session pair'
+                                                                            : 'Double-click to remove'}
                                                         </span>
                                                     )}
                                                     {isNormal && p.address && (
-                                                        <span className="text-[10px] text-amber-300/90 font-sans border-l border-white/20 pl-1.5 ml-0.5 truncate max-w-[130px]">
+                                                        <span className="text-xs text-amber-300/90 font-sans border-l border-white/20 pl-1.5 ml-0.5 truncate max-w-[130px]">
                                                             {p.address}
                                                         </span>
                                                     )}
@@ -2074,17 +2320,15 @@ export default function VisualCorrectionTimeline({
 
                                         {/* Punch Handle Circular Badge */}
                                         <div
-                                            className={`w-5 h-5 rounded-full border-2 border-white dark:border-dark-card shadow-md flex items-center justify-center transition-transform ${
-                                                isNormal ? 'bg-amber-500' : isIn ? 'bg-emerald-500' : 'bg-rose-500'
-                                            } ${
-                                                isDragging
+                                            className={`w-5 h-5 rounded-full border-2 border-white dark:border-dark-card shadow-md flex items-center justify-center transition-transform ${isNormal ? 'bg-amber-500' : isIn ? 'bg-emerald-500' : 'bg-rose-500'
+                                                } ${isDragging
                                                     ? 'scale-125 ring-4 ring-indigo-400/50'
                                                     : isThisDotHovered
                                                         ? 'scale-125 ring-4 ring-indigo-400/40'
                                                         : isSessionActive
                                                             ? 'scale-110 ring-2 ring-emerald-400/50'
                                                             : 'hover:scale-120'
-                                            }`}
+                                                }`}
                                         >
                                             <div className="w-1.5 h-1.5 rounded-full bg-white opacity-90" />
                                         </div>
@@ -2105,7 +2349,7 @@ export default function VisualCorrectionTimeline({
                             <button
                                 type="button"
                                 onClick={handleToggleSelectAll}
-                                className="text-xs font-normal text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                                className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                             >
                                 {selectedIds.size === punches.length ? (
                                     <CheckSquare size={14} className="text-emerald-600 dark:text-emerald-400" />
@@ -2119,7 +2363,7 @@ export default function VisualCorrectionTimeline({
                                 <button
                                     type="button"
                                     onClick={handleDeleteSelected}
-                                    className="text-xs font-normal text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800/40 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                                    className="text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800/40 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                                 >
                                     <Trash2 size={13} />
                                     <span>Delete Selected ({selectedIds.size})</span>
@@ -2130,7 +2374,7 @@ export default function VisualCorrectionTimeline({
                         <button
                             type="button"
                             onClick={handleClearAll}
-                            className="text-xs font-normal text-slate-400 hover:text-rose-500 transition-colors self-end sm:self-auto cursor-pointer"
+                            className="text-xs font-medium text-slate-400 hover:text-rose-500 transition-colors self-end sm:self-auto cursor-pointer"
                         >
                             Clear All Proposed
                         </button>
@@ -2138,116 +2382,124 @@ export default function VisualCorrectionTimeline({
 
                     {/* Single Punch Rows */}
                     <div className="space-y-2">
-                            {punches.map((p, idx) => {
-                                const isChecked = selectedIds.has(p.id);
-                                const punchSessionIdx = punchSessionMap.get(p.id);
-                                const session = proposedSessions.find(s => s.sessionIdx === punchSessionIdx);
-                                const isNewSession = isNewlyCreatedSession(session);
-                                const isSessionActive = hoveredSessionIdx !== null && punchSessionIdx !== undefined && hoveredSessionIdx === punchSessionIdx;
-                                const isDirectlyHovered = hoveredPunchId === p.id;
-                                const isIn = p.type === 'in';
-                                const isNormal = p.type === 'normal';
+                        {punches.map((p, idx) => {
+                            const isChecked = selectedIds.has(p.id);
+                            const punchSessionIdx = punchSessionMap.get(p.id);
+                            const session = proposedSessions.find(s => s.sessionIdx === punchSessionIdx);
+                            const isNewSession = isNewlyCreatedSession(session);
+                            const isSessionActive = hoveredSessionIdx !== null && punchSessionIdx !== undefined && hoveredSessionIdx === punchSessionIdx;
+                            const isDirectlyHovered = hoveredPunchId === p.id;
+                            const isIn = p.type === 'in';
+                            const isNormal = p.type === 'normal';
 
-                                return (
-                                    <div
-                                        key={p.id || idx}
-                                        onDoubleClick={() => handleRemovePunch(p.id)}
-                                        title={isNormal ? "Double-click to remove checkpoint" : isNewSession ? "Double-click to remove session pair" : "Double-click to remove punch"}
-                                        onMouseEnter={() => {
-                                            setHoveredPunchId(p.id);
-                                            if (punchSessionIdx !== undefined) {
-                                                setHoveredSessionIdx(punchSessionIdx);
-                                            }
-                                        }}
-                                        onMouseLeave={() => {
-                                            setHoveredPunchId(null);
-                                            setHoveredSessionIdx(null);
-                                        }}
-                                        className={`flex items-center justify-between p-2.5 rounded-xl transition-all border select-none ${
-                                            isChecked
-                                                ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-1 ring-emerald-400/30 shadow-xs'
-                                                : isDirectlyHovered
-                                                    ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/40 ring-1 ring-emerald-400/40 shadow-xs'
-                                                    : isSessionActive
-                                                        ? 'border-emerald-400/70 dark:border-emerald-500/50 bg-emerald-50/40 dark:bg-emerald-950/20 ring-1 ring-emerald-400/20 shadow-2xs'
-                                                        : 'bg-white dark:bg-dark-card border-slate-200 dark:border-github-dark-border shadow-2xs hover:border-slate-300 dark:hover:border-github-dark-border/80'
+                            return (
+                                <div
+                                    key={p.id || idx}
+                                    onMouseEnter={() => {
+                                        setHoveredPunchId(p.id);
+                                        if (punchSessionIdx !== undefined) {
+                                            setHoveredSessionIdx(punchSessionIdx);
+                                        }
+                                    }}
+                                    onMouseLeave={() => {
+                                        setHoveredPunchId(null);
+                                        setHoveredSessionIdx(null);
+                                    }}
+                                    className={`flex items-center justify-between p-2.5 rounded-xl transition-all border select-none ${isChecked
+                                            ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-1 ring-emerald-400/30 shadow-xs'
+                                            : isDirectlyHovered
+                                                ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/40 ring-1 ring-emerald-400/40 shadow-xs'
+                                                : isSessionActive
+                                                    ? 'border-emerald-400/70 dark:border-emerald-500/50 bg-emerald-50/40 dark:bg-emerald-950/20 ring-1 ring-emerald-400/20 shadow-2xs'
+                                                    : 'bg-white dark:bg-dark-card border-slate-200 dark:border-github-dark-border shadow-2xs hover:border-slate-300 dark:hover:border-github-dark-border/80'
                                         }`}
-                                    >
-                                        {/* Checkbox + Punch Info with Pixel-Perfect Alignment */}
-                                        <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleToggleSelect(p.id);
-                                                }}
-                                                onDoubleClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleRemovePunch(p.id);
-                                                }}
-                                                title={isNormal ? "Click to select, double-click to remove checkpoint" : isNewSession ? "Click to select, double-click to remove session pair" : "Click to select, double-click to remove punch"}
-                                                className="text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer shrink-0 w-4 flex justify-center"
-                                            >
-                                                {isChecked ? (
-                                                    <CheckSquare size={15} className="text-emerald-600 dark:text-emerald-400" />
-                                                ) : (
-                                                    <Square size={15} />
-                                                )}
-                                            </button>
-
-                                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400 w-16 shrink-0">
-                                                Punch #{idx + 1}
-                                            </span>
-
-                                            {/* Punch Type Badge - Consistent Width for Perfect Alignment */}
-                                            <span
-                                                onDoubleClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleRemovePunch(p.id);
-                                                }}
-                                                title={isNormal ? "Double-click to remove checkpoint" : isNewSession ? "Double-click to remove session pair" : "Double-click to remove punch"}
-                                                className={`w-28 shrink-0 text-xs font-normal rounded-lg px-2 py-1 border inline-flex items-center justify-center gap-1.5 text-center cursor-pointer ${
-                                                    isNormal
-                                                        ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
-                                                        : isIn
-                                                            ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40'
-                                                            : 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/40'
-                                                }`}
-                                            >
-                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isNormal ? 'bg-amber-500' : isIn ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                                                <span>{isNormal ? 'Checkpoint' : isIn ? 'Clock IN' : 'Clock OUT'}</span>
-                                            </span>
-
-                                            {/* Direct Editable Time Input - Lets User Type Directly Without Dropdowns */}
-                                            <div className="w-20 sm:w-24 shrink-0">
-                                                <DirectTimeInput
-                                                    value={p.time || ''}
-                                                    onChange={(newTime) => handleTimeChange(p.id, newTime)}
-                                                />
-                                            </div>
-
-                                            {/* Location / address snippet for checkpoints if available */}
-                                            {isNormal && p.address && (
-                                                <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate max-w-[130px] sm:max-w-[180px] hidden sm:inline" title={p.address}>
-                                                    • {p.address}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {/* 1-Click Cross Button to Delete */}
+                                >
+                                    {/* Checkbox + Punch Info with Pixel-Perfect Alignment */}
+                                    <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
                                         <button
                                             type="button"
-                                            onClick={() => handleRemovePunch(p.id)}
-                                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all flex items-center justify-center cursor-pointer shrink-0"
-                                            title={isNormal ? "Delete checkpoint" : isNewSession ? "Delete session pair" : "Delete punch"}
-                                            aria-label={isNormal ? "Delete checkpoint" : isNewSession ? "Delete session pair" : "Delete punch"}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleToggleSelect(p.id);
+                                            }}
+                                            title="Click to select"
+                                            className="text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer shrink-0 w-4 flex justify-center"
                                         >
-                                            <X size={15} />
+                                            {isChecked ? (
+                                                <CheckSquare size={15} className="text-emerald-600 dark:text-emerald-400" />
+                                            ) : (
+                                                <Square size={15} />
+                                            )}
                                         </button>
+
+                                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400 w-16 shrink-0">
+                                            Punch #{idx + 1}
+                                        </span>
+
+                                        {/* Punch Type Badge - Consistent Width for Perfect Alignment */}
+                                        <span
+                                            title={isNormal ? (p.isConvertedFromOrig ? "Original recorded punch converted to checkpoint" : "Checkpoint") : (p.isAltered ? "Altered punch time" : (isIn ? "Clock IN" : "Clock OUT"))}
+                                            className={`w-28 shrink-0 text-xs font-medium rounded-lg px-2 py-1 border inline-flex items-center justify-center gap-1.5 text-center ${isNormal
+                                                    ? (p.isConvertedFromOrig
+                                                        ? 'bg-amber-100/70 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/60 ring-1 ring-amber-400/30'
+                                                        : 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40')
+                                                    : isIn
+                                                        ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40'
+                                                        : 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/40'
+                                                }`}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isNormal ? 'bg-amber-500' : isIn ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                            <span>{isNormal ? (p.isConvertedFromOrig ? (p.origType === 'in' ? 'Orig IN Chk' : 'Orig OUT Chk') : 'Checkpoint') : isIn ? 'Clock IN' : 'Clock OUT'}</span>
+                                        </span>
+
+                                        {/* Direct Editable Time Input - Lets User Type Directly Without Dropdowns */}
+                                        <div className="w-20 sm:w-24 shrink-0">
+                                            <DirectTimeInput
+                                                value={p.time || ''}
+                                                onChange={(newTime) => handleTimeChange(p.id, newTime)}
+                                            />
+                                        </div>
+
+                                        {/* Location / address snippet for checkpoints if available */}
+                                        {isNormal && p.address && (
+                                            <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[130px] sm:max-w-[180px] hidden sm:inline" title={p.address}>
+                                                • {p.address}
+                                            </span>
+                                        )}
                                     </div>
-                                );
-                            })}
-                        </div>
+
+                                    {/* 1-Click Cross Button to Delete */}
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemovePunch(p.id)}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all flex items-center justify-center cursor-pointer shrink-0"
+                                        title={
+                                            p.isConvertedFromOrig
+                                                ? "Remove converted checkpoint"
+                                                : isNormal
+                                                    ? "Delete checkpoint"
+                                                    : punches.some(chk => chk.type === 'normal' && (chk.origKey === p.origKey || (chk.isConvertedFromOrig && chk.origType === p.type && chk.origTime === p.origTime)))
+                                                        ? "Remove altered time (restores original checkpoint)"
+                                                        : isNewSession
+                                                            ? "Delete session pair"
+                                                            : "Delete punch"
+                                        }
+                                        aria-label={
+                                            p.isConvertedFromOrig
+                                                ? "Delete converted checkpoint"
+                                                : isNormal
+                                                    ? "Delete checkpoint"
+                                                    : isNewSession
+                                                        ? "Delete session pair"
+                                                        : "Delete punch"
+                                        }
+                                    >
+                                        <X size={15} />
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 
@@ -2260,7 +2512,7 @@ export default function VisualCorrectionTimeline({
                             Summary Override (Direct Lateness / Hours Waiver)
                         </span>
                     </div>
-                    <span className="font-mono font-normal text-amber-600 dark:text-amber-400">
+                    <span className="font-mono font-medium text-amber-600 dark:text-amber-400">
                         Late Mins: {requestData?.proposed_data?.late_minutes ?? 0}m
                     </span>
                 </div>

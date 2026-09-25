@@ -314,26 +314,6 @@ const MobileAttendanceMonitoring = () => {
     const [activeTheme, setActiveTheme] = useState('voyager');
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
 
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const tab = params.get('tab');
-        const reqId = Number(params.get('requestId') || params.get('acr_id') || params.get('id'));
-        if (tab === 'requests') {
-            setActiveTab('requests');
-        } else if (tab === 'dashboard' || tab === 'live') {
-            setActiveTab('dashboard');
-        }
-        if (reqId && correctionRequests.length > 0) {
-            const targetReq = correctionRequests.find(r => Number(r.acr_id) === reqId || Number(r.id) === reqId);
-            if (targetReq) {
-                setSelectedRequest(targetReq);
-                if (targetReq.status && targetReq.status.toUpperCase() !== 'PENDING') {
-                    setRequestSubTab('HISTORY');
-                }
-            }
-        }
-    }, [window.location.search, correctionRequests]);
-
     // Data State
     const [attendanceData, setAttendanceData] = useState(() => {
         if (cachedResponse?.data) {
@@ -378,6 +358,26 @@ const MobileAttendanceMonitoring = () => {
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
     const [shifts, setShifts] = useState([]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        const reqId = Number(params.get('requestId') || params.get('acr_id') || params.get('id'));
+        if (tab === 'requests') {
+            setActiveTab('requests');
+        } else if (tab === 'dashboard' || tab === 'live') {
+            setActiveTab('dashboard');
+        }
+        if (reqId && correctionRequests.length > 0) {
+            const targetReq = correctionRequests.find(r => Number(r.acr_id) === reqId || Number(r.id) === reqId);
+            if (targetReq) {
+                setSelectedRequest(targetReq);
+                if (targetReq.status && targetReq.status.toUpperCase() !== 'PENDING') {
+                    setRequestSubTab('HISTORY');
+                }
+            }
+        }
+    }, [window.location.search, correctionRequests]);
 
     useEffect(() => {
         const fetchDepts = async () => {

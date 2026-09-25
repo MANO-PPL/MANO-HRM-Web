@@ -214,7 +214,7 @@ ChartJS.register(
     Filler
 );
 
-const ThemedSelect = ({ label, value, options, onChange, className = '' }) => {
+const ThemedSelect = ({ label, value, options, onChange, className = '', labelClassName = '', buttonClassName = '' }) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef(null);
 
@@ -233,7 +233,7 @@ const ThemedSelect = ({ label, value, options, onChange, className = '' }) => {
     return (
         <div className={`space-y-1.5 ${className}`} ref={containerRef}>
             {label && (
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                <label className={labelClassName || "block text-xs font-medium text-slate-600 dark:text-slate-300"}>
                     {label}
                 </label>
             )}
@@ -241,10 +241,10 @@ const ThemedSelect = ({ label, value, options, onChange, className = '' }) => {
                 <button
                     type="button"
                     onClick={() => setIsOpen(!isOpen)}
-                    className="w-full h-11 px-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl flex items-center justify-between text-slate-700 dark:text-slate-200 text-sm font-normal transition-all hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.99] shadow-sm select-none cursor-pointer group"
+                    className={buttonClassName || "w-full h-11 px-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl flex items-center justify-between text-slate-700 dark:text-slate-200 text-sm font-normal transition-all hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.99] shadow-sm select-none cursor-pointer group"}
                 >
                     <span className="truncate">{selectedOption ? selectedOption.label : 'Select...'}</span>
-                    <ChevronDown size={14} className={`text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`} />
+                    <ChevronDown size={16} className={`text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`} />
                 </button>
 
                 <AnimatePresence>
@@ -594,6 +594,20 @@ const Attendance = () => {
         },
     ], []);
 
+    // Shift deadline & allowed date bounds (moved up so URL params & tab navigation can validate against it)
+    const correctionDeadlineDays = useMemo(() => {
+        return myShift?.rules?.correction_deadline ?? 30;
+    }, [myShift]);
+
+    const minAllowedCorrectionDate = useMemo(() => {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - correctionDeadlineDays);
+        return getLocalDateString(cutoff);
+    }, [correctionDeadlineDays]);
+
+    const maxAllowedCorrectionDate = useMemo(() => {
+        return getLocalDateString();
+    }, []);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -607,13 +621,20 @@ const Attendance = () => {
         if (sTab) {
             setSubTab(sTab);
         }
-        if (openDrawer === 'true') {
+        if (date) {
+            if (minAllowedCorrectionDate && date < minAllowedCorrectionDate) {
+                toast.error(`Correction requests can only be submitted within ${correctionDeadlineDays} days of the attendance date.`);
+                setIsCorrectionDrawerOpen(false);
+            } else {
+                setCorrDate(date);
+                if (openDrawer === 'true') {
+                    setIsCorrectionDrawerOpen(true);
+                }
+            }
+        } else if (openDrawer === 'true') {
             setIsCorrectionDrawerOpen(true);
         }
-        if (date) {
-            setCorrDate(date);
-        }
-    }, [window.location.search]);
+    }, [window.location.search, minAllowedCorrectionDate, correctionDeadlineDays]);
 
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('mano-active-tab', {
@@ -844,21 +865,6 @@ const Attendance = () => {
         return [];
     }, []);
 
-    // Shift deadline & allowed date bounds
-    const correctionDeadlineDays = useMemo(() => {
-        return myShift?.rules?.correction_deadline ?? 2;
-    }, [myShift]);
-
-    const minAllowedCorrectionDate = useMemo(() => {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - correctionDeadlineDays);
-        return getLocalDateString(cutoff);
-    }, [correctionDeadlineDays]);
-
-    const maxAllowedCorrectionDate = useMemo(() => {
-        return getLocalDateString();
-    }, []);
-
     const handleSessionChange = (index, field, val) => {
         setCorrSessions(prev => {
             const copy = [...prev];
@@ -1011,10 +1017,10 @@ const Attendance = () => {
                 const todayMidnight = new Date(today);
                 todayMidnight.setHours(0, 0, 0, 0);
 
-                // Check only previous 30 days
-                const thirtyDaysAgo = new Date(todayMidnight);
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                const thirtyDaysAgoStr = getLocalDateString(thirtyDaysAgo);
+                // Real per-shift correction deadline cutoff (matches submission gate)
+                const deadlineCutoff = new Date(todayMidnight);
+                deadlineCutoff.setDate(deadlineCutoff.getDate() - correctionDeadlineDays);
+                const deadlineCutoffStr = getLocalDateString(deadlineCutoff);
 
                 const missedDates = [];
                 let hasTodayActiveSession = false;
@@ -1044,10 +1050,16 @@ const Attendance = () => {
                         // If unclosed session started within the last 24 hours and not absent/rejected, it is ACTIVE
                         if (hoursSinceIn < 24 && !['ABSENT', 'REJECTED'].includes(session.status)) {
                             hasTodayActiveSession = true;
-                        } else if (sessionDateStr < todayDateStr && hoursSinceIn >= 24 && sessionDateStr >= thirtyDaysAgoStr) {
-                            // PAST DATE missed checkout within previous 30 days
+                        } else if (sessionDateStr < todayDateStr && hoursSinceIn >= 24 && sessionDateStr >= deadlineCutoffStr) {
+                            // PAST DATE missed checkout within shift correction deadline window
                             if (!['ABSENT', 'REJECTED'].includes(session.status)) {
-                                missedDates.push(sessionDateStr);
+                                const alreadySubmitted = activeCorrections.some(c => {
+                                    const reqDateStr = c.request_date ? String(c.request_date).split('T')[0] : '';
+                                    return reqDateStr === sessionDateStr && ['pending', 'approved'].includes((c.status || '').toLowerCase());
+                                });
+                                if (!alreadySubmitted) {
+                                    missedDates.push(sessionDateStr);
+                                }
                             }
                         }
                     }
@@ -1879,14 +1891,14 @@ const Attendance = () => {
 
         // Client-side pre-check only (UX convenience, so the picker/toast catch this before a
         // round-trip) — the backend's own check in correctionsService.js is the real gate.
-        const deadlineDays = myShift?.rules?.correction_deadline ?? 2;
+        const deadlineDays = myShift?.rules?.correction_deadline ?? 30;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const reqDate = new Date(corrDate);
         reqDate.setHours(0, 0, 0, 0);
         const diffDays = Math.ceil((today - reqDate) / (1000 * 60 * 60 * 24));
 
-        if (diffDays > deadlineDays) {
+        if ((minAllowedCorrectionDate && corrDate < minAllowedCorrectionDate) || diffDays > deadlineDays) {
             toast.error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
             return;
         }
@@ -1936,8 +1948,19 @@ const Attendance = () => {
                         ...(s.address ? { address: s.address } : {})
                     };
                 });
+            } else if (original_data && original_data.length > 0) {
+                // If user didn't open advanced options, preserve originally recorded punches as starting punch baseline
+                proposed_data = original_data.map(s => {
+                    const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                    return {
+                        ...(s.time_in ? { time_in: s.time_in } : {}),
+                        ...(s.time_out && !isChk ? { time_out: s.time_out } : {}),
+                        punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                        ...(s.address ? { address: s.address } : {})
+                    };
+                });
             } else {
-                // Advanced custom punch timeline was not used - submit with remarks only
+                // Advanced custom punch timeline was not used and no original punches
                 proposed_data = [];
             }
 
@@ -2698,6 +2721,8 @@ const Attendance = () => {
                             setActiveTab={setActiveTab}
                             setSubTab={setSubTab}
                             setIsCorrectionDrawerOpen={setIsCorrectionDrawerOpen}
+                            minAllowedCorrectionDate={minAllowedCorrectionDate}
+                            correctionDeadlineDays={correctionDeadlineDays}
                             calendarRef={calendarRef}
                             showCalendar={showCalendar}
                             setShowCalendar={setShowCalendar}
@@ -2794,6 +2819,8 @@ const Attendance = () => {
                                     loadCorrectionDataForDate={loadCorrectionDataForDate}
                                     handleOpenCheckpointModal={handleOpenCheckpointModal}
                                     setSubTab={setSubTab}
+                                    minAllowedCorrectionDate={minAllowedCorrectionDate}
+                                    correctionDeadlineDays={correctionDeadlineDays}
                                 />
                             )}
 
@@ -2859,12 +2886,7 @@ const Attendance = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => !submitLoading && setShowConfirmSubmit(false)}
-                                            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer"
-                                        >
-                                            <X size={18} />
-                                        </button>
+                                        
                                     </div>
 
                                     <div className="p-6 space-y-5">
@@ -3099,23 +3121,23 @@ const Attendance = () => {
                                     {/* Drawer Header */}
                                     <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-gradient-to-r from-indigo-50/50 via-white to-transparent dark:from-github-dark-bg/60 dark:via-github-dark-subtle dark:to-transparent">
                                         <div className="flex items-center gap-3.5">
-                                            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20 shrink-0">
-                                                <FileClock size={22} />
+                                            <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20 shrink-0">
+                                                <FileClock size={24} />
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2.5">
-                                                    <h3 className="text-lg sm:text-xl font-semibold text-slate-800 dark:text-github-dark-text tracking-tight">Attendance Correction</h3>
+                                                    <h3 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-github-dark-text tracking-tight">Attendance Correction</h3>
                                                     {pendingRequestId ? (
-                                                        <span className="text-xs font-normal bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-800/40">
+                                                        <span className="text-xs sm:text-sm font-semibold bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-3 py-1 rounded-full border border-amber-200/60 dark:border-amber-800/40">
                                                             Editing #{pendingRequestId}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2.5 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/40">
+                                                        <span className="text-xs sm:text-sm font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded-full border border-indigo-200/60 dark:border-indigo-800/40">
                                                             Request Correction
                                                         </span>
                                                     )}
                                                 </div>
-                                                <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">
+                                                <p className="text-sm font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">
                                                     Submit or adjust punches for manager review
                                                 </p>
                                             </div>
@@ -3125,7 +3147,7 @@ const Attendance = () => {
                                             className="p-2.5 rounded-xl bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all active:scale-90 cursor-pointer"
                                             title="Close drawer"
                                         >
-                                            <X size={18} />
+                                            <X size={20} />
                                         </button>
                                     </div>
 
@@ -3136,28 +3158,28 @@ const Attendance = () => {
                                             {pendingRequestId && (
                                                 <div className="p-4 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 rounded-2xl flex items-center justify-between shadow-2xs">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                                                            <Edit3 size={15} />
+                                                        <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                            <Edit3 size={16} />
                                                         </div>
                                                         <div>
-                                                            <p className="text-xs font-medium text-indigo-950 dark:text-indigo-200">
+                                                            <p className="text-sm font-semibold text-indigo-950 dark:text-indigo-200">
                                                                 Updating Existing Pending Request #{pendingRequestId}
                                                             </p>
-                                                            <p className="text-xs font-normal text-indigo-700/80 dark:text-indigo-300/80">
+                                                            <p className="text-xs sm:text-sm font-normal text-indigo-700/80 dark:text-indigo-300/80">
                                                                 Your changes will update this pending request in-place without creating a duplicate.
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    <span className="text-xs font-medium bg-indigo-200/60 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-2.5 py-1 rounded-lg">
+                                                    <span className="text-xs sm:text-sm font-semibold bg-indigo-200/60 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-3 py-1 rounded-lg">
                                                         In-Place
                                                     </span>
                                                 </div>
                                             )}
 
                                             {/* Date & Category Grid - Perfectly Aligned */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                                                 <div data-tour-id="att-correction-date" className="space-y-1.5">
-                                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                    <label className="block text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100">
                                                         Adjustment Date
                                                     </label>
                                                     <div className="relative z-[130]">
@@ -3169,6 +3191,7 @@ const Attendance = () => {
                                                             }}
                                                             minDate={minAllowedCorrectionDate}
                                                             maxDate={maxAllowedCorrectionDate}
+                                                            triggerClassName="h-12 px-4 text-base font-medium bg-white dark:bg-dark-card hover:bg-slate-50 dark:hover:bg-slate-800"
                                                         />
                                                     </div>
                                                 </div>
@@ -3176,6 +3199,8 @@ const Attendance = () => {
                                                 <div data-tour-id="att-correction-type">
                                                     <ThemedSelect
                                                         label="Correction Category"
+                                                        labelClassName="block text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100"
+                                                        buttonClassName="w-full h-12 px-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl flex items-center justify-between text-slate-800 dark:text-slate-100 text-base font-medium transition-all hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.99] shadow-sm select-none cursor-pointer group"
                                                         value={corrType}
                                                         onChange={(val) => setCorrType(val)}
                                                         options={[
@@ -3193,7 +3218,7 @@ const Attendance = () => {
                                                     animate={{ opacity: 1, y: 0 }}
                                                     className="space-y-1.5"
                                                 >
-                                                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                    <label className="block text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100">
                                                         Specify Other Category
                                                     </label>
                                                     <input
@@ -3201,32 +3226,32 @@ const Attendance = () => {
                                                         placeholder="e.g., Biometric sensor failure, Travel exception..."
                                                         value={corrOtherType}
                                                         onChange={(e) => setCorrOtherType(e.target.value)}
-                                                        className="w-full h-11 px-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl text-sm font-normal text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                                                        className="w-full h-12 px-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl text-base font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
                                                         required
                                                     />
                                                 </motion.div>
                                             )}
 
                                             {/* Original Attendance Context Card */}
-                                            <div className="p-4 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3.5">
+                                            <div className="p-4.5 sm:p-5 bg-slate-50/70 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3.5">
                                                 <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <History size={15} className="text-slate-400" />
-                                                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <History size={18} className="text-slate-400" />
+                                                        <span className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100">
                                                             Originally Logged on {formatCorrectionDate(corrDate)}
                                                         </span>
                                                     </div>
                                                     {originalSessions.length === 0 ? (
-                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40">
+                                                        <span className="text-xs sm:text-sm font-semibold px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40">
                                                             No Punches Recorded
                                                         </span>
                                                     ) : originalSessions.some(s => s.time_in && !s.time_out) ? (
-                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center gap-1.5">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                        <span className="text-xs sm:text-sm font-semibold px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center gap-2">
+                                                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                                                             Active Session
                                                         </span>
                                                     ) : (
-                                                        <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
+                                                        <span className="text-xs sm:text-sm font-semibold px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
                                                             {originalSessions.length} Session{originalSessions.length > 1 ? 's' : ''} Recorded
                                                         </span>
                                                     )}
@@ -3234,50 +3259,50 @@ const Attendance = () => {
 
                                                 {/* Text Stating Each Session and Checkpoints */}
                                                 {originalSessions.length > 0 ? (
-                                                    <div className="space-y-2 pt-0.5">
+                                                    <div className="space-y-3 pt-0.5">
                                                         {originalSessions.map((s, idx) => {
                                                             const isActive = Boolean(s.time_in && !s.time_out);
                                                             const checkpointsList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
                                                             return (
-                                                                <div key={idx} className="bg-white dark:bg-github-dark-subtle/80 p-3 rounded-xl border border-slate-200/70 dark:border-github-dark-border/60 space-y-2">
-                                                                    <div className="flex items-center justify-between text-xs">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}`} />
-                                                                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                                                                <div key={idx} className="bg-white dark:bg-github-dark-subtle/80 p-4 rounded-xl border border-slate-200/80 dark:border-github-dark-border/60 space-y-3">
+                                                                    <div className="flex items-center justify-between text-base">
+                                                                        <div className="flex items-center gap-2.5">
+                                                                            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}`} />
+                                                                            <span className="font-bold text-slate-900 dark:text-slate-100 text-base">
                                                                                 Session #{idx + 1}
                                                                             </span>
                                                                             {isActive && (
-                                                                                <span className="text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
+                                                                                <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
                                                                                     In Progress
                                                                                 </span>
                                                                             )}
                                                                         </div>
-                                                                        <div className="flex items-center gap-2 font-mono text-xs">
-                                                                            <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-slate-400"}>
+                                                                        <div className="flex items-center gap-2.5 font-mono text-base font-bold">
+                                                                            <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}>
                                                                                 {s.time_in ? formatTime(`2000-01-01T${s.time_in}:00`) : 'Missing In'}
                                                                             </span>
-                                                                            <span className="text-slate-400">→</span>
-                                                                            <span className={s.time_out ? "text-rose-600 dark:text-rose-400 font-medium" : "text-amber-500 dark:text-amber-400 italic"}>
+                                                                            <span className="text-slate-400 font-bold">→</span>
+                                                                            <span className={s.time_out ? "text-rose-600 dark:text-rose-400" : "text-amber-500 dark:text-amber-400 italic"}>
                                                                                 {s.time_out ? formatTime(`2000-01-01T${s.time_out}:00`) : 'Not Clocked Out'}
                                                                             </span>
                                                                             {s.time_in && s.time_out && (
-                                                                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md ml-1">
+                                                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-github-dark-bg px-2.5 py-1 rounded-md ml-1">
                                                                                     {calculateSessionDurationHours(s.time_in, s.time_out).toFixed(1)} hrs
                                                                                 </span>
                                                                             )}
                                                                         </div>
                                                                     </div>
 
-                                                                    {/* Checkpoints shown compactly without taking much space */}
+                                                                    {/* Checkpoints shown compactly with prominent scale */}
                                                                     {checkpointsList.length > 0 && (
-                                                                        <div className="pt-2 border-t border-slate-100 dark:border-github-dark-border/60">
-                                                                            <div className="flex items-center gap-1.5 mb-1.5">
-                                                                                <MapPin size={12} className="text-amber-500 shrink-0" />
-                                                                                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                                        <div className="pt-2.5 border-t border-slate-100 dark:border-github-dark-border/60">
+                                                                            <div className="flex items-center gap-2 mb-2">
+                                                                                <MapPin size={15} className="text-amber-500 shrink-0" />
+                                                                                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
                                                                                     Checkpoints ({checkpointsList.length})
                                                                                 </span>
                                                                             </div>
-                                                                            <div className="flex flex-wrap gap-1.5">
+                                                                            <div className="flex flex-wrap gap-2">
                                                                                 {checkpointsList.map((chk, cIdx) => {
                                                                                     const selfieUrl = chk.image_url || chk.image;
                                                                                     const chkTime = chk.punch_time ? (formatTime ? formatTime(chk.punch_time, null, false) : formatLocalTimeString(chk.punch_time)) : (chk.time || `Point #${cIdx + 1}`);
@@ -3286,18 +3311,18 @@ const Attendance = () => {
                                                                                         <div
                                                                                             key={chk.id || cIdx}
                                                                                             onClick={() => selfieUrl && setPreviewImage(selfieUrl)}
-                                                                                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/40 ${selfieUrl ? 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40' : ''}`}
+                                                                                            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold bg-amber-50/80 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/40 ${selfieUrl ? 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40' : ''}`}
                                                                                             title={chk.address || (selfieUrl ? 'Click to view photo' : undefined)}
                                                                                         >
                                                                                             {selfieUrl ? (
-                                                                                                <Camera size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                                                                                <Camera size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
                                                                                             ) : (
-                                                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                                                                                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
                                                                                             )}
-                                                                                            <span className="font-medium">#{cIdx + 1}</span>
-                                                                                            <span className="font-mono text-[10px] text-amber-700/80 dark:text-amber-400/80">{chkTime}</span>
+                                                                                            <span>#{cIdx + 1}</span>
+                                                                                            <span className="font-mono text-xs sm:text-sm font-semibold text-amber-800 dark:text-amber-300">{chkTime}</span>
                                                                                             {locLabel && (
-                                                                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[110px] truncate">
+                                                                                                <span className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 max-w-[170px] truncate">
                                                                                                     • {locLabel}
                                                                                                 </span>
                                                                                             )}
@@ -3312,7 +3337,7 @@ const Attendance = () => {
                                                         })}
                                                     </div>
                                                 ) : (
-                                                    <p className="text-xs text-slate-400 dark:text-slate-400 font-normal py-0.5">
+                                                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400 py-0.5">
                                                         No mobile or biometric punches found for this date. Enter your requested session times below.
                                                     </p>
                                                 )}
@@ -3320,7 +3345,7 @@ const Attendance = () => {
 
                                             {/* Reason Field */}
                                             <div className="space-y-2">
-                                                <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                <label className="block text-base font-bold text-slate-800 dark:text-slate-100">
                                                     Reason <span className="text-rose-500 font-bold">*</span>
                                                 </label>
 
@@ -3341,7 +3366,7 @@ const Attendance = () => {
                                                             }
                                                         }
                                                     }}
-                                                    className={`relative flex items-center gap-2.5 bg-white dark:bg-dark-card border rounded-xl px-3 py-2 min-h-[44px] shadow-2xs transition-all ${isDraggingFile
+                                                    className={`relative flex items-center gap-3 bg-white dark:bg-dark-card border rounded-xl px-4 py-3 min-h-[52px] shadow-2xs transition-all ${isDraggingFile
                                                             ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/30'
                                                             : 'border-slate-200 dark:border-github-dark-border focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500'
                                                         }`}
@@ -3357,7 +3382,7 @@ const Attendance = () => {
                                                         }}
                                                         placeholder="Write your message or reason for adjustment..."
                                                         rows={1}
-                                                        className="flex-1 bg-transparent text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none resize-none min-h-[22px] max-h-32 py-0 px-0 leading-5"
+                                                        className="flex-1 bg-transparent text-base font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 placeholder:text-base focus:outline-none resize-none min-h-[30px] max-h-36 py-0.5 px-0 leading-6"
                                                         required
                                                     />
 
@@ -3383,10 +3408,10 @@ const Attendance = () => {
                                                     <button
                                                         type="button"
                                                         onClick={() => corrFileInputRef.current?.click()}
-                                                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer shrink-0 flex items-center justify-center"
                                                         title="Attach document, doctor's slip, or proof file"
                                                     >
-                                                        <Paperclip size={18} />
+                                                        <Paperclip size={20} />
                                                     </button>
                                                 </div>
 
@@ -3394,39 +3419,39 @@ const Attendance = () => {
                                                 {(corrAttachment || existingAttachmentUrl) && (
                                                     <div className="space-y-2">
                                                         {corrAttachment && (
-                                                            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border text-xs">
-                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border text-sm">
+                                                                <div className="flex items-center gap-3 min-w-0">
                                                                     {corrAttachmentPreview ? (
                                                                         <img
                                                                             src={corrAttachmentPreview}
                                                                             alt="Attachment Preview"
-                                                                            className="w-9 h-9 object-cover rounded-lg border border-slate-200 dark:border-github-dark-border cursor-pointer hover:opacity-80 transition-opacity"
+                                                                            className="w-11 h-11 object-cover rounded-lg border border-slate-200 dark:border-github-dark-border cursor-pointer hover:opacity-80 transition-opacity"
                                                                             onClick={() => setPreviewImage(corrAttachmentPreview)}
                                                                             title="Click to view full image"
                                                                         />
                                                                     ) : (
-                                                                        <div className="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                                                                            <FileText size={18} />
+                                                                        <div className="w-11 h-11 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                                            <FileText size={20} />
                                                                         </div>
                                                                     )}
                                                                     <div className="min-w-0">
-                                                                        <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px] sm:max-w-[300px]">
+                                                                        <p className="text-base font-bold text-slate-800 dark:text-slate-200 truncate max-w-[220px] sm:max-w-[340px]">
                                                                             {corrAttachment.name}
                                                                         </p>
-                                                                        <p className="text-[10px] text-slate-400 font-mono">
+                                                                        <p className="text-xs text-slate-400 font-mono mt-0.5">
                                                                             {(corrAttachment.size / 1024).toFixed(1)} KB • Document
                                                                         </p>
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                                <div className="flex items-center gap-2 shrink-0">
                                                                     {corrAttachmentPreview && (
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => setPreviewImage(corrAttachmentPreview)}
-                                                                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-github-dark-border text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                                                                            className="p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-github-dark-border text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                                                                             title="Preview file"
                                                                         >
-                                                                            <Eye size={14} />
+                                                                            <Eye size={16} />
                                                                         </button>
                                                                     )}
                                                                     <button
@@ -3435,36 +3460,36 @@ const Attendance = () => {
                                                                             setCorrAttachment(null);
                                                                             setCorrAttachmentPreview(null);
                                                                         }}
-                                                                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 transition-colors cursor-pointer"
+                                                                        className="p-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 transition-colors cursor-pointer"
                                                                         title="Remove file"
                                                                     >
-                                                                        <Trash2 size={14} />
+                                                                        <Trash2 size={16} />
                                                                     </button>
                                                                 </div>
-                                                            </div>
+                                                             </div>
                                                         )}
 
                                                         {existingAttachmentUrl && !corrAttachment && (
-                                                            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border text-xs">
-                                                                <div className="flex items-center gap-2 min-w-0">
-                                                                    <Paperclip size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-                                                                    <span className="truncate font-medium text-slate-700 dark:text-slate-300">Existing attached proof</span>
+                                                            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border text-sm">
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <Paperclip size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                                                    <span className="truncate font-bold text-slate-800 dark:text-slate-200">Existing attached proof</span>
                                                                 </div>
-                                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                                <div className="flex items-center gap-2 shrink-0">
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setPreviewImage(existingAttachmentUrl)}
-                                                                        className="text-xs font-semibold underline text-indigo-600 dark:text-indigo-400 hover:opacity-80 flex items-center gap-1 cursor-pointer"
+                                                                        className="text-sm font-bold underline text-indigo-600 dark:text-indigo-400 hover:opacity-80 flex items-center gap-1.5 cursor-pointer"
                                                                     >
-                                                                        <Eye size={12} /> View
+                                                                        <Eye size={14} /> View
                                                                     </button>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setExistingAttachmentUrl(null)}
-                                                                        className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                                                                        className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
                                                                         title="Remove existing file"
                                                                     >
-                                                                        <Trash2 size={13} />
+                                                                        <Trash2 size={15} />
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -3478,33 +3503,33 @@ const Attendance = () => {
                                                 <button
                                                     type="button"
                                                     onClick={() => setShowAdvancedOptions(prev => !prev)}
-                                                    className="w-full px-5 py-3.5 flex items-center justify-between text-left hover:bg-slate-100/60 dark:hover:bg-github-dark-bg/60 transition-colors cursor-pointer"
+                                                    className="w-full px-5.5 py-4 flex items-center justify-between text-left hover:bg-slate-100/60 dark:hover:bg-github-dark-bg/60 transition-colors cursor-pointer"
                                                 >
-                                                    <div className="flex items-center gap-2.5">
-                                                        <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                                                            <Clock size={15} />
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                            <Clock size={17} />
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <span className="text-base font-bold text-slate-800 dark:text-slate-100">
                                                                 Advanced
                                                             </span>
-                                                            <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-200 dark:bg-github-dark-border text-slate-600 dark:text-slate-300">
+                                                            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-github-dark-border text-slate-600 dark:text-slate-300">
                                                                 Optional
                                                             </span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3">
                                                         {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
-                                                            <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-200/60 dark:border-emerald-800/40">
+                                                            <span className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-200/60 dark:border-emerald-800/40">
                                                                 {totalProposedHours.toFixed(2)} hrs
                                                             </span>
                                                         ) : (
-                                                            <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-github-dark-border/60">
+                                                            <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-github-dark-bg px-2.5 py-1 rounded-md border border-slate-200/60 dark:border-github-dark-border/60">
                                                                 Not Set (Optional)
                                                             </span>
                                                         )}
                                                         <div className={`transition-transform duration-200 ${showAdvancedOptions ? 'rotate-180' : 'rotate-0'}`}>
-                                                            <ChevronDown size={18} className="text-slate-400" />
+                                                            <ChevronDown size={20} className="text-slate-400" />
                                                         </div>
                                                     </div>
                                                 </button>
@@ -3515,17 +3540,17 @@ const Attendance = () => {
                                                             initial={{ height: 0, opacity: 0 }}
                                                             animate={{ height: 'auto', opacity: 1 }}
                                                             exit={{ height: 0, opacity: 0 }}
-                                                            className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-4 sm:p-5 space-y-4 bg-white dark:bg-github-dark-subtle/50"
+                                                            className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-4.5 sm:p-5 space-y-4 bg-white dark:bg-github-dark-subtle/50"
                                                         >
                                                             {/* Quick helper actions if applicable */}
                                                             {originalSessions.length > 0 && (
-                                                                <div className="flex flex-wrap items-center gap-2 pb-1 border-b border-slate-100 dark:border-github-dark-border/60">
+                                                                <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-slate-100 dark:border-github-dark-border/60">
                                                                     <button
                                                                         type="button"
                                                                         onClick={handleResetCorrectionToOriginal}
-                                                                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-normal transition-all flex items-center gap-1.5 cursor-pointer"
+                                                                        className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-github-dark-border text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer"
                                                                     >
-                                                                        <RotateCcw size={13} /> Reset to Logged
+                                                                        <RotateCcw size={14} /> Reset to Logged
                                                                     </button>
                                                                 </div>
                                                             )}
@@ -3564,17 +3589,17 @@ const Attendance = () => {
                                     </div>
 
                                     {/* Drawer Footer */}
-                                    <div className="px-6 py-5 sm:px-8 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/70 dark:bg-github-dark-bg/80 space-y-3">
-                                        <div className="flex items-center justify-between text-xs px-1">
-                                            <span className="text-slate-500 dark:text-slate-400 font-normal">
+                                    <div className="px-6 py-5 sm:px-8 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/70 dark:bg-github-dark-bg/80 space-y-3.5">
+                                        <div className="flex items-center justify-between text-base px-1">
+                                            <span className="text-slate-700 dark:text-slate-300 font-bold">
                                                 Adjusted Work Time:
                                             </span>
                                             {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
-                                                <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400 text-sm">
+                                                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-lg">
                                                     {totalProposedHours.toFixed(2)} hrs ({corrSessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && (s.time_in || s.time_out)).length} session{corrSessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && (s.time_in || s.time_out)).length !== 1 ? 's' : ''})
                                                 </span>
                                             ) : (
-                                                <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
+                                                <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">
                                                     Optional (Per Remarks)
                                                 </span>
                                             )}
@@ -3584,24 +3609,21 @@ const Attendance = () => {
                                             form="correction-form"
                                             data-tour-id="att-correction-submit-btn"
                                             disabled={hasIncompleteSession || submitLoading}
-                                            className={`w-full h-12 font-medium text-sm rounded-xl transition-all flex items-center justify-center gap-2 ${hasIncompleteSession || submitLoading
+                                            className={`w-full h-12.5 font-bold text-base sm:text-lg rounded-2xl transition-all flex items-center justify-center gap-2.5 ${hasIncompleteSession || submitLoading
                                                     ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed opacity-60 shadow-none'
                                                     : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/30 active:scale-[0.99] cursor-pointer'
                                                 }`}
                                             title={hasIncompleteSession ? "Please complete all session punch pairs (Clock IN & OUT) before requesting correction" : undefined}
                                         >
-                                            <Plus size={18} strokeWidth={2.5} />
+                                            <Plus size={22} strokeWidth={2.5} />
                                             {pendingRequestId ? `Review & Update Request (#${pendingRequestId})` : 'Request Correction'}
                                         </button>
                                         {hasIncompleteSession && (
-                                            <p className="text-xs text-center text-amber-600 dark:text-amber-400 font-medium flex items-center justify-center gap-1.5 pt-0.5">
-                                                <AlertCircle size={13} className="shrink-0" />
+                                            <p className="text-sm text-center text-amber-600 dark:text-amber-400 font-semibold flex items-center justify-center gap-1.5 pt-0.5">
+                                                <AlertCircle size={15} className="shrink-0" />
                                                 <span>Please complete all session punch pairs (Clock IN &amp; OUT) before requesting correction</span>
                                             </p>
                                         )}
-                                        <p className="text-xs text-center text-slate-400 dark:text-slate-500 font-normal">
-                                            {pendingRequestId ? 'Updates will immediately reflect in manager review queue' : 'Requires Manager / HR Approval'}
-                                        </p>
                                     </div>
                                 </motion.div>
                             </>

@@ -41,7 +41,7 @@ export async function createCorrectionRequest({
   if (!isAdminOrHr) {
     const userShift = await ShiftService.getUserShift(user_id);
     const rules = ShiftService.getShiftRules(userShift || {});
-    const deadlineDays = rules.correction_deadline ?? 2;
+    const deadlineDays = rules.correction_deadline ?? 30;
 
     // Org-timezone-aware "today" (mirrors reportsServices.js:getTodayStr, used elsewhere for the
     // same kind of day-boundary comparison) rather than the server/browser's own local time.
@@ -488,7 +488,7 @@ export async function reviewCorrectionRequest({
       // Insert approved punches into attn_punches
       const newPunches = [];
       sessionsToApply.forEach(s => {
-        const isCheckpoint = s.punch_type === 'normal';
+        const isCheckpoint = s.punch_type === 'normal' || s.punch_type === 'normal_punch';
         const tIn = typeof s.time_in === 'string' && s.time_in.length === 5 ? s.time_in + ':00' : s.time_in;
         const tOut = typeof s.time_out === 'string' && s.time_out.length === 5 ? s.time_out + ':00' : s.time_out;
 
@@ -500,8 +500,8 @@ export async function reviewCorrectionRequest({
           newPunches.push({
             user_id: correction.user_id,
             punch_time: `${finalDateStr} ${tIn}`,
-            punch_type: isCheckpoint ? 'normal' : 'in',
-            punch_nature: isCheckpoint ? 'organic' : 'fabricated',
+            punch_type: isCheckpoint ? 'normal_punch' : 'in',
+            punch_nature: 'fabricated',
             correction_id: acr_id,
             location: JSON.stringify({ address: s.address || (isCheckpoint ? 'Checkpoint' : 'Manual Correction'), is_geofence_violation: false }),
             metadata: JSON.stringify({ note: isCheckpoint ? 'Logged Checkpoint' : 'Correction Approved', correction_id: acr_id, is_overnight: isOvernight }),

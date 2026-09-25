@@ -4,8 +4,6 @@ import {
     RefreshCw,
     Eye,
     FileText,
-    ExternalLink,
-    Info,
     CheckCircle,
     ImageIcon,
     Maximize2,
@@ -13,9 +11,10 @@ import {
     Paperclip,
     Plus,
     Clock,
-    MapPin
+    MapPin,
+    Calendar,
+    Activity
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
 import CorrectionDocumentCard from '../../../components/attendance/CorrectionDocumentCard';
 import { parseCorrectionDetails, isCheckpointRecord } from '../../../utils/attendanceStatus';
@@ -40,8 +39,6 @@ const AttendanceCorrectionTab = ({
     setCorrDate,
     loadCorrectionDataForDate
 }) => {
-    const navigate = useNavigate();
-    const canManageLive = Boolean(isAdminOrHr || isAdminUser);
 
     // Extract attachment metadata & URL from request
     const selectedAttachment = useMemo(() => {
@@ -129,8 +126,8 @@ const AttendanceCorrectionTab = ({
                     {/* Header */}
                     <div className="p-4 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-center bg-slate-50/50 dark:bg-github-dark-bg/30 gap-2">
                         <div className="flex items-center gap-2 min-w-0">
-                            <FileClock size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-                            <h3 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate">Correction Requests</h3>
+                            <FileClock size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                            <h3 className="text-base font-bold text-slate-900 dark:text-github-dark-text truncate">Correction Requests</h3>
                         </div>
                         {setIsCorrectionDrawerOpen && (
                             <button
@@ -141,15 +138,15 @@ const AttendanceCorrectionTab = ({
                                     if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
                                     setIsCorrectionDrawerOpen(true);
                                 }}
-                                className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-medium text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-3 py-1.5 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs shrink-0"
+                                className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-3.5 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs shrink-0"
                             >
-                                <Plus size={14} strokeWidth={2} /> Request Correction
+                                <Plus size={14} strokeWidth={2.5} /> Request Correction
                             </button>
                         )}
                     </div>
 
                     {/* Filter Tabs */}
-                    <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-100 dark:border-github-dark-border/60 bg-slate-50/30 dark:bg-github-dark-bg/20 overflow-x-auto no-scrollbar">
+                    <div className="flex gap-1.5 p-2.5 border-b border-slate-100 dark:border-github-dark-border/60 bg-slate-50/30 dark:bg-github-dark-bg/20">
                         {[
                             { id: 'all', label: 'All', count: correctionHistory.length },
                             { id: 'pending', label: 'Pending', count: correctionHistory.filter(r => (r.status || '').toLowerCase() === 'pending').length },
@@ -160,30 +157,29 @@ const AttendanceCorrectionTab = ({
                                 key={tab.id}
                                 type="button"
                                 onClick={() => setCorrectionFilter(tab.id)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-normal transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${correctionFilter === tab.id
-                                    ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 font-medium shadow-2xs'
-                                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                                className={`flex-1 py-1.5 px-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-colors text-center cursor-pointer ${correctionFilter === tab.id
+                                    ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 shadow-2xs border border-indigo-200/50 dark:border-indigo-800/50'
+                                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-slate-800/60'
                                     }`}
                             >
-                                <span>{tab.label}</span>
-                                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${correctionFilter === tab.id
-                                    ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300'
-                                    : 'bg-slate-100 dark:bg-github-dark-bg text-slate-500'
-                                    }`}>
-                                    {tab.count}
-                                </span>
+                                {tab.label}
+                                {tab.count > 0 && (
+                                    <span className={`ml-1 text-xs sm:text-sm ${correctionFilter === tab.id ? 'opacity-90' : 'opacity-60'}`}>
+                                        ({tab.count})
+                                    </span>
+                                )}
                             </button>
                         ))}
                     </div>
 
-                    {/* Request Cards List */}
-                    <div className="overflow-y-auto flex-1 p-3 space-y-2.5 no-scrollbar">
+                    {/* Queue List (divide-y matching admin page) */}
+                    <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-700/60 no-scrollbar">
                         {loading ? (
-                            <div className="p-10 text-center text-slate-400 text-xs font-normal">Loading requests...</div>
+                            <div className="p-10 text-center text-slate-400 text-sm font-medium">Loading requests...</div>
                         ) : filteredCorrectionHistory.length === 0 ? (
                             <div className="p-10 text-center space-y-3">
-                                <FileClock size={30} className="mx-auto text-slate-300 dark:text-slate-600" />
-                                <p className="text-xs text-slate-400 dark:text-github-dark-muted font-normal">
+                                <FileClock size={32} className="mx-auto text-slate-300 dark:text-slate-600" />
+                                <p className="text-sm text-slate-400 dark:text-github-dark-muted font-medium">
                                     {correctionFilter === 'all' ? 'No correction requests yet.' : `No ${correctionFilter} requests found.`}
                                 </p>
                                 {setIsCorrectionDrawerOpen && (
@@ -195,31 +191,29 @@ const AttendanceCorrectionTab = ({
                                             if (loadCorrectionDataForDate) loadCorrectionDataForDate(today);
                                             setIsCorrectionDrawerOpen(true);
                                         }}
-                                        className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-medium text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs"
+                                        className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/30 px-4 py-2 rounded-xl transition-all active:scale-95 border border-indigo-100/80 dark:border-indigo-500/20 cursor-pointer shadow-2xs"
                                     >
-                                        <Plus size={15} strokeWidth={2} /> Request Correction
+                                        <Plus size={16} strokeWidth={2.5} /> Request Correction
                                     </button>
                                 )}
                             </div>
                         ) : (
                             filteredCorrectionHistory.map((req) => {
                                 const isSelected = selectedRequest?.acr_id === req.acr_id;
-                                const proposedList = Array.isArray(req.proposed_data) ? req.proposed_data : [];
-                                const totalHours = proposedList.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
                                 const statusLower = (req.status || 'pending').toLowerCase();
-                                const { category, cleanReason } = parseCorrectionDetails(req);
                                 return (
                                     <div
                                         key={req.acr_id}
                                         onClick={() => handleRequestClick(req)}
-                                        className={`p-3.5 rounded-xl border transition-all cursor-pointer ${isSelected
-                                            ? 'bg-indigo-50/40 dark:bg-indigo-950/30 border-indigo-400/60 dark:border-indigo-500/60 shadow-xs ring-1 ring-indigo-500/20'
-                                            : 'bg-white dark:bg-dark-card border-slate-200/80 dark:border-github-dark-border/70 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50/50 dark:hover:bg-github-dark-subtle/30'
+                                        title={req.submitted_at ? `Submitted: ${new Date(req.submitted_at).toLocaleString()}` : undefined}
+                                        className={`p-4 cursor-pointer transition-colors ${isSelected
+                                            ? 'bg-indigo-50 dark:bg-indigo-900/10 border-l-4 border-indigo-600'
+                                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border-l-4 border-transparent'
                                             }`}
                                     >
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="flex items-center gap-2.5 min-w-0">
-                                                <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-medium text-xs shrink-0 overflow-hidden">
+                                        <div className="flex justify-between items-start mb-2.5">
+                                            <div className="flex items-center gap-3.5 min-w-0">
+                                                <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center font-bold text-sm text-slate-700 dark:text-slate-200 overflow-hidden shrink-0">
                                                     {req.profile_image_url && req.profile_image_url.startsWith('http') ? (
                                                         <img src={req.profile_image_url} alt={req.user_name} className="w-full h-full object-cover" />
                                                     ) : (
@@ -227,40 +221,30 @@ const AttendanceCorrectionTab = ({
                                                     )}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className="text-xs font-medium text-slate-800 dark:text-slate-100 truncate">{req.user_name}</p>
-                                                    <p className="text-[10px] text-slate-400 font-mono">#{req.acr_id || req.id}</p>
+                                                    <p className={`text-sm sm:text-base font-bold truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-900 dark:text-white'}`}>
+                                                        {req.user_name}
+                                                    </p>
+                                                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                                                        {req.designation || `ID: ${req.user_id || req.acr_id}`}
+                                                    </p>
                                                 </div>
                                             </div>
-                                            <span className={`text-[10px] font-medium capitalize px-2 py-0.5 rounded-full border ${statusLower === 'approved'
-                                                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40'
-                                                : statusLower === 'rejected'
-                                                    ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/40'
-                                                    : 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-3">
+                                            <div className="flex items-center gap-1.5 font-medium">
+                                                <Calendar size={13} className="text-slate-400" />
+                                                <span>{formatCorrectionDate(req.request_date)}</span>
+                                            </div>
+                                            <div className={`flex items-center gap-1.5 font-bold capitalize text-xs sm:text-sm ${statusLower === 'approved' ? 'text-emerald-600 dark:text-emerald-400' :
+                                                statusLower === 'rejected' ? 'text-red-600 dark:text-rose-400' :
+                                                    'text-amber-600 dark:text-amber-400'
                                                 }`}>
-                                                {statusLower}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex items-center justify-between text-xs mb-1.5">
-                                            <span className="font-normal text-slate-700 dark:text-slate-200">{formatCorrectionDate(req.request_date)}</span>
-                                            {totalHours > 0 && (
-                                                <span className="font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                                                    {totalHours.toFixed(1)} hrs
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {cleanReason ? (
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 font-normal italic line-clamp-1 mb-2">
-                                                "{cleanReason}"
-                                            </p>
-                                        ) : null}
-
-                                        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-slate-100 dark:border-github-dark-border/40">
-                                            <span>Sub: {req.submitted_at ? formatDateDisplay(req.submitted_at) : 'N/A'}</span>
-                                            <span className="font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800/40">
-                                                {category}
-                                            </span>
+                                                <span className={`w-2 h-2 rounded-full ${statusLower === 'approved' ? 'bg-emerald-500' :
+                                                    statusLower === 'rejected' ? 'bg-red-500' :
+                                                        'bg-amber-500 animate-pulse'
+                                                    }`}></span>
+                                                <span>{statusLower}</span>
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -282,9 +266,9 @@ const AttendanceCorrectionTab = ({
                     ) : selectedRequest ? (
                         <>
                             {/* Detail Header Bar */}
-                            <div className="p-5 border-b border-slate-200 dark:border-github-dark-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/40 dark:bg-github-dark-bg/20">
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-medium text-sm shrink-0 overflow-hidden shadow-2xs">
+                            <div className="p-5 px-6 border-b border-slate-200 dark:border-github-dark-border flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-dark-card shrink-0">
+                                <div className="flex items-center gap-3.5 min-w-0">
+                                    <div className="w-11 h-11 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-base text-slate-700 dark:text-slate-200 overflow-hidden shrink-0">
                                         {selectedRequest.profile_image_url && selectedRequest.profile_image_url.startsWith('http') ? (
                                             <img src={selectedRequest.profile_image_url} alt={selectedRequest.user_name} className="w-full h-full object-cover" />
                                         ) : (
@@ -292,264 +276,205 @@ const AttendanceCorrectionTab = ({
                                         )}
                                     </div>
                                     <div className="min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <h2 className="text-base font-semibold text-slate-900 dark:text-github-dark-text truncate">
-                                                Request #{selectedRequest.acr_id || selectedRequest.id}
+                                        <div className="flex items-center gap-2.5">
+                                            <h2 className="text-xl font-bold text-slate-900 dark:text-github-dark-text truncate">
+                                                Correction Request #{selectedRequest.acr_id || selectedRequest.id}
                                             </h2>
-                                            <span className={`text-[10px] font-medium capitalize px-2 py-0.5 rounded-full border ${(selectedRequest.status || '').toLowerCase() === 'approved'
-                                                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/30'
-                                                : (selectedRequest.status || '').toLowerCase() === 'rejected'
-                                                    ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/30'
-                                                    : 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/30'
-                                                }`}>
-                                                {selectedRequest.status || 'pending'}
+                                            <span className="font-bold text-xs px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40 shrink-0">
+                                                {parseCorrectionDetails(selectedRequest).category}
                                             </span>
                                         </div>
-                                        <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-0.5">
-                                            By <span className="font-medium text-slate-700 dark:text-slate-300">{selectedRequest.user_name}</span> • {formatCorrectionDate(selectedRequest.request_date)}
+                                        <p className="text-sm text-slate-600 dark:text-slate-300 font-medium truncate mt-1">
+                                            By <span className="font-bold text-slate-800 dark:text-white">{selectedRequest.user_name}</span> ({selectedRequest.designation || 'Employee'}) • {formatCorrectionDate(selectedRequest.request_date)}
                                         </p>
                                     </div>
                                 </div>
 
-                                {/* Action Header (Links for Admin/HR) */}
                                 <div className="flex items-center gap-2 shrink-0">
-                                    {canManageLive && (
-                                        <button
-                                            type="button"
-                                            onClick={() => navigate('/attendance-monitoring?tab=requests')}
-                                            className="h-9 px-3 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/60 hover:bg-indigo-100/80 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                                            title="Open Live Attendance to review, approve, or reject employee requests"
-                                        >
-                                            <ExternalLink size={13} />
-                                            <span className="hidden sm:inline">Live Attendance Portal</span>
-                                            <span className="sm:hidden">Live Attendance</span>
-                                        </button>
-                                    )}
+                                    <span className={`text-xs sm:text-sm font-bold px-3.5 py-1 rounded-full capitalize ${selectedRequest.status === 'approved' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' :
+                                        selectedRequest.status === 'rejected' ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800' :
+                                            'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                                        }`}>
+                                        {selectedRequest.status || 'pending'}
+                                    </span>
                                 </div>
                             </div>
-
-                            {/* Scrollable Body Content */}
-                            <div className="flex-1 overflow-y-auto no-scrollbar p-5 sm:p-6 space-y-5">
-
-                                {/* Admin / HR Informational Notice */}
-                                {canManageLive && (
-                                    <div className="p-3.5 px-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                                        <div className="flex items-center gap-2.5 text-xs text-indigo-900 dark:text-indigo-200">
-                                            <Info size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
-                                            <span>
-                                                Correction request approvals and rejections are handled exclusively in <strong className="font-semibold">Live Attendance</strong>.
-                                            </span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => navigate('/attendance-monitoring?tab=requests')}
-                                            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline inline-flex items-center gap-1 shrink-0 cursor-pointer self-end sm:self-center"
-                                        >
-                                            <span>Manage in Live Attendance</span>
-                                            <ExternalLink size={12} />
-                                        </button>
-                                    </div>
-                                )}
-
-                                {/* Visual Timeline (Read-Only) */}
+                            {/* Clean Details View - Single container without overlapping nested card boxes */}
+                            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                                 {(() => {
-                                    const proposedList = normalizeCorrectionSessions(selectedRequest.proposed_data, selectedRequest);
+                                    let proposedList = normalizeCorrectionSessions(selectedRequest.proposed_data, selectedRequest);
                                     const originalList = normalizeCorrectionSessions(selectedRequest.original_data, selectedRequest);
+                                    if (proposedList.length === 0 && originalList.length > 0) {
+                                        proposedList = originalList;
+                                    }
 
-                                    return (
-                                        <div className="space-y-3">
-                                            <VisualCorrectionTimeline
-                                                requestData={{
-                                                    ...selectedRequest,
-                                                    original_data: originalList,
-                                                    proposed_data: proposedList,
-                                                    correction_type: selectedRequest.correction_type || 'punch',
-                                                    status: selectedRequest.status || 'pending'
-                                                }}
-                                                editable={false}
-                                            />
-
-                                            {proposedList.length > 0 && (
-                                                <div className="bg-slate-50/70 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-xl p-4 space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                                                            Requested Punches & Sessions
-                                                        </span>
-                                                        {!proposedList.some(s => !isCheckpointRecord(s) && s.punch_type !== 'normal') ? null : (
-                                                            <span className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                                                                Total: {proposedList.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal').reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0).toFixed(2)} hrs
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {(() => {
-                                                        const workSessions = proposedList.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal');
-                                                        const standaloneCheckpoints = proposedList.filter(s => isCheckpointRecord(s) || s.punch_type === 'normal');
-                                                        const nestedCheckpoints = workSessions.flatMap(s => (Array.isArray(s.checkpoints) ? s.checkpoints : []));
-                                                        const seenCheckpoints = new Set();
-                                                        const checkpoints = [...standaloneCheckpoints, ...nestedCheckpoints].filter(chk => {
-                                                            const chkTime = chk.time_in || chk.punch_time || chk.time || '';
-                                                            const key = `${chk.id || ''}_${chkTime}`;
-                                                            if (seenCheckpoints.has(key)) return false;
-                                                            seenCheckpoints.add(key);
-                                                            return true;
-                                                        });
-
-                                                        return (
-                                                            <div className="space-y-2.5">
-                                                                {workSessions.length > 0 && (
-                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                        {workSessions.map((session, idx) => {
-                                                                            const duration = calculateSessionDurationHours(session.time_in, session.time_out);
-                                                                            return (
-                                                                                <div
-                                                                                    key={session.id || idx}
-                                                                                    className="flex items-center justify-between p-2.5 bg-white dark:bg-dark-card border border-slate-200/80 dark:border-github-dark-border rounded-xl text-xs"
-                                                                                >
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <span className="text-slate-500 font-medium">Session #{idx + 1}:</span>
-                                                                                        <span className="font-mono text-slate-800 dark:text-slate-200">
-                                                                                            {session.time_in || '--:--'} to {session.time_out || '--:--'}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                    {duration > 0 && (
-                                                                                        <span className="font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full text-[11px]">
-                                                                                            {duration.toFixed(2)} hrs
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                )}
-
-                                                                {checkpoints.length > 0 && (
-                                                                    <div className="space-y-1.5 pt-1">
-                                                                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 px-0.5">
-                                                                            <MapPin size={12} className="shrink-0" />
-                                                                            <span>Checkpoints ({checkpoints.length})</span>
-                                                                        </div>
-                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                            {checkpoints.map((chk, cIdx) => {
-                                                                                const timeDisplay = (chk.time_in || chk.punch_time || chk.time || '').slice(0, 5) || '--:--';
-                                                                                return (
-                                                                                    <div
-                                                                                        key={chk.id || cIdx}
-                                                                                        className="flex items-center justify-between p-2.5 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl text-xs"
-                                                                                    >
-                                                                                        <div className="flex items-center gap-2 min-w-0">
-                                                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                                                                                            <span className="text-amber-800 dark:text-amber-300 font-medium">Checkpoint #{cIdx + 1}:</span>
-                                                                                            <span className="font-mono text-slate-800 dark:text-slate-200 font-medium">
-                                                                                                {timeDisplay}
-                                                                                            </span>
-                                                                                            {chk.address && (
-                                                                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[130px]" title={chk.address}>
-                                                                                                    • {chk.address}
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                        <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100/70 dark:bg-amber-900/40 px-2 py-0.5 rounded-full shrink-0">
-                                                                                            Checkpoint
-                                                                                        </span>
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            )}
-
-                                            {proposedList.length === 0 && (
-                                                <div className="bg-slate-50/70 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
-                                                    <Clock size={15} className="text-slate-400 shrink-0" />
-                                                    <span>No custom punch timeline submitted. Request submitted with remarks and supporting documentation for review.</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-
-                                {/* Uploaded Document / Supporting Proof Card (Images, Word, PowerPoint, PDF, Excel, etc.) */}
-                                <CorrectionDocumentCard
-                                    attachment={selectedAttachment}
-                                    onPreviewImage={setPreviewImage}
-                                    title="Uploaded Document / Proof"
-                                />
-
-                                {/* Details & Reason Grid */}
-                                {(() => {
                                     const { category: detailCategory, cleanReason: detailCleanReason } = parseCorrectionDetails(selectedRequest);
-                                    const proposedList = normalizeCorrectionSessions(selectedRequest.proposed_data, selectedRequest);
                                     const totalProposedHours = proposedList.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
 
+                                    const workSessions = proposedList.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal');
+                                    const standaloneCheckpoints = proposedList.filter(s => isCheckpointRecord(s) || s.punch_type === 'normal');
+                                    const nestedCheckpoints = workSessions.flatMap(s => (Array.isArray(s.checkpoints) ? s.checkpoints : []));
+                                    const seenCheckpoints = new Set();
+                                    const checkpoints = [...standaloneCheckpoints, ...nestedCheckpoints].filter(chk => {
+                                        const chkTime = chk.time_in || chk.punch_time || chk.time || '';
+                                        const key = `${chk.id || ''}_${chkTime}`;
+                                        if (seenCheckpoints.has(key)) return false;
+                                        seenCheckpoints.add(key);
+                                        return true;
+                                    });
+
+                                    const statusLower = (selectedRequest.status || 'pending').toLowerCase();
+
                                     return (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-4 shadow-2xs space-y-2">
-                                                <span className="text-[10px] font-normal text-slate-400 uppercase tracking-wider block">
-                                                    Request Information
-                                                </span>
-                                                <div className="space-y-2 text-xs">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-slate-500">Category:</span>
-                                                        <span className="font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800/40">
-                                                            {detailCategory}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-slate-500">Submitted:</span>
-                                                        <span className="font-normal text-slate-700 dark:text-slate-300">
-                                                            {selectedRequest.submitted_at ? formatDateDisplay(selectedRequest.submitted_at) : 'N/A'}
-                                                        </span>
-                                                    </div>
-                                                    {totalProposedHours > 0 && (
-                                                        <div className="flex justify-between items-center">
-                                                            <span className="text-slate-500">Proposed Work Time:</span>
-                                                            <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                                                                {totalProposedHours.toFixed(2)} hrs
-                                                            </span>
+                                        <>
+                                            {/* 1. Metadata Row: Target Date, Submitted On, Proposed Total, Document Upload */}
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                                                <div>
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">Target Date</span>
+                                                    <span className="font-bold text-slate-900 dark:text-white text-base">
+                                                        {formatCorrectionDate(selectedRequest.request_date)}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">Submitted On</span>
+                                                    <span className="font-bold text-slate-900 dark:text-white text-base">
+                                                        {selectedRequest.submitted_at ? formatDateDisplay(selectedRequest.submitted_at) : (selectedRequest.created_at ? formatDateDisplay(selectedRequest.created_at) : 'N/A')}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">Proposed Total</span>
+                                                    <span className="font-bold font-mono text-indigo-600 dark:text-indigo-400 text-base">
+                                                        {totalProposedHours > 0 ? `${totalProposedHours.toFixed(2)} hrs` : 'N/A'}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">Document</span>
+                                                    {selectedAttachment?.url ? (
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (selectedAttachment.isImage) {
+                                                                        setPreviewImage(selectedAttachment.url);
+                                                                    } else {
+                                                                        window.open(selectedAttachment.url, '_blank');
+                                                                    }
+                                                                }}
+                                                                className="inline-flex items-center gap-1.5 text-base font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 cursor-pointer"
+                                                            >
+                                                                <Eye size={16} />
+                                                                <span>View {selectedAttachment.isImage ? "Proof" : (selectedAttachment.fileName || 'Document')}</span>
+                                                            </button>
                                                         </div>
+                                                    ) : (
+                                                        <p className="text-sm sm:text-base text-slate-400 dark:text-slate-500 font-medium mt-0.5">
+                                                            No document attached
+                                                        </p>
                                                     )}
                                                 </div>
                                             </div>
 
-                                            <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-4 shadow-2xs space-y-2">
-                                                <span className="text-[10px] font-normal text-slate-400 uppercase tracking-wider block">
-                                                    Employee Stated Reason
+                                            {/* 2. Reason for Request (clean and frameless without nested card styling) */}
+                                            <div>
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">
+                                                    Reason
                                                 </span>
-                                                <p className="text-xs text-slate-700 dark:text-slate-300 font-normal italic leading-relaxed pl-2 border-l-2 border-indigo-500/60">
-                                                    "{detailCleanReason || 'No additional remarks provided.'}"
+                                                <p className="text-base text-slate-800 dark:text-slate-200 font-medium leading-relaxed break-words">
+                                                    "{detailCleanReason || 'No specific reason provided.'}"
                                                 </p>
                                             </div>
-                                        </div>
+
+                                            {/* 3. Punches & Timeline Section */}
+                                            <div className="border-t border-slate-200/60 dark:border-github-dark-border/60 pt-5 space-y-4">
+                                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                                    <span className="text-base font-bold text-slate-900 dark:text-white block">
+                                                        Punches & Timeline Visualizer
+                                                    </span>
+                                                </div>
+
+                                                <VisualCorrectionTimeline
+                                                    requestData={{
+                                                        ...selectedRequest,
+                                                        original_data: originalList,
+                                                        proposed_data: proposedList,
+                                                        correction_type: selectedRequest.correction_type || 'punch',
+                                                        status: selectedRequest.status || 'pending'
+                                                    }}
+                                                    editable={false}
+                                                    frameless={true}
+                                                    hideHeader={true}
+                                                />
+
+
+
+                                                {proposedList.length === 0 && (
+                                                    <div className="bg-slate-50/70 dark:bg-github-dark-bg/30 border border-slate-200 dark:border-github-dark-border rounded-xl p-4 flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400 font-medium">
+                                                        <Clock size={16} className="text-slate-400 shrink-0" />
+                                                        <span>No custom punch timeline submitted. Request submitted with remarks and supporting documentation for review.</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* 4. Uploaded Document / Proof Card */}
+                                            {selectedAttachment && (
+                                                <CorrectionDocumentCard
+                                                    attachment={selectedAttachment}
+                                                    onPreviewImage={setPreviewImage}
+                                                    title="Uploaded Document / Proof"
+                                                />
+                                            )}
+
+                                            {/* 5. Reviewed Remarks / Decision Section */}
+                                            {statusLower !== 'pending' && (
+                                                <div className="border-t border-slate-200/60 dark:border-github-dark-border/60 pt-5">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                            Admin Remarks
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-base text-slate-800 dark:text-slate-200 font-medium leading-relaxed">
+                                                        "{selectedRequest.review_comments || "No remarks provided."}"
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* 6. Section: Audit Trail & History */}
+                                            {(() => {
+                                                const trail = typeof selectedRequest.audit_trail === 'string'
+                                                    ? (() => { try { return JSON.parse(selectedRequest.audit_trail); } catch { return []; } })()
+                                                    : (Array.isArray(selectedRequest.audit_trail) ? selectedRequest.audit_trail : []);
+                                                if (trail && trail.length > 0) {
+                                                    return (
+                                                        <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-5">
+                                                            <span className="text-base font-bold text-slate-900 dark:text-white block mb-3.5 flex items-center gap-2">
+                                                                <Activity size={16} className="text-indigo-500" /> Audit Trail & History
+                                                            </span>
+                                                            <div className="relative pl-3.5 border-l-2 border-slate-200 dark:border-github-dark-border space-y-3.5">
+                                                                {trail.map((event, idx) => (
+                                                                    <div key={idx} className="relative">
+                                                                        <div className="absolute -left-[19px] top-1.5 w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white dark:border-dark-card ring-2 ring-indigo-200 dark:ring-indigo-800"></div>
+                                                                        <p className="text-sm font-bold text-slate-900 dark:text-white capitalize">
+                                                                            {String(event.action).toLowerCase()}
+                                                                        </p>
+                                                                        <p className="text-xs sm:text-sm text-slate-500 dark:text-github-dark-muted font-medium mt-0.5">
+                                                                            {event.at ? new Date(event.at).toLocaleString() : 'N/A'} • by {event.by === selectedRequest.user_id ? selectedRequest.user_name : (event.by_name || 'Admin')}
+                                                                        </p>
+                                                                        {event.comments && (
+                                                                            <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 mt-1 italic pl-2.5 border-l-2 border-slate-200 dark:border-github-dark-border font-medium">
+                                                                                "{event.comments}"
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
+                                        </>
                                     );
                                 })()}
-
-                                {/* Reviewer Decision Card */}
-                                {(selectedRequest.status || '').toLowerCase() !== 'pending' && (
-                                    <div className={`rounded-2xl border p-4 ${(selectedRequest.status || '').toLowerCase() === 'approved'
-                                        ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/30'
-                                        : 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/30'
-                                        }`}>
-                                        <div className="flex items-center gap-2 mb-1.5">
-                                            <CheckCircle size={15} className={(selectedRequest.status || '').toLowerCase() === 'approved' ? 'text-emerald-600' : 'text-rose-600'} />
-                                            <span className={`text-xs font-medium ${(selectedRequest.status || '').toLowerCase() === 'approved' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
-                                                Reviewer Decision: {(selectedRequest.status || '').toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-slate-700 dark:text-slate-300 font-normal leading-relaxed">
-                                            {selectedRequest.review_comments || 'No comments provided.'}
-                                        </p>
-                                        {selectedRequest.reviewed_at && (
-                                            <p className="text-[10px] text-slate-400 font-normal mt-2">
-                                                Reviewed on {formatDateDisplay(selectedRequest.reviewed_at)}
-                                            </p>
-                                        )}
-                                    </div>
-                                )}
                             </div>
                         </>
                     ) : (

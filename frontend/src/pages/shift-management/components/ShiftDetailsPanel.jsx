@@ -101,7 +101,7 @@ const ShiftDetailsPanel = ({
                         return [
                             { label: 'Start Time', value: selectedShift.start, icon: <ArrowRight size={16} />, bg: 'indigo' },
                             { label: 'Grace Period', value: `${selectedShift.grace || 0} min`, icon: <AlertTriangle size={16} />, bg: 'amber' },
-                            { label: 'Correction Window', value: `${selectedShift.correctionDeadline || 2}d`, icon: <FileClock size={16} />, bg: 'rose' },
+                            { label: 'Correction Window', value: `${selectedShift.correctionDeadline || 30}d`, icon: <FileClock size={16} />, bg: 'rose' },
                             { label: 'Duration', value: calculateDuration(selectedShift.start, selectedShift.end), icon: <Clock size={16} />, bg: 'teal' },
                         ].map(card => {
                             const styles = cardStyles[card.bg];

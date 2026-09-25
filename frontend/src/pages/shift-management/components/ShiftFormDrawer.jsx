@@ -688,15 +688,15 @@ const ShiftFormDrawer = ({
                                         Correction Deadline
                                     </label>
                                     <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
-                                        {shiftForm.correctionDeadline || 2} {Number(shiftForm.correctionDeadline) === 1 ? 'day' : 'days'}
+                                        {shiftForm.correctionDeadline || 30} {Number(shiftForm.correctionDeadline) === 1 ? 'day' : 'days'}
                                     </span>
                                 </div>
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex items-center gap-1.5">
                                         {[
                                             { label: '2d', val: 2 },
-                                            { label: '3d', val: 3 },
-                                            { label: '7d', val: 7 }
+                                            { label: '7d', val: 7 },
+                                            { label: '30d', val: 30 }
                                         ].map(p => (
                                             <button
                                                 key={p.val}
@@ -715,7 +715,7 @@ const ShiftFormDrawer = ({
                                     <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                                         <span className="text-[11px] text-slate-400 font-normal">Custom:</span>
                                         <ThemedUnitStepper
-                                            value={shiftForm.correctionDeadline ?? 2}
+                                            value={shiftForm.correctionDeadline ?? 30}
                                             onChange={val => setShiftForm(prev => ({ ...prev, correctionDeadline: val }))}
                                             min={1}
                                             max={90}

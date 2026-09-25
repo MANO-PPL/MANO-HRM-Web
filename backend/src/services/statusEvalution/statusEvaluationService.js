@@ -629,7 +629,7 @@ function evaluateDayStatus({ dateStr, todayStr, dayRecords, dailyRecord, holiday
     // itself) could still submit a correction request for this date, per the shift's configured
     // correction_deadline. Exposed so the frontend has a real signal instead of re-deriving this
     // day-diff itself.
-    const correctionDeadlineDays = rules?.correction_deadline ?? 2;
+    const correctionDeadlineDays = rules?.correction_deadline ?? 30;
     const daysSinceDate = Math.ceil((new Date(todayStr) - new Date(dateStr)) / (1000 * 60 * 60 * 24));
     const isCorrectable = daysSinceDate <= correctionDeadlineDays;
 

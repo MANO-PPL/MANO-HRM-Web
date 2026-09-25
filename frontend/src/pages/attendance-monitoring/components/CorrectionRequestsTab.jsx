@@ -18,10 +18,11 @@ import {
     Maximize2,
     Download,
     FileText,
-    Camera
+    Camera,
+    ZoomIn,
+    ZoomOut
 } from 'lucide-react';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
-import CorrectionDocumentCard from '../../../components/attendance/CorrectionDocumentCard';
 import { attendanceService } from '../../../services/attendanceService';
 import { toast } from 'react-toastify';
 import { parseCorrectionDetails, isCheckpointRecord } from '../../../utils/attendanceStatus';
@@ -41,15 +42,16 @@ const CorrectionRequestsTab = ({
     setPreviewImage,
     avatarTimestamp = ''
 }) => {
-    // Local Search State
+    // Local Search & Filter State
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
 
     // Admin Override & Action States
     const [overrideMode, setOverrideMode] = useState(false);
     const [overrideSessions, setOverrideSessions] = useState([]);
-    const [overrideReason, setOverrideReason] = useState('');
     const [reviewComment, setReviewComment] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    const [timelineScale, setTimelineScale] = useState(1);
 
     // Reject Modal State
     const [showRejectModal, setShowRejectModal] = useState(false);
@@ -180,14 +182,22 @@ const CorrectionRequestsTab = ({
         return `${m}m`;
     };
 
-    // Filtered Requests List
+    // Filtered Requests List - sorted according to submitted date (most recent on top) for all statuses
     const filteredRequests = useMemo(() => {
-        return correctionRequests.filter(req => {
-            const matchesSearch = (req.user_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                String(req.acr_id || '').includes(searchTerm);
-            return matchesSearch;
-        });
-    }, [correctionRequests, searchTerm]);
+        return correctionRequests
+            .filter(req => {
+                const matchesSearch = (req.user_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    String(req.acr_id || '').includes(searchTerm);
+                const matchesStatus = statusFilter === 'all' || (req.status || '').toLowerCase() === statusFilter.toLowerCase();
+                return matchesSearch && matchesStatus;
+            })
+            .sort((a, b) => {
+                const dateA = new Date(a.submitted_at || a.created_at || a.request_date || 0).getTime();
+                const dateB = new Date(b.submitted_at || b.created_at || b.request_date || 0).getTime();
+                if (dateB !== dateA) return dateB - dateA;
+                return (Number(b.acr_id || b.id) || 0) - (Number(a.acr_id || a.id) || 0);
+            });
+    }, [correctionRequests, searchTerm, statusFilter]);
 
     // Counts for status tabs
     const counts = useMemo(() => {
@@ -211,10 +221,16 @@ const CorrectionRequestsTab = ({
     // Keep overrideSessions in sync whenever selectedRequestData updates
     const activeProposedSessions = useMemo(() => {
         if (!selectedRequestData) return [];
-        if (overrideMode && overrideSessions.length > 0) {
+        if (overrideMode) {
             return overrideSessions;
         }
-        return normalizeSessions(selectedRequestData.proposed_data, selectedRequestData);
+        const proposed = normalizeSessions(selectedRequestData.proposed_data, selectedRequestData);
+        if (proposed.length > 0) {
+            return proposed;
+        }
+        // Fallback: If user submitted without checking advanced options (proposed_data is empty),
+        // show the starting punch(es) which were originally recorded!
+        return normalizeSessions(selectedRequestData.original_data, selectedRequestData);
     }, [selectedRequestData, overrideMode, overrideSessions, normalizeSessions]);
 
     // Total duration of current proposed sessions
@@ -232,11 +248,13 @@ const CorrectionRequestsTab = ({
     // Reset override changes to employee's original request
     const handleResetToOriginal = () => {
         if (!selectedRequestData) return;
-        const orig = normalizeSessions(selectedRequestData.proposed_data, selectedRequestData);
-        setOverrideSessions(orig);
-        setOverrideReason(selectedRequestData.reason || '');
+        const proposed = normalizeSessions(selectedRequestData.proposed_data, selectedRequestData);
+        const baseline = proposed.length > 0
+            ? proposed
+            : normalizeSessions(selectedRequestData.original_data, selectedRequestData);
+        setOverrideSessions(baseline);
         setOverrideMode(false);
-        toast.info("Reset to employee's original submitted punches");
+        toast.info("Reset to baseline punches");
     };
 
     // Handle Admin Approval (with or without manual overrides)
@@ -245,18 +263,20 @@ const CorrectionRequestsTab = ({
         const reqId = selectedRequestData.acr_id;
         try {
             setActionLoading(true);
-            const originalProposed = normalizeSessions(selectedRequestData.proposed_data, selectedRequestData);
+            const proposed = normalizeSessions(selectedRequestData.proposed_data, selectedRequestData);
+            const originalProposed = proposed.length > 0
+                ? proposed
+                : normalizeSessions(selectedRequestData.original_data, selectedRequestData);
             const currentSessions = overrideSessions.filter(s => s.time_in || s.time_out);
 
             const isModified = overrideMode && (
                 JSON.stringify(originalProposed.map(s => ({ in: s.time_in, out: s.time_out }))) !==
-                JSON.stringify(currentSessions.map(s => ({ in: s.time_in, out: s.time_out }))) ||
-                (overrideReason && overrideReason.trim() !== (selectedRequestData.reason || '').trim())
+                JSON.stringify(currentSessions.map(s => ({ in: s.time_in, out: s.time_out })))
             );
 
             const comment = reviewComment.trim()
-                ? (overrideReason.trim() ? `${reviewComment.trim()} (Override: ${overrideReason.trim()})` : reviewComment.trim())
-                : (overrideReason.trim() ? `Override: ${overrideReason.trim()}` : (isModified ? 'Approved with manual override' : 'Approved by administrator'));
+                ? reviewComment.trim()
+                : (isModified ? 'Approved with manual override' : 'Approved by administrator');
 
             await attendanceService.updateCorrectionStatus(reqId, 'approved', comment, isModified ? { sessions: currentSessions } : {});
 
@@ -303,24 +323,22 @@ const CorrectionRequestsTab = ({
     const isPending = (selectedRequestData?.status || '').toLowerCase() === 'pending';
 
     return (
-        <div data-tour-id="attendance-requests-queue" className="flex-1 min-h-0 flex flex-row gap-4 h-[calc(100vh-160px)] min-h-[680px] min-w-[1000px]">
+        <div data-tour-id="attendance-requests-queue" className="flex flex-row gap-4 h-full min-h-0 flex-1 min-w-0">
 
-            {/* LEFT SIDEBAR: REQUESTS LIST */}
-            <div className="w-[380px] bg-white dark:bg-dark-card rounded-xl shadow-xs border border-slate-200 dark:border-github-dark-border overflow-hidden flex flex-col h-full shrink-0">
-                {/* Header and Search */}
-                <div className="p-3 border-b border-slate-100 dark:border-github-dark-border space-y-2.5 bg-slate-50/50 dark:bg-github-dark-subtle/30">
-                    <div className="flex justify-between items-center px-0.5">
-                        <div className="flex items-center gap-1.5">
-                            <FileClock size={14} className="text-slate-500 dark:text-slate-400" />
-                            <h3 className="text-xs font-semibold text-slate-800 dark:text-github-dark-text">
-                                Correction Requests
-                            </h3>
-                        </div>
-                        <div className="text-[10px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
-                            {counts.pending} Pending
-                        </div>
-                    </div>
+            {/* LEFT PANEL: REQUESTS LIST (Matching AdminLeaveRequests Queue Layout) */}
+            <div data-tour-id="correction-admin-list" className="w-[320px] shrink-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden h-full min-h-0">
+                {/* Header Title & Counter */}
+                <div className="px-4 py-3 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-subtle/10 shrink-0">
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 tracking-wide">
+                        Requests Queue
+                    </span>
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 shadow-2xs">
+                        {filteredRequests.length} {filteredRequests.length === 1 ? 'request' : 'requests'}
+                    </span>
+                </div>
 
+                {/* Search & Status Filters */}
+                <div className="p-3 border-b border-slate-100 dark:border-github-dark-border/60 space-y-2 bg-slate-50/30 dark:bg-github-dark-subtle/10 shrink-0">
                     <div className="relative">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
                         <input
@@ -328,7 +346,7 @@ const CorrectionRequestsTab = ({
                             placeholder="Search by employee name..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-github-dark-subtle/70 border border-slate-200 dark:border-github-dark-border rounded-lg focus:ring-1 focus:ring-slate-400 outline-none transition-all shadow-2xs font-normal text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+                            className="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-2xs placeholder:text-slate-400 font-normal"
                         />
                         {searchTerm && (
                             <button
@@ -339,99 +357,89 @@ const CorrectionRequestsTab = ({
                             </button>
                         )}
                     </div>
+                    <div className="flex gap-1">
+                        {[
+                            { id: 'all', label: 'All', count: counts.all },
+                            { id: 'pending', label: 'Pending', count: counts.pending },
+                            { id: 'approved', label: 'Approved', count: counts.approved },
+                            { id: 'rejected', label: 'Rejected', count: counts.rejected }
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setStatusFilter(tab.id)}
+                                className={`flex-1 py-1 px-1 text-xs font-medium rounded-md transition-colors text-center cursor-pointer ${statusFilter === tab.id
+                                        ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-semibold shadow-2xs border border-indigo-200/50 dark:border-indigo-800/50'
+                                        : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-slate-800/60'
+                                    }`}
+                            >
+                                {tab.label}
+                                {tab.count > 0 && (
+                                    <span className={`ml-0.5 text-xs ${statusFilter === tab.id ? 'opacity-90' : 'opacity-60'}`}>
+                                        ({tab.count})
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                {/* Cards List */}
-                <div className="overflow-y-auto no-scrollbar flex-1 p-3 space-y-2.5">
+                {/* Queue List (divide-y like Leave Requests) */}
+                <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-700/60 no-scrollbar">
                     {requestsLoading ? (
                         <div className="p-10 text-center text-slate-400 text-xs font-normal">Loading requests...</div>
                     ) : filteredRequests.length === 0 ? (
-                        <div className="p-8 text-center text-slate-400 flex flex-col items-center gap-2">
-                            <CheckCircle className="w-6 h-6 text-slate-300 dark:text-slate-600" />
-                            <span className="text-xs font-normal">No correction requests found.</span>
-                        </div>
+                        <div className="p-10 text-center text-slate-400 text-sm">No requests found.</div>
                     ) : (
                         filteredRequests.map((request) => {
                             const isSelected = selectedRequestId === request.acr_id;
-                            const proposed = normalizeSessions(request.proposed_data, request);
-                            const duration = proposed
-                                .filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal')
-                                .reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
                             const statusLower = (request.status || 'pending').toLowerCase();
-                            const attInfo = getAttachmentInfo(request);
-                            const { category: reqCategory, cleanReason: reqCleanReason } = parseCorrectionDetails(request);
+                            const { category } = parseCorrectionDetails(request);
 
                             return (
                                 <div
                                     key={request.acr_id}
                                     onClick={() => handleSelectRequest(request)}
-                                    className={`p-3 rounded-xl border transition-all cursor-pointer shadow-2xs ${isSelected
-                                            ? 'bg-indigo-50/40 dark:bg-indigo-950/30 border-indigo-500/60 dark:border-indigo-500/60 shadow-xs ring-1 ring-indigo-500/20'
-                                            : 'bg-white dark:bg-github-dark-subtle/30 border-slate-200 dark:border-github-dark-border hover:bg-slate-50 dark:hover:bg-github-dark-subtle/60 hover:border-slate-300'
+                                    title={request.submitted_at ? `Submitted: ${new Date(request.submitted_at).toLocaleString()}` : undefined}
+                                    className={`p-4 cursor-pointer transition-colors ${isSelected
+                                            ? 'bg-indigo-50 dark:bg-indigo-900/10 border-l-4 border-indigo-600'
+                                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border-l-4 border-transparent'
                                         }`}
                                 >
-                                    <div className="flex justify-between items-start mb-1.5">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center font-medium text-[10px] overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center font-medium text-xs text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
                                                 {request.profile_image_url && request.profile_image_url.startsWith('http') ? (
                                                     <img src={`${request.profile_image_url}?t=${avatarTimestamp}`} alt={request.user_name} className="w-full h-full object-cover" />
                                                 ) : (
                                                     (request.user_name || 'U').charAt(0).toUpperCase()
                                                 )}
                                             </div>
-                                            <div>
-                                                <p className={`text-xs font-semibold leading-tight ${isSelected ? 'text-indigo-900 dark:text-white' : 'text-slate-800 dark:text-github-dark-text'}`}>
+                                            <div className="min-w-0">
+                                                <p className={`text-sm font-semibold truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-github-dark-text'}`}>
                                                     {request.user_name}
                                                 </p>
-                                                <span className="text-[10px] text-slate-400 dark:text-github-dark-muted font-normal inline-block">
-                                                    ID: {request.user_id}
-                                                </span>
+                                                <p className="text-xs text-slate-500 dark:text-github-dark-muted font-normal truncate">
+                                                    {request.designation || `ID: ${request.user_id}`}
+                                                </p>
                                             </div>
                                         </div>
-                                        <span className={`text-[10px] font-medium capitalize px-2 py-0.5 rounded-md border ${statusLower === 'approved'
-                                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40'
-                                                : statusLower === 'rejected'
-                                                    ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800/40'
-                                                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
-                                            }`}>
-                                            {statusLower}
-                                        </span>
                                     </div>
-
-                                    <div className="flex items-center justify-between text-xs font-normal text-slate-600 dark:text-slate-300 mb-1">
-                                        <div className="flex items-center gap-1.5">
-                                            <Calendar size={11} className="text-slate-400 shrink-0" />
+                                    <div className="flex justify-between items-center text-xs text-slate-500 dark:text-github-dark-muted mt-3">
+                                        <div className="flex items-center gap-1.5 text-xs font-normal text-slate-500 dark:text-slate-400">
+                                            <Calendar size={12} />
                                             <span>{formatCorrectionDate(request.request_date)}</span>
                                         </div>
-                                        {duration > 0 && (
-                                            <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.2 rounded">
-                                                {formatDurationString(duration)}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {reqCleanReason && (
-                                        <p className="text-[10px] text-slate-500 dark:text-github-dark-muted font-normal italic line-clamp-1 pl-1.5 border-l-2 border-slate-300 dark:border-github-dark-border my-1">
-                                            "{reqCleanReason}"
-                                        </p>
-                                    )}
-
-                                    {/* Proof indicator chip (unnested, sleek line) */}
-                                    {attInfo && (
-                                        <div className="flex items-center gap-1.5 text-[10px] font-normal text-indigo-600 dark:text-indigo-400 my-1">
-                                            <Paperclip size={11} className="shrink-0 text-indigo-500" />
-                                            <span className="truncate">{attInfo.fileName}</span>
-                                            {attInfo.fileSize && (
-                                                <span className="text-[9px] font-mono text-indigo-400">({(attInfo.fileSize / 1024).toFixed(0)}KB)</span>
-                                            )}
+                                        <div className={`flex items-center gap-1.5 font-medium capitalize text-xs ${statusLower === 'approved' ? 'text-emerald-600 dark:text-emerald-400' :
+                                                statusLower === 'rejected' ? 'text-red-600 dark:text-rose-400' :
+                                                    'text-amber-600 dark:text-amber-400'
+                                            }`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${statusLower === 'approved' ? 'bg-emerald-500' :
+                                                    statusLower === 'rejected' ? 'bg-red-500' :
+                                                        'bg-amber-500 animate-pulse'
+                                                }`}></span>
+                                            <span>{statusLower}</span>
                                         </div>
-                                    )}
-
-                                    <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1.5 font-mono border-t border-slate-100 dark:border-github-dark-border/40 pt-1.5 font-normal">
-                                        <span>Sub. {request.submitted_at ? new Date(request.submitted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : 'N/A'}</span>
-                                        <span className="font-medium text-[10px] px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/40">
-                                            {reqCategory}
-                                        </span>
                                     </div>
                                 </div>
                             );
@@ -440,8 +448,8 @@ const CorrectionRequestsTab = ({
                 </div>
             </div>
 
-            {/* RIGHT DETAIL PANEL */}
-            <div className="flex-1 bg-white dark:bg-dark-card rounded-xl shadow-xs border border-slate-200 dark:border-github-dark-border flex flex-col h-full overflow-hidden">
+            {/* RIGHT PANEL: DETAILS (Matching AdminLeaveRequests Consolidated Layout) */}
+            <div className="flex-1 min-w-0 min-h-0 h-full bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
                 {detailLoading ? (
                     <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-400 dark:text-github-dark-muted">
                         <RefreshCw className="w-6 h-6 animate-spin text-indigo-500 mb-2" />
@@ -450,237 +458,259 @@ const CorrectionRequestsTab = ({
                 ) : selectedRequestData ? (
                     <>
                         {/* Detail Header */}
-                        <div className="p-3.5 border-b border-slate-100 dark:border-github-dark-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50 dark:bg-github-dark-subtle/30 shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center font-medium text-xs overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
+                        <div className="p-5 px-6 border-b border-slate-200 dark:border-github-dark-border flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-dark-card shrink-0">
+                            <div className="flex items-center gap-3.5 min-w-0">
+                                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-sm text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
                                     {selectedRequestData.profile_image_url && selectedRequestData.profile_image_url.startsWith('http') ? (
                                         <img src={`${selectedRequestData.profile_image_url}?t=${avatarTimestamp}`} alt={selectedRequestData.user_name} className="w-full h-full object-cover" />
                                     ) : (
                                         (selectedRequestData.user_name || 'U').charAt(0).toUpperCase()
                                     )}
                                 </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-sm font-semibold text-slate-900 dark:text-github-dark-text tracking-tight">
-                                            Request #{selectedRequestData.acr_id}
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2.5">
+                                        <h2 className="text-lg font-bold text-slate-900 dark:text-github-dark-text mb-0.5 truncate">
+                                            Correction Request #{selectedRequestData.acr_id}
                                         </h2>
-                                        <span className={`text-[10px] font-medium capitalize px-2 py-0.5 rounded-md border ${selectedRequestData.status === 'approved'
-                                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40'
-                                                : selectedRequestData.status === 'rejected'
-                                                    ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800/40'
-                                                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/40'
-                                            }`}>
-                                            {selectedRequestData.status}
+                                        <span className="font-medium text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40 shrink-0">
+                                            {parseCorrectionDetails(selectedRequestData).category}
                                         </span>
                                     </div>
-                                    <p className="text-xs text-slate-500 dark:text-github-dark-muted font-normal mt-0.5">
-                                        By <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedRequestData.user_name}</span> ({selectedRequestData.designation || 'Employee'}) • <span className="text-slate-600 dark:text-slate-300 font-normal">{formatCorrectionDate(selectedRequestData.request_date)}</span>
+                                    <p className="text-xs text-slate-500 dark:text-github-dark-muted font-normal truncate">
+                                        By <span className="font-medium text-slate-700 dark:text-slate-300">{selectedRequestData.user_name}</span> ({selectedRequestData.designation || 'Employee'})
                                     </p>
                                 </div>
                             </div>
 
-                            {/* Top Action Buttons when Pending */}
-                            {isPending && (
-                                <div className="flex items-center gap-2 self-end sm:self-auto">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (overrideMode) {
-                                                handleResetToOriginal();
-                                            }
-                                            setOverrideMode(!overrideMode);
-                                        }}
-                                        className={`px-3 py-1.5 rounded-md border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${overrideMode
-                                                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 shadow-xs'
-                                                : 'bg-white dark:bg-github-dark-bg text-slate-700 dark:text-slate-300 border-slate-200 dark:border-github-dark-border hover:bg-slate-50'
-                                            }`}
-                                    >
-                                        <span>{overrideMode ? 'Override Active' : 'Manual Override'}</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowRejectModal(true)}
-                                        disabled={actionLoading}
-                                        className="px-3.5 py-1.5 border border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                    >
-                                        <XCircle size={14} /> Reject
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleApprove}
-                                        disabled={actionLoading}
-                                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-medium shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                    >
-                                        {actionLoading ? <RefreshCw size={13} className="animate-spin" /> : <CheckCircle size={14} />}
-                                        <span>{overrideMode ? 'Approve with Overrides' : 'Approve'}</span>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Scrollable Content Body */}
-                        <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4 bg-slate-50/30 dark:bg-transparent">
-
-                            {/* Manual Override Active Banner */}
-                            {isPending && overrideMode && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: -8 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="p-3.5 rounded-xl border bg-amber-50/80 dark:bg-amber-950/20 border-amber-300/80 dark:border-amber-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
-                                >
-                                    <div className="flex items-center gap-2.5">
-                                        <div className="w-8 h-8 rounded-md bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-300 flex items-center justify-center shrink-0">
-                                            <Clock size={15} />
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                                                    Manual Override Active
-                                                </span>
-                                                <span className="text-[9px] font-medium px-2 py-0.2 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50">
-                                                    Drag handles or edit below
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5">
-                                                You can drag the punch handles on the timeline or modify sessions directly, then click Approve to apply.
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleResetToOriginal}
-                                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer self-end sm:self-auto"
-                                    >
-                                        <RotateCcw size={12} />
-                                        <span>Reset to Original</span>
-                                    </button>
-                                </motion.div>
-                            )}
-
-                            {/* Card 1: Timeline Visualizer */}
-                            <VisualCorrectionTimeline
-                                requestData={{
-                                    ...selectedRequestData,
-                                    original_data: normalizeSessions(selectedRequestData.original_data, selectedRequestData),
-                                    proposed_data: activeProposedSessions,
-                                    correction_type: selectedRequestData.correction_type || 'punch',
-                                    status: selectedRequestData.status || 'pending'
-                                }}
-                                editable={isPending && overrideMode}
-                                onSessionsChange={(updated) => {
-                                    setOverrideSessions(updated.map((s, idx) => {
-                                        const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
-                                        return {
-                                            id: s.id || `session-${idx}`,
-                                            time_in: s.time_in ? String(s.time_in).slice(0, 5) : '',
-                                            time_out: isChk ? '' : (s.time_out ? String(s.time_out).slice(0, 5) : ''),
-                                            punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
-                                            is_checkpoint: isChk,
-                                            checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : [],
-                                            inPunchId: s.inPunchId,
-                                            outPunchId: s.outPunchId
-                                        };
-                                    }));
-                                }}
-                            />
-
-                            {/* Card 2: Uploaded Proof (with In-Page Iframe Preview, Unnested & No Duplicate Buttons) */}
-                            <CorrectionDocumentCard
-                                attachment={selectedAttachment}
-                                title="Uploaded Proof"
-                                defaultOpen={true}
-                            />
-
-                            {/* Card 3: Employee Stated Reason */}
-                            <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-3.5 shadow-2xs space-y-2">
-                                <h3 className="text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                                    <FileClock size={13} className="text-indigo-500 dark:text-indigo-400" />
-                                    Employee Stated Reason
-                                </h3>
-
-                                {isPending && overrideMode ? (
-                                    <div className="space-y-2 pt-1">
-                                        <div className="flex flex-wrap gap-1">
-                                            {[
-                                                "Forgot to punch out",
-                                                "Forgot to punch in",
-                                                "Webcam error",
-                                                "Client visit"
-                                            ].map((preset, i) => (
-                                                <button
-                                                    key={i}
-                                                    type="button"
-                                                    onClick={() => setOverrideReason(preset)}
-                                                    className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 hover:bg-indigo-50 dark:bg-github-dark-bg text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-github-dark-border transition-colors cursor-pointer"
-                                                >
-                                                    {preset}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <textarea
-                                            rows={2}
-                                            value={overrideReason}
-                                            onChange={(e) => setOverrideReason(e.target.value)}
-                                            placeholder="Reason for adjustment / override..."
-                                            className="w-full p-2.5 text-xs bg-slate-50 dark:bg-github-dark-bg/50 border border-slate-200 dark:border-github-dark-border rounded-lg text-slate-800 dark:text-slate-100 outline-none focus:ring-1 focus:ring-indigo-500 font-normal resize-none"
-                                        />
+                            {/* Top Right Corner: Approve & Reject (or Status) */}
+                            <div className="flex items-center gap-2 shrink-0">
+                                {isPending ? (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowRejectModal(true)}
+                                            disabled={actionLoading}
+                                            className="py-1.5 px-3 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 cursor-pointer active:scale-95 disabled:opacity-50"
+                                        >
+                                            <XCircle size={14} />
+                                            <span>Reject</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleApprove}
+                                            disabled={actionLoading}
+                                            className="py-1.5 px-3.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 cursor-pointer active:scale-95 disabled:opacity-50"
+                                        >
+                                            {actionLoading ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                                            <span>{overrideMode ? 'Approve Override' : 'Approve'}</span>
+                                        </button>
                                     </div>
                                 ) : (
-                                    <p className="text-xs text-slate-700 dark:text-slate-200 font-normal leading-relaxed pl-2.5 border-l-2 border-indigo-500/60">
-                                        "{(() => {
-                                            const { cleanReason } = parseCorrectionDetails(selectedRequestData);
-                                            return cleanReason || 'No specific reason provided.';
-                                        })()}"
-                                    </p>
+                                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${selectedRequestData.status === 'approved' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' :
+                                            'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                                        }`}>
+                                        {selectedRequestData.status}
+                                    </span>
                                 )}
                             </div>
+                        </div>
 
-
-                            {/* Card 5: Auditor Decision & Remarks */}
-                            {!isPending ? (
-                                <div className={`rounded-xl border p-3.5 shadow-2xs ${selectedRequestData.status === 'approved'
-                                        ? 'bg-emerald-50/30 dark:bg-emerald-950/15 border-emerald-500/20'
-                                        : 'bg-rose-50/30 dark:bg-rose-950/15 border-rose-500/20'
-                                    }`}>
-                                    <div className="flex items-center gap-1.5 mb-1.5">
-                                        <CheckCircle size={13} className={selectedRequestData.status === 'approved' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'} />
-                                        <h3 className={`text-xs font-medium ${selectedRequestData.status === 'approved' ? 'text-emerald-800 dark:text-emerald-300' : 'text-rose-800 dark:text-rose-300'
-                                            }`}>
-                                            Auditor Decision & Remarks
-                                        </h3>
-                                    </div>
-                                    <p className="text-xs text-slate-700 dark:text-slate-300 font-normal leading-relaxed pl-1">
-                                        {selectedRequestData.review_comments || 'No specific reviewer comments noted.'}
-                                    </p>
-                                    <p className="mt-2 text-[10px] text-slate-400 font-normal pl-1">
-                                        Reviewed on {selectedRequestData.reviewed_at ? formatCorrectionDate(selectedRequestData.reviewed_at) : 'N/A'}
-                                    </p>
+                        {/* Clean Details View - Single container without overlapping nested card boxes */}
+                        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                            {/* Metadata Row: Target Date, Submitted On, Proposed Total, Document Upload */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                                <div>
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Target Date</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                                        {formatCorrectionDate(selectedRequestData.request_date)}
+                                    </span>
                                 </div>
-                            ) : (
-                                <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-3.5 shadow-2xs space-y-1.5">
-                                    <h3 className="text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                                        <FileClock size={12} className="text-indigo-500" /> Auditor Review Comments (Optional)
-                                    </h3>
-                                    <textarea
+                                <div>
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Submitted On</span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                                        {selectedRequestData.submitted_at ? formatCorrectionDate(selectedRequestData.submitted_at) : (selectedRequestData.created_at ? formatCorrectionDate(selectedRequestData.created_at) : 'N/A')}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Proposed Total</span>
+                                    <span className="font-semibold text-indigo-600 dark:text-indigo-400 text-sm">
+                                        {formatDurationString(proposedDurationHours)}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Document</span>
+                                    {selectedAttachment?.url ? (
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (selectedAttachment.isImage) {
+                                                        setPreviewImage(selectedAttachment.url);
+                                                    } else {
+                                                        window.open(selectedAttachment.url, '_blank');
+                                                    }
+                                                }}
+                                                className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 cursor-pointer"
+                                            >
+                                                <Eye size={14} />
+                                                <span>View {selectedAttachment.isImage ? "Proof" : (selectedAttachment.fileName || 'Document')}</span>
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-slate-400 dark:text-slate-500 font-normal mt-0.5">
+                                            No document attached
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Reason for Request (clean and frameless without nested card styling) */}
+                            <div>
+                                <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">
+                                    Reason
+                                </span>
+                                <p className="text-sm text-slate-700 dark:text-slate-300 italic leading-relaxed break-words">
+                                    "{parseCorrectionDetails(selectedRequestData).cleanReason || 'No specific reason provided.'}"
+                                </p>
+                            </div>
+
+                            {/* Punches & Timeline Section */}
+                            <div className="border-t border-slate-200/60 dark:border-github-dark-border/60 pt-5">
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 block">
+                                        Punches & Timeline Visualizer
+                                    </span>
+                                    <div className="flex items-center gap-3">
+                                        {/* Timeline Scale Zoom Controls */}
+                                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 text-xs">
+                                            {timelineScale !== 1 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTimelineScale(1)}
+                                                    className="text-xs px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                                                >
+                                                    Reset
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setTimelineScale(prev => Math.max(1, Math.round((prev - 0.25) * 100) / 100))}
+                                                disabled={timelineScale <= 1}
+                                                className="p-1 rounded-md text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
+                                                title="Zoom out timeline"
+                                            >
+                                                <ZoomOut size={13} />
+                                            </button>
+                                            <span className="px-1.5 text-xs font-mono font-medium text-slate-700 dark:text-slate-300 min-w-[36px] text-center">
+                                                {Math.round(timelineScale * 100)}%
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setTimelineScale(prev => Math.min(2.5, Math.round((prev + 0.25) * 100) / 100))}
+                                                disabled={timelineScale >= 2.5}
+                                                className="p-1 rounded-md text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer"
+                                                title="Zoom in timeline (adds scroll bar)"
+                                            >
+                                                <ZoomIn size={13} />
+                                            </button>
+                                        </div>
+
+                                        {/* Manual Override Controls */}
+                                        {isPending && (
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (overrideMode) {
+                                                            handleResetToOriginal();
+                                                        } else {
+                                                            setOverrideSessions(activeProposedSessions);
+                                                            setOverrideMode(true);
+                                                        }
+                                                    }}
+                                                    className={`px-3 py-1 rounded-md border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${overrideMode
+                                                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50 shadow-xs'
+                                                            : 'bg-white dark:bg-[#161b22] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-github-dark-border hover:bg-slate-50 dark:hover:bg-slate-800'
+                                                        }`}
+                                                    title={overrideMode ? "Exit override and reset punches to baseline" : "Unlock proposed punches for manual editing"}
+                                                >
+                                                    {overrideMode ? <X size={12} /> : <Clock size={12} />}
+                                                    <span>{overrideMode ? 'Exit Override' : 'Manual Override'}</span>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <VisualCorrectionTimeline
+                                    requestData={{
+                                        ...selectedRequestData,
+                                        original_data: normalizeSessions(selectedRequestData.original_data, selectedRequestData),
+                                        proposed_data: activeProposedSessions,
+                                        correction_type: selectedRequestData.correction_type || 'punch',
+                                        status: selectedRequestData.status || 'pending'
+                                    }}
+                                    editable={isPending && overrideMode}
+                                    frameless={true}
+                                    hideHeader={true}
+                                    scale={timelineScale}
+                                    onSessionsChange={(updated) => {
+                                        setOverrideSessions(updated.map((s, idx) => {
+                                            const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                                            return {
+                                                id: s.id || `session-${idx}`,
+                                                time_in: s.time_in ? String(s.time_in).slice(0, 5) : '',
+                                                time_out: isChk ? '' : (s.time_out ? String(s.time_out).slice(0, 5) : ''),
+                                                punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                                                is_checkpoint: isChk,
+                                                checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : [],
+                                                inPunchId: s.inPunchId,
+                                                outPunchId: s.outPunchId
+                                            };
+                                        }));
+                                    }}
+                                />
+                            </div>
+
+                            {/* Admin Review Remarks Input (when reviewing pending request) */}
+                            {isPending && (
+                                <div className="border-t border-slate-200/60 dark:border-github-dark-border/60 pt-5">
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1.5">
+                                        Admin Review Remarks (Optional before approving)
+                                    </span>
+                                    <input
+                                        type="text"
                                         value={reviewComment}
                                         onChange={(e) => setReviewComment(e.target.value)}
-                                        placeholder="Add auditor review comments, remarks, or justification before approving..."
-                                        className="w-full p-2.5 text-xs bg-slate-50 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500/30 text-slate-800 dark:text-github-dark-text resize-none h-16 font-normal"
+                                        placeholder="Add justification or remarks for approval..."
+                                        className="w-full px-3 py-2 text-sm bg-slate-50/70 dark:bg-github-dark-bg/30 border border-slate-200/80 dark:border-github-dark-border/60 rounded-lg text-slate-800 dark:text-github-dark-text focus:ring-1 focus:ring-indigo-500 outline-none"
                                     />
                                 </div>
                             )}
 
-                            {/* Card 6: Audit Trail & History */}
+                            {/* Reviewed Remarks Section (if already reviewed) */}
+                            {!isPending && (
+                                <div className="border-t border-slate-200/60 dark:border-github-dark-border/60 pt-5">
+                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">
+                                        Admin Remarks
+                                    </span>
+                                    <p className="text-sm text-slate-700 dark:text-slate-300 font-normal mt-0.5">
+                                        "{selectedRequestData.review_comments || "No remarks provided."}"
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Section: Audit Trail & History */}
                             {(() => {
                                 const trail = typeof selectedRequestData.audit_trail === 'string'
                                     ? (() => { try { return JSON.parse(selectedRequestData.audit_trail); } catch { return []; } })()
                                     : (Array.isArray(selectedRequestData.audit_trail) ? selectedRequestData.audit_trail : []);
                                 if (trail && trail.length > 0) {
                                     return (
-                                        <div className="bg-white dark:bg-github-dark-subtle/50 rounded-xl border border-slate-200 dark:border-github-dark-border p-3.5 shadow-2xs">
-                                            <h4 className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-1.5">
-                                                <Activity size={12} className="text-indigo-500" /> Audit Trail & History
-                                            </h4>
+                                        <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-4">
+                                            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 block mb-3 flex items-center gap-1.5">
+                                                <Activity size={14} className="text-indigo-500" /> Audit Trail & History
+                                            </span>
                                             <div className="relative pl-3.5 border-l-2 border-slate-200 dark:border-github-dark-border space-y-3">
                                                 {trail.map((event, idx) => (
                                                     <div key={idx} className="relative">
@@ -688,11 +718,11 @@ const CorrectionRequestsTab = ({
                                                         <p className="text-xs font-semibold text-slate-800 dark:text-github-dark-text capitalize">
                                                             {String(event.action).toLowerCase()}
                                                         </p>
-                                                        <p className="text-[10px] text-slate-400 dark:text-github-dark-muted font-normal">
+                                                        <p className="text-xs text-slate-400 dark:text-github-dark-muted font-normal mt-0.5">
                                                             {event.at ? new Date(event.at).toLocaleString() : 'N/A'} • by {event.by === selectedRequestData.user_id ? selectedRequestData.user_name : (event.by_name || 'Admin')}
                                                         </p>
                                                         {event.comments && (
-                                                            <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 italic pl-2 border-l border-slate-200 dark:border-github-dark-border font-normal">
+                                                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 italic pl-2 border-l border-slate-200 dark:border-github-dark-border font-normal">
                                                                 "{event.comments}"
                                                             </p>
                                                         )}
@@ -704,16 +734,12 @@ const CorrectionRequestsTab = ({
                                 }
                                 return null;
                             })()}
-
                         </div>
-
-
                     </>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-400 dark:text-github-dark-muted">
-                        <FileClock className="w-10 h-10 text-slate-300 dark:text-slate-600 mb-2" />
-                        <p className="text-xs font-medium text-slate-600 dark:text-slate-300">No Request Selected</p>
-                        <p className="text-[11px] font-normal text-slate-400 mt-0.5">Select a request from the left list to review</p>
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                        <FileClock size={48} className="mb-4 opacity-50" />
+                        <p className="text-sm font-medium">Select a request to view details</p>
                     </div>
                 )}
             </div>
@@ -745,7 +771,7 @@ const CorrectionRequestsTab = ({
                             <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">
                                 Please provide an explanation for the employee regarding why this correction request is being rejected:
                             </p>
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap gap-1.5">
                                 {[
                                     "Mismatch with biometric gate logs",
                                     "Incomplete punch proof",
@@ -756,7 +782,7 @@ const CorrectionRequestsTab = ({
                                         key={i}
                                         type="button"
                                         onClick={() => setRejectReason(preset)}
-                                        className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 hover:bg-rose-50 dark:bg-github-dark-bg text-slate-600 hover:text-rose-600 dark:text-slate-300 border border-slate-200 dark:border-github-dark-border transition-colors cursor-pointer"
+                                        className="text-xs font-medium px-2.5 py-1 rounded-md bg-slate-100 hover:bg-rose-50 dark:bg-github-dark-bg text-slate-600 hover:text-rose-600 dark:text-slate-300 border border-slate-200 dark:border-github-dark-border transition-colors cursor-pointer"
                                     >
                                         {preset}
                                     </button>
@@ -767,7 +793,7 @@ const CorrectionRequestsTab = ({
                                 value={rejectReason}
                                 onChange={(e) => setRejectReason(e.target.value)}
                                 placeholder="e.g. Discrepancy with biometric logs, shift was already logged..."
-                                className="w-full p-3 text-xs bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-rose-500 font-normal resize-none"
+                                className="w-full p-3 text-sm bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-rose-500 font-normal resize-none"
                             />
                             <div className="flex items-center justify-end gap-2 pt-2">
                                 <button

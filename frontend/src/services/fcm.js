@@ -6,23 +6,20 @@ import { notificationService } from './notificationService';
 // Replace these placeholders with your actual Web App credentials from the Firebase Console
 // or set the corresponding environment variables in frontend/src/.env or system variables.
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "YOUR_FIREBASE_API_KEY",
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "YOUR_FIREBASE_AUTH_DOMAIN",
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "YOUR_FIREBASE_PROJECT_ID",
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "YOUR_FIREBASE_STORAGE_BUCKET",
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "YOUR_FIREBASE_MESSAGING_SENDER_ID",
-    appId: import.meta.env.VITE_FIREBASE_APP_ID || "YOUR_FIREBASE_APP_ID"
+    apiKey: import.meta.env.FIREBASE_API_KEY,
+    authDomain: import.meta.env.FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.FIREBASE_APP_ID
 };
 
-// Web Push Certificate VAPID Key from Firebase Console > Project Settings > Cloud Messaging > Web configuration
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || "YOUR_VAPID_KEY";
+const VAPID_KEY = import.meta.env.FIREBASE_VAPID_KEY;
 
 let messaging = null;
 
 try {
-    // Check if configuration is set
-    const isConfigured = firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY";
-    if (isConfigured) {
+    if (firebaseConfig.apiKey) {
         const app = initializeApp(firebaseConfig);
         messaging = getMessaging(app);
         console.log('✅ Firebase Web Messaging initialized successfully.');

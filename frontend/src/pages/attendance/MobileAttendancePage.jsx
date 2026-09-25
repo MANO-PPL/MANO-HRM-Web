@@ -331,7 +331,7 @@ const MobileAttendancePage = () => {
 
     // Shift deadline & allowed date bounds for the correction date picker
     const correctionDeadlineDays = useMemo(() => {
-        return myShift?.rules?.correction_deadline ?? 2;
+        return myShift?.rules?.correction_deadline ?? 30;
     }, [myShift]);
 
     const minAllowedCorrectionDate = useMemo(() => {

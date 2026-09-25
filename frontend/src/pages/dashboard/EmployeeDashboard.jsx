@@ -176,7 +176,7 @@ const EmployeeDashboard = () => {
 
                 // Real per-shift correction window, not a hardcoded guess — matches the same
                 // deadline enforced when actually submitting a correction.
-                const correctionDeadlineDays = shiftRes.value?.shift?.rules?.correction_deadline ?? 2;
+                const correctionDeadlineDays = shiftRes.value?.shift?.rules?.correction_deadline ?? 30;
                 const deadlineCutoff = new Date(todayMidnight);
                 deadlineCutoff.setDate(deadlineCutoff.getDate() - correctionDeadlineDays);
                 const deadlineCutoffStr = deadlineCutoff.toISOString().split('T')[0];
@@ -462,7 +462,16 @@ const EmployeeDashboard = () => {
                         <button
                             onClick={() => {
                                 const missedDate = missedPunchWarning && missedPunchWarning.dates && missedPunchWarning.dates.length > 0 ? missedPunchWarning.dates[0] : '';
-                                navigate(`/attendance?tab=my_attendance&subTab=correction&openDrawer=true${missedDate ? `&date=${missedDate}` : ''}`);
+                                if (!missedDate) return;
+                                const deadlineDays = shift?.rules?.correction_deadline ?? 30;
+                                const cutoff = new Date();
+                                cutoff.setDate(cutoff.getDate() - deadlineDays);
+                                const cutoffStr = cutoff.toISOString().split('T')[0];
+                                if (missedDate < cutoffStr) {
+                                    toast.error(`Correction window of ${deadlineDays} days has expired for ${missedDate}.`);
+                                    return;
+                                }
+                                navigate(`/attendance?tab=my_attendance&subTab=correction&openDrawer=true&date=${missedDate}`);
                             }}
                             className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shrink-0 active:scale-95 cursor-pointer"
                         >

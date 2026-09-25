@@ -832,11 +832,12 @@ const AttendanceMonitoring = () => {
             const params = { limit: 10000 };
             const res = await attendanceService.getCorrectionRequests(params);
 
-            // Sort: Pending first, then by date (newest first)
+            // Sort: according to submitted date (most recent on top) for all statuses
             const sortedData = (res.data || []).sort((a, b) => {
-                if (a.status === 'pending' && b.status !== 'pending') return -1;
-                if (a.status !== 'pending' && b.status === 'pending') return 1;
-                return new Date(b.request_date) - new Date(a.request_date);
+                const dateA = new Date(a.submitted_at || a.created_at || a.request_date || 0).getTime();
+                const dateB = new Date(b.submitted_at || b.created_at || b.request_date || 0).getTime();
+                if (dateB !== dateA) return dateB - dateA;
+                return (Number(b.acr_id || b.id) || 0) - (Number(a.acr_id || a.id) || 0);
             });
 
             setCorrectionRequests(sortedData);
@@ -967,13 +968,12 @@ const AttendanceMonitoring = () => {
 
     // Stats Cards Data
     const statCards = [
-        { id: 'total', label: 'Total Employees', value: stats.total, icon: <Users size={20} />, bg: 'bg-indigo-50 dark:bg-indigo-500/10', color: 'text-indigo-600 dark:text-indigo-400' },
-        { id: 'present', label: 'Total Present', value: stats.present, icon: <UserCheck size={20} />, bg: 'bg-emerald-50 dark:bg-emerald-500/10', color: 'text-emerald-600 dark:text-emerald-400' },
-        { id: 'late', label: 'Late Arrivals', value: stats.late, icon: <Clock size={20} />, bg: 'bg-amber-50 dark:bg-amber-500/10', color: 'text-amber-600 dark:text-amber-400' },
-        { id: 'overtime', label: 'Overtime', value: stats.overtime, icon: <TrendingUp size={20} />, bg: 'bg-violet-50 dark:bg-violet-500/10', color: 'text-violet-600 dark:text-violet-400' },
-        { id: 'halfDay', label: 'Half Day', value: stats.halfDay, icon: <Clock size={20} />, bg: 'bg-indigo-50 dark:bg-indigo-500/10', color: 'text-indigo-600 dark:text-indigo-400' },
-        { id: 'absent', label: 'Absent', value: stats.absent, icon: <UserX size={20} />, bg: 'bg-rose-50 dark:bg-rose-500/10', color: 'text-rose-600 dark:text-rose-400' },
-        { id: 'active', label: 'Currently Active', value: stats.active, icon: <Activity size={20} />, bg: 'bg-blue-50 dark:bg-blue-500/10', color: 'text-blue-600 dark:text-blue-400' },
+        { id: 'total', label: 'Total Employees', value: stats.total, icon: <Users size={18} />, bg: 'bg-indigo-50 dark:bg-indigo-500/10', color: 'text-indigo-600 dark:text-indigo-400' },
+        { id: 'present', label: 'Total Present', value: stats.present, icon: <UserCheck size={18} />, bg: 'bg-emerald-50 dark:bg-emerald-500/10', color: 'text-emerald-600 dark:text-emerald-400' },
+        { id: 'late', label: 'Late Arrivals', value: stats.late, icon: <Clock size={18} />, bg: 'bg-amber-50 dark:bg-amber-500/10', color: 'text-amber-600 dark:text-amber-400' },
+        { id: 'overtime', label: 'Overtime', value: stats.overtime, icon: <TrendingUp size={18} />, bg: 'bg-violet-50 dark:bg-violet-500/10', color: 'text-violet-600 dark:text-violet-400' },
+        { id: 'halfDay', label: 'Half Day', value: stats.halfDay, icon: <Clock size={18} />, bg: 'bg-indigo-50 dark:bg-indigo-500/10', color: 'text-indigo-600 dark:text-indigo-400' },
+        { id: 'absent', label: 'Absent', value: stats.absent, icon: <UserX size={18} />, bg: 'bg-rose-50 dark:bg-rose-500/10', color: 'text-rose-600 dark:text-rose-400' },
     ];
 
     // Filter Logic for Live Tab
@@ -1503,21 +1503,21 @@ const AttendanceMonitoring = () => {
                                             <div
                                                 key={index}
                                                 onClick={() => setStatusFilter(isSelected ? 'All' : stat.id)}
-                                                className={`p-4 rounded-lg shadow-sm flex items-center justify-between transition-all duration-300 cursor-pointer select-none bg-white dark:bg-dark-card border-2 ${isSelected
+                                                className={`p-3.5 2xl:p-4 rounded-lg shadow-sm flex items-center justify-between transition-all duration-300 cursor-pointer select-none bg-white dark:bg-dark-card border-2 min-w-0 ${isSelected
                                                         ? 'border-indigo-500 dark:border-indigo-500 scale-[1.01] shadow-md'
                                                         : 'border-slate-200 dark:border-github-dark-border hover:border-slate-350 dark:hover:border-slate-700'
                                                     }`}
                                             >
-                                                <div>
+                                                <div className="min-w-0 flex-1 mr-2">
                                                     <div className="flex items-center gap-1.5">
-                                                        <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted">{stat.label}</p>
+                                                        <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted truncate" title={stat.label}>{stat.label}</p>
                                                         {isSelected && (
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0"></span>
                                                         )}
                                                     </div>
                                                     <p className="text-2xl font-semibold text-slate-800 dark:text-github-dark-text mt-1">{stat.value}</p>
                                                 </div>
-                                                <div className={`p-3 rounded-lg ${stat.bg} ${stat.color}`}>
+                                                <div className={`p-2.5 2xl:p-3 rounded-lg shrink-0 ${stat.bg} ${stat.color}`}>
                                                     {stat.icon}
                                                 </div>
                                             </div>

@@ -70,7 +70,7 @@ const ShiftManagement = ({ embedded = false }) => {
     const [isOtEnabled, setIsOtEnabled] = useState(false);
     const [shiftForm, setShiftForm] = useState({
         name: '', start: '09:00', end: '18:00', grace: 0,
-        otThreshold: 9.0, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
+        otThreshold: 9.0, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 30,
         reqEntrySelfie: true, reqEntryGeofence: true,
         reqExitSelfie: false, reqExitGeofence: true,
         checkpointEnabled: true, reqCheckpointSelfie: false,
@@ -120,7 +120,7 @@ const ShiftManagement = ({ embedded = false }) => {
                     overtime: !!s.is_overtime_enabled,
                     otThreshold: parseFloat(s.overtime_threshold_hours),
                     otMaxHours: normalizeUiMaxOtHours(s.policy_rules?.overtime?.max_overtime ?? s.policy_rules?.overtime?.maxOvertime),
-                    correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 2),
+                    correctionDeadline: parseInt(s.policy_rules?.correction_deadline ?? 30),
                     policy_rules: s.policy_rules || {},
                     is_active: s.is_active !== 0
                 }));
@@ -171,7 +171,7 @@ const ShiftManagement = ({ embedded = false }) => {
                 name: editingShift.name, start: editingShift.start, end: editingShift.end,
                 grace: editingShift.grace ?? 0, otThreshold: editingShift.otThreshold || 8.0,
                 otMaxHours: normalizeUiMaxOtHours(editingShift.otMaxHours),
-                correctionDeadline: editingShift.correctionDeadline ?? 2,
+                correctionDeadline: editingShift.correctionDeadline ?? 30,
                 reqEntrySelfie: !!rules.entry_requirements?.selfie,
                 reqEntryGeofence: true, // GPS is mandatory
                 reqExitSelfie: !!rules.exit_requirements?.selfie,
@@ -191,7 +191,7 @@ const ShiftManagement = ({ embedded = false }) => {
             setShowAdvancedSettings(false);
         } else if (showShiftForm && !editingShift) {
             setShiftForm({
-                name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 2,
+                name: '', start: '09:00', end: '18:00', grace: 0, otThreshold: 9.0, otMaxHours: DEFAULT_MAX_OT_HOURS, correctionDeadline: 30,
                 reqEntrySelfie: true, reqEntryGeofence: true, reqExitSelfie: false, reqExitGeofence: true, // GPS is mandatory
                 checkpointEnabled: true, reqCheckpointSelfie: false,
                 workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], weekOffRules: [], halfDayRules: [],
@@ -228,7 +228,7 @@ const ShiftManagement = ({ embedded = false }) => {
                 threshold: parseFloat(shiftForm.otThreshold) || 0,
                 max_overtime: maxOvertime
             },
-            correction_deadline: parseInt(shiftForm.correctionDeadline) || 2,
+            correction_deadline: parseInt(shiftForm.correctionDeadline) || 30,
             missed_punch_check_time: null,
             half_day_threshold: {
                 enabled: shiftForm.halfDayThresholdEnabled,

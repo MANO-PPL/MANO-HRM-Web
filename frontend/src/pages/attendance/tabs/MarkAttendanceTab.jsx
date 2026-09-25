@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { toast } from 'react-toastify';
 import {
     ArrowRight,
     LogOut,
@@ -35,6 +36,8 @@ const MarkAttendanceTab = ({
     setActiveTab,
     setSubTab,
     setIsCorrectionDrawerOpen,
+    minAllowedCorrectionDate,
+    correctionDeadlineDays = 30,
     calendarRef,
     showCalendar,
     setShowCalendar,
@@ -204,6 +207,10 @@ const MarkAttendanceTab = ({
                     <button
                         onClick={() => {
                             const targetDate = missedPunchWarning.dates[0] || selectedDate;
+                            if (minAllowedCorrectionDate && targetDate < minAllowedCorrectionDate) {
+                                toast.error(`Correction window of ${correctionDeadlineDays} days has expired for this date.`);
+                                return;
+                            }
                             setCorrDate(targetDate);
                             loadCorrectionDataForDate(targetDate);
                             setActiveTab('my_attendance');
@@ -285,6 +292,10 @@ const MarkAttendanceTab = ({
                     <button
                         type="button"
                         onClick={() => {
+                            if (minAllowedCorrectionDate && selectedDate < minAllowedCorrectionDate) {
+                                toast.error(`Correction requests can only be submitted within ${correctionDeadlineDays} days of the attendance date.`);
+                                return;
+                            }
                             setCorrDate(selectedDate);
                             loadCorrectionDataForDate(selectedDate);
                             setIsCorrectionDrawerOpen(true);

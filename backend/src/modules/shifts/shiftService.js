@@ -667,7 +667,7 @@ export function getShiftRules(shift) {
             enabled: parseBool(rules.checkpoint_requirements?.enabled, true),
             selfie: parseBool(rules.checkpoint_requirements?.selfie, false)
         },
-        correction_deadline: rules.correction_deadline ?? 2,
+        correction_deadline: rules.correction_deadline ?? 30,
         missed_punch_check_time: rules.missed_punch_check_time || null,
         // Per-shift "half day if arrival after X / leaves before Y" — replaces the old org-wide
         // threshold (which broke for orgs with more than one shift, since one flat clock time
@@ -713,7 +713,7 @@ export function getDefaultShiftConfig() {
             enabled: true,
             selfie: false
         },
-        correction_deadline: 2,
+        correction_deadline: 30,
         missed_punch_check_time: null,
         half_day_threshold: {
             enabled: false,

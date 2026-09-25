@@ -3,11 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { attendanceDB } from '../../config/database.js';
+import EventBus from '../../utils/EventBus.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let messagingInstance = null;
+let ioInstance = null;
 
 // Initialize Firebase Admin
 try {
@@ -211,4 +213,92 @@ export const sendPushNotification = async (userId, title, body, data = {}) => {
   } catch (error) {
     console.error(`Error in sendPushNotification:`, error);
   }
+};
+
+/**
+ * Configure the Socket.IO instance for real-time Web notification delivery
+ */
+export const setSocketIO = (io) => {
+  ioInstance = io;
+};
+
+/**
+ * Enrich notification with chat details or sender avatar if applicable
+ */
+export const enrichNotification = async (notification) => {
+  let enriched = { ...notification };
+  const isChat = notification.type === 'CHAT' || notification.type === 'CHAT_MESSAGE' || notification.related_entity_type === 'CHAT_MESSAGE';
+
+  if (isChat) {
+    enriched.type = 'CHAT';
+  }
+
+  if (isChat && notification.related_entity_id) {
+    try {
+      const room = await attendanceDB('chat_conversations')
+        .where('id', notification.related_entity_id)
+        .first();
+      if (room && room.last_message_id) {
+        enriched.message_id = room.last_message_id;
+        const lastMsg = await attendanceDB('chat_messages')
+          .where('id', room.last_message_id)
+          .first();
+        if (lastMsg) {
+          const sender = await attendanceDB('core_users')
+            .where('user_id', lastMsg.sender_id)
+            .select('profile_image_url')
+            .first();
+          if (sender && sender.profile_image_url) {
+            enriched.sender_avatar = sender.profile_image_url;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error enriching notification with sender avatar:', e);
+    }
+  }
+
+  return enriched;
+};
+
+/**
+ * Unified delivery engine: Delivers real-time WebSocket alert (Web) and FCM Push (Mobile)
+ */
+export const deliverNotification = async (notification) => {
+  if (!notification || !notification.user_id) return;
+
+  const enrichedNotification = await enrichNotification(notification);
+  const isChat = enrichedNotification.type === 'CHAT';
+
+  // 1. Deliver to Web via Socket.IO (instant toast / bell update)
+  if (ioInstance) {
+    ioInstance.to(`user_${notification.user_id}`).emit('new_notification', enrichedNotification);
+    console.log(`📡 Real-time notification socket push sent to user_${notification.user_id} for alert #${notification.notification_id || 'chat'}`);
+  }
+
+  // 2. Deliver to Mobile via FCM (lock-screen push)
+  if (notification.send_push !== false) {
+    await sendPushNotification(
+      notification.user_id,
+      notification.title,
+      notification.message,
+      {
+        notification_id: String(notification.notification_id || ''),
+        type: isChat ? 'CHAT' : String(notification.type || 'INFO'),
+        related_entity_type: String(notification.related_entity_type || ''),
+        related_entity_id: String(notification.related_entity_id || ''),
+        sender_avatar: String(enrichedNotification.sender_avatar || '')
+      }
+    );
+  }
+};
+
+/**
+ * Initialize centralized notification delivery system with Socket.IO and EventBus
+ */
+export const initNotificationDelivery = (io) => {
+  setSocketIO(io);
+  EventBus.off('notification_saved', deliverNotification);
+  EventBus.on('notification_saved', deliverNotification);
+  console.log('✅ Centralized notification delivery engine initialized (Socket.IO + FCM).');
 };

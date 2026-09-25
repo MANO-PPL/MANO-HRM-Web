@@ -209,11 +209,11 @@ export default function CorrectionDocumentCard({
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
+                            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
                                 {title}
                             </h3>
                             {meta && (
-                                <span className={`text-[9px] font-mono font-medium px-1.5 py-0.5 rounded border uppercase ${meta.badgeColor}`}>
+                                <span className={`text-xs font-mono font-medium px-2 py-0.5 rounded border uppercase ${meta.badgeColor}`}>
                                     {meta.badge}
                                 </span>
                             )}
@@ -356,14 +356,6 @@ export default function CorrectionDocumentCard({
                             />
                         </div>
                     )}
-                </div>
-            )}
-
-            {/* Empty state if no document was attached */}
-            {!meta?.url && (
-                <div className="flex items-center gap-2 p-2.5 bg-slate-50 dark:bg-github-dark-bg/30 border border-dashed border-slate-200 dark:border-github-dark-border rounded-lg text-xs text-slate-400 font-normal">
-                    <Paperclip size={13} className="text-slate-400 shrink-0" />
-                    <span>No supporting proof or document was uploaded with this request.</span>
                 </div>
             )}
         </div>

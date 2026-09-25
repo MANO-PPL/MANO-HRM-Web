@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'react-toastify';
 import {
     ChevronLeft,
     ChevronRight,
@@ -31,7 +32,9 @@ const AttendanceHistoryTab = ({
     myShift,
     setIsCorrectionDrawerOpen,
     setCorrDate,
-    loadCorrectionDataForDate
+    loadCorrectionDataForDate,
+    minAllowedCorrectionDate,
+    correctionDeadlineDays = 30
 }) => {
     const isCurrentMonthSelected = reportYear === new Date().getFullYear() && reportMonthIdx === new Date().getMonth();
     const monthDateObj = new Date(reportYear, reportMonthIdx, 1);
@@ -371,18 +374,28 @@ const AttendanceHistoryTab = ({
                                                     <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60 dark:border-white/5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                                                         <span>Punch Breakdown ({day.sessions.length} {day.sessions.length === 1 ? 'pair' : 'pairs'})</span>
                                                         {setIsCorrectionDrawerOpen && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    if (setCorrDate) setCorrDate(day.dateKey);
-                                                                    if (loadCorrectionDataForDate) loadCorrectionDataForDate(day.dateKey);
-                                                                    setIsCorrectionDrawerOpen(true);
-                                                                }}
-                                                                className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg transition-colors border border-indigo-100 dark:border-indigo-800/40 cursor-pointer"
-                                                            >
-                                                                <Plus size={12} strokeWidth={2.5} /> Request Correction
-                                                            </button>
+                                                            minAllowedCorrectionDate && day.dateKey < minAllowedCorrectionDate ? (
+                                                                <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 italic">
+                                                                    Deadline expired
+                                                                </span>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (minAllowedCorrectionDate && day.dateKey < minAllowedCorrectionDate) {
+                                                                            toast.error(`Correction requests can only be submitted within ${correctionDeadlineDays} days of the attendance date.`);
+                                                                            return;
+                                                                        }
+                                                                        if (setCorrDate) setCorrDate(day.dateKey);
+                                                                        if (loadCorrectionDataForDate) loadCorrectionDataForDate(day.dateKey);
+                                                                        setIsCorrectionDrawerOpen(true);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-lg transition-colors border border-indigo-100 dark:border-indigo-800/40 cursor-pointer"
+                                                                >
+                                                                    <Plus size={12} strokeWidth={2.5} /> Request Correction
+                                                                </button>
+                                                            )
                                                         )}
                                                     </div>
 

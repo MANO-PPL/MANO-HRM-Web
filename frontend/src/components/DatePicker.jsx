@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp } from 'lucide-react';
 
-const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate, compact = false, clearable = false, align = "left" }) => {
+const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate, compact = false, clearable = false, align = "left", className = "", triggerClassName = "" }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
     const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -177,8 +177,8 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
                 } rounded-xl flex items-center justify-between gap-2 cursor-pointer transition-all shadow-sm group select-none ${
                     compact 
                         ? 'py-2 px-3 text-xs bg-slate-50 dark:bg-[#161b22] hover:bg-slate-100 dark:hover:bg-[#21262d]' 
-                        : 'py-2.5 px-4 text-sm bg-white dark:bg-dark-card hover:bg-slate-50 dark:hover:bg-slate-800'
-                }`}
+                        : (triggerClassName || 'py-2.5 px-4 text-sm bg-white dark:bg-dark-card hover:bg-slate-50 dark:hover:bg-slate-800')
+                } ${className}`}
             >
                 <div className="flex items-center gap-2 overflow-hidden">
                     <Calendar size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />

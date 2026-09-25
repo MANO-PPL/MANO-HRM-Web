@@ -362,7 +362,7 @@ async function notifyExpiredMissedPunches() {
             }
             const notificationSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
 
-            const graceDays = rules.correction_deadline ?? 2;
+            const graceDays = rules.correction_deadline ?? 30;
 
             const recordDate = new Date(record.date);
             recordDate.setHours(0, 0, 0, 0);
