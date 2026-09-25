@@ -13,7 +13,8 @@ import {
     Clock,
     MapPin,
     Calendar,
-    Activity
+    Activity,
+    Edit3
 } from 'lucide-react';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
 import CorrectionDocumentCard from '../../../components/attendance/CorrectionDocumentCard';
@@ -290,13 +291,31 @@ const AttendanceCorrectionTab = ({
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex items-center gap-2.5 shrink-0">
                                     <span className={`text-xs sm:text-sm font-bold px-3.5 py-1 rounded-full capitalize ${selectedRequest.status === 'approved' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' :
                                         selectedRequest.status === 'rejected' ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800' :
                                             'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
                                         }`}>
                                         {selectedRequest.status || 'pending'}
                                     </span>
+                                    {((selectedRequest.status || 'pending').toLowerCase() === 'pending' && setIsCorrectionDrawerOpen) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const reqDate = selectedRequest.request_date ? String(selectedRequest.request_date).split('T')[0] : '';
+                                                if (reqDate) {
+                                                    if (setCorrDate) setCorrDate(reqDate);
+                                                    if (loadCorrectionDataForDate) loadCorrectionDataForDate(reqDate);
+                                                    setIsCorrectionDrawerOpen(true);
+                                                }
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1 text-xs sm:text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full border border-indigo-200 dark:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                            title="Edit pending request"
+                                        >
+                                            <Edit3 size={13} strokeWidth={2.2} />
+                                            <span>Edit Request</span>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                             {/* Clean Details View - Single container without overlapping nested card boxes */}

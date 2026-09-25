@@ -78,7 +78,7 @@ import DatePicker from '../../components/DatePicker';
 import MonthPicker from '../../components/MonthPicker';
 import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
 import TimePicker from '../../components/TimePicker';
-import { getStatusStyle, ATTENDANCE_STATUS, isCheckpointRecord, normalizeDailySessionsWithCheckpoints } from '../../utils/attendanceStatus';
+import { getStatusStyle, ATTENDANCE_STATUS, isCheckpointRecord, normalizeDailySessionsWithCheckpoints, parseCorrectionDetails } from '../../utils/attendanceStatus';
 import { getLocalDateString, formatLocalTimeString } from '../../utils/dateUtils';
 
 // Modular Components & Tabs
@@ -1273,11 +1273,26 @@ const Attendance = () => {
 
             if (pendingReq) {
                 setPendingRequestId(pendingReq.id || pendingReq.acr_id);
-                setCorrReason(pendingReq.reason || '');
+                const { category: parsedCat, cleanReason } = parseCorrectionDetails(pendingReq);
+                setCorrReason(cleanReason || pendingReq.reason || '');
                 setExistingAttachmentUrl(pendingReq.attachment_url || null);
                 setCorrAttachment(null);
                 setCorrAttachmentPreview(null);
-                setCorrType(pendingReq.correction_type === 'summary' ? 'Other' : 'Missed Punch');
+
+                const standardTypes = ['Missed Punch', 'Missed Day', 'Late Arrival', 'Early Departure', 'Biometric Issue', 'Overtime'];
+                if (standardTypes.includes(parsedCat)) {
+                    setCorrType(parsedCat);
+                    setCorrOtherType('');
+                } else if (pendingReq.correction_type === 'summary') {
+                    setCorrType('Other');
+                    setCorrOtherType('Summary Adjustment');
+                } else if (parsedCat) {
+                    setCorrType('Other');
+                    setCorrOtherType(parsedCat);
+                } else {
+                    setCorrType('Missed Punch');
+                    setCorrOtherType('');
+                }
 
                 const proposedList = Array.isArray(pendingReq.proposed_data) ? pendingReq.proposed_data : [];
                 const originalList = Array.isArray(pendingReq.original_data) ? pendingReq.original_data : [];

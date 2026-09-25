@@ -292,91 +292,91 @@ function App() {
         <NotificationProvider>
           <SeoManager />
           <ScaleManager />
-        <ToastContainer enableMultiContainer containerId="defaultContainer" position="bottom-center" autoClose={3000} limit={1} hideProgressBar={true} pauseOnHover={false} pauseOnFocusLoss={false} closeOnClick={true} />
-        <ToastContainer enableMultiContainer containerId="macOSNotifications" position="top-right" autoClose={3000} limit={3} hideProgressBar={true} closeButton={false} newestOnTop={true} transition={Slide} />
-        <TourProvider>
-        <TourOverlay />
-        <Routes>
+          <ToastContainer enableMultiContainer containerId="defaultContainer" position="bottom-center" autoClose={3000} limit={1} hideProgressBar={true} pauseOnHover={false} pauseOnFocusLoss={false} closeOnClick={true} />
+          <ToastContainer enableMultiContainer containerId="macOSNotifications" position="top-right" autoClose={3000} limit={3} hideProgressBar={true} closeButton={false} newestOnTop={true} transition={Slide} />
+          <TourProvider>
+            <TourOverlay />
+            <Routes>
 
-          {/* Website Landing (shown first when not logged in) */}
-          <Route path="/" element={<RootHandler />} />
-          <Route path="/get-started" element={<Navigate to="/signup" replace />} />
+              {/* Website Landing (shown first when not logged in) */}
+              <Route path="/" element={<RootHandler />} />
+              <Route path="/get-started" element={<Navigate to="/signup" replace />} />
 
-          {/* Public Route: Login & Onboarding */}
-          <Route element={<PublicRoute />}>
-            <Route path="/login" element={<ResponsiveRoute DesktopComponent={Login} MobileComponent={MobileLogin} />} />
-            <Route path="/signup" element={<ResponsiveRoute DesktopComponent={Register} MobileComponent={MobileRegister} />} />
-            <Route path="/org-login" element={<ResponsiveRoute DesktopComponent={SuperAdminLogin} MobileComponent={SuperAdminLoginMobile} />} />
-            <Route path="/forgot-password" element={<ResponsiveRoute DesktopComponent={ForgotPassword} MobileComponent={MobileForgotPassword} />} />
-          </Route>
+              {/* Public Route: Login & Onboarding */}
+              <Route element={<PublicRoute />}>
+                <Route path="/login" element={<ResponsiveRoute DesktopComponent={Login} MobileComponent={MobileLogin} />} />
+                <Route path="/signup" element={<ResponsiveRoute DesktopComponent={Register} MobileComponent={MobileRegister} />} />
+                <Route path="/org-login" element={<ResponsiveRoute DesktopComponent={SuperAdminLogin} MobileComponent={SuperAdminLoginMobile} />} />
+                <Route path="/forgot-password" element={<ResponsiveRoute DesktopComponent={ForgotPassword} MobileComponent={MobileForgotPassword} />} />
+              </Route>
 
-          {/* Test Routes - Only available in Development */}
-          <Route element={<TestRoute />}>
-            <Route path="/word-captcha-test" element={<WordCaptchaTest />} />
-            <Route path="/test-api" element={<TestAPI />} />
-            <Route path="/visual-scripting" element={<VisualScripting />} />
-          </Route>
+              {/* Test Routes - Only available in Development */}
+              <Route element={<TestRoute />}>
+                <Route path="/word-captcha-test" element={<WordCaptchaTest />} />
+                <Route path="/test-api" element={<TestAPI />} />
+                <Route path="/visual-scripting" element={<VisualScripting />} />
+              </Route>
 
-          <Route element={<ProtectedRoute />}>
-            <Route path="/unauthorized" element={<Unauthorized />} />
-            <Route path="/change-password" element={<ChangePassword />} />
-            {/* Common Routes (Accessible by all authenticated users: Admin, HR, Employee) */}
-            <Route element={<ProtectedRoute allowedRoles={['admin', 'hr', 'employee', 'super_admin']} />}>
-              <Route path="/dashboard" element={<DashboardHandler />} />
-              <Route path="/attendance" element={<ResponsiveRoute DesktopComponent={Attendance} MobileComponent={MobileAttendance} />} />
-              <Route path="/holidays" element={<ResponsiveRoute DesktopComponent={HolidayManagement} MobileComponent={MobileHolidayManagement} />} />
-              <Route path="/profile" element={<ResponsiveRoute DesktopComponent={Profile} MobileComponent={MobileProfile} />} />
-              <Route path="/daily-activity" element={<ResponsiveRoute DesktopComponent={DailyActivity} MobileComponent={DailyActivityMobile} />} />
-              <Route path="/apply-leave" element={<Navigate to="/holidays?tab=leaves&apply=true" replace />} />
-              <Route path="/collaboration" element={<ResponsiveRoute DesktopComponent={ChatPage} MobileComponent={MobileChatPage} />} />
-              <Route path="/documentation" element={<Documentation />} />
-              <Route path="/reports" element={<ResponsiveRoute DesktopComponent={Reports} MobileComponent={MobileReports} />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/unauthorized" element={<Unauthorized />} />
+                <Route path="/change-password" element={<ChangePassword />} />
+                {/* Common Routes (Accessible by all authenticated users: Admin, HR, Employee) */}
+                <Route element={<ProtectedRoute allowedRoles={['admin', 'hr', 'employee', 'super_admin']} />}>
+                  <Route path="/dashboard" element={<DashboardHandler />} />
+                  <Route path="/attendance" element={<ResponsiveRoute DesktopComponent={Attendance} MobileComponent={MobileAttendance} />} />
+                  <Route path="/holidays" element={<ResponsiveRoute DesktopComponent={HolidayManagement} MobileComponent={MobileHolidayManagement} />} />
+                  <Route path="/profile" element={<ResponsiveRoute DesktopComponent={Profile} MobileComponent={MobileProfile} />} />
+                  <Route path="/daily-activity" element={<ResponsiveRoute DesktopComponent={DailyActivity} MobileComponent={DailyActivityMobile} />} />
+                  <Route path="/apply-leave" element={<Navigate to="/holidays?tab=leaves&apply=true" replace />} />
+                  <Route path="/collaboration" element={<ResponsiveRoute DesktopComponent={ChatPage} MobileComponent={MobileChatPage} />} />
+                  <Route path="/documentation" element={<Documentation />} />
+                  <Route path="/reports" element={<ResponsiveRoute DesktopComponent={Reports} MobileComponent={MobileReports} />} />
 
-              {/* Mobile-Only Pages fallback */}
-              <Route path="/notifications" element={<MobileNotifications />} />
-              <Route path="/feedback" element={<MobileFeedback />} />
-            </Route>
+                  {/* Mobile-Only Pages fallback */}
+                  <Route path="/notifications" element={<MobileNotifications />} />
+                  <Route path="/feedback" element={<MobileFeedback />} />
+                </Route>
 
-            {/* Admin & HR Only Routes */}
-            <Route element={<ProtectedRoute allowedRoles={['admin', 'hr']} />}>
-              <Route path="/attendance-monitoring" element={<ResponsiveRoute DesktopComponent={AttendanceMonitoring} MobileComponent={MobileAttendanceMonitoring} />} />
-              <Route path="/payroll" element={<ResponsiveRoute DesktopComponent={Payroll} MobileComponent={MobilePayroll} />} />
-              <Route path="/policies" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
-              <Route path="/leave-management" element={<Navigate to="/holidays?tab=leaves" replace />} />
-              <Route path="/shift-management" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
-              <Route path="/geofencing" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
-              <Route path="/employees" element={<ResponsiveRoute DesktopComponent={EmployeeList} MobileComponent={MobileEmployeeList} />} />
-              <Route path="/employees/add" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
-              <Route path="/employees/edit/:id" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
-              <Route path="/employees/bulk" element={<ResponsiveRoute DesktopComponent={BulkUpload} MobileComponent={MobileBulkUpload} />} />
-              <Route path="/holidays/bulk" element={<ResponsiveRoute DesktopComponent={BulkHolidayImport} MobileComponent={MobileBulkHolidayImport} />} />
-              <Route path="/dar-admin" element={<DARAdmin />} />
-              <Route path="/labour-management" element={<ResponsiveRoute DesktopComponent={LabourManagement} MobileComponent={MobileLabourManagement} />} />
-              <Route path="/payroll-dashboard" element={<ResponsiveRoute DesktopComponent={PayrollDashboard} MobileComponent={PayrollDashboard} />} />
-              <Route path="/payroll-packages" element={<Navigate to="/policies?tab=salary_packages" replace />} />
-            </Route>
+                {/* Admin & HR Only Routes */}
+                <Route element={<ProtectedRoute allowedRoles={['admin', 'hr']} />}>
+                  <Route path="/attendance-monitoring" element={<ResponsiveRoute DesktopComponent={AttendanceMonitoring} MobileComponent={MobileAttendanceMonitoring} />} />
+                  <Route path="/payroll" element={<ResponsiveRoute DesktopComponent={Payroll} MobileComponent={MobilePayroll} />} />
+                  <Route path="/policies" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
+                  <Route path="/leave-management" element={<Navigate to="/holidays?tab=leaves" replace />} />
+                  <Route path="/shift-management" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
+                  <Route path="/geofencing" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
+                  <Route path="/employees" element={<ResponsiveRoute DesktopComponent={EmployeeList} MobileComponent={MobileEmployeeList} />} />
+                  <Route path="/employees/add" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
+                  <Route path="/employees/edit/:id" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
+                  <Route path="/employees/bulk" element={<ResponsiveRoute DesktopComponent={BulkUpload} MobileComponent={MobileBulkUpload} />} />
+                  <Route path="/holidays/bulk" element={<ResponsiveRoute DesktopComponent={BulkHolidayImport} MobileComponent={MobileBulkHolidayImport} />} />
+                  <Route path="/dar-admin" element={<DARAdmin />} />
+                  <Route path="/labour-management" element={<ResponsiveRoute DesktopComponent={LabourManagement} MobileComponent={MobileLabourManagement} />} />
+                  <Route path="/payroll-dashboard" element={<ResponsiveRoute DesktopComponent={PayrollDashboard} MobileComponent={PayrollDashboard} />} />
+                  <Route path="/payroll-packages" element={<Navigate to="/policies?tab=salary_packages" replace />} />
+                </Route>
 
-            {/* Admin Only Routes */}
-            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-              <Route path="/subscription" element={<Subscription />} />
-            </Route>
+                {/* Admin Only Routes */}
+                <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                  <Route path="/subscription" element={<Subscription />} />
+                </Route>
 
-            {/* Super Admin Only Routes */}
-            <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
-              <Route path="/organizations" element={<ResponsiveRoute DesktopComponent={OrganizationList} MobileComponent={OrganizationListMobile} />} />
-              <Route path="/super-admin/alerts" element={<ResponsiveRoute DesktopComponent={SecurityAlerts} MobileComponent={SecurityAlertsMobile} />} />
-              <Route path="/super-admin/feedback" element={<ResponsiveRoute DesktopComponent={UserFeedback} MobileComponent={UserFeedbackMobile} />} />
-              <Route path="/super-admin/logs" element={<ResponsiveRoute DesktopComponent={PM2LogsConsole} MobileComponent={PM2LogsConsole} />} />
-              <Route path="/super-admin/api-analytics" element={<ResponsiveRoute DesktopComponent={APIAnalytics} MobileComponent={APIAnalytics} />} />
-              <Route path="/super-admin/debug" element={<ResponsiveRoute DesktopComponent={DebugConsole} MobileComponent={DebugConsole} />} />
-            </Route>
-          </Route>
+                {/* Super Admin Only Routes */}
+                <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
+                  <Route path="/organizations" element={<ResponsiveRoute DesktopComponent={OrganizationList} MobileComponent={OrganizationListMobile} />} />
+                  <Route path="/super-admin/alerts" element={<ResponsiveRoute DesktopComponent={SecurityAlerts} MobileComponent={SecurityAlertsMobile} />} />
+                  <Route path="/super-admin/feedback" element={<ResponsiveRoute DesktopComponent={UserFeedback} MobileComponent={UserFeedbackMobile} />} />
+                  <Route path="/super-admin/logs" element={<ResponsiveRoute DesktopComponent={PM2LogsConsole} MobileComponent={PM2LogsConsole} />} />
+                  <Route path="/super-admin/api-analytics" element={<ResponsiveRoute DesktopComponent={APIAnalytics} MobileComponent={APIAnalytics} />} />
+                  <Route path="/super-admin/debug" element={<ResponsiveRoute DesktopComponent={DebugConsole} MobileComponent={DebugConsole} />} />
+                </Route>
+              </Route>
 
-        </Routes>
-        </TourProvider>
-      </NotificationProvider>
-    </SocketProvider>
-  </AuthProvider>
+            </Routes>
+          </TourProvider>
+        </NotificationProvider>
+      </SocketProvider>
+    </AuthProvider>
   )
 }
 
