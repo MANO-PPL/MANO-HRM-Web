@@ -176,6 +176,34 @@ const getColLetter = (col) => {
     return letter;
 };
 
+// Helper: write a value as a real Excel time value (not the old display-string placeholder) so
+// downstream formulas (Work Hrs, Late Mins) can do arithmetic on it directly. `dateVal` is the
+// full underlying timestamp (date + time), not just a time-of-day — subtracting two such cells
+// gives the correct elapsed hours even across midnight, which a time-only value could not do
+// safely. Falls back to a blank cell for a missing punch: blank is safe inside IFERROR(...); the
+// old "-" string placeholder is not (text minus text errors out instead of evaluating to 0).
+// CSV has no `numFmt` concept — a raw Date value would serialize as a full ISO timestamp there,
+// a real regression from today's clean "09:00 AM" text — so CSV keeps writing the same
+// `formatLocalTimeStr` display string it always has; only `format === 'xlsx'` gets the live value.
+const setTimeCellValue = (cell, dateVal, format, includeSeconds = false) => {
+    if (format === 'xlsx') {
+        cell.value = dateVal ? new Date(dateVal) : null;
+        cell.numFmt = 'h:mm AM/PM';
+    } else {
+        cell.value = reportsService.formatLocalTimeStr(dateVal, includeSeconds);
+    }
+};
+
+// Helper: wraps a formula with its precomputed value so the cell is genuinely live when opened
+// in Excel, while CSV (which has no formula concept at all) still gets the identical plain value
+// it always has. Every live/recalculating cell in this file should be built through this helper
+// rather than hand-writing `{ formula, result }`, so CSV output can never accidentally leak raw
+// formula syntax, and so the "what does this report show today" value is always what's cached in
+// `result` even before a spreadsheet app has a chance to recalculate on open.
+const liveCell = (format, formulaStr, precomputedValue) => {
+    return format === 'xlsx' ? { formula: formulaStr, result: precomputedValue } : precomputedValue;
+};
+
 // Helper: Style Excel Worksheet beautifully
 export const styleExcelWorksheet = (worksheet, type) => {
     // 1. Enable Gridlines
@@ -299,7 +327,15 @@ export const styleExcelWorksheet = (worksheet, type) => {
             }
 
             // 4. Conditional Formatting based on cell values
-            const val = cell.value?.toString().trim();
+            // A live-formula cell's value is `{ formula, result }`, not a plain value — without
+            // unwrapping `.result` first, `.toString()` on that object yields the literal string
+            // "[object Object]" and every branch below silently stops matching. This was harmless
+            // before formula cells existed outside totals rows (which return earlier, above) but
+            // matters now that Stage 2+ writes formulas into ordinary data cells too.
+            const rawVal = cell.value;
+            const val = (rawVal && typeof rawVal === 'object' && 'formula' in rawVal)
+                ? (rawVal.result !== undefined && rawVal.result !== null ? String(rawVal.result).trim() : undefined)
+                : rawVal?.toString().trim();
 
             // Present or 1.0 status (Green)
             if (val === 'Present' || val === '1.0') {
@@ -377,6 +413,38 @@ export const styleExcelWorksheet = (worksheet, type) => {
                     type: 'pattern',
                     pattern: 'solid',
                     fgColor: { argb: 'FFE8F0FE' } // Soft Blue
+                };
+                cell.font = {
+                    name: 'Segoe UI',
+                    size: 10,
+                    bold: true,
+                    color: { argb: 'FF1A73E8' }
+                };
+            }
+            // Holiday status — previously matched no branch here, so a multi-day matrix's own
+            // inline blue Holiday styling (applied before this generic pass runs) was silently
+            // overwritten back to plain zebra stripe. Matched separately from "leave" above
+            // (different color) since it's a distinct concept.
+            else if (val === 'Holiday' || val === 'HOLIDAY') {
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFE1F0FF' } // Soft Blue (matches the multi-day matrix's own inline Holiday color)
+                };
+                cell.font = {
+                    name: 'Segoe UI',
+                    size: 10,
+                    bold: true,
+                    color: { argb: 'FF1967D2' }
+                };
+            }
+            // "L" (On Leave, abbreviated) — the multi-day matrix's day-grid writes this short
+            // code, not the full word "Leave", so it never matched the branch above either.
+            else if (val === 'L') {
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFE8F0FE' } // Soft Blue, same as "Leave"/"On Leave"
                 };
                 cell.font = {
                     name: 'Segoe UI',
@@ -835,33 +903,84 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         pushCol("Status", "status", "status", 15);
         pushCol("Late (mins)", "late_mins", "late", 12);
 
+        // Live-formula groundwork: Work Hours needs Time In/Out to exist as real cells on this
+        // sheet; Late (mins) additionally needs each row's own shift start time + grace period as
+        // real values (a formula can't reach into the database), carried via two hidden reference
+        // columns. CSV has no formula concept at all, so this is skipped entirely for CSV — those
+        // cells just keep writing the same plain computed value CSV has always had.
+        const canLiveWorkHrs = format === 'xlsx' && colsObj.workedHours !== false && colsObj.timeIn !== false && colsObj.timeOut !== false;
+        const canLiveLateMins = format === 'xlsx' && colsObj.late !== false && colsObj.timeIn !== false;
+        if (canLiveLateMins) {
+            cols.push({ header: "Shift Start (hrs)", key: "shift_start_hrs", width: 14, hidden: true });
+            cols.push({ header: "Grace (mins)", key: "grace_mins", width: 12, hidden: true });
+        }
+
         worksheet.columns = cols;
+
+        const colLetter = (key) => {
+            const idx = worksheet.columns.findIndex(c => c.key === key) + 1;
+            return idx > 0 ? getColLetter(idx) : null;
+        };
+        const timeInLetter = colLetter('time_in');
+        const timeOutLetter = colLetter('time_out');
+        const shiftStartLetter = colLetter('shift_start_hrs');
+        const graceMinsLetter = colLetter('grace_mins');
+
+        let totalWorkHrs = 0;
+        let totalLateMins = 0;
+
         users.forEach(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
             const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
             const holidayOverride = !aggregated.time_in ? reportsService.getHolidayOverride(startDate, holidayByDate) : null;
 
+            const workedHours = parseFloat(aggregated.worked_hours.toFixed(2));
+            const lateMins = aggregated.late_minutes || 0;
+            totalWorkHrs += workedHours;
+            totalLateMins += lateMins;
+
             const rowData = {
                 name: u.user_name,
                 position: u.desg_name || "-"
             };
-
-            if (colsObj.timeIn !== false) rowData.time_in = reportsService.formatLocalTimeStr(aggregated.time_in);
-            if (colsObj.timeOut !== false) rowData.time_out = reportsService.formatLocalTimeStr(aggregated.time_out);
-            if (colsObj.workedHours !== false) rowData.work_hrs = parseFloat(aggregated.worked_hours.toFixed(2));
             if (colsObj.status !== false) rowData.status = holidayOverride ? holidayOverride.status : aggregated.status;
-            if (colsObj.late !== false) rowData.late_mins = aggregated.late_minutes || 0;
+            if (canLiveLateMins) {
+                const rules = reportsService.getShiftRules(u);
+                const [startH, startM] = (rules.shift_timing?.start_time || "09:00:00").split(':').map(Number);
+                rowData.shift_start_hrs = startH + (startM / 60);
+                rowData.grace_mins = Number(rules.grace_period?.minutes || 0);
+            }
 
-            worksheet.addRow(rowData);
+            const row = worksheet.addRow(rowData);
+
+            if (colsObj.timeIn !== false) setTimeCellValue(row.getCell('time_in'), aggregated.time_in, format);
+            if (colsObj.timeOut !== false) setTimeCellValue(row.getCell('time_out'), aggregated.time_out, format);
+
+            if (colsObj.workedHours !== false) {
+                const workHrsCell = row.getCell('work_hrs');
+                workHrsCell.value = canLiveWorkHrs
+                    ? liveCell(format, `IFERROR((${timeOutLetter}${row.number}-${timeInLetter}${row.number})*24,0)`, workedHours)
+                    : workedHours;
+                workHrsCell.numFmt = '0.00';
+            }
+            if (colsObj.late !== false) {
+                const lateMinsCell = row.getCell('late_mins');
+                lateMinsCell.value = canLiveLateMins
+                    ? liveCell(format, `IFERROR(MAX(0,(MOD(${timeInLetter}${row.number},1)*24-${shiftStartLetter}${row.number})*60-${graceMinsLetter}${row.number}),0)`, lateMins)
+                    : lateMins;
+            }
         });
 
         if (users.length > 0) {
             const lastRow = worksheet.rowCount;
-            const workHrsColIdx = worksheet.columns.findIndex(c => c.key === "work_hrs") + 1; // 1-based index
             const totalsRowData = { name: "TOTALS" };
-            if (workHrsColIdx > 0) {
-                const workHrsColLetter = getColLetter(workHrsColIdx);
-                totalsRowData.work_hrs = { formula: `SUM(${workHrsColLetter}2:${workHrsColLetter}${lastRow})` };
+            const workHrsColLetter = colLetter('work_hrs');
+            const lateMinsColLetter = colLetter('late_mins');
+            if (workHrsColLetter) {
+                totalsRowData.work_hrs = liveCell(format, `SUM(${workHrsColLetter}2:${workHrsColLetter}${lastRow})`, parseFloat(totalWorkHrs.toFixed(2)));
+            }
+            if (lateMinsColLetter) {
+                totalsRowData.late_mins = liveCell(format, `SUM(${lateMinsColLetter}2:${lateMinsColLetter}${lastRow})`, totalLateMins);
             }
             worksheet.addRow(totalsRowData);
         }
@@ -898,6 +1017,22 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true };
         headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+        // Live-formula groundwork. Unlike the per-day-sub-column matrix report, this report's
+        // day-grid is one column per day (no sub-columns) — genuinely contiguous, so a plain
+        // COUNTIF range works directly, no boolean-sum-of-terms trick needed. Req Hrs/Worked
+        // Hrs/Late Hours/Late Count stay static: none of the underlying per-day hour/lateness data
+        // is ever written to this sheet's coded day cells ("1.0"/"0.0"/etc.), only presence, so
+        // there's nothing on-sheet for a formula to sum for those specific columns.
+        const dayGridStartCol = baseHeaders.length + 1;
+        const dayGridEndCol = dayGridStartCol + dateHeaders.length - 1;
+        const dayGridRangeStart = getColLetter(dayGridStartCol);
+        const dayGridRangeEnd = getColLetter(dayGridEndCol);
+        const canLiveAttendanceDays = format === 'xlsx' && colsObj.attendanceDays !== false && dateHeaders.length > 0;
+
+        // Running totals for the totals row's cached result / CSV fallback (so it never has to
+        // fall back to a bare, resultless formula object — see the totals row below).
+        const grandTotals = { reqHrs: 0, workedHrs: 0, lateHrs: 0, lateCount: 0, presentDays: 0, absentDays: 0 };
 
         users.forEach((u, index) => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
@@ -977,23 +1112,45 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
             userRow.push(...dateCells);
 
-            if (colsObj.requiredHours !== false) userRow.push(parseFloat(reqHrs.toFixed(2)));
-            if (colsObj.workedHours !== false) userRow.push(parseFloat(workedHrs.toFixed(2)));
+            const reqHrsRounded = parseFloat(reqHrs.toFixed(2));
+            const workedHrsRounded = parseFloat(workedHrs.toFixed(2));
+            const lateHrsRounded = parseFloat(lateHrs.toFixed(2));
+            if (colsObj.requiredHours !== false) { userRow.push(reqHrsRounded); grandTotals.reqHrs += reqHrsRounded; }
+            if (colsObj.workedHours !== false) { userRow.push(workedHrsRounded); grandTotals.workedHrs += workedHrsRounded; }
             if (colsObj.late !== false) {
-                userRow.push(parseFloat(lateHrs.toFixed(2)));
+                userRow.push(lateHrsRounded);
                 userRow.push(lateCount);
+                grandTotals.lateHrs += lateHrsRounded;
+                grandTotals.lateCount += lateCount;
             }
             if (colsObj.attendanceDays !== false) {
-                userRow.push(presentDays);
-                userRow.push(calculatedAbsentDays);
+                userRow.push(canLiveAttendanceDays ? null : presentDays);
+                userRow.push(canLiveAttendanceDays ? null : calculatedAbsentDays);
+                grandTotals.presentDays += presentDays;
+                grandTotals.absentDays += calculatedAbsentDays;
             }
 
-            worksheet.addRow(userRow);
+            const row = worksheet.addRow(userRow);
+            if (canLiveAttendanceDays) {
+                const rowNum = row.number;
+                const rangeRef = `${dayGridRangeStart}${rowNum}:${dayGridRangeEnd}${rowNum}`;
+                const presentCol = dayGridEndCol + (colsObj.requiredHours !== false ? 1 : 0) + (colsObj.workedHours !== false ? 1 : 0) + (colsObj.late !== false ? 2 : 0) + 1;
+                const absentCol = presentCol + 1;
+                row.getCell(presentCol).value = liveCell(format, `COUNTIF(${rangeRef},"1.0")+COUNTIF(${rangeRef},"Half Day")`, presentDays);
+                row.getCell(absentCol).value = liveCell(format, `COUNTIF(${rangeRef},"0.0")`, calculatedAbsentDays);
+            }
         });
 
         // Add TOTALS row if users exist
         if (users.length > 0) {
-            const totalsRow = ["TOTALS", "", "", ""];
+            // Bug fix, found while verifying this stage: this used to hardcode 4 leading blanks
+            // ("TOTALS","","","") regardless of whether the optional Shift column (the 5th base
+            // header) was actually shown — off by one whenever it was (the default), shifting
+            // every formula below into the wrong column. Pad to the real `baseHeaders.length`
+            // instead, matching `startColIndex`'s calculation two lines down, which already
+            // correctly accounted for it.
+            const totalsRow = ["TOTALS"];
+            for (let col = 2; col <= baseHeaders.length; col++) totalsRow.push("");
             dateHeaders.forEach(() => {
                 totalsRow.push("");
             });
@@ -1004,28 +1161,28 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let currCol = startColIndex;
             if (colsObj.requiredHours !== false) {
                 const letter = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter}2:${letter}${lastRow})` });
+                totalsRow.push(liveCell(format, `SUM(${letter}2:${letter}${lastRow})`, parseFloat(grandTotals.reqHrs.toFixed(2))));
                 currCol++;
             }
             if (colsObj.workedHours !== false) {
                 const letter = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter}2:${letter}${lastRow})` });
+                totalsRow.push(liveCell(format, `SUM(${letter}2:${letter}${lastRow})`, parseFloat(grandTotals.workedHrs.toFixed(2))));
                 currCol++;
             }
             if (colsObj.late !== false) {
                 const letter1 = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter1}2:${letter1}${lastRow})` });
+                totalsRow.push(liveCell(format, `SUM(${letter1}2:${letter1}${lastRow})`, parseFloat(grandTotals.lateHrs.toFixed(2))));
                 currCol++;
                 const letter2 = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter2}2:${letter2}${lastRow})` });
+                totalsRow.push(liveCell(format, `SUM(${letter2}2:${letter2}${lastRow})`, grandTotals.lateCount));
                 currCol++;
             }
             if (colsObj.attendanceDays !== false) {
                 const letter1 = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter1}2:${letter1}${lastRow})` });
+                totalsRow.push(liveCell(format, `SUM(${letter1}2:${letter1}${lastRow})`, grandTotals.presentDays));
                 currCol++;
                 const letter2 = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter2}2:${letter2}${lastRow})` });
+                totalsRow.push(liveCell(format, `SUM(${letter2}2:${letter2}${lastRow})`, grandTotals.absentDays));
                 currCol++;
             }
 
@@ -1052,7 +1209,21 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         pushCol("In Location", "time_in_address", "location", 40);
         pushCol("Out Location", "time_out_address", "location", 40);
 
+        // Live-formula groundwork: Work Hrs needs Time In/Out to exist as real cells on this
+        // sheet. This report has no Late Mins column, so no shift-config helper columns needed.
+        const canLiveWorkHrs = format === 'xlsx' && colsObj.workedHours !== false && colsObj.timeIn !== false && colsObj.timeOut !== false;
+
         worksheet.columns = cols;
+
+        const colLetter = (key) => {
+            const idx = worksheet.columns.findIndex(c => c.key === key) + 1;
+            return idx > 0 ? getColLetter(idx) : null;
+        };
+        const timeInLetter = colLetter('time_in');
+        const timeOutLetter = colLetter('time_out');
+
+        let totalWorkHrs = 0;
+
         const dayRows = reportsService.groupRecordsByUserAndDay(records, users, todayStr);
         dayRows.forEach(r => {
             const rowData = {
@@ -1062,17 +1233,38 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             };
 
             if (colsObj.shift !== false) rowData.shift = r.shift_name || "-";
-            if (colsObj.timeIn !== false) rowData.time_in = reportsService.formatLocalTimeStr(r.time_in, true);
-            if (colsObj.timeOut !== false) rowData.time_out = reportsService.formatLocalTimeStr(r.time_out, true);
-            if (colsObj.workedHours !== false) rowData.work_hrs = r.worked_hours.toFixed(2);
             if (colsObj.status !== false) rowData.status = r.status;
             if (colsObj.location !== false) {
                 rowData.time_in_address = r.time_in_address || "-";
                 rowData.time_out_address = r.time_out_address || "-";
             }
 
-            worksheet.addRow(rowData);
+            const workedHours = parseFloat(r.worked_hours.toFixed(2));
+            totalWorkHrs += workedHours;
+
+            const row = worksheet.addRow(rowData);
+
+            if (colsObj.timeIn !== false) setTimeCellValue(row.getCell('time_in'), r.time_in, format, true);
+            if (colsObj.timeOut !== false) setTimeCellValue(row.getCell('time_out'), r.time_out, format, true);
+
+            if (colsObj.workedHours !== false) {
+                const workHrsCell = row.getCell('work_hrs');
+                workHrsCell.value = canLiveWorkHrs
+                    ? liveCell(format, `IFERROR((${timeOutLetter}${row.number}-${timeInLetter}${row.number})*24,0)`, workedHours)
+                    : workedHours;
+                workHrsCell.numFmt = '0.00';
+            }
         });
+
+        if (dayRows.length > 0) {
+            const lastRow = worksheet.rowCount;
+            const workHrsColLetter = colLetter('work_hrs');
+            if (workHrsColLetter) {
+                const totalsRowData = { date: "TOTALS" };
+                totalsRowData.work_hrs = liveCell(format, `SUM(${workHrsColLetter}2:${workHrsColLetter}${lastRow})`, parseFloat(totalWorkHrs.toFixed(2)));
+                worksheet.addRow(totalsRowData);
+            }
+        }
     } else if (type === "attendance_summary") {
         const cols = [
             { header: "Name", key: "name", width: 25 },
@@ -1112,6 +1304,25 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         const totalDaysInMonth = new Date(year, monthNum, 0).getDate();
         // Generate calendar day dates for this month timezone-independently
         const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+
+        // Live-formula groundwork. This report has no daily breakdown on the sheet at all (one
+        // row per employee per month) — Present/Absent/Half Day/On Leave/etc. are rolled up
+        // server-side from data that never appears as cells here, so there's nothing on-sheet for
+        // most of these to be formula-driven from (documented limitation). The one exception:
+        // Payable Days is itself derived from THIS row's own Present/Half Day/On Leave cells,
+        // which do exist on the sheet — so it can genuinely be a live formula.
+        const canLivePayableDays = format === 'xlsx' && colsObj.attendanceDays !== false;
+        const colLetterFor = (key) => {
+            const idx = worksheet.columns.findIndex(c => c.key === key) + 1;
+            return idx > 0 ? getColLetter(idx) : null;
+        };
+        const presentColLetter = canLivePayableDays ? colLetterFor('present') : null;
+        const halfDayColLetter = canLivePayableDays ? colLetterFor('half_day') : null;
+        const leavesColLetter = canLivePayableDays ? colLetterFor('leaves') : null;
+
+        // Running totals for the totals row's cached result / CSV fallback (so it never has to
+        // fall back to a bare, resultless formula object — see the totals row below).
+        const grandTotals = {};
 
         users.forEach(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
@@ -1187,7 +1398,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 }
             });
 
-            const payableDays = presentDays - (0.5 * halfDayCount) + leaveCount;
+            const payableDays = Math.round(presentDays - (0.5 * halfDayCount) + leaveCount);
 
             const rowData = {
                 name: u.user_name,
@@ -1196,7 +1407,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             };
 
             if (colsObj.requiredHours !== false) {
-                rowData.required_hrs = parseFloat(reportsService.getRequiredHoursForPeriod(u, dateStrings, holidayByDate).toFixed(2));
+                const requiredHrs = parseFloat(reportsService.getRequiredHoursForPeriod(u, dateStrings, holidayByDate).toFixed(2));
+                rowData.required_hrs = requiredHrs;
+                grandTotals.required_hrs = (grandTotals.required_hrs || 0) + requiredHrs;
             }
             if (colsObj.attendanceDays !== false) {
                 rowData.present = presentDays;
@@ -1204,20 +1417,38 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 rowData.half_day = halfDayCount;
                 rowData.leaves = leaveCount;
                 rowData.holiday = holidayWorkedCount;
+                grandTotals.present = (grandTotals.present || 0) + presentDays;
+                grandTotals.absent = (grandTotals.absent || 0) + absentDays;
+                grandTotals.half_day = (grandTotals.half_day || 0) + halfDayCount;
+                grandTotals.leaves = (grandTotals.leaves || 0) + leaveCount;
+                grandTotals.holiday = (grandTotals.holiday || 0) + holidayWorkedCount;
             }
             if (colsObj.late !== false) {
                 rowData.late_days = lateCount;
                 rowData.late_mins = totalLateMins;
+                grandTotals.late_days = (grandTotals.late_days || 0) + lateCount;
+                grandTotals.late_mins = (grandTotals.late_mins || 0) + totalLateMins;
             }
             if (colsObj.workedHours !== false) {
-                rowData.overtime_hrs = parseFloat(totalOvertimeHrs.toFixed(2));
-                rowData.total_hrs = parseFloat(totalHrs.toFixed(2));
+                const overtimeHrsRounded = parseFloat(totalOvertimeHrs.toFixed(2));
+                const totalHrsRounded = parseFloat(totalHrs.toFixed(2));
+                rowData.overtime_hrs = overtimeHrsRounded;
+                rowData.total_hrs = totalHrsRounded;
+                grandTotals.overtime_hrs = (grandTotals.overtime_hrs || 0) + overtimeHrsRounded;
+                grandTotals.total_hrs = (grandTotals.total_hrs || 0) + totalHrsRounded;
             }
             if (colsObj.attendanceDays !== false) {
-                rowData.payable_days = Math.round(payableDays);
+                rowData.payable_days = canLivePayableDays ? null : payableDays;
+                grandTotals.payable_days = (grandTotals.payable_days || 0) + payableDays;
             }
 
-            worksheet.addRow(rowData);
+            const row = worksheet.addRow(rowData);
+
+            if (canLivePayableDays) {
+                const rowNum = row.number;
+                const formula = `${presentColLetter}${rowNum}-0.5*${halfDayColLetter}${rowNum}+${leavesColLetter}${rowNum}`;
+                row.getCell('payable_days').value = liveCell(format, formula, payableDays);
+            }
         });
 
         if (users.length > 0) {
@@ -1232,7 +1463,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 const key = col.key;
                 if (key !== "name" && key !== "dept" && key !== "total_days") {
                     const letter = getColLetter(idx + 1);
-                    totalsRow[key] = { formula: `SUM(${letter}2:${letter}${lastRow})` };
+                    totalsRow[key] = liveCell(format, `SUM(${letter}2:${letter}${lastRow})`, grandTotals[key] || 0);
                 }
             });
             worksheet.addRow(totalsRow);
@@ -1266,8 +1497,6 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const [y, m, d] = dateStr.split('-').map(Number);
             return new Date(y, m - 1, d);
         });
-
-        const baseHeaders = ["SR No.", "Name", "Position", "Dept"];
 
         let dailyColspan = 0;
         const subCols = [];
@@ -1308,6 +1537,28 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             summaryCols.push("Late Mins");
         }
 
+        // Live-formula groundwork. Status always exists (dailyColspan's first entry,
+        // unconditional above); In Time/Out Time/Work Hrs/Late Mins are each conditional on
+        // colsObj. A day counts as "present" for the Present Days formula/count below if its
+        // Status cell isn't one of these no-work labels — matches the convention already used
+        // for this same concept in the other report types.
+        const presentExclusions = ['Absent', 'On Leave', 'Holiday', 'Sun', 'Sat', 'WEEK_OFF', 'Not Recorded', '-', 'Missed Punch'];
+        const subColOffset = (label) => {
+            const idx = subCols.findIndex(sc => sc.label === label);
+            return idx >= 0 ? idx : null;
+        };
+        const statusOffset = subColOffset("Status");
+        const inTimeOffset = subColOffset("In Time");
+        const outTimeOffset = subColOffset("Out Time");
+        const workHrsOffset = subColOffset("Work Hrs");
+        const lateMinsOffset = subColOffset("Late Mins");
+
+        const canLiveWorkHrs = format === 'xlsx' && workHrsOffset !== null && inTimeOffset !== null && outTimeOffset !== null;
+        const canLiveLateMins = format === 'xlsx' && lateMinsOffset !== null && inTimeOffset !== null;
+        const canLivePresentDays = format === 'xlsx' && statusOffset !== null && dateHeaders.length > 0;
+        const canLiveTotalHrs = format === 'xlsx' && workHrsOffset !== null && dateHeaders.length > 0;
+        const canLiveLateSummary = format === 'xlsx' && lateMinsOffset !== null && dateHeaders.length > 0;
+
         // Add Row 1 (Top Header)
         const r1Values = ["SR No.", "Name", "Position", "Dept"];
         if (colsObj.shift !== false) {
@@ -1323,6 +1574,13 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             }
         });
         r1Values.push(...summaryCols);
+        // Hidden reference columns carrying each row's own shift start time + grace period, so
+        // the per-day Late Mins formula below has real values to compare against (a formula can't
+        // reach into the database). Appended after the visible summary columns, then hidden
+        // post-construction.
+        if (canLiveLateMins) {
+            r1Values.push("Shift Start (hrs)", "Grace (mins)");
+        }
         worksheet.addRow(r1Values);
 
         // Add Row 2 (Sub Header)
@@ -1335,6 +1593,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             });
         }
         summaryCols.forEach(() => r2Values.push(""));
+        if (canLiveLateMins) {
+            r2Values.push("", "");
+        }
         worksheet.addRow(r2Values);
 
         // Merge cells
@@ -1346,6 +1607,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
         // Merge date headers horizontally
         let currentCol = colsObj.shift !== false ? 6 : 5;
+        const dayGridStartCol = currentCol;
         if (dailyColspan > 0) {
             dateHeaders.forEach(() => {
                 const startCol = currentCol;
@@ -1361,11 +1623,28 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const col = summaryStartCol + idx;
             worksheet.mergeCells(1, col, 2, col);
         });
+        // Hidden columns: merged too, for structural consistency, though never visible.
+        let shiftStartCol = null;
+        let graceMinsCol = null;
+        if (canLiveLateMins) {
+            shiftStartCol = summaryStartCol + summaryCols.length;
+            graceMinsCol = shiftStartCol + 1;
+            worksheet.mergeCells(1, shiftStartCol, 2, shiftStartCol);
+            worksheet.mergeCells(1, graceMinsCol, 2, graceMinsCol);
+        }
+
+        const dayCellCol = (dIdx, offset) => dayGridStartCol + dIdx * dailyColspan + offset;
+        const dayCellRef = (dIdx, offset, rowNum) => `${getColLetter(dayCellCol(dIdx, offset))}${rowNum}`;
+        const shiftStartLetter = shiftStartCol ? getColLetter(shiftStartCol) : null;
+        const graceMinsLetter = graceMinsCol ? getColLetter(graceMinsCol) : null;
 
         // Add data rows
+        const summaryTotals = {}; // label -> running sum, for the totals row's cached result / CSV fallback
+        summaryCols.forEach(label => { summaryTotals[label] = 0; });
         users.forEach((u, index) => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
             const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
+            const rules = reportsService.getShiftRules(u);
             const userRow = [index + 1, u.user_name, u.desg_name || "-", u.dept_name || "-"];
             if (colsObj.shift !== false) {
                 userRow.push(u.shift_name || "-");
@@ -1374,31 +1653,36 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let totalHrs = 0;
             let lateCount = 0;
             let lateMins = 0;
+            let presentDaysCount = 0;
+            const punchedDays = []; // { dIdx, timeIn, timeOut } — for the post-addRow live-cell pass
 
             dateHeaders.forEach((d, dIdx) => {
                 const dateStr = dateStrings[dIdx];
                 const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
                 const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
-                const rules = reportsService.getShiftRules(u);
                 const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
                 const dayOfWeek = d.getUTCDay();
                 const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (aggregated.time_in) {
+                    const workedHoursForDay = parseFloat(aggregated.worked_hours.toFixed(2));
                     subCols.forEach(sc => {
                         if (sc.label === "Status") userRow.push(aggregated.status);
-                        else if (sc.label === "In Time") userRow.push(reportsService.formatLocalTimeStr(aggregated.time_in));
-                        else if (sc.label === "Out Time") userRow.push(reportsService.formatLocalTimeStr(aggregated.time_out));
-                        else if (sc.label === "Work Hrs") userRow.push(parseFloat(aggregated.worked_hours.toFixed(2)));
+                        else if (sc.label === "In Time") userRow.push(null); // live value set after addRow
+                        else if (sc.label === "Out Time") userRow.push(null); // live value set after addRow
+                        else if (sc.label === "Work Hrs") userRow.push(canLiveWorkHrs ? null : workedHoursForDay);
                         else if (sc.label === "Req Hrs") {
                             const req = reportsService.getHolidayOverride(dateStr, holidayByDate) ? 0 : reportsService.getExpectedHours(dateStr, rules.week_off_policy, rules);
                             userRow.push(parseFloat(req.toFixed(2)));
                         }
-                        else if (sc.label === "Late Mins") userRow.push(aggregated.late_minutes);
+                        else if (sc.label === "Late Mins") userRow.push(canLiveLateMins ? null : aggregated.late_minutes);
                         else if (sc.label === "In Location") userRow.push(aggregated.time_in_address || "-");
                         else if (sc.label === "Out Location") userRow.push(aggregated.time_out_address || "-");
                     });
 
+                    punchedDays.push({ dIdx, timeIn: aggregated.time_in, timeOut: aggregated.time_out, workedHoursForDay, lateMinutesForDay: aggregated.late_minutes });
+
+                    if (!presentExclusions.includes(aggregated.status)) presentDaysCount++;
                     totalHrs += aggregated.worked_hours;
                     if (aggregated.late_minutes > 0) {
                         lateCount++;
@@ -1422,6 +1706,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         }
                     }
 
+                    if (!presentExclusions.includes(statusStr)) presentDaysCount++;
+
                     subCols.forEach((sc) => {
                         if (sc.label === "Status") userRow.push(statusStr);
                         else if (sc.label === "Req Hrs") {
@@ -1433,13 +1719,96 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 }
             });
 
-            if (colsObj.attendanceDays !== false) userRow.push(userRecs.length);
-            if (colsObj.workedHours !== false) userRow.push(parseFloat(totalHrs.toFixed(2)));
+            const totalHrsRounded = parseFloat(totalHrs.toFixed(2));
+            if (colsObj.attendanceDays !== false) userRow.push(canLivePresentDays ? null : presentDaysCount);
+            if (colsObj.workedHours !== false) userRow.push(canLiveTotalHrs ? null : totalHrsRounded);
             if (colsObj.late !== false) {
-                userRow.push(lateCount);
-                userRow.push(lateMins);
+                userRow.push(canLiveLateSummary ? null : lateCount);
+                userRow.push(canLiveLateSummary ? null : lateMins);
             }
+            if (canLiveLateMins) {
+                const [startH, startM] = (rules.shift_timing?.start_time || "09:00:00").split(':').map(Number);
+                userRow.push(startH + (startM / 60), Number(rules.grace_period?.minutes || 0));
+            }
+
             const row = worksheet.addRow(userRow);
+            const rowNum = row.number;
+
+            // Populate the live per-day cells this row's punched days need.
+            punchedDays.forEach(({ dIdx, timeIn, timeOut, workedHoursForDay, lateMinutesForDay }) => {
+                if (inTimeOffset !== null) setTimeCellValue(row.getCell(dayCellCol(dIdx, inTimeOffset)), timeIn, format);
+                if (outTimeOffset !== null) setTimeCellValue(row.getCell(dayCellCol(dIdx, outTimeOffset)), timeOut, format);
+                if (canLiveWorkHrs) {
+                    const cell = row.getCell(dayCellCol(dIdx, workHrsOffset));
+                    const inRef = dayCellRef(dIdx, inTimeOffset, rowNum);
+                    const outRef = dayCellRef(dIdx, outTimeOffset, rowNum);
+                    cell.value = liveCell(format, `IFERROR((${outRef}-${inRef})*24,0)`, workedHoursForDay);
+                    cell.numFmt = '0.00';
+                }
+                if (canLiveLateMins) {
+                    const cell = row.getCell(dayCellCol(dIdx, lateMinsOffset));
+                    const inRef = dayCellRef(dIdx, inTimeOffset, rowNum);
+                    cell.value = liveCell(format, `IFERROR(MAX(0,(MOD(${inRef},1)*24-${shiftStartLetter}${rowNum})*60-${graceMinsLetter}${rowNum}),0)`, lateMinutesForDay);
+                }
+            });
+
+            // Present Days / Total Hrs / Late Count / Late Mins — live formulas over this row's
+            // own day-grid cells. Status sub-columns aren't contiguous across dates (each date is
+            // a multi-column block), so COUNTIF can't take them as one range; a `+`-joined sum of
+            // per-cell boolean terms is used instead. SUM natively accepts a comma-separated list
+            // of non-contiguous cells, so Total Hrs/Late Mins totals stay simple SUM(...) calls.
+            let summaryColCursor = summaryStartCol;
+            if (colsObj.attendanceDays !== false) {
+                const cell = row.getCell(summaryColCursor);
+                if (canLivePresentDays) {
+                    const terms = dateHeaders.map((d, dIdx) => {
+                        const ref = dayCellRef(dIdx, statusOffset, rowNum);
+                        return presentExclusions.map(v => `(${ref}<>"${v}")`).join('*');
+                    });
+                    cell.value = liveCell(format, terms.join('+'), presentDaysCount);
+                } else {
+                    cell.value = presentDaysCount;
+                }
+                summaryTotals["Present Days"] += presentDaysCount;
+                summaryColCursor++;
+            }
+            if (colsObj.workedHours !== false) {
+                const cell = row.getCell(summaryColCursor);
+                if (canLiveTotalHrs) {
+                    const cells = dateHeaders.map((d, dIdx) => dayCellRef(dIdx, workHrsOffset, rowNum));
+                    cell.value = liveCell(format, `SUM(${cells.join(',')})`, totalHrsRounded);
+                } else {
+                    cell.value = totalHrsRounded;
+                }
+                cell.numFmt = '0.00';
+                summaryTotals["Total Hrs"] += totalHrsRounded;
+                summaryColCursor++;
+            }
+            if (colsObj.late !== false) {
+                const countCell = row.getCell(summaryColCursor);
+                if (canLiveLateSummary) {
+                    const terms = dateHeaders.map((d, dIdx) => {
+                        const ref = dayCellRef(dIdx, lateMinsOffset, rowNum);
+                        return `(ISNUMBER(${ref})*(${ref}>0))`;
+                    });
+                    countCell.value = liveCell(format, terms.join('+'), lateCount);
+                } else {
+                    countCell.value = lateCount;
+                }
+                summaryTotals["Late Count"] += lateCount;
+                summaryColCursor++;
+
+                const minsCell = row.getCell(summaryColCursor);
+                if (canLiveLateSummary) {
+                    const cells = dateHeaders.map((d, dIdx) => dayCellRef(dIdx, lateMinsOffset, rowNum));
+                    minsCell.value = liveCell(format, `SUM(${cells.join(',')})`, lateMins);
+                } else {
+                    minsCell.value = lateMins;
+                }
+                summaryTotals["Late Mins"] += lateMins;
+                summaryColCursor++;
+            }
+
             row.eachCell((cell) => {
                 if (cell.value === "Absent" || cell.value === "0.0") {
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E6' } };
@@ -1460,48 +1829,30 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             });
         });
 
-        // Add TOTALS row if users exist
+        if (canLiveLateMins) {
+            worksheet.getColumn(shiftStartCol).hidden = true;
+            worksheet.getColumn(graceMinsCol).hidden = true;
+        }
+
+        // Add TOTALS row if users exist. Rebuilt to fix two pre-existing alignment bugs found
+        // during the audit for this Part: (1) the old `startColIndex` used a hardcoded
+        // `baseHeaders.length` (always 4) that never accounted for the optional Shift column,
+        // shifting every totals formula one column left of where it belonged whenever Shift was
+        // shown (the default); (2) it unconditionally pushed a `requiredHours` SUM formula even
+        // though this report has no "Req Hrs" *summary* column at all (Req Hrs only exists as a
+        // per-day sub-column) — landing that formula in what was actually the Present Days cell.
+        // Rebuilt to walk `summaryCols` by name instead of assuming a fixed shape.
         if (users.length > 0) {
-            const totalsRow = ["TOTALS", "", "", ""];
-            // Add empty cells for all grid columns
-            dateHeaders.forEach(() => {
-                if (dailyColspan > 0) {
-                    for (let i = 0; i < dailyColspan; i++) {
-                        totalsRow.push("");
-                    }
-                }
-            });
+            const totalsRow = ["TOTALS"];
+            for (let col = 2; col < summaryStartCol; col++) totalsRow.push("");
 
-            const startColIndex = baseHeaders.length + (dateHeaders.length * dailyColspan) + 1; // 1-based index in Excel
             const lastRow = worksheet.rowCount;
-
-            let currCol = startColIndex;
-            if (colsObj.requiredHours !== false) {
-                const letter = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter}3:${letter}${lastRow})` });
-                currCol++;
-            }
-            if (colsObj.workedHours !== false) {
-                const letter = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter}3:${letter}${lastRow})` });
-                currCol++;
-            }
-            if (colsObj.late !== false) {
-                const letter1 = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter1}3:${letter1}${lastRow})` });
-                currCol++;
-                const letter2 = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter2}3:${letter2}${lastRow})` });
-                currCol++;
-            }
-            if (colsObj.attendanceDays !== false) {
-                const letter1 = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter1}3:${letter1}${lastRow})` });
-                currCol++;
-                const letter2 = getColLetter(currCol);
-                totalsRow.push({ formula: `SUM(${letter2}3:${letter2}${lastRow})` });
-                currCol++;
-            }
+            summaryCols.forEach((label, idx) => {
+                const col = summaryStartCol + idx;
+                const letter = getColLetter(col);
+                const precomputedTotal = label === "Total Hrs" ? parseFloat(summaryTotals[label].toFixed(2)) : summaryTotals[label];
+                totalsRow[col - 1] = liveCell(format, `SUM(${letter}3:${letter}${lastRow})`, precomputedTotal);
+            });
 
             worksheet.addRow(totalsRow);
         }
