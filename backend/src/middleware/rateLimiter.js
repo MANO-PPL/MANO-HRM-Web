@@ -28,7 +28,9 @@ export const generalLimiter = rateLimit({
 });
 
 // Auth Limiter - Strict for Login/Signup
-// 15 minutes, 8 failed attempts per User Account (Protects against brute force)
+// 15 minutes, 8 failed attempts per account *from one IP*. Keying on the
+// account alone would let anyone lock a user out by failing logins on their
+// behalf; loginIpLimiter below still caps total failures per IP.
 export const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 8,
@@ -39,23 +41,12 @@ export const authLimiter = rateLimit({
         const ip = getClientIp(req);
 
         // Identify the user by their login input (Email/Phone)
-        const identifier = req.body.user_input ||
-            req.body.email ||
-            req.body.phone ||
-            req.body.username;
+        const identifier = req.body?.user_input ||
+            req.body?.email ||
+            req.body?.phone ||
+            req.body?.username;
 
-        let key = ip; // Default to IP if no identifier found
-
-        if (identifier) {
-            key = identifier.toString().toLowerCase().trim();
-        }
-
-        // Clean Debug Log
-        if (identifier) {
-            console.log(`🔒 Rate Limit Check | User: ${key} | IP: ${ip}`);
-        }
-
-        return key;
+        return identifier ? `${ip}:${identifier.toString().toLowerCase().trim()}` : ip;
     },
     message: {
         ok: false,
