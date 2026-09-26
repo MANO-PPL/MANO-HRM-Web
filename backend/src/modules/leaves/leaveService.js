@@ -361,85 +361,97 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
         throw { status: 400, message: "Invalid status" };
     }
 
-    // Fetch the request first so we know its current state and leave details
-    const request = await attendanceDB('leave_request').where({ lr_id: id }).first();
-    if (!request) {
+    // The request must belong to a user of the reviewer's org
+    const scoped = await attendanceDB('leave_request as lr')
+        .join('core_users as u', 'u.user_id', 'lr.user_id')
+        .where({ 'lr.lr_id': id, 'u.org_id': org_id })
+        .first('lr.lr_id', 'lr.user_id');
+    if (!scoped) {
         throw { status: 404, message: "Request not found" };
     }
-
-    const previousStatus = request.status;
-
-    const updateData = {
-        status: lowerStatus,
-        admin_comment,
-        reviewed_by,
-        reviewed_at: attendanceDB.fn.now()
-    };
-
-    if (lowerStatus === 'approved') {
-        updateData.pay_type = pay_type;
-        updateData.pay_percentage = pay_type === 'Partial' ? (pay_percentage || 50) : (pay_type === 'Paid' ? 100 : 0);
+    if (Number(scoped.user_id) === Number(reviewed_by)) {
+        throw { status: 403, message: "You cannot review your own leave request" };
     }
 
-    await attendanceDB('leave_request')
-        .where({ lr_id: id })
-        .update(updateData);
+    // Status change and balance adjustment are applied atomically, with the
+    // request row locked so concurrent reviews cannot double-count the balance.
+    await attendanceDB.transaction(async (trx) => {
+        const request = await trx('leave_request').where({ lr_id: id }).forUpdate().first();
+        const previousStatus = request.status;
 
-    // ── Auto-update leave balance ──────────────────────────────────────
-    const leaveDays = Number(request.total_days) || 0;
-    const leaveYear = new Date(request.start_date).getFullYear();
+        const updateData = {
+            status: lowerStatus,
+            admin_comment,
+            reviewed_by,
+            reviewed_at: trx.fn.now()
+        };
 
-    if (leaveDays > 0) {
-        let resolvedRuleId = request.rule_id;
-
-        // If rule_id is 0/null, try to infer from the user's single balance row for that year
-        if (!resolvedRuleId) {
-            const userBalances = await attendanceDB('leave_balances')
-                .where({ user_id: request.user_id, year: leaveYear });
-            if (userBalances.length === 1) {
-                // Only one rule assigned - safe to assume this is the right one
-                resolvedRuleId = userBalances[0].rule_id;
-                // Backfill rule_id on the leave_request for future ops
-                await attendanceDB('leave_request')
-                    .where({ lr_id: id })
-                    .update({ rule_id: resolvedRuleId });
-            }
+        if (lowerStatus === 'approved') {
+            updateData.pay_type = pay_type;
+            updateData.pay_percentage = pay_type === 'Partial' ? (pay_percentage || 50) : (pay_type === 'Paid' ? 100 : 0);
         }
 
-        if (resolvedRuleId) {
-            const balance = await attendanceDB('leave_balances')
-                .where({ user_id: request.user_id, rule_id: resolvedRuleId, year: leaveYear })
-                .first();
+        await trx('leave_request')
+            .where({ lr_id: id })
+            .update(updateData);
 
-            if (lowerStatus === 'approved' && previousStatus !== 'approved') {
-                if (balance) {
-                    await attendanceDB('leave_balances')
-                        .where({ lb_id: balance.lb_id })
-                        .update({ used: Number(balance.used) + leaveDays, updated_at: attendanceDB.fn.now() });
-                } else {
-                    const ruleRecord = await attendanceDB('leave_policies_rules').where({ rule_id: resolvedRuleId }).first();
-                    const defaultAlloc = ruleRecord ? Number(ruleRecord.max_balance) : 0;
-                    await attendanceDB('leave_balances').insert({
-                        user_id: request.user_id,
-                        rule_id: resolvedRuleId,
-                        year: leaveYear,
-                        allocated: defaultAlloc,
-                        used: leaveDays,
-                        carried_forward: 0,
-                        updated_at: attendanceDB.fn.now()
-                    });
+        // ── Auto-update leave balance ──────────────────────────────────────
+        const leaveDays = Number(request.total_days) || 0;
+        const leaveYear = new Date(request.start_date).getFullYear();
+
+        if (leaveDays > 0) {
+            let resolvedRuleId = request.rule_id;
+
+            // If rule_id is 0/null, try to infer from the user's single balance row for that year
+            if (!resolvedRuleId) {
+                const userBalances = await trx('leave_balances')
+                    .where({ user_id: request.user_id, year: leaveYear });
+                if (userBalances.length === 1) {
+                    // Only one rule assigned - safe to assume this is the right one
+                    resolvedRuleId = userBalances[0].rule_id;
+                    // Backfill rule_id on the leave_request for future ops
+                    await trx('leave_request')
+                        .where({ lr_id: id })
+                        .update({ rule_id: resolvedRuleId });
                 }
-            } else if (lowerStatus === 'rejected' && previousStatus === 'approved') {
-                if (balance) {
-                    const newUsed = Math.max(0, Number(balance.used) - leaveDays);
-                    await attendanceDB('leave_balances')
-                        .where({ lb_id: balance.lb_id })
-                        .update({ used: newUsed, updated_at: attendanceDB.fn.now() });
+            }
+
+            if (resolvedRuleId) {
+                const balance = await trx('leave_balances')
+                    .where({ user_id: request.user_id, rule_id: resolvedRuleId, year: leaveYear })
+                    .forUpdate()
+                    .first();
+
+                if (lowerStatus === 'approved' && previousStatus !== 'approved') {
+                    if (balance) {
+                        await trx('leave_balances')
+                            .where({ lb_id: balance.lb_id })
+                            .update({ used: Number(balance.used) + leaveDays, updated_at: trx.fn.now() });
+                    } else {
+                        const ruleRecord = await trx('leave_policies_rules').where({ rule_id: resolvedRuleId }).first();
+                        const defaultAlloc = ruleRecord ? Number(ruleRecord.max_balance) : 0;
+                        await trx('leave_balances').insert({
+                            user_id: request.user_id,
+                            rule_id: resolvedRuleId,
+                            year: leaveYear,
+                            allocated: defaultAlloc,
+                            used: leaveDays,
+                            carried_forward: 0,
+                            updated_at: trx.fn.now()
+                        });
+                    }
+                } else if (lowerStatus === 'rejected' && previousStatus === 'approved') {
+                    if (balance) {
+                        const newUsed = Math.max(0, Number(balance.used) - leaveDays);
+                        await trx('leave_balances')
+                            .where({ lb_id: balance.lb_id })
+                            .update({ used: newUsed, updated_at: trx.fn.now() });
+                    }
                 }
             }
         }
-    }
-    // ────────────────────────────────────────────────────────────────────
+        // ────────────────────────────────────────────────────────────────────
+    });
 
     const updatedRequest = await attendanceDB('leave_request').where({ lr_id: id }).first();
 

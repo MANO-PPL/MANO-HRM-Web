@@ -82,9 +82,10 @@ export async function submitFeedback(user_id, { title, description, type = 'FEED
 /**
  * Get list of feedback for admin view with attachments and signed URLs.
  */
-export async function getFeedbackList({ status, type, limit = 50 } = {}) {
+export async function getFeedbackList({ orgId, status, type, limit = 50 } = {}) {
     let query = attendanceDB('feedback_tickets')
         .join('core_users', 'feedback_tickets.user_id', 'core_users.user_id')
+        .where('core_users.org_id', orgId)
         .select('feedback_tickets.*', 'core_users.user_name', 'core_users.email')
         .orderBy('feedback_tickets.created_at', 'desc')
         .limit(Math.min(parseInt(limit), 100));
@@ -123,10 +124,12 @@ export async function getFeedbackList({ status, type, limit = 50 } = {}) {
 /**
  * Update feedback status.
  */
-export async function updateStatus(id, status) {
+export async function updateStatus(id, status, orgId) {
+    // Tickets carry no org_id of their own; scope through the submitter
     const feedback = await attendanceDB('feedback_tickets')
-        .where('feedback_id', id)
-        .first();
+        .join('core_users', 'feedback_tickets.user_id', 'core_users.user_id')
+        .where({ 'feedback_tickets.feedback_id': id, 'core_users.org_id': orgId })
+        .first('feedback_tickets.feedback_id');
 
     if (!feedback) return false;
 

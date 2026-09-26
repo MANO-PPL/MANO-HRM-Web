@@ -1,16 +1,35 @@
 import { attendanceDB } from '../../config/database.js';
 import catchAsync from '../../utils/catchAsync.js';
+import AppError from '../../utils/AppError.js';
+import { assertUserInOrg, assertSelfOrStaffInOrg, requireOrgId } from '../../utils/tenant.js';
 import { SalaryHistoryService } from './SalaryHistoryService.js';
 import { PayrollCalculationService } from './PayrollCalculationService.js';
 import { PayrollFinalizationService } from './PayrollFinalizationService.js';
 import { PayslipService } from './PayslipService.js';
 import { PackageService } from './PackageService.js';
 
+// Throws 404 unless the payroll run belongs to the caller's org
+async function assertRunInOrg(runId, orgId) {
+    const run = await attendanceDB('payroll_runs')
+        .where({ run_id: runId, org_id: orgId })
+        .first('run_id');
+    if (!run) throw new AppError('Payroll run not found.', 404);
+}
+
+// Throws 404 unless the package group belongs to the caller's org
+async function assertPackageGroupInOrg(packageGroupId, orgId) {
+    const group = await attendanceDB('payroll_package_groups')
+        .where({ package_group_id: packageGroupId, org_id: orgId })
+        .first('package_group_id');
+    if (!group) throw new AppError('Package group not found.', 404);
+}
+
 /**
  * Controller to handle payroll operations.
  */
 export const getEmployeeSalary = catchAsync(async (req, res, next) => {
     const employeeId = Number(req.params.id);
+    await assertSelfOrStaffInOrg(req, employeeId);
     const activeSalary = await SalaryHistoryService.getActiveSalary(employeeId, new Date());
     
     res.status(200).json({
@@ -21,6 +40,7 @@ export const getEmployeeSalary = catchAsync(async (req, res, next) => {
 
 export const getEmployeeSalaryHistory = catchAsync(async (req, res, next) => {
     const employeeId = Number(req.params.id);
+    await assertUserInOrg(employeeId, requireOrgId(req));
     const history = await SalaryHistoryService.getSalaryHistory(employeeId);
     
     res.status(200).json({
@@ -32,8 +52,9 @@ export const getEmployeeSalaryHistory = catchAsync(async (req, res, next) => {
 export const updateEmployeeSalary = catchAsync(async (req, res, next) => {
     const employeeId = Number(req.params.id);
     const { grossMonthlySalary, overtimeEnabled, overtimeRate, effectiveFrom } = req.body;
-    const orgId = req.user.org_id;
+    const orgId = requireOrgId(req);
     const createdBy = req.user.id;
+    await assertUserInOrg(employeeId, orgId);
 
     if (!grossMonthlySalary || Number(grossMonthlySalary) <= 0) {
         return next(new AppError('Gross monthly salary must be a positive number.', 400));
@@ -221,8 +242,9 @@ export const getPayrollDashboard = catchAsync(async (req, res, next) => {
 });
 
 export const getEmployeeProjectedDetails = catchAsync(async (req, res, next) => {
-    const orgId = req.user.org_id;
+    const orgId = requireOrgId(req);
     const employeeId = Number(req.params.employeeId);
+    await assertUserInOrg(employeeId, orgId);
     const { month } = req.query; // YYYY-MM
     
     let year, monthNum;
@@ -349,6 +371,7 @@ export const getPayrollRuns = catchAsync(async (req, res, next) => {
 
 export const getPayrollRunDetails = catchAsync(async (req, res, next) => {
     const runId = Number(req.params.runId);
+    await assertRunInOrg(runId, requireOrgId(req));
     const entries = await PayrollFinalizationService.getRunEntries(runId);
     
     res.status(200).json({
@@ -360,6 +383,7 @@ export const getPayrollRunDetails = catchAsync(async (req, res, next) => {
 export const markPayrollRunAsPaid = catchAsync(async (req, res, next) => {
     const runId = Number(req.params.runId);
     const paidBy = req.user.id;
+    await assertRunInOrg(runId, requireOrgId(req));
 
     const run = await PayrollFinalizationService.markAsPaid(runId, paidBy);
 
@@ -373,14 +397,18 @@ export const markPayrollRunAsPaid = catchAsync(async (req, res, next) => {
 export const getPayslip = catchAsync(async (req, res, next) => {
     const entryId = Number(req.params.entryId);
 
-    // Security check: regular employee should only access their own payslip
-    if (req.user.user_type === 'employee') {
-        const entry = await attendanceDB('payroll_entries')
-            .where('entry_id', entryId)
-            .first();
-        if (!entry || entry.employee_id !== req.user.id) {
-            return next(new AppError('You do not have permission to view this payslip.', 403));
-        }
+    // The entry must belong to a payroll run of the caller's org; only admin/HR
+    // may open other employees' payslips.
+    const entry = await attendanceDB('payroll_entries as pe')
+        .join('payroll_runs as pr', 'pe.run_id', 'pr.run_id')
+        .where({ 'pe.entry_id': entryId, 'pr.org_id': requireOrgId(req) })
+        .first('pe.employee_id');
+    if (!entry) {
+        return next(new AppError('Payslip not found.', 404));
+    }
+    const isStaff = ['admin', 'hr'].includes(req.user.user_type);
+    if (!isStaff && Number(entry.employee_id) !== Number(req.user.id)) {
+        return next(new AppError('You do not have permission to view this payslip.', 403));
     }
 
     const pdfBuffer = await PayslipService.generatePayslipPDF(entryId);
@@ -391,8 +419,9 @@ export const getPayslip = catchAsync(async (req, res, next) => {
 });
 
 export const finalizeEmployeePayroll = catchAsync(async (req, res, next) => {
-    const orgId = req.user.org_id;
+    const orgId = requireOrgId(req);
     const employeeId = Number(req.params.employeeId);
+    await assertUserInOrg(employeeId, orgId);
     const { month } = req.body; // YYYY-MM
     const finalizedBy = req.user.id;
 
@@ -432,8 +461,9 @@ export const finalizeEmployeePayroll = catchAsync(async (req, res, next) => {
 });
 
 export const payEmployeePayroll = catchAsync(async (req, res, next) => {
-    const orgId = req.user.org_id;
+    const orgId = requireOrgId(req);
     const employeeId = Number(req.params.employeeId);
+    await assertUserInOrg(employeeId, orgId);
     const { month } = req.body; // YYYY-MM
     const paidBy = req.user.id;
 
@@ -614,6 +644,7 @@ export const createPackageGroup = catchAsync(async (req, res, next) => {
 
 export const getPackageRevisions = catchAsync(async (req, res, next) => {
     const { packageGroupId } = req.params;
+    await assertPackageGroupInOrg(Number(packageGroupId), requireOrgId(req));
     const revisions = await PackageService.getPackageRevisions(Number(packageGroupId));
     res.status(200).json({
         status: 'success',
@@ -622,8 +653,9 @@ export const getPackageRevisions = catchAsync(async (req, res, next) => {
 });
 
 export const createPackageRevision = catchAsync(async (req, res, next) => {
-    const orgId = req.user.org_id;
+    const orgId = requireOrgId(req);
     const { packageGroupId } = req.params;
+    await assertPackageGroupInOrg(Number(packageGroupId), orgId);
     const { grossSalary, overtimeEnabled, overtimeRate, effectiveFrom } = req.body;
     const newRevision = await PackageService.createPackageRevision({
         orgId,
@@ -732,8 +764,9 @@ export const getEmployeesWithPackages = catchAsync(async (req, res, next) => {
 });
 
 export const assignPackageToEmployee = catchAsync(async (req, res, next) => {
-    const orgId = req.user.org_id;
+    const orgId = requireOrgId(req);
     const { employeeId } = req.params;
+    await assertUserInOrg(employeeId, orgId);
     const { packageGroupId, effectiveFrom } = req.body;
     const createdBy = req.user.id;
     
@@ -771,8 +804,9 @@ export const assignPackageToEmployee = catchAsync(async (req, res, next) => {
 });
 
 export const unassignPackageFromEmployee = catchAsync(async (req, res, next) => {
-    const orgId = req.user.org_id;
+    const orgId = requireOrgId(req);
     const { employeeId } = req.params;
+    await assertUserInOrg(employeeId, orgId);
     const { grossMonthlySalary, overtimeEnabled, overtimeRate, effectiveFrom } = req.body;
     const createdBy = req.user.id;
 
@@ -880,8 +914,9 @@ export const updatePayrollSettings = catchAsync(async (req, res, next) => {
 });
 
 export const unlockEmployeePayroll = catchAsync(async (req, res, next) => {
-    const orgId = req.user.org_id;
+    const orgId = requireOrgId(req);
     const employeeId = Number(req.params.employeeId);
+    await assertUserInOrg(employeeId, orgId);
     const { month } = req.body; // YYYY-MM
 
     if (!month) {

@@ -46,6 +46,7 @@ export const getFeedbackList = catchAsync(async (req, res) => {
     const { status, type, limit = 50 } = req.query;
 
     const feedbackWithAttachments = await feedbackService.getFeedbackList({
+        orgId: req.user.org_id,
         status,
         type,
         limit
@@ -74,7 +75,7 @@ export const updateFeedbackStatus = catchAsync(async (req, res) => {
         throw new AppError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
     }
 
-    const success = await feedbackService.updateStatus(id, status);
+    const success = await feedbackService.updateStatus(id, status, req.user.org_id);
 
     if (!success) {
         throw new AppError('Feedback not found', 404);
