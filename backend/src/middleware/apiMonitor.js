@@ -1,22 +1,31 @@
 import EventBus from '../utils/EventBus.js';
 import { parseClientInfo } from '../utils/clientInfo.js';
 
+// Keys are compared after normalizing case and removing "_" / "-", so
+// newPassword, new_password and NEW-PASSWORD all match "newpassword".
+const SENSITIVE_KEYS = new Set([
+    'password', 'userpassword', 'adminpassword', 'adminpasswordconfirm',
+    'newpassword', 'oldpassword', 'currentpassword', 'confirmpassword',
+    'token', 'accesstoken', 'refreshtoken', 'resettoken', 'jwt',
+    'otp', 'pin', 'secret', 'captcha', 'captchatoken', 'captchatext',
+    'authorization', 'cookie', 'razorpaysignature'
+]);
+
+const normalizeKey = (key) => key.toLowerCase().replace(/[_-]/g, '');
+
+// Request bodies on these paths carry credentials; never persist them
+const BODY_EXCLUDED_PREFIXES = ['/auth/', '/api/auth/'];
+
 // Recursive helper to mask sensitive fields in request bodies
-function maskSensitiveFields(obj) {
+export function maskSensitiveFields(obj) {
     if (!obj || typeof obj !== 'object') return obj;
-    
-    const sensitiveKeys = new Set([
-        'password', 'user_password', 'admin_password', 'admin_password_confirm',
-        'token', 'refreshToken', 'jwt', 'otp', 'pin', 'secret', 'captcha',
-        'authorization', 'cookie'
-    ]);
 
     const masked = Array.isArray(obj) ? [] : {};
-    
+
     for (const key in obj) {
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
             const val = obj[key];
-            if (sensitiveKeys.has(key.toLowerCase())) {
+            if (SENSITIVE_KEYS.has(normalizeKey(key))) {
                 masked[key] = '********';
             } else if (typeof val === 'object' && val !== null) {
                 masked[key] = maskSensitiveFields(val);
@@ -92,12 +101,13 @@ export const apiMonitor = (req, res, next) => {
     // Record start time
     const startTime = process.hrtime();
     
-    // Mask request body/query for privacy compliance
-    const maskedBody = maskSensitiveFields(req.body);
-    const maskedQuery = maskSensitiveFields(req.query);
-
     // Track original path (ignoring query strings)
     const requestPath = req.originalUrl.split('?')[0];
+
+    // Mask request body/query for privacy compliance
+    const skipBody = BODY_EXCLUDED_PREFIXES.some((prefix) => requestPath.toLowerCase().startsWith(prefix));
+    const maskedBody = skipBody ? null : maskSensitiveFields(req.body);
+    const maskedQuery = maskSensitiveFields(req.query);
 
     // Listen to response finish event (fires when response is fully sent)
     res.on('finish', () => {
