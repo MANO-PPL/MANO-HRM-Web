@@ -258,7 +258,8 @@ export const changePassword = catchAsync(async (req, res, next) => {
         throw new AppError("New password is required", 400);
     }
 
-    await authService.changePassword(userId, newPassword);
+    const currentRefreshToken = req.cookies.refreshToken || req.body?.refreshToken || req.headers['x-refresh-token'] || null;
+    await authService.changePassword(userId, newPassword, currentRefreshToken);
 
     res.status(200).json({
         success: true,

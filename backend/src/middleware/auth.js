@@ -19,7 +19,13 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+
+        // Access tokens carry no "type" claim; purpose-specific tokens
+        // (e.g. password_reset) must never authenticate API requests.
+        if (decoded.type) {
+            return res.status(401).json({ message: "Forbidden: Invalid token", code: "TOKEN_INVALID" });
+        }
 
         let user;
 

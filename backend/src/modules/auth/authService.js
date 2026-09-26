@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { attendanceDB } from '../../config/database.js';
 import EventBus from '../../utils/EventBus.js';
@@ -8,6 +9,29 @@ import OtpService from './OtpService.js';
 import { sendEmail } from './emailService.js';
 
 const ACCESS_TOKEN_EXPIRY = '15m';
+const PASSWORD_MIN_LENGTH = 8;
+const BCRYPT_ROUNDS = 12;
+
+// Reset tokens are signed with their own key so they can never be accepted as
+// access tokens. JWT_RESET_SECRET is optional; by default a key is derived
+// from JWT_SECRET, which avoids a new required env var on deploy.
+const getResetTokenSecret = () =>
+    process.env.JWT_RESET_SECRET ||
+    crypto.createHmac('sha256', process.env.JWT_SECRET).update('password-reset').digest('hex');
+
+// Reset tokens are single-use: the jti is remembered until the token expires.
+// In-memory is enough for the single PM2 instance this system runs on.
+const usedResetTokenIds = new Map(); // jti -> expiry (ms)
+
+function consumeResetTokenId(jti, expSeconds) {
+    const now = Date.now();
+    for (const [id, expiry] of usedResetTokenIds) {
+        if (expiry < now) usedResetTokenIds.delete(id);
+    }
+    if (!jti || usedResetTokenIds.has(jti)) return false;
+    usedResetTokenIds.set(jti, expSeconds * 1000);
+    return true;
+}
 
 export const authenticateUser = async (userInput, password, reqInfo, rememberMe = false) => {
     const user = await attendanceDB('core_users')
@@ -164,7 +188,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
     if (!refreshToken) throw new AppError("No refresh token provided", 401, "NO_REFRESH_TOKEN");
 
     try {
-        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
         if (decoded.user_type === 'super_admin_refresh') {
             const admin = await attendanceDB('core_super_admins').where('id', decoded.id).first();
             if (!admin || !admin.is_active) throw new AppError('Admin inactive or deleted', 403, "ADMIN_INACTIVE");
@@ -362,40 +386,53 @@ export const verifyPasswordResetOtp = async (email, otp, reqInfo) => {
 
     const resetToken = jwt.sign(
         { user_id: user.user_id, email: user.email, type: "password_reset" },
-        process.env.JWT_SECRET,
-        { expiresIn: "5m" }
+        getResetTokenSecret(),
+        { expiresIn: "5m", jwtid: crypto.randomUUID() }
     );
 
     return resetToken;
 };
 
 export const executePasswordReset = async (resetToken, newPassword) => {
-    if (newPassword.length < 8) throw new AppError("Password must be at least 8 characters long", 400);
+    if (newPassword.length < PASSWORD_MIN_LENGTH) {
+        throw new AppError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters long`, 400);
+    }
 
+    let decoded;
     try {
-        const decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
-        if (decoded.type !== "password_reset") throw new AppError("Invalid token type", 403);
-
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await attendanceDB("core_users").where("user_id", decoded.user_id).update({ user_password: hashedPassword });
-
-        return true;
+        decoded = jwt.verify(resetToken, getResetTokenSecret(), { algorithms: ['HS256'] });
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
             throw new AppError("Reset token has expired. Please request a new OTP.", 403);
         }
         throw new AppError("Invalid or expired reset token", 403);
     }
+
+    if (decoded.type !== "password_reset") throw new AppError("Invalid token type", 403);
+    if (!consumeResetTokenId(decoded.jti, decoded.exp)) {
+        throw new AppError("This reset link has already been used. Please request a new OTP.", 403);
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await attendanceDB("core_users").where("user_id", decoded.user_id).update({ user_password: hashedPassword });
+
+    // A reset means the old password may be compromised: end every session
+    await TokenService.revokeAllTokensForUser(decoded.user_id);
+
+    return true;
 };
 
-export const changePassword = async (userId, newPassword) => {
-    if (!newPassword || newPassword.length < 6) {
-        throw new AppError("Password must be at least 6 characters long", 400);
+export const changePassword = async (userId, newPassword, currentRefreshToken = null) => {
+    if (!newPassword || newPassword.length < PASSWORD_MIN_LENGTH) {
+        throw new AppError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters long`, 400);
     }
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await attendanceDB("core_users").where({ user_id: userId }).update({
         user_password: hashedPassword,
         force_password_change: false
     });
+
+    // Sign out all other devices; keep the session that made the change
+    await TokenService.revokeAllTokensForUser(userId, { except: currentRefreshToken });
     return true;
 };

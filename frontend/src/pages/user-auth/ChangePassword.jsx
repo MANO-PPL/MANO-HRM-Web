@@ -38,7 +38,7 @@ const ChangePassword = () => {
     }, [isDark]);
 
     // Criteria checks
-    const hasMinLength = password.length >= 6;
+    const hasMinLength = password.length >= 8;
     const passwordsMatch = password && password === confirmPassword;
     const isFormValid = hasMinLength && passwordsMatch;
 
@@ -253,7 +253,7 @@ const ChangePassword = () => {
                                         {hasMinLength && <Check size={14} strokeWidth={3} />}
                                     </div>
                                     <span className={`text-[10px] font-bold uppercase tracking-wider select-none ${hasMinLength ? 'text-slate-800 dark:text-slate-300 font-extrabold' : 'text-slate-400 dark:text-slate-500'}`}>
-                                        At least 6 characters
+                                        At least 8 characters
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-3">

@@ -112,12 +112,13 @@ export async function revokeRefreshToken(token, replacedByToken = null) {
 
 /**
  * Revoke all tokens for a user (e.g. change password)
- * @param {number} userId 
+ * @param {number} userId
+ * @param {{ except?: string|null }} options token to keep active (the caller's own session)
  */
-export async function revokeAllTokensForUser(userId) {
-    await attendanceDB('core_refresh_tokens')
-        .where('user_id', userId)
-        .update({ revoked: true });
+export async function revokeAllTokensForUser(userId, { except = null } = {}) {
+    const query = attendanceDB('core_refresh_tokens').where('user_id', userId);
+    if (except) query.whereNot('token', except);
+    await query.update({ revoked: true });
 }
 
 /**

@@ -80,8 +80,8 @@ io.use((socket, next) => {
     }
     const actualToken = token.startsWith('Bearer ') ? token.slice(7) : token;
     
-    jwt.verify(actualToken, process.env.JWT_SECRET, (err, decoded) => {
-      if (err) {
+    jwt.verify(actualToken, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {
+      if (err || decoded?.type) {
         return next(new Error('Authentication error: Invalid token'));
       }
       socket.user = decoded;
