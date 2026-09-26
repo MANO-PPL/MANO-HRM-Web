@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "node dev.js",
     "test": "node --test --test-force-exit test/*.test.js",
-    "check": "node scripts/smoke/check-syntax.js && node scripts/smoke/imports.js",
+    "lint": "eslint .",
+    "check": "node scripts/smoke/check-syntax.js && eslint . && node scripts/smoke/imports.js",
     "smoke:lifecycle": "node scripts/smoke/lifecycle.js",
     "routes:inventory": "node scripts/tools/route-inventory.js"
   },
@@ -47,6 +48,8 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0",
     "nodemon": "^3.0.2"
   },
   "overrides": {
