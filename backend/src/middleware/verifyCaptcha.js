@@ -138,8 +138,11 @@ async function verifyGoogleRecaptcha(captchaToken) {
     }
 
     try {
+        // Send the secret in the form body, not the URL, so it never lands in proxy/access logs
         const response = await axios.post(
-            `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${captchaToken}`
+            'https://www.google.com/recaptcha/api/siteverify',
+            new URLSearchParams({ secret: secretKey, response: String(captchaToken) }),
+            { timeout: 10000 }
         );
 
         const { success } = response.data;
@@ -199,16 +202,12 @@ export const verifyCaptcha = async (req, res, next) => {
 
     const { captchaToken, captchaId, captchaText } = req.body;
 
-    const origin = req.headers.origin || req.headers.referer || '';
-    const host = req.headers.host || '';
-    const clientIp = req.ip || req.socket?.remoteAddress || '';
-    const isLAN = /localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\./.test(origin)
-               || /localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\./.test(host)
-               || /127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\./.test(clientIp);
+    // Only development may skip CAPTCHA. Origin/Host/Referer headers are
+    // client-controlled, so they must never decide whether CAPTCHA is enforced.
+    const isDevelopment = process.env.NODE_ENV === 'development';
 
-    // In development mode or local/LAN network access, bypass if no captcha is provided
-    if ((process.env.NODE_ENV === 'development' || isLAN) && !captchaToken && !captchaId && !captchaText) {
-        console.log('🔓 Development / LAN network: No CAPTCHA provided. Bypassing...');
+    if (isDevelopment && !captchaToken && !captchaId && !captchaText) {
+        console.log('🔓 Development: No CAPTCHA provided. Bypassing...');
         return next();
     }
 
@@ -220,8 +219,8 @@ export const verifyCaptcha = async (req, res, next) => {
             const isValid = await verifyGoogleRecaptcha(captchaToken);
 
             if (!isValid) {
-                if (process.env.NODE_ENV === 'development' || isLAN) {
-                    console.warn('⚠️ Development / LAN network: Google reCAPTCHA verification failed, bypassing for local testing.');
+                if (isDevelopment) {
+                    console.warn('⚠️ Development: Google reCAPTCHA verification failed, bypassing for local testing.');
                     return next();
                 }
                 return next(new AppError('Google reCAPTCHA verification failed. Please try again.', 400));
