@@ -1,6 +1,7 @@
 import { attendanceDB } from '../../config/database.js';
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
+import { requireOrgId } from '../../utils/tenant.js';
 import { handleMentions } from './mentionService.js';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import { uploadFile, getFileUrl } from '../../services/s3/s3Service.js';
@@ -221,7 +222,7 @@ export const getOrgUsers = catchAsync(async (req, res, next) => {
 // GET all rooms current user is a member of
 export const getRooms = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id ?? req.user.id;
-    const orgId = req.user.org_id || 1;
+    const orgId = requireOrgId(req);
 
     // Get memberships for the user
     const memberships = await attendanceDB('chat_conversation_members')
@@ -349,7 +350,7 @@ export const getRooms = catchAsync(async (req, res, next) => {
 // CREATE DM or Group room
 export const createRoom = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id ?? req.user.id;
-    const orgId = req.user.org_id || 1;
+    const orgId = requireOrgId(req);
     const { room_type = 'direct', room_name, member_ids = [] } = req.body;
 
     const allMemberIds = Array.from(new Set([userId, ...member_ids])).map(Number);
@@ -439,7 +440,7 @@ export const createRoom = catchAsync(async (req, res, next) => {
 // GET messages within a room
 export const getRoomMessages = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id ?? req.user.id;
-    const orgId = req.user.org_id || 1;
+    const orgId = requireOrgId(req);
     const { roomId } = req.params;
     const { before } = req.query; // message ID cursor
 
@@ -533,7 +534,7 @@ export const getRoomMessages = catchAsync(async (req, res, next) => {
 // POST message
 export const sendMessage = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id ?? req.user.id;
-    const orgId = req.user.org_id || 1;
+    const orgId = requireOrgId(req);
     const { roomId } = req.params;
     const { message_text, attachment } = req.body;
 
@@ -689,7 +690,7 @@ export const sendMessage = catchAsync(async (req, res, next) => {
 // POST upload attachment to S3 (max 50MB)
 export const uploadAttachment = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id ?? req.user.id;
-    const orgId = req.user.org_id || 1;
+    const orgId = requireOrgId(req);
     const { roomId } = req.params;
 
     if (!req.file) {
@@ -746,7 +747,7 @@ export const uploadAttachment = catchAsync(async (req, res, next) => {
 export const markAsRead = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id ?? req.user.id;
     const { roomId } = req.params;
-    const orgId = req.user.org_id || 1;
+    const orgId = requireOrgId(req);
 
     // Get the latest message ID in this room to set as last_read_message_id
     const latestMsg = await attendanceDB('chat_messages')
@@ -774,7 +775,7 @@ export const markAsRead = catchAsync(async (req, res, next) => {
 export const deleteRoom = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id ?? req.user.id;
     const { roomId } = req.params;
-    const orgId = req.user.org_id || 1;
+    const orgId = requireOrgId(req);
 
     const room = await attendanceDB('chat_conversations')
         .where({ org_id: orgId, id: roomId })
@@ -821,7 +822,7 @@ export const updateRoomMembers = catchAsync(async (req, res, next) => {
     const userId = req.user.user_id ?? req.user.id;
     const { roomId } = req.params;
     const { member_ids } = req.body;
-    const orgId = req.user.org_id || 1;
+    const orgId = requireOrgId(req);
 
     if (!Array.isArray(member_ids) || member_ids.length === 0) {
         throw new AppError('member_ids must be a non-empty array', 400);

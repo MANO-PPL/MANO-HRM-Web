@@ -5,9 +5,10 @@ import EventBus from '../../utils/EventBus.js';
  * Fetch all active Admin, HR, and Super Admin users in the organization
  */
 async function getAdminsAndHrs(orgId) {
-    const finalOrgId = orgId || 1;
+    // Without an org there is nobody to alert (never fall back to another tenant)
+    if (!orgId) return [];
     return attendanceDB('core_users')
-        .where({ org_id: finalOrgId, is_deleted: 0, is_active: 1 })
+        .where({ org_id: orgId, is_deleted: 0, is_active: 1 })
         .where(function() {
             this.whereRaw('LOWER(user_type) IN (?, ?, ?)', ['admin', 'hr', 'super_admin'])
                 .orWhereIn('user_type', ['admin', 'hr', 'HR', 'Admin', 'super_admin', 'Super_Admin']);
