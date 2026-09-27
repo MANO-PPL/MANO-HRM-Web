@@ -1,46 +1,51 @@
 /**
- * Single CORS policy for Express and Socket.IO (previously duplicated in
- * server.js and app.js).
+ * Single CORS policy for Express and Socket.IO.
+ *
+ * Production allows only the configured frontend origin(s):
+ *   FRONTEND_URL=https://attendance.mano.co.in
+ *   CORS_ORIGINS=https://a.example.com,https://b.example.com   (optional, extra)
+ *
+ * Other environments additionally allow localhost, lvh.me and private LAN
+ * addresses (10.x, 172.16-31.x, 192.168.x) so the app can be opened from
+ * another device on the same network during development.
  */
 import './config.js';
+import AppError from '../utils/AppError.js';
 
-const allowedOrigins = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'https://localhost:5173',
-    'https://127.0.0.1:5173',
-    'http://localhost:5174',
-    'https://localhost:5174',
+const isProduction = process.env.NODE_ENV === 'production';
+
+const configuredOrigins = [
     process.env.FRONTEND_URL,
-].filter(Boolean);
+    ...(process.env.CORS_ORIGINS || '').split(','),
+].map((o) => (o || '').trim().replace(/\/$/, '')).filter(Boolean);
 
-function isLocalDevOrigin(origin) {
-    return /^https?:\/\/(localhost|127\.0\.0\.1|localhost\.localdomain|lvh\.me|vite\.lvh\.me)(:\d+)?$/i.test(origin);
+const LOCAL_DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|localhost\.localdomain|lvh\.me|vite\.lvh\.me)(:\d+)?$/i;
+const PRIVATE_LAN_ORIGIN = /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/;
+
+if (isProduction && configuredOrigins.length === 0) {
+    console.error('[CORS] FRONTEND_URL is not set: browsers will be blocked from calling the API cross-origin');
 }
 
 export function isOriginAllowed(origin) {
+    // Requests without an Origin header (same-origin GETs, curl, server-to-server)
     if (!origin) return true;
-    return allowedOrigins.includes(origin) ||
-        isLocalDevOrigin(origin) ||
-        origin.startsWith('http://192.') || origin.startsWith('https://192.') ||
-        origin.startsWith('http://10.') || origin.startsWith('https://10.') ||
-        origin.startsWith('http://172.') || origin.startsWith('https://172.');
+    if (configuredOrigins.includes(origin)) return true;
+    if (isProduction) return false;
+    return LOCAL_DEV_ORIGIN.test(origin) || PRIVATE_LAN_ORIGIN.test(origin);
 }
 
-const originCallback = (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-        callback(null, true);
-    } else {
-        callback(new Error('Not allowed by CORS'));
-    }
-};
-
+// Express: disallowed origins are stopped before any route runs, with a 403
+// (previously a generic Error, which surfaced as a 500 in sys_error_logs).
 export const corsOptions = {
-    origin: originCallback,
+    origin: (origin, callback) => {
+        if (isOriginAllowed(origin)) return callback(null, true);
+        callback(new AppError('Origin not allowed by CORS policy', 403, 'CORS_ORIGIN_DENIED'));
+    },
     credentials: true,
 };
 
+// Socket.IO: a false result rejects the handshake.
 export const socketCorsOptions = {
-    origin: originCallback,
+    origin: (origin, callback) => callback(null, isOriginAllowed(origin)),
     credentials: true,
 };
