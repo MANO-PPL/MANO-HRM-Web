@@ -9,12 +9,12 @@ import * as AttendanceService from "./attendanceService.js";
 import * as ShiftService from "../shifts/shiftService.js";
 import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
-import { generatePdf, styleExcelWorksheet } from "../reports/reportsController.js";
+import { generatePdf, styleExcelWorksheet } from "../reports/reportBuilder.js";
 import { getDetailedRecords, getUsers, getTodayStr, groupRecordsByUserAndDay } from "../reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../collaboration/chatAlertService.js";
 import { getLocalNow } from "../../services/statusEvalution/statusEvaluationService.js";
 import { attendanceQueue, redisConnection } from "../../config/queues.js";
-import { processAttendanceJob } from "../../workers/attendanceWorker.js";
+import { processAttendanceJob } from "./attendanceJobProcessor.js";
 import { uploadFile } from "../../services/s3/s3Service.js";
 
 /**

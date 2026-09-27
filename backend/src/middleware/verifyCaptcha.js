@@ -1,12 +1,13 @@
 import axios from 'axios';
 import AppError from '../utils/AppError.js';
 import crypto from 'crypto';
+import { onShutdown } from '../lifecycle/shutdown.js';
 
 // Store for captcha sessions (in production, use Redis or similar)
 const captchaSessions = new Map();
 
 // Clean up expired captcha sessions every 5 minutes
-setInterval(() => {
+const captchaSweeper = setInterval(() => {
     const now = Date.now();
     for (const [key, value] of captchaSessions.entries()) {
         if (now - value.timestamp > 5 * 60 * 1000) { // 5 minutes
@@ -14,6 +15,8 @@ setInterval(() => {
         }
     }
 }, 5 * 60 * 1000);
+captchaSweeper.unref(); // never keep the process alive on its own
+onShutdown('captcha sweeper', () => clearInterval(captchaSweeper), 'producers');
 
 /**
  * Generate a random captcha text (6 characters)

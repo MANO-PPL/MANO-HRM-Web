@@ -235,22 +235,16 @@ export const enrichNotification = async (notification) => {
 
   if (isChat && notification.related_entity_id) {
     try {
-      const room = await attendanceDB('chat_conversations')
-        .where('id', notification.related_entity_id)
-        .first();
-      if (room && room.last_message_id) {
-        enriched.message_id = room.last_message_id;
-        const lastMsg = await attendanceDB('chat_messages')
-          .where('id', room.last_message_id)
-          .first();
-        if (lastMsg) {
-          const sender = await attendanceDB('core_users')
-            .where('user_id', lastMsg.sender_id)
-            .select('profile_image_url')
-            .first();
-          if (sender && sender.profile_image_url) {
-            enriched.sender_avatar = sender.profile_image_url;
-          }
+      // One query: conversation → its last message → that message's sender
+      const row = await attendanceDB('chat_conversations as c')
+        .leftJoin('chat_messages as m', 'm.id', 'c.last_message_id')
+        .leftJoin('core_users as u', 'u.user_id', 'm.sender_id')
+        .where('c.id', notification.related_entity_id)
+        .first('c.last_message_id', 'u.profile_image_url');
+      if (row && row.last_message_id) {
+        enriched.message_id = row.last_message_id;
+        if (row.profile_image_url) {
+          enriched.sender_avatar = row.profile_image_url;
         }
       }
     } catch (e) {
@@ -293,12 +287,22 @@ export const deliverNotification = async (notification) => {
   }
 };
 
+// EventEmitter does not handle promise rejections from async listeners; an
+// unhandled rejection would crash the process, so failures are logged here.
+const onNotificationSaved = (notification) => {
+  deliverNotification(notification).catch((err) => {
+    console.error(`Failed to deliver notification to user ${notification?.user_id}:`, err);
+  });
+};
+
 /**
- * Initialize centralized notification delivery system with Socket.IO and EventBus
+ * Initialize centralized notification delivery system with Socket.IO and EventBus.
+ * Returns a function that stops delivery (used on shutdown).
  */
 export const initNotificationDelivery = (io) => {
   setSocketIO(io);
-  EventBus.off('notification_saved', deliverNotification);
-  EventBus.on('notification_saved', deliverNotification);
+  EventBus.off('notification_saved', onNotificationSaved);
+  EventBus.on('notification_saved', onNotificationSaved);
   console.log('✅ Centralized notification delivery engine initialized (Socket.IO + FCM).');
+  return () => EventBus.off('notification_saved', onNotificationSaved);
 };

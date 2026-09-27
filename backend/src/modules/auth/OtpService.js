@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { onShutdown } from "../../lifecycle/shutdown.js";
 
 const otpStore = new Map();
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
@@ -56,7 +57,7 @@ export const deleteOtp = (email) => {
 };
 
 // Cleanup expired OTPs (single timer, safe)
-setInterval(() => {
+const otpSweeper = setInterval(() => {
   const now = Date.now();
   for (const [email, record] of otpStore.entries()) {
     if (record.expiresAt < now) {
@@ -64,6 +65,8 @@ setInterval(() => {
     }
   }
 }, 60 * 1000);
+otpSweeper.unref(); // never keep the process alive on its own
+onShutdown('otp sweeper', () => clearInterval(otpSweeper), 'producers');
 
 export default {
   generateOtp,

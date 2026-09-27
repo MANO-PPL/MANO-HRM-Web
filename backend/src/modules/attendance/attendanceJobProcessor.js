@@ -1,0 +1,163 @@
+import fs from 'fs/promises';
+import { attendanceDB } from '../../config/database.js';
+import * as S3Service from '../../services/s3/s3Service.js';
+import * as MapsService from '../../services/google_api_services/maps.js';
+import EventBus from '../../utils/EventBus.js';
+import { safeJsonParse } from '../../utils/dataUtils.js';
+
+/**
+ * Background work after a check-in/check-out: resolve the address, compress
+ * and upload the selfie to S3, and write the activity log. Run by the
+ * attendance BullMQ worker, or directly when Redis is unavailable.
+ */
+export async function processAttendanceJob(jobData) {
+    const {
+        attendance_id,
+        isTimeIn,
+        tempFilePath,
+        latitude,
+        longitude,
+        accuracy,
+        ip,
+        user_agent,
+        event_source,
+        org_id,
+        user_id,
+        session_number,
+        status
+    } = jobData;
+
+    console.log(`👷 [AttendanceWorker] Processing check-${isTimeIn ? 'in' : 'out'} job #${attendance_id} for User ${user_id}...`);
+
+    // 1. Resolve Address: prefer client-provided address, otherwise use Maps geocoding
+    let address = (jobData.address && jobData.address !== 'Locating...' && jobData.address !== 'Pending...') ? jobData.address : null;
+    if (!address) {
+        try {
+            if (!isNaN(latitude) && !isNaN(longitude)) {
+                const addrRes = await MapsService.coordsToAddress(latitude, longitude);
+                if (addrRes && addrRes.address) {
+                    address = addrRes.address;
+                }
+            }
+        } catch (e) {
+            console.error(`Maps Geocoding API error for job #${attendance_id}:`, e);
+        }
+    }
+    if (!address) address = 'Unknown Location';
+
+    // Update attn_punches (new schema)
+    try {
+        const punch = await attendanceDB('attn_punches').where({ id: attendance_id }).first();
+        if (punch) {
+            const loc = safeJsonParse(punch.location);
+            loc.address = address;
+            await attendanceDB('attn_punches').where({ id: attendance_id }).update({
+                location: JSON.stringify(loc)
+            });
+        }
+    } catch (err) {
+        console.error(`Failed to update attn_punches address for #${attendance_id}:`, err);
+    }
+
+
+    // 2. Compress Selfie Image and Upload to AWS S3 (Slow CPU & S3 Upload task)
+    let imageKey = null;
+    let fileBuffer = null;
+
+    // Handle Buffer objects serialized over Redis BullMQ
+    if (jobData.fileBuffer) {
+        if (Buffer.isBuffer(jobData.fileBuffer)) {
+            fileBuffer = jobData.fileBuffer;
+        } else if (jobData.fileBuffer.type === 'Buffer' && Array.isArray(jobData.fileBuffer.data)) {
+            fileBuffer = Buffer.from(jobData.fileBuffer.data);
+        } else if (typeof jobData.fileBuffer === 'string') {
+            fileBuffer = Buffer.from(jobData.fileBuffer, 'base64');
+        }
+    }
+
+    if (!fileBuffer && tempFilePath) {
+        try {
+            fileBuffer = await fs.readFile(tempFilePath);
+        } catch (readErr) {
+            console.error(`[AttendanceWorker] Failed to read temp file ${tempFilePath}:`, readErr);
+        }
+    }
+
+    if (fileBuffer && fileBuffer.length > 0) {
+        try {
+            console.log(`[AttendanceWorker] Compressing and uploading selfie (${fileBuffer.length} bytes) to S3...`);
+
+            const uploadResult = await S3Service.uploadCompressedImage({
+                fileBuffer,
+                key: isTimeIn ? `${attendance_id}_in` : `${attendance_id}_out`,
+                directory: 'attendance_images'
+            });
+            imageKey = uploadResult.key;
+
+            // Update attn_punches metadata with the uploaded S3 image key
+            try {
+                const punch = await attendanceDB('attn_punches').where({ id: attendance_id }).first();
+                if (punch) {
+                    const meta = safeJsonParse(punch.metadata);
+                    meta.image_key = imageKey;
+                    await attendanceDB('attn_punches').where({ id: attendance_id }).update({
+                        metadata: JSON.stringify(meta)
+                    });
+                    console.log(`✅ [AttendanceWorker] Updated attn_punches #${attendance_id} metadata.image_key = ${imageKey}`);
+                } else {
+                    console.warn(`⚠️ [AttendanceWorker] Punch #${attendance_id} not found in attn_punches`);
+                }
+            } catch (pErr) {
+                console.error(`Failed to update attn_punches image_key for #${attendance_id}:`, pErr);
+            }
+
+
+            console.log(`✅ [AttendanceWorker] Successfully uploaded selfie to S3 with key: ${imageKey}`);
+        } catch (err) {
+            console.error(`❌ [AttendanceWorker] Failed S3 compression/upload for job #${attendance_id}:`, err);
+        } finally {
+            // Clean up the temp file from disk if created
+            if (tempFilePath) {
+                try {
+                    await fs.unlink(tempFilePath);
+                    console.log(`🧹 [AttendanceWorker] Cleaned up temp file: ${tempFilePath}`);
+                } catch (_) {}
+            }
+        }
+    }
+
+    // 3. Log EventBus Activity
+    try {
+        if (isTimeIn) {
+            EventBus.emitActivityLog({
+                user_id,
+                org_id,
+                event_type: 'CHECK_IN',
+                event_source: event_source || 'WEB',
+                object_type: 'ATTENDANCE',
+                object_id: attendance_id,
+                description: `User checked in at ${address} (Session #${session_number})`,
+                location: `${latitude},${longitude}`,
+                request_ip: ip,
+                user_agent: user_agent
+            });
+        } else {
+            EventBus.emitActivityLog({
+                user_id,
+                org_id,
+                event_type: 'CHECK_OUT',
+                event_source: event_source || 'WEB',
+                object_type: 'ATTENDANCE',
+                object_id: attendance_id,
+                description: `User checked out at ${address} (Status: ${status})`,
+                location: `${latitude},${longitude}`,
+                request_ip: ip,
+                user_agent: user_agent
+            });
+        }
+    } catch (eventErr) {
+        console.error(`[AttendanceWorker] Failed to emit EventBus log:`, eventErr);
+    }
+
+    console.log(`🏁 [AttendanceWorker] Completed background tasks for check-${isTimeIn ? 'in' : 'out'} job #${attendance_id}`);
+}

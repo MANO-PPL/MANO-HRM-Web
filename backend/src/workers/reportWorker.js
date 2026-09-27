@@ -1,11 +1,11 @@
 import { Worker } from 'bullmq';
 import { redisConnection } from '../config/queues.js';
 import { attendanceDB } from '../config/database.js';
-import { compileReportBuffer } from '../modules/reports/reportsController.js';
+import { compileReportBuffer } from '../modules/reports/reportBuilder.js';
 import * as S3Service from '../services/s3/s3Service.js';
 import EventBus from '../utils/EventBus.js';
 
-const reportWorker = new Worker('{ReportQueue}', async (job) => {
+async function processReportJob(job) {
     const { reportId, org_id, user_id, targetUserId, month, date, type, format, startDate, endDate, columns, dept_id, desg_id, shift_id } = job.data;
     console.log(`👷 [Worker] Processing report job #${reportId} for Org ${org_id}...`);
 
@@ -91,21 +91,29 @@ const reportWorker = new Worker('{ReportQueue}', async (job) => {
 
         throw err; // Signal BullMQ the job failed
     }
-}, {
-    connection: redisConnection,
-    concurrency: 2 // Max 2 reports processed in parallel per worker process
-});
+}
 
-reportWorker.on('completed', (job) => {
-    console.log(`🏁 [Worker] Job #${job.id} completed.`);
-});
+/**
+ * Starts the report worker. Called once at boot; importing this module has
+ * no side effects.
+ */
+export function startReportWorker() {
+    const reportWorker = new Worker('{ReportQueue}', processReportJob, {
+        connection: redisConnection,
+        concurrency: 2 // Max 2 reports processed in parallel per worker process
+    });
 
-reportWorker.on('failed', (job, err) => {
-    console.error(`💥 [Worker] Job #${job.id} failed with error:`, err);
-});
+    reportWorker.on('completed', (job) => {
+        console.log(`🏁 [Worker] Job #${job.id} completed.`);
+    });
 
-reportWorker.on('error', (err) => {
-    // Catch worker connection errors silently as redisConnection manages warnings
-});
+    reportWorker.on('failed', (job, err) => {
+        console.error(`💥 [Worker] Job #${job.id} failed with error:`, err);
+    });
 
-export default reportWorker;
+    reportWorker.on('error', (err) => {
+        // Catch worker connection errors silently as redisConnection manages warnings
+    });
+
+    return reportWorker;
+}

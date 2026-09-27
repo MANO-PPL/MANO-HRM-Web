@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import '../../config/config.js'; // Ensure env variables are loaded
+import { onShutdown } from '../../lifecycle/shutdown.js';
 
 let cacheRedis;
 
@@ -70,6 +71,17 @@ try {
   console.error('⚠ [Cache] Failed to initialize Redis client:', err);
   cacheRedis = null;
 }
+
+// Close the cache connection on shutdown. quit() waits for pending replies;
+// when Redis is not connected, disconnect() avoids waiting on reconnect attempts.
+onShutdown('cache redis', async () => {
+  if (!cacheRedis) return;
+  if (cacheRedis.status === 'ready') {
+    await cacheRedis.quit();
+  } else {
+    cacheRedis.disconnect();
+  }
+}, 'infra');
 
 export const cacheService = {
   /**

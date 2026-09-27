@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { cronOptions } from './options.js';
 import { attendanceDB } from '../config/database.js';
 import { syncDailyAttendance } from '../modules/attendance/attendanceService.js';
 import * as ShiftService from '../modules/shifts/shiftService.js';
@@ -530,7 +531,10 @@ export async function checkAndSendShiftReminders() {
  * Initialize the attendance processor cron job.
  */
 export function initAttendanceProcessor() {
-    cron.schedule('*/30 * * * *', processHourlyAttendance);
-    cron.schedule('* * * * *', checkAndSendShiftReminders);
+    const tasks = [
+        cron.schedule('*/30 * * * *', processHourlyAttendance, cronOptions('attendance-processor')),
+        cron.schedule('* * * * *', checkAndSendShiftReminders, cronOptions('shift-reminders')),
+    ];
     console.log('🚀 Attendance Processor Scheduled (every 30 minutes)');
+    return tasks;
 }

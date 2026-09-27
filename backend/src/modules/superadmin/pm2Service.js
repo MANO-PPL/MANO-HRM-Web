@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { onShutdown } from '../../lifecycle/shutdown.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -406,3 +407,56 @@ export const initLogCapture = (ioInstance) => {
     };
 };
 
+/**
+ * Streams new lines appended to the log files to super admins subscribed to
+ * the 'super_admin_pm2_logs' socket room. Returns { stop }.
+ */
+export const startLogTailing = (ioInstance) => {
+    // Capture application console output and write to log files & stream via socket
+    initLogCapture(ioInstance);
+
+    const paths = getLogPaths();
+    const watched = [];
+    const setupWatcher = (filePath, sourceName) => {
+        try {
+            if (!filePath || !fs.existsSync(filePath)) {
+                console.warn(`[PM2 Monitor] Log file does not exist: ${filePath}`);
+                return;
+            }
+            fs.watchFile(filePath, { interval: 1000 }, async (curr, prev) => {
+                if (curr.size > prev.size) {
+                    let fileHandle;
+                    try {
+                        const readLen = curr.size - prev.size;
+                        const buffer = Buffer.alloc(readLen);
+                        fileHandle = await fs.promises.open(filePath, 'r');
+                        await fileHandle.read(buffer, 0, readLen, prev.size);
+                        const lines = buffer.toString('utf8').split('\n');
+                        lines.forEach(line => {
+                            if (line.trim() !== '') {
+                                const parsed = parseLogLine(line, sourceName);
+                                if (parsed) {
+                                    ioInstance.to('super_admin_pm2_logs').emit('pm2:log', parsed);
+                                }
+                            }
+                        });
+                    } catch (err) {
+                        console.error(`[PM2 Monitor] Error reading new tail bytes for ${sourceName}:`, err);
+                    } finally {
+                        if (fileHandle) await fileHandle.close();
+                    }
+                }
+            });
+            watched.push(filePath);
+            console.log(`[PM2 Monitor] Tailing initialized for ${sourceName}: ${filePath}`);
+        } catch (err) {
+            console.error(`[PM2 Monitor] Failed to initialize tailing for ${sourceName}:`, err);
+        }
+    };
+    if (paths.out) setupWatcher(paths.out, 'stdout');
+    if (paths.err) setupWatcher(paths.err, 'stderr');
+
+    const stop = () => watched.forEach((filePath) => fs.unwatchFile(filePath));
+    onShutdown('log tailing', stop, 'producers');
+    return { stop };
+};

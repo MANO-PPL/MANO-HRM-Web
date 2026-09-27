@@ -1,6 +1,7 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import './config.js'; // Ensure .env is loaded
+import { onShutdown } from '../lifecycle/shutdown.js';
 
 const getRedisConnectionOptions = () => {
   const options = {
@@ -109,3 +110,15 @@ export const attendanceQueue = new Queue('{AttendanceQueue}', { connection: redi
 attendanceQueue.on('error', (err) => {
   // Silent fallback: redisConnection error handler manages console logging
 });
+
+// Close queues and their shared Redis connection on shutdown (after workers,
+// which run in an earlier phase). When Redis is not connected there is
+// nothing to flush, so the connection is dropped without waiting.
+onShutdown('queue redis', async () => {
+  if (redisConnection.status === 'ready') {
+    await Promise.allSettled([reportQueue.close(), attendanceQueue.close()]);
+    await redisConnection.quit();
+  } else {
+    redisConnection.disconnect();
+  }
+}, 'infra');

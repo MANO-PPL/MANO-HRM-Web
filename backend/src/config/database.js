@@ -1,5 +1,6 @@
 import knex from 'knex';
 import './config.js';
+import { onShutdown } from '../lifecycle/shutdown.js';
 
 const DB_HOST = process.env.DB_HOST;
 const DB_PORT = Number(process.env.DB_PORT) || 3306;
@@ -71,3 +72,12 @@ export const paymentDB = knex({
   },
   pool: { ...poolConfig, max: 5 },
 });
+
+// Close all connection pools on shutdown (after in-flight work has finished)
+onShutdown('database pools', async () => {
+  const results = await Promise.allSettled(
+    [attendanceDB, paymentDB, adminDB].filter(Boolean).map((db) => db.destroy())
+  );
+  const failed = results.find((r) => r.status === 'rejected');
+  if (failed) throw failed.reason;
+}, 'infra');

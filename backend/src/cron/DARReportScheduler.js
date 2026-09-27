@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { cronOptions } from './options.js';
 import { attendanceDB } from '../config/database.js';
 import { buildReport } from '../modules/DAR/DARReportAPI.js';
 import { sendEmail } from '../modules/auth/emailService.js';
@@ -137,20 +138,18 @@ async function runDARReport(type, dateRange) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function initDARReportScheduler() {
-    // Daily: 10:00 AM every day - covers that day's data
-    cron.schedule('0 10 * * *', () => {
-        runDARReport('daily', prevDayRange());
-    });
+    // Each callback returns its promise so noOverlap can see when a run ends
+    const tasks = [
+        // Daily: 10:00 AM every day - covers the previous day's data
+        cron.schedule('0 10 * * *', () => runDARReport('daily', prevDayRange()), cronOptions('dar-daily')),
 
-    // Weekly: Monday 7:00 AM - covers previous Mon → Sun
-    cron.schedule('0 7 * * 1', () => {
-        runDARReport('weekly', prevWeekRange());
-    });
+        // Weekly: Monday 7:00 AM - covers previous Mon → Sun
+        cron.schedule('0 7 * * 1', () => runDARReport('weekly', prevWeekRange()), cronOptions('dar-weekly')),
 
-    // Monthly: 1st of month 6:00 AM - covers previous full month
-    cron.schedule('0 6 1 * *', () => {
-        runDARReport('monthly', prevMonthRange());
-    });
+        // Monthly: 1st of month 6:00 AM - covers previous full month
+        cron.schedule('0 6 1 * *', () => runDARReport('monthly', prevMonthRange()), cronOptions('dar-monthly')),
+    ];
 
     console.log('📊 DAR Report Scheduler initialised  (daily@10:00 | weekly@Mon 07:00 | monthly@1st 06:00)');
+    return tasks;
 }

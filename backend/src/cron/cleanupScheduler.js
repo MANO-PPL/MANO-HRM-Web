@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { cronOptions } from './options.js';
 import { attendanceDB } from '../config/database.js';
 import { deleteFile } from '../services/s3/s3Service.js';
 import { permanentlyDeleteUser } from '../modules/users/userService.js';
@@ -290,27 +291,30 @@ export async function runCleanup() {
  * Runs every day at 2:00 AM.
  */
 export function initCleanupScheduler() {
-    cron.schedule('0 2 * * *', async () => {
-        try {
-            await runCleanup();
-        } catch (err) {
-            console.error('Error during scheduled cleanup:', err);
-        }
-    });
+    const tasks = [
+        cron.schedule('0 2 * * *', async () => {
+            try {
+                await runCleanup();
+            } catch (err) {
+                console.error('Error during scheduled cleanup:', err);
+            }
+        }, cronOptions('daily-cleanup')),
 
-    // Repair stale geocoding entries every 15 minutes
-    cron.schedule('*/15 * * * *', async () => {
-        try {
-            await repairStalePunchAddresses();
-        } catch (err) {
-            console.warn('Notice during geocoding repair job:', err?.message || err);
-        }
-    });
+        // Repair stale geocoding entries every 15 minutes
+        cron.schedule('*/15 * * * *', async () => {
+            try {
+                await repairStalePunchAddresses();
+            } catch (err) {
+                console.warn('Notice during geocoding repair job:', err?.message || err);
+            }
+        }, cronOptions('geocode-repair')),
+    ];
 
     // Run repair once immediately on startup to fix any existing stale addresses
     setImmediate(() => repairStalePunchAddresses().catch(err => console.warn('Notice during initial geocoding repair:', err?.message || err)));
 
     console.log('📅 Cleanup scheduler initialized: Daily at 2:00 AM | Geocoding repair: Every 15 minutes');
+    return tasks;
 }
 
 export { repairStalePunchAddresses };
