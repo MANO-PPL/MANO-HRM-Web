@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node dev.js",
-    "test": "node --test --test-force-exit test/*.test.js",
+    "test": "node --test test/*.test.js",
     "lint": "eslint .",
     "check": "node scripts/smoke/check-syntax.js && eslint . && node scripts/smoke/imports.js",
     "smoke:lifecycle": "node scripts/smoke/lifecycle.js",

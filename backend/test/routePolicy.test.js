@@ -5,12 +5,17 @@
  * asserts the access rules the audit requires. A new unauthenticated route
  * fails this test until it is added to PUBLIC_ROUTES on purpose.
  */
-import { test, before } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 
 const { collectRoutes, describeGuards } = await import('./support/routeIntrospection.js');
+const { runShutdownHooks } = await import('../src/lifecycle/shutdown.js');
+
+// Loading the app opens Redis clients and DB pools; close them so the test
+// process exits on its own (no --test-force-exit, which can drop results).
+after(() => runShutdownHooks());
 
 // Routes that are intentionally reachable without a JWT.
 const PUBLIC_ROUTES = new Set([
