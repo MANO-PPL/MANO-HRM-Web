@@ -16,6 +16,8 @@ const { collectRoutes, describeGuards } = await import('./support/routeIntrospec
 const PUBLIC_ROUTES = new Set([
     'GET /health',
     'GET /api/health',
+    'GET /ready',
+    'GET /api/ready',
     'GET /auth/captcha/generate',
     'POST /auth/login',
     'POST /auth/super-admin/login',

@@ -9,6 +9,8 @@ import errorHandler from './middleware/errorHandler.js';
 import AppError from './utils/AppError.js';
 import { apiMonitor } from './middleware/apiMonitor.js';
 import { corsOptions } from './config/cors.js';
+import { attendanceDB } from './config/database.js';
+import { isShuttingDown } from './lifecycle/shutdown.js';
 
 // Import route definitions
 import routes from './modules/index.js';
@@ -31,6 +33,27 @@ app.get(['/health', '/api/health'], (req, res) => {
         timestamp: new Date().toISOString(),
         uptime: process.uptime()
     });
+});
+
+// Readiness check: 503 while shutting down or when the database is unreachable,
+// so deploy scripts / load balancers only route traffic to a usable process.
+const READY_DB_TIMEOUT_MS = 2000;
+app.get(['/ready', '/api/ready'], async (req, res) => {
+    if (isShuttingDown()) {
+        return res.status(503).json({ status: 'unavailable', reason: 'shutting_down' });
+    }
+    let timer;
+    try {
+        await Promise.race([
+            attendanceDB.raw('select 1'),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), READY_DB_TIMEOUT_MS); }),
+        ]);
+        res.status(200).json({ status: 'ready' });
+    } catch (err) {
+        res.status(503).json({ status: 'unavailable', reason: 'database' });
+    } finally {
+        clearTimeout(timer);
+    }
 });
 
 app.use(generalLimiter);

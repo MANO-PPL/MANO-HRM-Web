@@ -16,5 +16,6 @@
     "chunk_data.ipynb",
     "index_knowledge.ipynb"
   ],
-  "delay": 500
+  "delay": 500,
+  "signal": "SIGTERM"
 }

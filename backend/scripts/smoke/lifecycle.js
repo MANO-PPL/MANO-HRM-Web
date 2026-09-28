@@ -16,9 +16,12 @@ const PORT = String(5900 + Math.floor(Math.random() * 90));
 const BOOT_TIMEOUT_MS = 60000;
 const SHUTDOWN_DEADLINE_MS = 20000;
 
+// Booting server.js starts the cron jobs, some of which write to the database
+// right away. The smoke test must never touch a real database, so it points
+// the app at an unreachable DB port unless SMOKE_DB_PORT is set explicitly.
 const child = spawn(process.execPath, ['server.js'], {
     cwd: root,
-    env: { ...process.env, PORT },
+    env: { ...process.env, PORT, DB_PORT: process.env.SMOKE_DB_PORT || '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
 });
 
