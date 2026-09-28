@@ -11,6 +11,8 @@ const BACKEND_DIR = path.resolve(__dirname, '../../..');
 
 // Production candidate paths on Linux / EC2
 const PROD_CANDIDATE_PATHS = [
+    { out: '/root/.pm2/logs/MANO-Attendance-out.log', err: '/root/.pm2/logs/MANO-Attendance-error.log' },
+    { out: '/home/ubuntu/.pm2/logs/MANO-Attendance-out.log', err: '/home/ubuntu/.pm2/logs/MANO-Attendance-error.log' },
     { out: '/home/ubuntu/.pm2/logs/ATTENDANCE-BACKEND-out.log', err: '/home/ubuntu/.pm2/logs/ATTENDANCE-BACKEND-error.log' },
     { out: '/home/ubuntu/.pm2/logs/backend-out.log', err: '/home/ubuntu/.pm2/logs/backend-error.log' },
     { out: '/root/.pm2/logs/ATTENDANCE-BACKEND-out.log', err: '/root/.pm2/logs/ATTENDANCE-BACKEND-error.log' },
@@ -25,7 +27,12 @@ export const getLogPaths = () => {
         }
     }
 
-    // 2. Production EC2 candidate paths
+    // 2. Paths PM2 injects into every process it manages
+    if (process.env.pm_out_log_path && process.env.pm_err_log_path) {
+        return { out: process.env.pm_out_log_path, err: process.env.pm_err_log_path };
+    }
+
+    // 3. Production EC2 candidate paths
     for (const cand of PROD_CANDIDATE_PATHS) {
         try {
             if (fs.existsSync(cand.out)) {
@@ -34,12 +41,12 @@ export const getLogPaths = () => {
         } catch (e) {}
     }
 
-    // 3. User PM2 directory (e.g. ~/.pm2/logs or %USERPROFILE%\.pm2\logs)
+    // 4. User PM2 directory (e.g. ~/.pm2/logs or %USERPROFILE%\.pm2\logs)
     try {
         const pm2Home = process.env.PM2_HOME || path.join(os.homedir(), '.pm2');
         const pm2LogsDir = path.join(pm2Home, 'logs');
         if (fs.existsSync(pm2LogsDir)) {
-            const possibleNames = ['ATTENDANCE-BACKEND', 'backend', 'mano-backend', 'app', 'server'];
+            const possibleNames = ['MANO-Attendance', 'ATTENDANCE-BACKEND', 'backend', 'mano-backend', 'app', 'server'];
             for (const name of possibleNames) {
                 const outPath = path.join(pm2LogsDir, `${name}-out.log`);
                 const errPath = path.join(pm2LogsDir, `${name}-error.log`);
@@ -50,7 +57,7 @@ export const getLogPaths = () => {
         }
     } catch (e) {}
 
-    // 4. Backend workspace local log files
+    // 5. Not running under PM2: the app writes its own log files (see initLogCapture)
     const localOut = path.join(BACKEND_DIR, 'backend-pm2-out.log');
     const localErr = path.join(BACKEND_DIR, 'backend-pm2-error.log');
 
@@ -66,7 +73,7 @@ export const getLogPaths = () => {
         console.error('[PM2 Service] Error initializing local log files:', e);
     }
 
-    return { out: localOut, err: localErr };
+    return { out: localOut, err: localErr, isLocalFallback: true };
 };
 
 // Regex classification rules
@@ -318,33 +325,28 @@ export const getFilteredLogs = async ({
     };
 };
 
-// Real-time log capture & file writer for local / standalone dev environments
+// Real-time log capture & file writer for environments NOT running under PM2.
+// Under PM2, stdout/stderr already go to PM2's log files, so writing them again
+// would duplicate every line. Streaming to super admins is done only by
+// startLogTailing (reading the files), so each line is emitted exactly once.
 let isLogCaptureInitialized = false;
-export const initLogCapture = (ioInstance) => {
+export const initLogCapture = () => {
     if (isLogCaptureInitialized) return;
     isLogCaptureInitialized = true;
 
     const paths = getLogPaths();
-    if (!paths.out || !paths.err) return;
+    if (!paths.isLocalFallback) return;
 
     // Helper to safely append to log file without crashing
     const appendToLogFile = (filePath, text) => {
         try {
             const hasTimestamp = /^\[?\d{4}-\d{2}-\d{2}/.test(text.trim());
             const lineToWrite = hasTimestamp ? text : `[${new Date().toISOString()}] ${text}`;
-            fs.appendFile(filePath, lineToWrite + '\n', (err) => {
-                if (err) {
-                    // Suppress to prevent recursion
-                }
+            fs.appendFile(filePath, lineToWrite + '\n', () => {
+                // Errors are ignored: logging them would recurse into this capture
             });
         } catch (e) {}
     };
-
-    // Tap into console methods so all application output is logged and streamed
-    const origLog = console.log;
-    const origWarn = console.warn;
-    const origError = console.error;
-    const origInfo = console.info;
 
     const formatArgs = (args) => {
         return args.map(arg => {
@@ -358,93 +360,52 @@ export const initLogCapture = (ioInstance) => {
         }).join(' ');
     };
 
-    console.log = function (...args) {
-        origLog.apply(console, args);
-        const text = formatArgs(args);
-        appendToLogFile(paths.out, text);
-        if (ioInstance) {
-            const parsed = parseLogLine(text, 'stdout');
-            if (parsed) {
-                ioInstance.to('super_admin_pm2_logs').emit('pm2:log', parsed);
-            }
-        }
-    };
-
-    console.info = function (...args) {
-        origInfo.apply(console, args);
-        const text = formatArgs(args);
-        appendToLogFile(paths.out, text);
-        if (ioInstance) {
-            const parsed = parseLogLine(text, 'stdout');
-            if (parsed) {
-                ioInstance.to('super_admin_pm2_logs').emit('pm2:log', parsed);
-            }
-        }
-    };
-
-    console.warn = function (...args) {
-        origWarn.apply(console, args);
-        const text = formatArgs(args);
-        appendToLogFile(paths.err, text);
-        if (ioInstance) {
-            const parsed = parseLogLine(text, 'stderr');
-            if (parsed) {
-                ioInstance.to('super_admin_pm2_logs').emit('pm2:log', parsed);
-            }
-        }
-    };
-
-    console.error = function (...args) {
-        origError.apply(console, args);
-        const text = formatArgs(args);
-        appendToLogFile(paths.err, text);
-        if (ioInstance) {
-            const parsed = parseLogLine(text, 'stderr');
-            if (parsed) {
-                ioInstance.to('super_admin_pm2_logs').emit('pm2:log', parsed);
-            }
-        }
-    };
+    // Tap into console methods so application output is also written to the local log files
+    for (const [method, filePath] of [['log', paths.out], ['info', paths.out], ['warn', paths.err], ['error', paths.err]]) {
+        const original = console[method];
+        console[method] = function (...args) {
+            original.apply(console, args);
+            appendToLogFile(filePath, formatArgs(args));
+        };
+    }
 };
 
 /**
  * Streams new lines appended to the log files to super admins subscribed to
  * the 'super_admin_pm2_logs' socket room. Returns { stop }.
  */
-export const startLogTailing = (ioInstance) => {
-    // Capture application console output and write to log files & stream via socket
-    initLogCapture(ioInstance);
+export const startLogTailing = (io) => {
+    initLogCapture();
 
     const paths = getLogPaths();
     const watched = [];
-    const setupWatcher = (filePath, sourceName) => {
+
+    const watchFile = (filePath, sourceName) => {
         try {
             if (!filePath || !fs.existsSync(filePath)) {
                 console.warn(`[PM2 Monitor] Log file does not exist: ${filePath}`);
                 return;
             }
             fs.watchFile(filePath, { interval: 1000 }, async (curr, prev) => {
-                if (curr.size > prev.size) {
-                    let fileHandle;
-                    try {
-                        const readLen = curr.size - prev.size;
-                        const buffer = Buffer.alloc(readLen);
-                        fileHandle = await fs.promises.open(filePath, 'r');
-                        await fileHandle.read(buffer, 0, readLen, prev.size);
-                        const lines = buffer.toString('utf8').split('\n');
-                        lines.forEach(line => {
-                            if (line.trim() !== '') {
-                                const parsed = parseLogLine(line, sourceName);
-                                if (parsed) {
-                                    ioInstance.to('super_admin_pm2_logs').emit('pm2:log', parsed);
-                                }
-                            }
-                        });
-                    } catch (err) {
-                        console.error(`[PM2 Monitor] Error reading new tail bytes for ${sourceName}:`, err);
-                    } finally {
-                        if (fileHandle) await fileHandle.close();
+                // A smaller file means it was rotated/truncated: read the new file from the start
+                const start = curr.size < prev.size ? 0 : prev.size;
+                if (curr.size <= start) return;
+
+                let fileHandle;
+                try {
+                    const readLen = curr.size - start;
+                    const buffer = Buffer.alloc(readLen);
+                    fileHandle = await fs.promises.open(filePath, 'r');
+                    await fileHandle.read(buffer, 0, readLen, start);
+                    for (const line of buffer.toString('utf8').split('\n')) {
+                        if (line.trim() === '') continue;
+                        const parsed = parseLogLine(line, sourceName);
+                        if (parsed) io.to('super_admin_pm2_logs').emit('pm2:log', parsed);
                     }
+                } catch (err) {
+                    console.error(`[PM2 Monitor] Error reading new tail bytes for ${sourceName}:`, err);
+                } finally {
+                    if (fileHandle) await fileHandle.close();
                 }
             });
             watched.push(filePath);
@@ -453,8 +414,9 @@ export const startLogTailing = (ioInstance) => {
             console.error(`[PM2 Monitor] Failed to initialize tailing for ${sourceName}:`, err);
         }
     };
-    if (paths.out) setupWatcher(paths.out, 'stdout');
-    if (paths.err) setupWatcher(paths.err, 'stderr');
+
+    watchFile(paths.out, 'stdout');
+    watchFile(paths.err, 'stderr');
 
     const stop = () => watched.forEach((filePath) => fs.unwatchFile(filePath));
     onShutdown('log tailing', stop, 'producers');
