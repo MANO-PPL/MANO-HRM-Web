@@ -381,6 +381,11 @@ export async function reviewCorrectionRequest({
     throw { status: 404, message: "Request not found" };
   }
 
+  // Same rule as leave and DAR reviews: nobody approves their own request
+  if (Number(correction.user_id) === Number(reviewer_id)) {
+    throw { status: 403, message: "You cannot review your own correction request" };
+  }
+
   // Parse audit_trail
   let auditTrail = [];
   if (correction.audit_trail) {

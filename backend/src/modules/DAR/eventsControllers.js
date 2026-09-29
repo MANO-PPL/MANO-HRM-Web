@@ -40,7 +40,8 @@ export const updateEvent = catchAsync(async (req, res) => {
     const { org_id, user_id } = req.user;
     const updates = { ...req.body };
 
-    await DarEventService.updateEvent({ event_id, org_id, updates });
+    const isStaff = ['admin', 'hr'].includes(req.user.user_type);
+    await DarEventService.updateEvent({ event_id, org_id, user_id, isStaff, updates });
 
     const io = req.app.get('io');
     if (updates.description && (updates.type === 'MEETING' || updates.type === 'EVENT')) {
@@ -59,9 +60,10 @@ export const updateEvent = catchAsync(async (req, res) => {
 
 export const deleteEvent = catchAsync(async (req, res) => {
     const event_id = req.params.id;
-    const { org_id } = req.user;
+    const { org_id, user_id } = req.user;
+    const isStaff = ['admin', 'hr'].includes(req.user.user_type);
 
-    await DarEventService.deleteEvent({ event_id, org_id });
+    await DarEventService.deleteEvent({ event_id, org_id, user_id, isStaff });
     res.json({ ok: true, message: "Deleted successfully" });
 });
 

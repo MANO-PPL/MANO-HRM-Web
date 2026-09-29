@@ -634,10 +634,16 @@ export async function setLeaveBalance({ org_id, user_id, rule_id, year, allocate
     }
 }
 
+// leave_balances has no org_id; a balance belongs to the org of its employee
+async function getOrgLeaveBalance({ org_id, lb_id }) {
+    return attendanceDB('leave_balances as lb')
+        .join('core_users as u', 'u.user_id', 'lb.user_id')
+        .where({ 'lb.lb_id': lb_id, 'u.org_id': org_id })
+        .first('lb.*');
+}
+
 export async function updateLeaveBalance({ org_id, lb_id, allocated, carried_forward, used }) {
-    const balance = await attendanceDB('leave_balances')
-        .where({ lb_id })
-        .first();
+    const balance = await getOrgLeaveBalance({ org_id, lb_id });
 
     if (!balance) {
         throw { status: 404, message: "Leave balance record not found" };
@@ -659,9 +665,7 @@ export async function updateLeaveBalance({ org_id, lb_id, allocated, carried_for
 }
 
 export async function deleteLeaveBalance({ org_id, lb_id }) {
-    const balance = await attendanceDB('leave_balances')
-        .where({ lb_id })
-        .first();
+    const balance = await getOrgLeaveBalance({ org_id, lb_id });
 
     if (!balance) {
         throw { status: 404, message: "Leave balance record not found" };
