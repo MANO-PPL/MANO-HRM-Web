@@ -4,7 +4,7 @@ import { authenticateJWT } from '../../middleware/auth.js';
 import * as feedbackController from './feedbackControllers.js';
 
 const router = express.Router();
-const upload = multer(); // memory storage
+const upload = multer({ limits: { fileSize: 5 * 1024 * 1024, files: 10 } }); // memory storage, 5 MB per file
 
 router.use(authenticateJWT);
 

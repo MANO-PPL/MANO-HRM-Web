@@ -5,7 +5,7 @@ import * as holidaysController from './holidaysController.js';
 import ensureAdmin from '../../middleware/ensureAdmin.js';
 
 const router = express.Router();
-const upload = multer();
+const upload = multer({ limits: { fileSize: 5 * 1024 * 1024 } }); // 5 MB spreadsheet
 
 // Global Middleware for these routes
 router.use(authenticateJWT, requireActiveOrg);

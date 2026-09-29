@@ -4,7 +4,8 @@ import { authenticateJWT, authorize } from "../../middleware/auth.js";
 import * as AttendanceController from "./attendanceController.js";
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() }); // store files in memory
+// Selfies are compressed client-side (1024px WebP); 5 MB bounds memory use
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ========== TIME IN/OUT ENDPOINTS ==========
 

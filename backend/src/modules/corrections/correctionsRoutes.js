@@ -4,7 +4,7 @@ import { authenticateJWT } from '../../middleware/auth.js';
 import * as correctionsController from './correctionsController.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }); // 5 MB attachment
 
 // ========== SUBMIT / UPDATE CORRECTION REQUEST ==========
 // Web: /corrections/request | Mobile: /attendance/correction-request

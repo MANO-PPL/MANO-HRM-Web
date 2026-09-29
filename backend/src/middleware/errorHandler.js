@@ -12,7 +12,7 @@ const errorHandler = (err, req, res, next) => {
         err.statusCode = 400;
         err.status = 'fail';
         if (err.code === 'LIMIT_FILE_SIZE') {
-            err.message = 'File is too large. Maximum allowed size is 5MB for profile pictures/avatars and 10MB for leave documents.';
+            err.message = 'File is too large. The maximum size is 5 MB per file (50 MB for chat attachments).';
         } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
             err.message = 'Unexpected upload field.';
         } else {
@@ -21,7 +21,7 @@ const errorHandler = (err, req, res, next) => {
     } else if (err.type === 'entity.too.large' || err.statusCode === 413 || err.status === 413) {
         err.statusCode = 413;
         err.status = 'fail';
-        err.message = 'The uploaded payload or file size exceeds the server maximum limit (5MB). Please upload a smaller file.';
+        err.message = 'The request is too large (maximum 10 MB). Please upload a smaller file.';
     }
 
     err.statusCode = err.statusCode || 500;
