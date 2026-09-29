@@ -74,7 +74,9 @@ export async function processTimeIn(context) {
           location: JSON.stringify(loc)
         });
       }
-    } catch (_) { }
+    } catch (err) {
+      console.warn(`Failed to save client address for punch #${result.punch_id}:`, err.message);
+    }
   }
 
   // DAR Reconciliation Hook on Checkin
@@ -109,7 +111,9 @@ export async function processTimeOut(context) {
           location: JSON.stringify(loc)
         });
       }
-    } catch (_) { }
+    } catch (err) {
+      console.warn(`Failed to save client address for punch #${result.punch_id}:`, err.message);
+    }
   }
 
   // DAR Reconciliation Hook on Checkout

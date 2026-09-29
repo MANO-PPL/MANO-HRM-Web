@@ -167,26 +167,27 @@ async function processUserAttendanceForDate(user, dateStr) {
     // Parse Shift Rules using Service (now includes week_off_policy)
     const rules = ShiftService.getShiftRules(user);
 
-    // 1. Check for any open sessions (forgot to checkout)
+    // 1. Check for any open sessions (forgot to checkout).
+    // A failed query must not be read as "no punches": that would mark someone
+    // who worked as ABSENT. The error propagates, this user is skipped for this
+    // tick and the catch-up logic retries on a later one.
     let hasPunchOpenSession = false;
     let latestInPunch = null;
-    try {
-        const punches = await attendanceDB("attn_punches")
-            .where({ user_id: user.user_id })
-            .whereNull("deleted_at")
-            .whereIn("punch_type", ["in", "out"])
-            .whereRaw("DATE(punch_time) = ?", [dateStr])
-            .orderBy("punch_time", "asc")
-            .orderBy("id", "asc");
+    const punches = await attendanceDB("attn_punches")
+        .where({ user_id: user.user_id })
+        .whereNull("deleted_at")
+        .whereIn("punch_type", ["in", "out"])
+        .whereRaw("DATE(punch_time) = ?", [dateStr])
+        .orderBy("punch_time", "asc")
+        .orderBy("id", "asc");
 
-        if (punches.length > 0) {
-            const last = punches[punches.length - 1];
-            if (last.punch_type === "in") {
-                hasPunchOpenSession = true;
-                latestInPunch = last;
-            }
+    if (punches.length > 0) {
+        const last = punches[punches.length - 1];
+        if (last.punch_type === "in") {
+            hasPunchOpenSession = true;
+            latestInPunch = last;
         }
-    } catch (_) { }
+    }
 
     if (hasPunchOpenSession) {
         if (user.shift_id === null) {
@@ -231,7 +232,9 @@ async function processUserAttendanceForDate(user, dateStr) {
                         let meta = typeof latestInPunch.metadata === 'string' ? JSON.parse(latestInPunch.metadata) : (latestInPunch.metadata || {});
                         meta.missed_punch = true;
                         await attendanceDB('attn_punches').where({ id: latestInPunch.id }).update({ metadata: JSON.stringify(meta) });
-                    } catch (_) { }
+                    } catch (err) {
+                        console.warn(`Failed to flag punch #${latestInPunch.id} as missed punch:`, err.message);
+                    }
                 }
 
                 try {
