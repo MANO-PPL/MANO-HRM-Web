@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
+import { authenticateJWT, requireActiveOrg, authorize } from '../../middleware/auth.js';
 import * as adminController from './adminController.js';
 
 const router = express.Router();
@@ -38,16 +38,18 @@ router.post('/users/bulk', upload.single('file'), adminController.bulkCreateUser
 router.post('/users/bulk-validate', adminController.bulkValidateUsers);
 router.post('/users/bulk-json', adminController.bulkCreateUsersFromJson);
 
-// Lookups
-router.get('/dashboard-stats', adminController.getDashboardStats);
+const staff = authorize('admin', 'hr');
+
+// Lookups (lists are readable by all users; changes and org-wide stats are admin/HR)
+router.get('/dashboard-stats', staff, adminController.getDashboardStats);
 
 router.get('/departments', adminController.getDepartments);
-router.post('/departments', adminController.createDepartment);
+router.post('/departments', staff, adminController.createDepartment);
 router.put('/departments/:dept_id', adminController.updateDepartment);
 router.delete('/departments/:dept_id', adminController.deleteDepartment);
 
 router.get('/designations', adminController.getDesignations);
-router.post('/designations', adminController.createDesignation);
+router.post('/designations', staff, adminController.createDesignation);
 router.put('/designations/:desg_id', adminController.updateDesignation);
 router.delete('/designations/:desg_id', adminController.deleteDesignation);
 

@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { authenticateJWT, requireActiveOrg } from '../../middleware/auth.js';
+import { authenticateJWT, requireActiveOrg, authorize } from '../../middleware/auth.js';
 import {
     getAllSites, createSite, updateSite, deleteSite,
     getAllLabours, createLabour, updateLabour, deleteLabour,
@@ -14,9 +14,10 @@ import { getLabourSchedule, saveLabourSchedule } from './dailyScheduleController
 import { exportDetailedMonthlyLedgerExcel } from './labourExportController.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }); // 5 MB spreadsheet
 
-router.use(authenticateJWT, requireActiveOrg);
+// Labour management (sites, workers, wages, payouts) is an admin/HR tool
+router.use(authenticateJWT, requireActiveOrg, authorize('admin', 'hr'));
 
 // Site Routes
 router.route('/sites')

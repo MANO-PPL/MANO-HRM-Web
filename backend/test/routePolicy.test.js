@@ -53,6 +53,16 @@ const STAFF_ONLY_ROUTES = [
     'POST /dar/requests/reject/:id',
     'POST /dar/settings/update',
     'GET /attendance/daily-summary/admin',
+    'GET /admin/dashboard-stats',
+    'POST /admin/departments',
+    'POST /admin/designations',
+];
+
+// Whole route prefixes and the only roles allowed on them
+const PREFIX_POLICIES = [
+    { prefix: '/labour/', roles: ['admin', 'hr'] },
+    { prefix: '/super-admin/', roles: ['super_admin'] },
+    { prefix: '/organizations', roles: ['super_admin'] },
 ];
 
 const REMOVED_ROUTES = ['GET /attendance/image', 'GET /attendance/image/*key'];
@@ -90,5 +100,16 @@ for (const key of STAFF_ONLY_ROUTES) {
         assert.ok(guards.roles, `${key} has no route-level role gate`);
         const disallowed = guards.roles.filter((r) => !['admin', 'hr'].includes(r));
         assert.deepEqual(disallowed, [], `${key} also allows: ${disallowed.join(', ')}`);
+    });
+}
+
+for (const { prefix, roles } of PREFIX_POLICIES) {
+    test(`every ${prefix} route is limited to ${roles.join('/')}`, () => {
+        const matching = [...routeMap].filter(([key]) => key.split(' ')[1].startsWith(prefix));
+        assert.ok(matching.length > 0, `no routes found under ${prefix}`);
+        const violations = matching
+            .filter(([, guards]) => !guards.authenticated || !guards.roles || guards.roles.some((r) => !roles.includes(r)))
+            .map(([key, guards]) => `${key} (roles: ${guards.roles ? guards.roles.join(',') : 'none'})`);
+        assert.deepEqual(violations, [], `Routes not limited to ${roles.join('/')}:\n${violations.join('\n')}`);
     });
 }

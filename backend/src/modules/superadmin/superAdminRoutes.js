@@ -12,6 +12,8 @@ const requireSuperAdmin = (req, res, next) => {
     }
     next();
 };
+// Exposed for route introspection (route-policy test, route inventory)
+requireSuperAdmin.allowedRoles = ['super_admin'];
 
 router.use(authenticateJWT, requireSuperAdmin);
 
