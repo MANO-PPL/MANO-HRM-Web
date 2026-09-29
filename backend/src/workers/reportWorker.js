@@ -67,6 +67,14 @@ async function processReportJob(job) {
         });
 
     } catch (err) {
+        // BullMQ will retry (attemptsMade counts attempts before this one); only
+        // the last attempt marks the report failed and notifies the user.
+        const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
+        if (!isFinalAttempt) {
+            console.warn(`⚠️ [Worker] Report job #${reportId} failed (attempt ${job.attemptsMade + 1}), will retry: ${err.message}`);
+            throw err;
+        }
+
         console.error(`❌ [Worker] Error generating report job #${reportId}:`, err);
 
         // Update database tracking row as failed

@@ -8,7 +8,9 @@ import { processAttendanceJob } from '../modules/attendance/attendanceJobProcess
  */
 export function startAttendanceWorker() {
     const attendanceWorker = new Worker('{AttendanceQueue}', async (job) => {
-        return processAttendanceJob(job.data);
+        // Retries only help while attempts remain (attemptsMade counts earlier attempts)
+        const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
+        return processAttendanceJob(job.data, { isFinalAttempt });
     }, {
         connection: redisConnection,
         concurrency: 4 // Max 4 concurrent check-ins/outs processed in parallel

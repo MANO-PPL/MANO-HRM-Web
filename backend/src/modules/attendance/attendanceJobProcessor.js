@@ -10,7 +10,7 @@ import { safeJsonParse } from '../../utils/dataUtils.js';
  * and upload the selfie to S3, and write the activity log. Run by the
  * attendance BullMQ worker, or directly when Redis is unavailable.
  */
-export async function processAttendanceJob(jobData) {
+export async function processAttendanceJob(jobData, { isFinalAttempt = true } = {}) {
     const {
         attendance_id,
         isTimeIn,
@@ -83,6 +83,7 @@ export async function processAttendanceJob(jobData) {
         }
     }
 
+    let retryableUploadError = null;
     if (fileBuffer && fileBuffer.length > 0) {
         try {
             console.log(`[AttendanceWorker] Compressing and uploading selfie (${fileBuffer.length} bytes) to S3...`);
@@ -114,16 +115,26 @@ export async function processAttendanceJob(jobData) {
 
             console.log(`✅ [AttendanceWorker] Successfully uploaded selfie to S3 with key: ${imageKey}`);
         } catch (err) {
-            console.error(`❌ [AttendanceWorker] Failed S3 compression/upload for job #${attendance_id}:`, err);
+            if (isFinalAttempt) {
+                console.error(`❌ [AttendanceWorker] Failed S3 compression/upload for job #${attendance_id}:`, err);
+            } else {
+                // Keep the temp file so the retry can upload it
+                retryableUploadError = err;
+            }
         } finally {
-            // Clean up the temp file from disk if created
-            if (tempFilePath) {
+            // Clean up the temp file once the upload succeeded or will not be retried
+            if (tempFilePath && !retryableUploadError) {
                 try {
                     await fs.unlink(tempFilePath);
                     console.log(`🧹 [AttendanceWorker] Cleaned up temp file: ${tempFilePath}`);
                 } catch (_) {}
             }
         }
+    }
+
+    if (retryableUploadError) {
+        console.warn(`⚠️ [AttendanceWorker] Selfie upload for job #${attendance_id} failed, will retry: ${retryableUploadError.message}`);
+        throw retryableUploadError;
     }
 
     // 3. Log EventBus Activity
