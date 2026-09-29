@@ -24,6 +24,13 @@ const errorHandler = (err, req, res, next) => {
         err.message = 'The request is too large (maximum 10 MB). Please upload a smaller file.';
     }
 
+    // Several services throw plain objects like { status: 404, message }. When
+    // no controller catches them, use that numeric status instead of a 500.
+    if (!err.statusCode && Number.isInteger(err.status) && err.status >= 400 && err.status < 600) {
+        err.statusCode = err.status;
+        err.status = err.status < 500 ? 'fail' : 'error';
+    }
+
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
 
