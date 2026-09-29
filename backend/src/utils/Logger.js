@@ -70,11 +70,6 @@ const argsToString = (args) => {
     }).join(' ');
 };
 
-const shouldFilterLog = (msg) => {
-    // Suppress spammy TCP connection refused/error wrap logs to keep the terminal clean
-    return /econnrefused|tcpconnectwrap/i.test(msg);
-};
-
 // Format standard telemetry log line: [Timestamp] [Severity] [Category] Message
 const formatLogLine = (severity, category, message) => {
     return `[${new Date().toISOString()}] [${severity}] [${category}] ${message}`;
@@ -85,7 +80,6 @@ export const initializeLogger = () => {
     console.log = (...args) => {
         if (LOG_LEVELS.INFO < ACTIVE_LOG_LEVEL) return;
         const msg = argsToString(args);
-        if (shouldFilterLog(msg)) return;
         const category = detectCategory(msg);
         originalLog(formatLogLine('INFO', category, msg));
     };
@@ -94,7 +88,6 @@ export const initializeLogger = () => {
     console.info = (...args) => {
         if (LOG_LEVELS.INFO < ACTIVE_LOG_LEVEL) return;
         const msg = argsToString(args);
-        if (shouldFilterLog(msg)) return;
         const category = detectCategory(msg);
         originalInfo(formatLogLine('INFO', category, msg));
     };
@@ -103,7 +96,6 @@ export const initializeLogger = () => {
     console.warn = (...args) => {
         if (LOG_LEVELS.WARN < ACTIVE_LOG_LEVEL) return;
         const msg = argsToString(args);
-        if (shouldFilterLog(msg)) return;
         const category = detectCategory(msg);
         originalWarn(formatLogLine('WARN', category, msg));
     };
@@ -112,7 +104,6 @@ export const initializeLogger = () => {
     console.error = (...args) => {
         if (LOG_LEVELS.ERROR < ACTIVE_LOG_LEVEL) return;
         const msg = argsToString(args);
-        if (shouldFilterLog(msg)) return;
         const category = detectCategory(msg);
         const severity = detectSeverity(msg, 'ERROR');
         originalError(formatLogLine(severity, category, msg));
@@ -122,7 +113,6 @@ export const initializeLogger = () => {
     console.critical = (...args) => {
         if (LOG_LEVELS.CRITICAL < ACTIVE_LOG_LEVEL) return;
         const msg = argsToString(args);
-        if (shouldFilterLog(msg)) return;
         const category = detectCategory(msg);
         originalError(formatLogLine('CRITICAL', category, msg));
     };
@@ -130,7 +120,6 @@ export const initializeLogger = () => {
     console.debug = (...args) => {
         if (LOG_LEVELS.DEBUG < ACTIVE_LOG_LEVEL) return;
         const msg = argsToString(args);
-        if (shouldFilterLog(msg)) return;
         const category = detectCategory(msg);
         originalLog(formatLogLine('DEBUG', category, msg));
     };
