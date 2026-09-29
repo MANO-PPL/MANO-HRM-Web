@@ -1,87 +1,31 @@
-import Redis from 'ioredis';
-import '../../config/config.js'; // Ensure env variables are loaded
 import { onShutdown } from '../../lifecycle/shutdown.js';
+import { createRedisClient, closeRedisClient } from '../../config/redis.js';
 
 let cacheRedis;
-
 try {
-  const options = {};
-
-  // Auto-detect secure TLS connection
-  const redisHost = process.env.REDIS_HOST || '';
-  const redisUrl = process.env.REDIS_URL || '';
-  const redisPort = Number(process.env.REDIS_PORT) || 6379;
-  const redisPassword = process.env.REDIS_PASSWORD || undefined;
-  const isSecurePort = redisPort === 6380;
-  
-  const isTls = process.env.REDIS_USE_TLS === 'true' || 
-                redisUrl.startsWith('rediss://') ||
-                redisHost.includes('cache.amazonaws.com') ||
-                redisHost.includes('upstash.io') ||
-                isSecurePort;
-
-  if (isTls) {
-    options.tls = {
-      rejectUnauthorized: false
-    };
-  }
-
-  // Detect if it is a Redis Cluster (AWS ElastiCache Clustered mode enabled)
-  const isCluster = (redisHost.startsWith('clustercfg.') || 
-                    redisHost.includes('-cluster') ||
-                    process.env.REDIS_IS_CLUSTER === 'true') &&
-                    process.env.REDIS_IS_CLUSTER !== 'false';
-
-  if (isCluster) {
-    console.log(`🌀 [Cache] Initializing Redis Cluster client for ${redisHost}...`);
-    cacheRedis = new Redis.Cluster(
-      [
-        {
-          host: redisHost,
-          port: redisPort,
-        }
-      ],
-      {
-        redisOptions: {
-          password: redisPassword,
-          ...options
-        },
-        dnsLookup: (address, callback) => callback(null, address),
-        slotsRefreshTimeout: 2000,
-      }
-    );
-  } else if (redisUrl) {
-    cacheRedis = new Redis(redisUrl, options);
-  } else {
-    cacheRedis = new Redis({
-      host: redisHost || '127.0.0.1',
-      port: redisPort,
-      password: redisPassword,
-      ...options
-    });
-  }
-
-  cacheRedis.on('error', (err) => {
-    console.error('⚠ [Cache] Redis connection error:', err.message);
-  });
-  cacheRedis.on('connect', () => {
-    console.log('⚡ [Cache] Connected to Redis caching instance');
-  });
+  cacheRedis = createRedisClient('cache');
 } catch (err) {
   console.error('⚠ [Cache] Failed to initialize Redis client:', err);
   cacheRedis = null;
 }
 
-// Close the cache connection on shutdown. quit() waits for pending replies;
-// when Redis is not connected, disconnect() avoids waiting on reconnect attempts.
-onShutdown('cache redis', async () => {
-  if (!cacheRedis) return;
-  if (cacheRedis.status === 'ready') {
-    await cacheRedis.quit();
-  } else {
-    cacheRedis.disconnect();
+// Close the cache connection on shutdown
+onShutdown('cache redis', () => closeRedisClient(cacheRedis), 'infra');
+
+// Deletes keys matching a glob pattern with incremental SCAN (KEYS blocks
+// Redis while it walks the whole keyspace). In cluster mode each master
+// node is scanned for the keys it holds. Keys are deleted one per command in
+// a pipeline: a multi-key DEL fails in cluster mode (CROSSSLOT) when the
+// keys hash to different slots.
+async function deleteMatching(client, pattern) {
+  const stream = client.scanStream({ match: pattern, count: 200 });
+  for await (const keys of stream) {
+    if (keys.length === 0) continue;
+    const pipeline = client.pipeline();
+    keys.forEach((key) => pipeline.del(key));
+    await pipeline.exec();
   }
-}, 'infra');
+}
 
 export const cacheService = {
   /**
@@ -129,20 +73,8 @@ export const cacheService = {
   async delPattern(pattern) {
     if (!cacheRedis || cacheRedis.status !== 'ready') return;
     try {
-      if (typeof cacheRedis.nodes === 'function') {
-        const nodes = cacheRedis.nodes('master');
-        for (const node of nodes) {
-          const keys = await node.keys(pattern);
-          if (keys && keys.length > 0) {
-            await node.del(...keys);
-          }
-        }
-      } else {
-        const keys = await cacheRedis.keys(pattern);
-        if (keys && keys.length > 0) {
-          await cacheRedis.del(...keys);
-        }
-      }
+      const clients = typeof cacheRedis.nodes === 'function' ? cacheRedis.nodes('master') : [cacheRedis];
+      await Promise.all(clients.map((client) => deleteMatching(client, pattern)));
       console.log(`🧹 [Cache] Invalidated keys matching "${pattern}"`);
     } catch (err) {
       console.error(`[Cache] Delete pattern error for "${pattern}":`, err);
