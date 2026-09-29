@@ -321,7 +321,7 @@ export class PayrollCalculationService {
      * Recalculate and update the cached Draft entry for a single employee.
      * Does nothing if the entry is already Finalized or Paid.
      */
-    static async updateDraftEntry(orgId, year, month, employeeId) {
+    static async updateDraftEntry(orgId, year, month, employeeId, { isRetry = false } = {}) {
         try {
             // Find or create payroll run in Live status
             let run = await attendanceDB('payroll_runs')
@@ -455,6 +455,13 @@ export class PayrollCalculationService {
                 });
             }
         } catch (err) {
+            // Two recalculations for the same employee/month can run at once
+            // (e.g. a leave approval and an attendance change). Both may find no
+            // run/entry and try to insert; the loser hits the unique key. The row
+            // now exists, so one retry takes the normal update path.
+            if (err.code === 'ER_DUP_ENTRY' && !isRetry) {
+                return this.updateDraftEntry(orgId, year, month, employeeId, { isRetry: true });
+            }
             console.error(`Failed to update draft payroll entry for employee ${employeeId}:`, err);
         }
     }
@@ -518,7 +525,11 @@ export class PayrollCalculationService {
             if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
 
             const userId = leaveRequest.user_id;
-            const orgId = leaveRequest.org_id;
+            // leave_request has no org_id column; resolve it from the employee
+            // (as triggerRecalculation does) so the draft entry can be found.
+            const orgId = leaveRequest.org_id
+                ?? (await attendanceDB('core_users').where('user_id', userId).first('org_id'))?.org_id;
+            if (!orgId) return;
 
             let current = new Date(start.getFullYear(), start.getMonth(), 1);
             while (current <= end) {
