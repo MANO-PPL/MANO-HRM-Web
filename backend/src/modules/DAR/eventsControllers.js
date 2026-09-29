@@ -6,6 +6,12 @@ export const createEvent = catchAsync(async (req, res) => {
     const { title, description, event_date, start_time, end_time, location, type } = req.body;
     const { org_id, user_id } = req.user;
 
+    // Required by comm_events_meetings; missing values used to surface as a 500
+    // (MySQL ENUMs match case-insensitively, so 'Meeting' is accepted as before)
+    if (!title || !event_date || !start_time || !end_time || !['EVENT', 'MEETING'].includes(String(type || '').toUpperCase())) {
+        return res.status(400).json({ ok: false, message: "title, event_date, start_time, end_time and type (EVENT or MEETING) are required" });
+    }
+
     const event_id = await DarEventService.createEvent({
         org_id, user_id, title, description,
         event_date, // Trust frontend YYYY-MM-DD, avoid timezone shifts from re-parsing
