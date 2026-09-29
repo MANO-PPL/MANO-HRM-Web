@@ -661,7 +661,10 @@ export async function updateLeaveBalance({ org_id, lb_id, allocated, carried_for
 
     await attendanceDB('leave_balances').where({ lb_id }).update(updateData);
 
-    return { ...balance, ...updateData };
+    // Return the saved row: updateData holds a knex fn.now() object, which
+    // cannot be serialized to JSON (the response used to fail with a 500
+    // even though the update succeeded).
+    return getOrgLeaveBalance({ org_id, lb_id });
 }
 
 export async function deleteLeaveBalance({ org_id, lb_id }) {
