@@ -5,6 +5,7 @@ import { attendanceDB } from '../../config/database.js';
 import EventBus from '../../utils/EventBus.js';
 import AppError from '../../utils/AppError.js';
 import * as TokenService from './tokenService.js';
+import { evaluateOrgStatus } from '../organisations/orgAccessPolicy.js';
 import OtpService from './OtpService.js';
 import { sendEmail } from './emailService.js';
 
@@ -61,17 +62,13 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
             throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403);
         }
         
-        if (user.org_subscription_expiry) {
-            const expiry = new Date(user.org_subscription_expiry);
-            const graceDate = new Date(expiry);
-            graceDate.setDate(graceDate.getDate() + (user.org_grace_period_days || 0));
-            graceDate.setHours(23, 59, 59, 999);
-            if (new Date() > graceDate) {
-                isOrgExpired = true;
-            }
-        }
-
-        orgStatus = isOrgExpired ? 'inactive' : user.org_status;
+        const evaluated = evaluateOrgStatus({
+            status: user.org_status,
+            subscription_expiry: user.org_subscription_expiry,
+            grace_period_days: user.org_grace_period_days,
+        });
+        isOrgExpired = evaluated.isExpired;
+        orgStatus = evaluated.status;
 
         if (orgStatus !== 'active' && user.user_type !== 'admin') {
             throw new AppError(`Login blocked: Your organization account is currently ${orgStatus}. Please contact support.`, 403);
@@ -222,18 +219,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
             throw new AppError('Access Denied: Your organization has been deleted or is scheduled for deletion.', 403, "ORG_DELETED");
         }
 
-        let isOrgExpired = false;
-        if (org.subscription_expiry) {
-            const expiry = new Date(org.subscription_expiry);
-            const graceDate = new Date(expiry);
-            graceDate.setDate(graceDate.getDate() + (org.grace_period_days || 0));
-            graceDate.setHours(23, 59, 59, 999);
-            if (new Date() > graceDate) {
-                isOrgExpired = true;
-            }
-        }
-
-        const orgStatus = isOrgExpired ? 'inactive' : org.status;
+        const { status: orgStatus } = evaluateOrgStatus(org);
 
         if (orgStatus !== 'active' && user.user_type !== 'admin') {
             throw new AppError(`Access Denied: Your organization account is currently ${orgStatus}.`, 403, "ORG_INACTIVE");
@@ -298,18 +284,13 @@ export const getCurrentUser = async (userId, userType) => {
 
     if (!user) throw new AppError("User not found", 404);
 
-    let isOrgExpired = false;
-    if (user.org_id && user.org_subscription_expiry) {
-        const expiry = new Date(user.org_subscription_expiry);
-        const graceDate = new Date(expiry);
-        graceDate.setDate(graceDate.getDate() + (user.org_grace_period_days || 0));
-        graceDate.setHours(23, 59, 59, 999);
-        if (new Date() > graceDate) {
-            isOrgExpired = true;
-        }
-    }
-
-    const orgStatus = isOrgExpired ? 'inactive' : user.org_status;
+    const { status: orgStatus, isExpired: isOrgExpired } = user.org_id
+        ? evaluateOrgStatus({
+            status: user.org_status,
+            subscription_expiry: user.org_subscription_expiry,
+            grace_period_days: user.org_grace_period_days,
+        })
+        : { status: user.org_status, isExpired: false };
 
     // Parse pages_tour_seen from JSON string to object (stored as JSON in DB)
     let pagesTourSeen = {};

@@ -25,6 +25,28 @@ const CRON_INTERVAL_MINUTES = 30;
 // on a later cron pass instead.
 const MISSED_PUNCH_MIN_SESSION_AGE_HOURS = 4;
 
+/**
+ * "Possibly forgotten checkout" cutoff, in minutes after the shift day's local
+ * midnight (values >= 1440 mean the next day). Deliberately independent of the
+ * OT cap, so an employee legitimately still working past their overtime cap is
+ * never treated as a missed punch. Per-shift configurable
+ * (policy_rules.missed_punch_check_time); defaults to shift end + 8h + buffer.
+ */
+export function computeMissedPunchCutoffMinutes(rules) {
+    const startTimeStr = rules.shift_timing?.start_time || rules.start_time || "09:00:00";
+    const endTimeStr = rules.shift_timing?.end_time || rules.end_time || "18:00:00";
+    const [startH, startM] = startTimeStr.split(':').map(Number);
+    const [endH, endM] = endTimeStr.split(':').map(Number);
+
+    if (rules.missed_punch_check_time) {
+        const [checkH, checkM] = rules.missed_punch_check_time.split(':').map(Number);
+        const cutoff = checkH * 60 + checkM;
+        // Earlier than shift start => meant as "next day"
+        return cutoff < (startH * 60 + startM) ? cutoff + 24 * 60 : cutoff;
+    }
+    return (endH * 60) + endM + (8 * 60) + MISSED_PUNCH_BUFFER_MINUTES;
+}
+
 
 /**
  * Attendance Processor
@@ -60,24 +82,7 @@ export async function processHourlyAttendance() {
             try {
                 // 1. Resolve shift rules, then calculate target processing slot in-memory first (no DB queries)
                 const rules = ShiftService.getShiftRules(user);
-                const startTimeStr = rules.shift_timing?.start_time || rules.start_time || "09:00:00";
-                const endTimeStr = rules.shift_timing?.end_time || rules.end_time || "18:00:00";
-                const [startH, startM] = startTimeStr.split(':').map(Number);
-                const [endH, endM] = endTimeStr.split(':').map(Number);
-
-                // "Possibly forgotten checkout" cutoff — deliberately independent of the OT cap, so an
-                // employee legitimately still working past their overtime cap is never treated as a missed
-                // punch. Per-shift configurable (policy_rules.missed_punch_check_time); defaults to shift end + 8h.
-                let latestCheckoutMinutes;
-                if (rules.missed_punch_check_time) {
-                    const [checkH, checkM] = rules.missed_punch_check_time.split(':').map(Number);
-                    latestCheckoutMinutes = checkH * 60 + checkM;
-                    if (latestCheckoutMinutes < (startH * 60 + startM)) {
-                        latestCheckoutMinutes += 24 * 60; // earlier than shift start => meant as "next day"
-                    }
-                } else {
-                    latestCheckoutMinutes = (endH * 60) + endM + (8 * 60) + MISSED_PUNCH_BUFFER_MINUTES;
-                }
+                const latestCheckoutMinutes = computeMissedPunchCutoffMinutes(rules);
                 const calculatedSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
 
                 let targetSlotMinutes = calculatedSlotMinutes;
@@ -347,21 +352,7 @@ async function notifyExpiredMissedPunches() {
             // Determine the notification slot using the same decoupled, per-shift-configurable
             // cutoff as the main hourly pass (Phase 1) — never derived from max_overtime.
             const rules = ShiftService.getShiftRules(user);
-            const startTimeStr = rules.shift_timing?.start_time || rules.start_time || "09:00:00";
-            const endTimeStr = rules.shift_timing?.end_time || rules.end_time || "18:00:00";
-            const [startH, startM] = startTimeStr.split(':').map(Number);
-            const [endH, endM] = endTimeStr.split(':').map(Number);
-            let latestCheckoutMinutes;
-            if (rules.missed_punch_check_time) {
-                const [checkH, checkM] = rules.missed_punch_check_time.split(':').map(Number);
-                latestCheckoutMinutes = checkH * 60 + checkM;
-                if (latestCheckoutMinutes < (startH * 60 + startM)) {
-                    latestCheckoutMinutes += 24 * 60;
-                }
-            } else {
-                latestCheckoutMinutes = (endH * 60) + endM + (8 * 60) + MISSED_PUNCH_BUFFER_MINUTES;
-            }
-            const notificationSlotMinutes = getNextCronSlotMinutes(latestCheckoutMinutes);
+            const notificationSlotMinutes = getNextCronSlotMinutes(computeMissedPunchCutoffMinutes(rules));
 
             const graceDays = rules.correction_deadline ?? 30;
 

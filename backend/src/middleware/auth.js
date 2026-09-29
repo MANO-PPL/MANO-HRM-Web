@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { attendanceDB } from '../config/database.js';
 import AppError from '../utils/AppError.js';
 import catchAsync from '../utils/catchAsync.js';
+import { evaluateOrgStatus } from '../modules/organisations/orgAccessPolicy.js';
 
 export const authenticateJWT = catchAsync(async (req, res, next) => {
 
@@ -72,17 +73,13 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
                 return res.status(403).json({ message: "Access Denied: Your organization has been deleted or is scheduled for deletion.", code: "ORG_DELETED" });
             }
 
-            if (user.org_subscription_expiry) {
-                const expiry = new Date(user.org_subscription_expiry);
-                const graceDate = new Date(expiry);
-                graceDate.setDate(graceDate.getDate() + (user.org_grace_period_days || 0));
-                graceDate.setHours(23, 59, 59, 999);
-                if (new Date() > graceDate) {
-                    isOrgExpired = true;
-                }
-            }
-
-            const orgStatus = isOrgExpired ? 'inactive' : user.org_status;
+            const evaluated = evaluateOrgStatus({
+                status: user.org_status,
+                subscription_expiry: user.org_subscription_expiry,
+                grace_period_days: user.org_grace_period_days,
+            });
+            isOrgExpired = evaluated.isExpired;
+            const orgStatus = evaluated.status;
 
             if (orgStatus !== 'active' && user.user_type !== 'admin') {
                 return res.status(403).json({ message: `Access Denied: Your organization account is inactive or expired.`, code: "ORG_INACTIVE" });
@@ -154,18 +151,7 @@ export const requireActiveOrg = catchAsync(async (req, res, next) => {
             return res.status(403).json({ message: "Action Denied: Your organization has been deleted or is scheduled for deletion." });
         }
 
-        let isOrgExpired = false;
-        if (org.subscription_expiry) {
-            const expiry = new Date(org.subscription_expiry);
-            const graceDate = new Date(expiry);
-            graceDate.setDate(graceDate.getDate() + (org.grace_period_days || 0));
-            graceDate.setHours(23, 59, 59, 999);
-            if (new Date() > graceDate) {
-                isOrgExpired = true;
-            }
-        }
-
-        const orgStatus = isOrgExpired ? 'inactive' : org.status;
+        const { status: orgStatus } = evaluateOrgStatus(org);
 
         if (orgStatus === 'pending_approval') {
             return res.status(403).json({ message: "Action Denied: Your organization is pending approval by the Super Admin." });

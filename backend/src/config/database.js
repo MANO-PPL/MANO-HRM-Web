@@ -23,53 +23,43 @@ const poolConfig = {
   },
 };
 
-//admin access only for local dev environment
-export let adminDB = null;
-
-if (process.env.NODE_ENV === 'development') {
-  adminDB = knex({
+// One connection factory for every database the app uses
+function makeKnex({ user, password, database, pool = poolConfig }) {
+  return knex({
     client: 'mysql2',
     connection: {
       host: DB_HOST,
       port: DB_PORT,
-      user: process.env.DB_ADMIN_USER,
-      password: process.env.DB_ADMIN_PASSWORD,
-      database: process.env.DB_ADMIN_NAME,
+      user,
+      password,
+      database,
       timezone: 'Z',
       enableKeepAlive: true,
       keepAliveInitialDelay: 10000,
     },
-    pool: poolConfig,
+    pool,
   });
 }
 
-export const attendanceDB = knex({
-  client: 'mysql2',
-  connection: {
-    host: DB_HOST,
-    port: DB_PORT,
-    user: process.env.ATTENDANCE_DB_USER,
-    password: process.env.ATTENDANCE_DB_PASSWORD,
-    database: process.env.ATTENDANCE_DB_NAME,
-    timezone: 'Z',
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-  },
-  pool: poolConfig,
+//admin access only for local dev environment
+export const adminDB = process.env.NODE_ENV === 'development'
+  ? makeKnex({
+    user: process.env.DB_ADMIN_USER,
+    password: process.env.DB_ADMIN_PASSWORD,
+    database: process.env.DB_ADMIN_NAME,
+  })
+  : null;
+
+export const attendanceDB = makeKnex({
+  user: process.env.ATTENDANCE_DB_USER,
+  password: process.env.ATTENDANCE_DB_PASSWORD,
+  database: process.env.ATTENDANCE_DB_NAME,
 });
 
-export const paymentDB = knex({
-  client: 'mysql2',
-  connection: {
-    host: DB_HOST,
-    port: DB_PORT,
-    user: process.env.PAYMENT_DB_USER,
-    password: process.env.PAYMENT_DB_PASSWORD,
-    database: process.env.PAYMENT_DB_NAME,
-    timezone: 'Z',
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000,
-  },
+export const paymentDB = makeKnex({
+  user: process.env.PAYMENT_DB_USER,
+  password: process.env.PAYMENT_DB_PASSWORD,
+  database: process.env.PAYMENT_DB_NAME,
   pool: { ...poolConfig, max: 5 },
 });
 
