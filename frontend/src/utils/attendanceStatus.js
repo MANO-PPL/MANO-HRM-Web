@@ -68,10 +68,10 @@ export function getStatusStyle(status) {
       };
     case 'ABSENT':
       return {
-        bg: 'bg-red-100 dark:bg-red-900/30',
-        text: 'text-red-700 dark:text-red-400',
-        dot: 'bg-red-500',
-        label: 'ABSENT',
+        bg: 'bg-slate-100 dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border',
+        text: 'text-slate-600 dark:text-slate-300 font-medium',
+        dot: 'bg-slate-400',
+        label: 'Absent',
       };
     case 'OVERTIME':
       return {
@@ -382,3 +382,83 @@ export function normalizeDailySessionsWithCheckpoints(records) {
   return allSessions.length > 0 ? allSessions : orphanedCheckpoints;
 }
 
+/**
+ * Injects absent day placeholders for past working days with no attendance punches.
+ * Shared helper reused across desktop and mobile attendance history views.
+ */
+export function injectAbsentDaysIntoHistory({
+  daysMap,
+  year,
+  monthIndex,
+  todayStr,
+  monthlyDailySummaries = [],
+  holidays = [],
+  myShift = null,
+}) {
+  if (!daysMap || year == null || monthIndex == null) return daysMap;
+
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const holidayDates = new Set((holidays || []).map(h => h.holiday_date || h.date));
+  const shiftWorkingDays = myShift?.rules?.workingDays || myShift?.working_days || null;
+
+  const summaryByDate = {};
+  if (Array.isArray(monthlyDailySummaries)) {
+    monthlyDailySummaries.forEach(s => {
+      if (s && s.date) summaryByDate[s.date] = s;
+    });
+  }
+
+  for (let dayNum = 1; dayNum <= daysInMonth; dayNum++) {
+    const yyyy = year;
+    const mm = String(monthIndex + 1).padStart(2, '0');
+    const dd = String(dayNum).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    if (todayStr && dateStr > todayStr) continue;
+    if (daysMap[dateStr] && daysMap[dateStr].sessions?.length > 0) continue;
+
+    const dailySummary = summaryByDate[dateStr];
+    let isAbsent = false;
+
+    if (dailySummary) {
+      if (String(dailySummary.status || '').toUpperCase() === 'ABSENT') {
+        isAbsent = true;
+      }
+    } else {
+      if (todayStr && dateStr === todayStr) continue;
+      if (holidayDates.has(dateStr)) continue;
+
+      const dateObj = new Date(year, monthIndex, dayNum, 12, 0, 0);
+      const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayOfWeek = dateObj.getDay();
+
+      if (shiftWorkingDays && Array.isArray(shiftWorkingDays) && shiftWorkingDays.length > 0) {
+        if (!shiftWorkingDays.includes(dayName)) continue;
+      } else {
+        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+      }
+
+      isAbsent = true;
+    }
+
+    if (isAbsent) {
+      const dateObj = new Date(year, monthIndex, dayNum, 12, 0, 0);
+      daysMap[dateStr] = {
+        dateKey: dateStr,
+        date: dateObj,
+        sessions: [],
+        firstIn: null,
+        lastOut: null,
+        hasOpenSession: false,
+        isPastDay: true,
+        totalDayHours: 0,
+        dayStatus: 'ABSENT',
+        isDayLate: false,
+        firstSession: null,
+        lastSession: null
+      };
+    }
+  }
+
+  return daysMap;
+}

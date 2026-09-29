@@ -78,7 +78,7 @@ import DatePicker from '../../components/DatePicker';
 import MonthPicker from '../../components/MonthPicker';
 import VisualCorrectionTimeline from '../../components/attendance/VisualCorrectionTimeline';
 import TimePicker from '../../components/TimePicker';
-import { getStatusStyle, ATTENDANCE_STATUS, isCheckpointRecord, normalizeDailySessionsWithCheckpoints, parseCorrectionDetails } from '../../utils/attendanceStatus';
+import { getStatusStyle, ATTENDANCE_STATUS, isCheckpointRecord, normalizeDailySessionsWithCheckpoints, parseCorrectionDetails, injectAbsentDaysIntoHistory } from '../../utils/attendanceStatus';
 import { getLocalDateString, formatLocalTimeString } from '../../utils/dateUtils';
 
 // Modular Components & Tabs
@@ -419,6 +419,7 @@ const Attendance = () => {
         const cached = attendanceCacheData.records[cacheKey];
         return cached ? (cached.data || cached) : [];
     });
+    const [monthlyDailySummaries, setMonthlyDailySummaries] = useState([]);
     const [loading, setLoading] = useState(false);
     const [holidays, setHolidays] = useState(() => attendanceCacheData.holidays?.holidays || attendanceCacheData.holidays || []);
     const [myShift, setMyShift] = useState(() => {
@@ -1099,13 +1100,26 @@ const Attendance = () => {
 
         if (!force && attendanceCacheData.records[cacheKey]) {
             setMonthlySessions(attendanceCacheData.records[cacheKey].data || attendanceCacheData.records[cacheKey]);
+            if (attendanceCacheData.dailySummary && attendanceCacheData.dailySummary[cacheKey]) {
+                const cachedSummaries = attendanceCacheData.dailySummary[cacheKey].data || attendanceCacheData.dailySummary[cacheKey] || [];
+                setMonthlyDailySummaries(Array.isArray(cachedSummaries) ? cachedSummaries : []);
+            }
             return;
         }
 
         setLoading(true);
         try {
-            const res = await attendanceService.getMyRecords(startDate, endDate, force);
-            if (res.ok) setMonthlySessions(res.data);
+            const [recordsRes, summaryRes] = await Promise.allSettled([
+                attendanceService.getMyRecords(startDate, endDate, force),
+                attendanceService.getDailySummary(startDate, endDate, force)
+            ]);
+
+            if (recordsRes.status === 'fulfilled' && (recordsRes.value?.ok || Array.isArray(recordsRes.value?.data))) {
+                setMonthlySessions(recordsRes.value.data || []);
+            }
+            if (summaryRes.status === 'fulfilled' && (summaryRes.value?.ok || Array.isArray(summaryRes.value?.data))) {
+                setMonthlyDailySummaries(summaryRes.value.data || []);
+            }
         } catch (error) {
             console.error(error);
             toast.error("Failed to fetch monthly records");
@@ -2518,10 +2532,10 @@ const Attendance = () => {
 
     // --- DAY-LEVEL HISTORY AGGREGATION ---
     const groupedHistoryWeeks = useMemo(() => {
-        if (!monthlySessions || monthlySessions.length === 0) return [];
-
         const daysMap = {};
-        monthlySessions.forEach(session => {
+
+        // 1. Map existing punch sessions by date
+        (monthlySessions || []).forEach(session => {
             const timeIn = session.time_in || session.check_in;
             if (!timeIn) return;
             const d = new Date(timeIn);
@@ -2544,7 +2558,24 @@ const Attendance = () => {
 
         const todayStr = getLocalDateString();
 
+        // 2. Identify and incorporate ABSENT records for the selected month
+        injectAbsentDaysIntoHistory({
+            daysMap,
+            year: reportYear,
+            monthIndex: reportMonthIdx,
+            todayStr,
+            monthlyDailySummaries,
+            holidays,
+            myShift
+        });
+
+        if (Object.keys(daysMap).length === 0) return [];
+
         const processedDays = Object.values(daysMap).map(day => {
+            if (day.dayStatus === 'ABSENT') {
+                return day;
+            }
+
             // Normalize daily sessions so any checkpoints are nested into their enclosing work session
             day.sessions = normalizeDailySessionsWithCheckpoints(day.sessions);
 
@@ -2666,7 +2697,7 @@ const Attendance = () => {
         });
 
         return Object.entries(weeksMap);
-    }, [monthlySessions, myShift]);
+    }, [monthlySessions, myShift, monthlyDailySummaries, holidays, reportYear, reportMonthIdx]);
 
     return (
         <DashboardLayout title="Attendance" hideScrollbar={true} tourPageKey={PAGE_KEY} tourSteps={tourSteps}>

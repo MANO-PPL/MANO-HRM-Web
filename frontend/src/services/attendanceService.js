@@ -562,10 +562,14 @@ export const attendanceService = {
         cache.shiftPolicy = promise;
         return promise;
     },
-// Get Daily Summary (User range)
-    async getDailySummary(dateFrom, dateTo) {
+
+    // Get Daily Summary (User range)
+    async getDailySummary(dateFrom, dateTo, forceRefresh = false) {
         const cacheKey = `${dateFrom || ''}_${dateTo || ''}`;
-        if (cache.dailySummary.has(cacheKey)) {
+        if (forceRefresh) {
+            cache.dailySummary.delete(cacheKey);
+            delete attendanceCacheData.dailySummary[cacheKey];
+        } else if (cache.dailySummary.has(cacheKey)) {
             return cache.dailySummary.get(cacheKey);
         }
 

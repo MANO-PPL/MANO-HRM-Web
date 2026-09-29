@@ -67,6 +67,7 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
+import { injectAbsentDaysIntoHistory } from '../../utils/attendanceStatus';
 
 const getAlignmentClass = (colHeader) => {
     if (!colHeader) return 'center';
@@ -318,6 +319,7 @@ const MobileAttendancePage = () => {
         return cached ? (cached.data || cached) : [];
     });
     const [correctionHistory, setCorrectionHistory] = useState([]);
+    const [monthlyDailySummaries, setMonthlyDailySummaries] = useState([]);
     const [loading, setLoading] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
     const [fileFormat, setFileFormat] = useState('xlsx');
@@ -453,15 +455,26 @@ const MobileAttendancePage = () => {
         if (!force && attendanceCacheData.records[cacheKey]) {
             const records = attendanceCacheData.records[cacheKey].data || attendanceCacheData.records[cacheKey] || [];
             setMonthlySessions(Array.isArray(records) ? records : []);
+            if (attendanceCacheData.dailySummary && attendanceCacheData.dailySummary[cacheKey]) {
+                const cachedSummaries = attendanceCacheData.dailySummary[cacheKey].data || attendanceCacheData.dailySummary[cacheKey] || [];
+                setMonthlyDailySummaries(Array.isArray(cachedSummaries) ? cachedSummaries : []);
+            }
             return;
         }
 
         setLoading(true);
         try {
-            const res = await attendanceService.getMyRecords(startDate, endDate, force);
-            if (res.ok || res.data) {
-                const records = res.data || res || [];
+            const [recordsRes, summaryRes] = await Promise.allSettled([
+                attendanceService.getMyRecords(startDate, endDate, force),
+                attendanceService.getDailySummary(startDate, endDate, force)
+            ]);
+
+            if (recordsRes.status === 'fulfilled' && (recordsRes.value?.ok || recordsRes.value?.data || Array.isArray(recordsRes.value))) {
+                const records = recordsRes.value.data || recordsRes.value || [];
                 setMonthlySessions(Array.isArray(records) ? records : []);
+            }
+            if (summaryRes.status === 'fulfilled' && (summaryRes.value?.ok || Array.isArray(summaryRes.value?.data))) {
+                setMonthlyDailySummaries(summaryRes.value.data || []);
             }
         } catch (error) {
             console.error("Failed to load history");
@@ -1332,10 +1345,8 @@ const MobileAttendancePage = () => {
 
     // --- DAY-LEVEL HISTORY AGGREGATION ---
     const groupedHistoryDays = useMemo(() => {
-        if (!monthlySessions || monthlySessions.length === 0) return [];
-
         const daysMap = {};
-        monthlySessions.forEach(session => {
+        (monthlySessions || []).forEach(session => {
             const timeIn = session.time_in || session.check_in;
             if (!timeIn) return;
             const d = new Date(timeIn);
@@ -1358,7 +1369,27 @@ const MobileAttendancePage = () => {
 
         const todayStr = getLocalDateString();
 
+        // Incorporate Absent days for selected reportMonth
+        if (reportMonth) {
+            const [rYear, rMonth] = reportMonth.split('-').map(Number);
+            injectAbsentDaysIntoHistory({
+                daysMap,
+                year: rYear,
+                monthIndex: rMonth - 1,
+                todayStr,
+                monthlyDailySummaries,
+                holidays: myShift?.holidays || [],
+                myShift
+            });
+        }
+
+        if (Object.keys(daysMap).length === 0) return [];
+
         const processed = Object.values(daysMap).map(day => {
+            if (day.dayStatus === 'ABSENT') {
+                return day;
+            }
+
             day.sessions.sort((a, b) => new Date(a.time_in || a.check_in) - new Date(b.time_in || b.check_in));
 
             const firstSession = day.sessions[0];
@@ -1411,7 +1442,7 @@ const MobileAttendancePage = () => {
 
         processed.sort((a, b) => b.date - a.date);
         return processed;
-    }, [monthlySessions]);
+    }, [monthlySessions, reportMonth, monthlyDailySummaries, myShift]);
 
     const hasActiveSession = dailySessions.some(s => !s.time_out);
 
@@ -2039,7 +2070,7 @@ const MobileAttendancePage = () => {
                                                                 className="p-5 space-y-4 cursor-pointer select-none"
                                                             >
                                                                 <div className="flex items-center gap-4">
-                                                                    <div className="bg-indigo-50 dark:bg-indigo-900/20 w-12 h-14 rounded-2xl flex flex-col items-center justify-center text-indigo-700 dark:text-indigo-400 font-black shrink-0 border border-indigo-100/50">
+                                                                    <div className={`w-12 h-14 rounded-2xl flex flex-col items-center justify-center font-black shrink-0 border ${day.dayStatus === 'ABSENT' ? 'bg-slate-100 dark:bg-github-dark-subtle text-slate-500 dark:text-slate-400 border-slate-200 dark:border-github-dark-border' : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100/50'}`}>
                                                                         <span className="text-[10px] uppercase opacity-60 leading-none mb-0.5">{day.date.toLocaleDateString('en-US', { month: 'short' })}</span>
                                                                         <span className="text-xl leading-none">{day.date.getDate()}</span>
                                                                     </div>
@@ -2048,17 +2079,21 @@ const MobileAttendancePage = () => {
                                                                             <h4 className="font-black text-sm text-slate-800 dark:text-github-dark-text">
                                                                                 {day.date.toLocaleDateString('en-US', { weekday: 'long' })}
                                                                             </h4>
-                                                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
-                                                                                day.dayStatus === 'MISSED_PUNCH' ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-200/50' :
-                                                                                day.dayStatus === 'LATE' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200/50' :
-                                                                                day.dayStatus === 'OVERTIME' ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-200/50' :
-                                                                                'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50'
+                                                                            <span className={`inline-flex items-center gap-1.5 text-[9px] font-medium px-2 py-0.5 rounded-md border shadow-xs ${
+                                                                                day.dayStatus === 'MISSED_PUNCH' ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border-rose-200/50' :
+                                                                                day.dayStatus === 'LATE' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200/50' :
+                                                                                day.dayStatus === 'OVERTIME' ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50' :
+                                                                                day.dayStatus === 'ABSENT' ? 'bg-slate-100 dark:bg-github-dark-subtle text-slate-600 dark:text-slate-300 border-slate-200 dark:border-github-dark-border' :
+                                                                                'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-200/50'
                                                                             }`}>
-                                                                                {day.dayStatus === 'MISSED_PUNCH' ? 'Missed Punch' : day.dayStatus}
+                                                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${day.dayStatus === 'ABSENT' ? 'bg-slate-400' : 'bg-current'}`}></span>
+                                                                                {day.dayStatus === 'MISSED_PUNCH' ? 'Missed Punch' : day.dayStatus === 'ABSENT' ? 'Absent' : day.dayStatus}
                                                                             </span>
                                                                         </div>
                                                                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mt-1">
-                                                                            <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}</span>
+                                                                            <span className={`font-extrabold ${day.sessions.length === 0 ? 'text-slate-500 dark:text-slate-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                                                                {day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}
+                                                                            </span>
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
@@ -2075,11 +2110,11 @@ const MobileAttendancePage = () => {
                                                                 <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-50 dark:border-github-dark-border/10">
                                                                     <div className="bg-slate-50/50 dark:bg-github-dark-border/20 p-2.5 rounded-2xl">
                                                                         <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">First In</span>
-                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{formatTime(day.firstIn, day.firstSession, false)}</span>
+                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{formatTime(day.firstIn, day.firstSession, false) || '--:--'}</span>
                                                                     </div>
                                                                     <div className="bg-slate-50/50 dark:bg-github-dark-border/20 p-2.5 rounded-2xl">
                                                                         <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Last Out</span>
-                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.isPastDay ? 'Missed Out' : '--:--')}</span>
+                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.dayStatus === 'ABSENT' ? '--:--' : (day.isPastDay ? 'Missed Out' : '--:--'))}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -2097,7 +2132,12 @@ const MobileAttendancePage = () => {
                                                                             Individual Punches ({day.sessions.length})
                                                                         </div>
 
-                                                                        {day.sessions.map((s, sIdx) => {
+                                                                        {day.sessions.length === 0 ? (
+                                                                            <div className="py-4 text-center text-slate-400 dark:text-slate-500 text-xs font-medium">
+                                                                                No attendance punches recorded for this day.
+                                                                            </div>
+                                                                        ) : (
+                                                                            day.sessions.map((s, sIdx) => {
                                                                             const isSessionOpen = !s.time_out;
                                                                             const isSessionMissed = s.status === 'MISSED_PUNCH' || (day.isPastDay && isSessionOpen);
                                                                             const sessionStatus = isSessionMissed ? 'MISSED_PUNCH' : (isSessionOpen ? 'ACTIVE' : 'COMPLETED');
@@ -2223,7 +2263,7 @@ const MobileAttendancePage = () => {
                                                                                     )}
                                                                                 </div>
                                                                             );
-                                                                        })}
+                                                                        })                                                             )}
                                                                     </motion.div>
                                                                 )}
                                                             </AnimatePresence>

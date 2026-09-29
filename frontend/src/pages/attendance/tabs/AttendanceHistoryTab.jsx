@@ -211,7 +211,7 @@ const AttendanceHistoryTab = ({
                             type="button"
                             onClick={() => setStatusFilter('ABSENT')}
                             className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${statusFilter === 'ABSENT'
-                                ? 'bg-red-600 text-white shadow-xs'
+                                ? 'bg-slate-700 dark:bg-slate-600 text-white shadow-xs'
                                 : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10'
                                 }`}
                         >
@@ -307,7 +307,8 @@ const AttendanceHistoryTab = ({
                                                                 <p className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">
                                                                     {day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                                                                 </p>
-                                                                <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.text}`}>
+                                                                <span className={`inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-md text-[10px] font-medium shadow-xs ${style.bg} ${style.text}`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot || 'bg-current'}`}></span>
                                                                     {style.label}
                                                                 </span>
                                                             </div>
@@ -327,7 +328,7 @@ const AttendanceHistoryTab = ({
                                                         <div className="flex-1 sm:flex-initial bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between sm:justify-start gap-2">
                                                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">First In</span>
                                                             <span className="font-mono font-bold text-slate-700 dark:text-slate-200 text-xs">
-                                                                {formatTime(day.firstIn, day.firstSession, false)}
+                                                                {formatTime(day.firstIn, day.firstSession, false) || '--:--'}
                                                             </span>
                                                         </div>
                                                         <div className="flex-1 sm:flex-initial bg-slate-50 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between sm:justify-start gap-2">
@@ -336,7 +337,10 @@ const AttendanceHistoryTab = ({
                                                                 {day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : '--:--'}
                                                             </span>
                                                         </div>
-                                                        <span className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded-full text-[10px] shrink-0">
+                                                        <span className={`font-semibold px-2 py-1 rounded-full text-[10px] shrink-0 ${day.sessions.length === 0
+                                                            ? 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-white/5'
+                                                            : 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40'
+                                                            }`}>
                                                             {day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}
                                                         </span>
                                                     </div>
@@ -399,6 +403,11 @@ const AttendanceHistoryTab = ({
                                                         )}
                                                     </div>
 
+                                                    {day.sessions.length === 0 ? (
+                                                        <div className="py-6 text-center text-slate-400 dark:text-slate-500 text-xs font-medium">
+                                                            No attendance punches recorded for this day.
+                                                        </div>
+                                                    ) : (
                                                     <div className="grid gap-2">
                                                         {day.sessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal').map((session, sIdx) => {
                                                             const isSessionOpen = !session.time_out;
@@ -566,6 +575,7 @@ const AttendanceHistoryTab = ({
                                                             );
                                                         })}
                                                     </div>
+                                                    )}
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>
