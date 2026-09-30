@@ -5,6 +5,7 @@ import { deleteFile } from '../services/s3/s3Service.js';
 import { permanentlyDeleteUser } from '../modules/users/userService.js';
 import * as MapsService from '../services/google_api_services/maps.js';
 import { safeJsonParse } from '../utils/dataUtils.js';
+import { deleteOrganization } from '../modules/organisations/orgDeletionService.js';
 
 
 /**
@@ -125,66 +126,15 @@ async function cleanupDeletedOrganizations() {
 
         console.log(`Found ${orgsToDelete.length} organization(s) to permanently delete.`);
 
+        // One org at a time; a failure leaves that org pending_deletion so the
+        // next nightly run resumes it (see orgDeletionService)
         for (const org of orgsToDelete) {
-            // Delete all data associated with this organization inside a transaction.
-            // Add more tables here as your schema grows.
-            await attendanceDB.transaction(async (trx) => {
-                // Delete from child tables referencing users/organizations
-                await trx('core_refresh_tokens')
-                    .whereIn('user_id', trx('core_users').select('user_id').where('org_id', org.org_id))
-                    .del();
-
-                const orgUserIdsSubquery = trx('core_users').select('user_id').where('org_id', org.org_id);
-                const orgConvIdsSubquery = trx('chat_conversations').select('id').where('org_id', org.org_id);
-                const orgMsgIdsSubquery = trx('chat_messages').select('id').whereIn('conversation_id', orgConvIdsSubquery);
-
-                await trx('comm_notifications').whereIn('user_id', orgUserIdsSubquery).del();
-                await trx('sys_activity_logs').where('org_id', org.org_id).del();
-                await trx('sys_error_logs').where('org_id', org.org_id).del();
-                try { await trx('attn_corrections').whereIn('user_id', orgUserIdsSubquery).del(); } catch (_) { }
-                try { await trx('attn_correction_requests').whereIn('user_id', orgUserIdsSubquery).del(); } catch (_) { }
-
-                await trx('org_user_work_locations')
-                    .whereIn('user_id', orgUserIdsSubquery)
-                    .del();
-
-                await trx('attn_daily_activities').whereIn('user_id', orgUserIdsSubquery).del();
-                await trx('attn_daily_summary_v2').whereIn('user_id', orgUserIdsSubquery).del();
-                await trx('attn_dar_requests').whereIn('user_id', orgUserIdsSubquery).del();
-                await trx('comm_events_meetings').whereIn('user_id', orgUserIdsSubquery).del();
-                await trx('sys_security_alerts').where('org_id', org.org_id).del();
-
-                await trx('feedback_attachments')
-                    .whereIn('feedback_id', trx('feedback_tickets').select('feedback_id').where('org_id', org.org_id))
-                    .del();
-                await trx('feedback_tickets').where('org_id', org.org_id).del();
-
-                await trx('leave_request').whereIn('user_id', orgUserIdsSubquery).del();
-                await trx('attn_punches').whereIn('user_id', orgUserIdsSubquery).del();
-
-                // Relational chat tables cleanup (child to parent order)
-                await trx('chat_message_attachments').whereIn('message_id', orgMsgIdsSubquery).del();
-                await trx('chat_message_mentions').whereIn('message_id', orgMsgIdsSubquery).del();
-                await trx('chat_message_reactions').whereIn('message_id', orgMsgIdsSubquery).del();
-                await trx('chat_messages').whereIn('conversation_id', orgConvIdsSubquery).del();
-                await trx('chat_conversation_members').whereIn('conversation_id', orgConvIdsSubquery).del();
-                await trx('chat_conversations').where('org_id', org.org_id).del();
-
-                // Labour Management tables cleanup
-                await trx('labour_attendance').where('org_id', org.org_id).del();
-                await trx('labour_advances').where('org_id', org.org_id).del();
-                await trx('labour_monthly_payouts').where('org_id', org.org_id).del();
-                await trx('labour_daily_schedule').where('org_id', org.org_id).del();
-                await trx('labour_site_relations').where('org_id', org.org_id).del();
-                await trx('labours').where('org_id', org.org_id).del();
-                await trx('labour_sites').where('org_id', org.org_id).del();
-
-                // Now delete users and finally the organization
-                await trx('core_users').where('org_id', org.org_id).del();
-                await trx('core_organizations').where('org_id', org.org_id).del();
-            });
-
-            console.log(`🗑️  Permanently deleted organization: ${org.org_name} (${org.org_code})`);
+            try {
+                const result = await deleteOrganization(org.org_id);
+                console.log(`🗑️  Permanently deleted organization: ${org.org_name} (${org.org_code}) — ${result.rowsDeleted} rows, ${result.filesDeleted} files${result.fileDeleteFailures ? `, ${result.fileDeleteFailures} file deletions failed` : ''}`);
+            } catch (err) {
+                console.error(`❌ Failed to delete organization ${org.org_name} (${org.org_code}); will retry on the next run:`, err);
+            }
         }
 
         if (orgsToDelete.length > 0) {
