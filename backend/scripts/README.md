@@ -10,6 +10,7 @@ The `backend/scripts/` directory contains administrative utilities, database mig
 ```
 backend/scripts/
 ├── db/                                # Database migration and schema manipulation tools
+│   ├── migrate.js                     # Knex migration runner: npm run migrate / migrate:status / migrate:rollback (files in backend/migrations/)
 │   ├── add-tour-dismissed.js          # Migration helper to add tour_dismissed columns
 │   └── db_refactor/                   # Table and column refactoring utilities
 │       ├── all-mappings.csv           # Complete entity and column mapping definitions

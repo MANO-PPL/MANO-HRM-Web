@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { migrationConfig } from '../../../src/config/migrations.js';
 
 /**
  * Wipes the test database and seeds two organizations (A and B), each with
@@ -10,7 +11,12 @@ export async function seed(db) {
     const [[{ name }]] = await db.raw('SELECT DATABASE() AS name');
     if (!/test/i.test(name)) throw new Error(`Refusing to wipe database "${name}"`);
 
-    const [tables] = await db.raw('SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE()');
+    // Same schema production has after `npm run migrate`
+    await db.migrate.latest(migrationConfig);
+
+    const [tables] = await db.raw(
+        "SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name NOT LIKE 'knex\\_migrations%'"
+    );
     await db.raw('SET FOREIGN_KEY_CHECKS = 0');
     for (const { t } of tables) await db.raw('TRUNCATE TABLE ??', [t]);
     await db.raw('SET FOREIGN_KEY_CHECKS = 1');

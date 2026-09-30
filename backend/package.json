@@ -11,7 +11,10 @@
     "lint": "eslint .",
     "check": "node scripts/smoke/check-syntax.js && eslint . && node scripts/smoke/imports.js",
     "smoke:lifecycle": "node scripts/smoke/lifecycle.js",
-    "routes:inventory": "node scripts/tools/route-inventory.js"
+    "routes:inventory": "node scripts/tools/route-inventory.js",
+    "migrate": "node scripts/db/migrate.js latest",
+    "migrate:status": "node scripts/db/migrate.js status",
+    "migrate:rollback": "node scripts/db/migrate.js rollback"
   },
   "keywords": [],
   "author": "",

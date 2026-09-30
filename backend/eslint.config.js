@@ -8,7 +8,7 @@ export default [
         ignores: ['node_modules/**', 'services/**', 'scripts/tools/simulate_*.js'],
     },
     {
-        files: ['**/*.js'],
+        files: ['**/*.js', '**/*.mjs'],
         languageOptions: {
             ecmaVersion: 'latest',
             sourceType: 'module',
