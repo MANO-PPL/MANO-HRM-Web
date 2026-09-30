@@ -108,7 +108,9 @@ async function processReportJob(job) {
 export function startReportWorker() {
     const reportWorker = new Worker('{ReportQueue}', processReportJob, {
         connection: redisConnection,
-        concurrency: 2 // Max 2 reports processed in parallel per worker process
+        // Report generation (Excel/PDF) is CPU-heavy and runs in the API process;
+        // one at a time keeps request latency predictable
+        concurrency: 1
     });
 
     reportWorker.on('completed', (job) => {
