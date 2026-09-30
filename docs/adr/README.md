@@ -7,6 +7,7 @@
 | ID | Title | Status |
 |----|-------|--------|
 | [0001](./0001-use-bullmq-redis-for-background-jobs.md) | Use BullMQ and Redis for Background Asynchronous Processing | Accepted |
+| [0002](./0002-remove-scheduled-dar-email-reports.md) | Remove the Incomplete Scheduled DAR Email Reports Feature | Accepted |
 
 <!--
 Status values: Proposed / Accepted / Superseded by ADR-00XX

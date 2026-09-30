@@ -1,6 +1,5 @@
 import { initAttendanceProcessor } from './AttendanceProcessor.js';
 import { initCleanupScheduler } from './cleanupScheduler.js';
-import { initDARReportScheduler } from './DARReportScheduler.js';
 import { onShutdown } from '../lifecycle/shutdown.js';
 
 let started = false;
@@ -16,7 +15,6 @@ export function startSchedulers() {
     const tasks = [
         ...initAttendanceProcessor(),
         ...initCleanupScheduler(),
-        ...initDARReportScheduler(),
     ];
 
     onShutdown('cron schedules', () => Promise.all(tasks.map((task) => task.destroy())), 'producers');

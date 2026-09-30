@@ -495,76 +495,8 @@ router.post('/preview/client', authenticateJWT, catchAsync(async (req, res) => {
     });
 }));
 
-// GET /dar/reports/history - last 50 generated reports for this org
-router.get('/history', authenticateJWT, catchAsync(async (req, res) => {
-    const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'hr') {
-        return res.status(403).json({ ok: false, message: 'Access denied.' });
-    }
-    const history = await attendanceDB('dar_report_history')
-        .where('org_id', org_id)
-        .orderBy('created_at', 'desc')
-        .limit(50);
-    return res.json({ ok: true, history });
-}));
-
-// GET /dar/reports/schedules - list all schedule configs for this org
-router.get('/schedules', authenticateJWT, catchAsync(async (req, res) => {
-    const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'hr') {
-        return res.status(403).json({ ok: false, message: 'Access denied.' });
-    }
-    const schedules = await attendanceDB('dar_report_schedules')
-        .where('org_id', org_id)
-        .orderBy('frequency');
-    return res.json({ ok: true, schedules });
-}));
-
-// POST /dar/reports/schedules - upsert a schedule config
-router.post('/schedules', authenticateJWT, catchAsync(async (req, res) => {
-    const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'hr') {
-        return res.status(403).json({ ok: false, message: 'Access denied.' });
-    }
-
-    const { frequency, email_to, is_active, day_of_week, day_of_month, send_time } = req.body;
-    if (!['daily', 'weekly', 'monthly'].includes(frequency)) {
-        return res.status(400).json({ ok: false, message: 'Invalid frequency. Must be daily, weekly, or monthly.' });
-    }
-
-    const payload = {
-        email_to: email_to || null,
-        is_active: is_active ? 1 : 0,
-        day_of_week: frequency === 'weekly' ? (day_of_week ?? null) : null,
-        day_of_month: frequency === 'monthly' ? (day_of_month ?? null) : null,
-        send_time: send_time || '07:00:00',
-    };
-
-    const existing = await attendanceDB('dar_report_schedules')
-        .where({ org_id, frequency })
-        .first();
-
-    if (existing) {
-        await attendanceDB('dar_report_schedules').where({ org_id, frequency }).update(payload);
-    } else {
-        await attendanceDB('dar_report_schedules').insert({ org_id, frequency, ...payload });
-    }
-
-    return res.json({ ok: true, message: 'Schedule saved.' });
-}));
-
-// DELETE /dar/reports/schedules/:frequency - remove a schedule
-router.delete('/schedules/:frequency', authenticateJWT, catchAsync(async (req, res) => {
-    const { user_type, org_id } = req.user;
-    if (user_type !== 'admin' && user_type !== 'hr') {
-        return res.status(403).json({ ok: false, message: 'Access denied.' });
-    }
-    const { frequency } = req.params;
-    if (!['daily', 'weekly', 'monthly'].includes(frequency)) {
-        return res.status(400).json({ ok: false, message: 'Invalid frequency.' });
-    }
-    await attendanceDB('dar_report_schedules').where({ org_id, frequency }).del();
-    return res.json({ ok: true, message: 'Schedule removed.' });
-}));
+// Scheduled DAR summary emails (daily/weekly/monthly schedules, run history and
+// the cron that mailed them) were removed as an incomplete, out-of-scope
+// feature. See docs/adr/0002-remove-scheduled-dar-email-reports.md.
 
 export default router;

@@ -14,7 +14,7 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 ### Overall Metrics
 | Metric | Value |
 | :--- | :--- |
-| **Total API Endpoints** | **214** |
+| **Total API Endpoints** | **210** |
 | **Total Domain Modules** | **24** |
 | **GET Endpoints (Read & Query)** | **86** (40.2%) |
 | **POST Endpoints (Create & Actions)** | **77** (36.0%) |
@@ -47,7 +47,7 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 | 9 | **Daily Activity Reports (Events)** | `/dar/events` | **5** | 2 | 1 | 1 | 1 | 0 |
 | 10 | **Daily Activity Reports (Requests)** | `/dar/requests` | **4** | 1 | 3 | 0 | 0 | 0 |
 | 11 | **Daily Activity Reports (Settings)** | `/dar/settings` | **2** | 1 | 1 | 0 | 0 | 0 |
-| 12 | **Daily Activity Reports (AI & Reports API)** | `/dar/reports` | **6** | 3 | 2 | 0 | 1 | 0 |
+| 12 | **Daily Activity Reports (AI & Reports API)** | `/dar/reports` | **2** | 1 | 1 | 0 | 0 | 0 |
 | 13 | **Team Collaboration & Real-Time Chat** | `/collaboration` | **9** | 3 | 3 | 2 | 1 | 0 |
 | 14 | **Notifications & Push Service** | `/notifications` | **6** | 1 | 3 | 2 | 0 | 0 |
 | 15 | **User Profile & Preferences** | `/profile` | **4** | 1 | 1 | 0 | 1 | 1 |
@@ -60,7 +60,7 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 | 22 | **Reports & Data Exports** | `/admin/reports` | **3** | 3 | 0 | 0 | 0 | 0 |
 | 23 | **Super Admin & System Monitoring** | `/super-admin` | **9** | 6 | 1 | 2 | 0 | 0 |
 | 24 | **AI Chatbot, Geolocation & Internal Tools** | `/geo` | **8** | 6 | 2 | 0 | 0 | 0 |
-| | **TOTAL** | | **214** | **86** | **77** | **27** | **20** | **4** |
+| | **TOTAL** | | **210** | **84** | **76** | **27** | **19** | **4** |
 
 ---
 
@@ -76,7 +76,7 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 9. [9. Daily Activity Reports (Events) (`/dar/events` - 5 APIs)](#9-daily-activity-reports-events)
 10. [10. Daily Activity Reports (Requests) (`/dar/requests` - 4 APIs)](#10-daily-activity-reports-requests)
 11. [11. Daily Activity Reports (Settings) (`/dar/settings` - 2 APIs)](#11-daily-activity-reports-settings)
-12. [12. Daily Activity Reports (AI & Reports API) (`/dar/reports` - 6 APIs)](#12-daily-activity-reports-ai-reports-api)
+12. [12. Daily Activity Reports (AI & Reports API) (`/dar/reports` - 2 APIs)](#12-daily-activity-reports-ai-reports-api)
 13. [13. Team Collaboration & Real-Time Chat (`/collaboration` - 9 APIs)](#13-team-collaboration-real-time-chat)
 14. [14. Notifications & Push Service (`/notifications` - 6 APIs)](#14-notifications-push-service)
 15. [15. User Profile & Preferences (`/profile` - 4 APIs)](#15-user-profile-preferences)
@@ -317,16 +317,14 @@ Comprehensive REST API catalog and endpoint statistics for the **MANO Workforce 
 
 ## 12. Daily Activity Reports (AI & Reports API) (`/dar/reports`)
 
-> **Module Stats**: **6 Total Endpoints** (GET: 3 | POST: 2 | PUT: 0 | DELETE: 1 | PATCH: 0)
+> **Module Stats**: **2 Total Endpoints** (GET: 1 | POST: 1 | PUT: 0 | DELETE: 0 | PATCH: 0)
 
 | Method | Endpoint | Description | Auth / Role |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/dar/reports/preview` | Preview filtered attendance/workforce report | Authenticated |
 | `POST` | `/dar/reports/preview/client` | Preview filtered attendance/workforce report | Authenticated |
-| `GET` | `/dar/reports/history` | GET operation on /dar/reports/history | Authenticated |
-| `GET` | `/dar/reports/schedules` | GET operation on /dar/reports/schedules | Authenticated |
-| `POST` | `/dar/reports/schedules` | POST operation on /dar/reports/schedules | Authenticated |
-| `DELETE` | `/dar/reports/schedules/:frequency` | DELETE operation on /dar/reports/schedules/:frequency | Authenticated |
+
+> Scheduled DAR email reports (`/history`, `/schedules`) were removed — see `docs/adr/0002-remove-scheduled-dar-email-reports.md`.
 
 ---
 
