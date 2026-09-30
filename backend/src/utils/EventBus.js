@@ -1,6 +1,12 @@
 import { EventEmitter } from 'events';
 import { attendanceDB } from '../config/database.js';
 import { safeTruncate } from './dateUtils.js';
+import { onShutdown } from '../lifecycle/shutdown.js';
+
+// API request logs are buffered and written in batches instead of one INSERT
+// per HTTP request (which competed with real queries for pool connections).
+const API_LOG_FLUSH_INTERVAL_MS = 2000;
+const API_LOG_MAX_BATCH = 200;
 
 class AppEventBus extends EventEmitter {
     constructor() {
@@ -15,8 +21,9 @@ class AppEventBus extends EventEmitter {
             API_REQUEST_LOG: 'api_request_log'
         };
 
-        // Listen for API request logs and save to Database
-        this.on(this.events.API_REQUEST_LOG, async (payload) => {
+        // Listen for API request logs and queue them for the next batch insert
+        this.apiLogBuffer = [];
+        this.on(this.events.API_REQUEST_LOG, (payload) => {
             try {
                 const logData = {
                     user_id: payload.user_id || null,
@@ -37,11 +44,19 @@ class AppEventBus extends EventEmitter {
                     payload_details: payload.payload_details ? (typeof payload.payload_details === 'object' ? JSON.stringify(payload.payload_details) : String(payload.payload_details)) : null,
                     occurred_at: attendanceDB.fn.now()
                 };
-                await attendanceDB('sys_api_logs').insert(logData);
+                this.apiLogBuffer.push(logData);
+                if (this.apiLogBuffer.length >= API_LOG_MAX_BATCH) this.flushApiLogs();
             } catch (err) {
                 console.error('[EventBus DB API Request Log Error]:', err);
             }
         });
+        const apiLogTimer = setInterval(() => this.flushApiLogs(), API_LOG_FLUSH_INTERVAL_MS);
+        apiLogTimer.unref();
+        // Write what is buffered before the DB pools close (they close in the later 'infra' phase)
+        onShutdown('api request log buffer', async () => {
+            clearInterval(apiLogTimer);
+            await this.flushApiLogs();
+        }, 'workers');
 
         // Listen for activity logs and save to Database
         this.on(this.events.ACTIVITY_LOG, async (payload) => {
@@ -156,6 +171,21 @@ class AppEventBus extends EventEmitter {
                 console.error('[EventBus DB Notification Error]:', err);
             }
         });
+    }
+
+    /**
+     * Writes buffered API request logs in one INSERT. occurred_at is set by the
+     * database at write time, so it can lag the request by up to the flush
+     * interval (2 s).
+     */
+    async flushApiLogs() {
+        if (this.apiLogBuffer.length === 0) return;
+        const rows = this.apiLogBuffer.splice(0, this.apiLogBuffer.length);
+        try {
+            await attendanceDB('sys_api_logs').insert(rows);
+        } catch (err) {
+            console.error(`[EventBus DB API Request Log Error]: failed to write ${rows.length} rows:`, err);
+        }
     }
 
     emitNotification(payload) {

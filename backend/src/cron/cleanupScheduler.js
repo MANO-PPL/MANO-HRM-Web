@@ -224,6 +224,30 @@ async function repairStalePunchAddresses() {
 }
 
 /**
+ * API Request Log Retention
+ * sys_api_logs gets a row per HTTP request and was never pruned. Rows older
+ * than API_LOG_RETENTION_DAYS (default 90; the analytics screen shows at most
+ * 30 days) are deleted in chunks so the table is never locked for long.
+ */
+export async function cleanupApiLogs() {
+    try {
+        const retentionDays = Number(process.env.API_LOG_RETENTION_DAYS) || 90;
+        let total = 0;
+        for (;;) {
+            const deleted = await attendanceDB('sys_api_logs')
+                .where('occurred_at', '<', attendanceDB.raw('NOW() - INTERVAL ? DAY', [retentionDays]))
+                .limit(10000)
+                .del();
+            total += deleted;
+            if (deleted < 10000) break;
+        }
+        console.log(`✅ API log cleanup: ${total} rows older than ${retentionDays} days deleted.`);
+    } catch (error) {
+        console.error('❌ Error during API log cleanup:', error);
+    }
+}
+
+/**
  * Run all cleanup tasks.
  */
 export async function runCleanup() {
@@ -233,6 +257,7 @@ export async function runCleanup() {
     await cleanupDeletedUsers();
     await cleanupDeletedOrganizations();
     await deactivateExpiredOrganizations();
+    await cleanupApiLogs();
     console.log('✅ All cleanup tasks completed.');
 }
 
