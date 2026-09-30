@@ -24,6 +24,16 @@ const CRON_INTERVAL_MINUTES = 30;
 // relative to its own actual start — a session younger than this is left open and reconsidered
 // on a later cron pass instead.
 const MISSED_PUNCH_MIN_SESSION_AGE_HOURS = 4;
+// Correction window used when a shift does not set correction_deadline (see shiftService.getShiftRules)
+const DEFAULT_CORRECTION_DEADLINE_DAYS = 30;
+
+// The cron user queries join work locations, so a user assigned to several
+// locations comes back once per location. Keep the first row per user so each
+// user is processed (and notified) once per run.
+function uniqueByUserId(rows) {
+    const seen = new Set();
+    return rows.filter((row) => !seen.has(row.user_id) && seen.add(row.user_id));
+}
 
 /**
  * "Possibly forgotten checkout" cutoff, in minutes after the shift day's local
@@ -57,7 +67,7 @@ export async function processHourlyAttendance() {
     try {
         console.log('⏰ Attendance Check Started...');
 
-        const users = await attendanceDB('core_users')
+        const userRows = await attendanceDB('core_users')
             .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
             .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
             .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
@@ -72,6 +82,8 @@ export async function processHourlyAttendance() {
                 'org_work_locations.timezone',
                 'core_organizations.timezone as org_timezone'
             );
+        // Employees with several work locations appear once per location
+        const users = uniqueByUserId(userRows);
 
         if (!users || users.length === 0) return;
 
@@ -319,26 +331,44 @@ async function processUserAttendanceForDate(user, dateStr) {
  * in, since admin/HR corrections bypass the deadline entirely.
  */
 async function notifyExpiredMissedPunches() {
-    // Find all MISSED_PUNCH daily records
+    // A record is only acted on the day its correction window closes, so only
+    // records younger than the longest correction deadline in use can matter.
+    // (Scanning every MISSED_PUNCH record ever created grew without bound.)
+    const [[{ max_deadline: maxDeadline }]] = await attendanceDB.raw(
+        "SELECT MAX(CAST(JSON_UNQUOTE(JSON_EXTRACT(policy_rules, '$.correction_deadline')) AS UNSIGNED)) AS max_deadline FROM org_shifts"
+    );
+    const lookbackDays = Math.max(Number(maxDeadline) || 0, DEFAULT_CORRECTION_DEADLINE_DAYS) + 2;
+    const since = new Date();
+    since.setDate(since.getDate() - lookbackDays);
+
     const records = await attendanceDB('attn_daily_summary_v2')
-        .where({ status: 'MISSED_PUNCH' });
+        .where({ status: 'MISSED_PUNCH' })
+        .where('date', '>=', toMySQLDate(since));
+    if (records.length === 0) return;
+
+    // Shift rules and timezone for all affected users in one query (was one per record)
+    const userRows = await attendanceDB('core_users')
+        .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
+        .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
+        .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
+        .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
+        .whereIn('core_users.user_id', [...new Set(records.map((r) => r.user_id))])
+        .select(
+            'core_users.user_id as record_user_id',
+            'org_shifts.*',
+            'core_users.org_id',
+            'org_work_locations.timezone',
+            'core_organizations.timezone as org_timezone'
+        );
+    const usersById = new Map();
+    for (const row of userRows) {
+        // Users with several work locations appear once per location; keep the first
+        if (!usersById.has(row.record_user_id)) usersById.set(row.record_user_id, row);
+    }
 
     for (const record of records) {
         try {
-            // Fetch user, shift rules, and timezone settings
-            const user = await attendanceDB('core_users')
-                .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
-                .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
-                .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
-                .leftJoin('core_organizations', 'core_users.org_id', 'core_organizations.org_id')
-                .where('core_users.user_id', record.user_id)
-                .select(
-                    'org_shifts.*',
-                    'org_work_locations.timezone',
-                    'core_organizations.timezone as org_timezone'
-                )
-                .first();
-
+            const user = usersById.get(record.user_id);
             if (!user) continue;
 
             // Resolve timezone
@@ -357,7 +387,7 @@ async function notifyExpiredMissedPunches() {
             const rules = ShiftService.getShiftRules(user);
             const notificationSlotMinutes = getNextCronSlotMinutes(computeMissedPunchCutoffMinutes(rules));
 
-            const graceDays = rules.correction_deadline ?? 30;
+            const graceDays = rules.correction_deadline ?? DEFAULT_CORRECTION_DEADLINE_DAYS;
 
             const recordDate = new Date(record.date);
             recordDate.setHours(0, 0, 0, 0);
@@ -389,7 +419,7 @@ async function notifyExpiredMissedPunches() {
             // No correction submitted - the self-service window has closed. Status stays
             // MISSED_PUNCH (never overwritten); only admin/HR can resolve it now.
 
-            // Notify the user (org_id comes from the user's shift row — attn_daily_summary_v2
+            // Notify the user (org_id comes from the user row — attn_daily_summary_v2
             // itself has no org_id column)
             EventBus.emitNotification({
                 org_id: user.org_id,
@@ -413,7 +443,7 @@ async function notifyExpiredMissedPunches() {
  */
 export async function checkAndSendShiftReminders() {
     try {
-        const users = await attendanceDB('core_users')
+        const userRows = await attendanceDB('core_users')
             .leftJoin('org_shifts', 'core_users.shift_id', 'org_shifts.shift_id')
             .leftJoin('org_user_work_locations', 'core_users.user_id', 'org_user_work_locations.user_id')
             .leftJoin('org_work_locations', 'org_user_work_locations.location_id', 'org_work_locations.location_id')
@@ -429,6 +459,8 @@ export async function checkAndSendShiftReminders() {
                 'org_work_locations.timezone',
                 'core_organizations.timezone as org_timezone'
             );
+        // Employees with several work locations appear once per location
+        const users = uniqueByUserId(userRows);
 
         if (!users || users.length === 0) return;
 
