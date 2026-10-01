@@ -1,5 +1,7 @@
 import { createServer } from 'http';
 import './src/config/config.js';
+// Stop with a clear message if required settings are missing from .env
+import './src/config/startupEnvCheck.js';
 import app from './src/app.js';
 import { initSocketServer } from './src/socket/index.js';
 import { startSchedulers } from './src/cron/index.js';
