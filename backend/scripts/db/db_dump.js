@@ -3,15 +3,16 @@
  * 🗄️ DATABASE DUMP SCRIPT
  * ========================================================
  * Reads credentials from backend/.env automatically.
- * Saves output .sql dump in the SAME folder as this script.
+ * Saves the .sql dump in backend/scripts/db/dumps/ (ignored by git: a full
+ * dump contains personal data and must never be committed).
  * 
  * QUICK COMMANDS:
  * 
  * 1) Schema Only (Structure without data - Default):
- *    node backend/src/db/db_dump.js
+ *    node backend/scripts/db/db_dump.js
  * 
  * 2) Full Dump (Schema + Data):
- *    node backend/src/db/db_dump.js --data
+ *    node backend/scripts/db/db_dump.js --data
  * ========================================================
  */
 
@@ -103,10 +104,12 @@ export async function generateSqlDump() {
     const dumpTypeTag = includeData ? 'full_dump' : 'schema';
     const defaultFilename = `${DB_NAME}_${dumpTypeTag}_${timestamp}.sql`;
 
-    // Save .sql file in the same directory as this JS file (__dirname)
+    // Default location is ignored by git (see .gitignore)
+    const dumpsDir = path.join(__dirname, 'dumps');
+    if (!customFile) fs.mkdirSync(dumpsDir, { recursive: true });
     const outputFile = customFile
         ? path.resolve(customFile)
-        : path.join(__dirname, defaultFilename);
+        : path.join(dumpsDir, defaultFilename);
 
     console.log(`=========================================`);
     console.log(`🚀 Database SQL Dump Utility`);

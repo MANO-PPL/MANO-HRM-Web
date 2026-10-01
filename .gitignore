@@ -149,3 +149,6 @@ chroma_data/
 antigravity.md
 GEMINI.md
 .agents/
+
+# Database dumps (may contain personal data)
+backend/scripts/db/dumps/
