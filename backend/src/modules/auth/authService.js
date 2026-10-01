@@ -326,9 +326,15 @@ export const logoutUser = async (refreshToken) => {
     }
 };
 
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
+// Answers the same way whether or not the email belongs to an account, so the
+// endpoint cannot be used to find out which emails are registered.
 export const validatePasswordResetRequest = async (email, reqInfo) => {
     const user = await attendanceDB('core_users').where('email', email).first();
-    if (!user) throw new AppError("User does not exist", 404);
+    if (!user) return;
 
     // Construct mock req object for backward compatibility with OtpService
     const mockReq = { headers: { "user-agent": reqInfo.userAgent }, clientIp: reqInfo.ip, ip: reqInfo.ip };
@@ -338,7 +344,7 @@ export const validatePasswordResetRequest = async (email, reqInfo) => {
     const emailHtml = `
   <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
       <h2>Secure Your Account</h2>
-      <p>Hi ${userName},</p>
+      <p>Hi ${escapeHtml(userName)},</p>
       <p>We received a request to reset your password. Please use the following code to continue:</p>
       <h1 style="color: #4F46E5; letter-spacing: 5px;">${otp}</h1>
       <p>This code is valid for 5 minutes.</p>
@@ -352,8 +358,6 @@ export const validatePasswordResetRequest = async (email, reqInfo) => {
     });
 
     if (!emailResult.ok) throw new AppError("Failed to send email. Please try again later.", 500);
-
-    return true;
 };
 
 export const verifyPasswordResetOtp = async (email, otp, reqInfo) => {

@@ -70,7 +70,7 @@ export const requestPasswordReset = catchAsync(async (req, res, next) => {
     };
 
     await authService.validatePasswordResetRequest(email, reqInfo);
-    res.json({ message: "OTP sent to your email" });
+    res.json({ message: "If an account exists for this email, a verification code has been sent to it" });
 });
 
 export const verifyOtp = catchAsync(async (req, res, next) => {

@@ -54,6 +54,25 @@ export const authLimiter = rateLimit({
     },
 });
 
+// Password reset codes - every request counts, not only failures: each one
+// sends an email. Keyed on IP + email, so nobody can flood one inbox and an
+// office behind a shared IP is not blocked by one person.
+export const passwordResetLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        const ip = getClientIp(req);
+        const email = req.body?.email;
+        return email ? `${ip}:${email.toString().toLowerCase().trim()}` : ip;
+    },
+    message: {
+        ok: false,
+        message: 'Too many verification code requests. Please try again after 15 minutes',
+    },
+});
+
 // IP Fail-Safe Limiter - Protects against "Distributed Brute Force" / "Bot Attacks"
 // If a single IP tries 300 times (even with different usernames), it gets blocked.
 // This allows a large office (NAT) to have ~300 failed attempts total before blocking.
