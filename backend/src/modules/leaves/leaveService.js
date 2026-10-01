@@ -438,9 +438,20 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
 
     // Status change and balance adjustment are applied atomically, with the
     // request row locked so concurrent reviews cannot double-count the balance.
+    let statusChanged = false;
     await attendanceDB.transaction(async (trx) => {
         const request = await trx('leave_request').where({ lr_id: id }).forUpdate().first();
-        const previousStatus = request.status;
+        if (!request) {
+            throw { status: 404, message: "Request not found" };
+        }
+        const previousStatus = (request.status || '').toLowerCase();
+
+        // Idempotency: if request is already in target status (e.g. concurrent approval),
+        // preserve the existing state and avoid double balance deduction.
+        if (previousStatus === lowerStatus) {
+            return;
+        }
+        statusChanged = true;
 
         const auditTrail = formatLeaveAuditTrail(request);
         const reviewer = await trx('core_users').where({ user_id: reviewed_by }).select('user_name').first();
@@ -455,15 +466,20 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
 
         const updateData = {
             status: lowerStatus,
-            admin_comment,
             reviewed_by,
             reviewed_at: trx.fn.now(),
             audit_trail: JSON.stringify(auditTrail)
         };
 
+        if (admin_comment !== undefined) {
+            updateData.admin_comment = admin_comment;
+        }
+
         if (lowerStatus === 'approved') {
-            updateData.pay_type = pay_type;
-            updateData.pay_percentage = pay_type === 'Partial' ? (pay_percentage || 50) : (pay_type === 'Paid' ? 100 : 0);
+            if (pay_type !== undefined) {
+                updateData.pay_type = pay_type;
+                updateData.pay_percentage = pay_type === 'Partial' ? (pay_percentage || 50) : (pay_type === 'Paid' ? 100 : 0);
+            }
         }
 
         await trx('leave_request')
@@ -538,9 +554,11 @@ export async function updateLeaveStatus({ id, org_id, status, pay_type, pay_perc
     if (updatedRequest) {
         updatedRequest.audit_trail = formatLeaveAuditTrail(updatedRequest);
 
-        PayrollCalculationService.triggerLeaveRecalculation(updatedRequest).catch(err => {
-            console.error("Failed to trigger background payroll recalculation for leave review:", err);
-        });
+        if (statusChanged) {
+            PayrollCalculationService.triggerLeaveRecalculation(updatedRequest).catch(err => {
+                console.error("Failed to trigger background payroll recalculation for leave review:", err);
+            });
+        }
     }
 
     return updatedRequest;

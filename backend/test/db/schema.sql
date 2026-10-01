@@ -786,6 +786,7 @@ CREATE TABLE `leave_request` (
   `reviewed_by` int unsigned DEFAULT NULL,
   `reviewed_at` timestamp NULL DEFAULT NULL,
   `admin_comment` varchar(255) DEFAULT NULL,
+  `audit_trail` json DEFAULT NULL,
   PRIMARY KEY (`lr_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `leave_requests` (
