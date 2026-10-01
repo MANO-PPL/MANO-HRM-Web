@@ -788,11 +788,22 @@ function generateNodeAiSummaryFallback(body) {
 
 /**
  * POST /attendance/ai-summary
- * Proxy request to Python FastAPI microservice with automatic programmatic fallback
+ * Summary from the Python service (backend/services/ai_summary) when
+ * AI_SUMMARY_URL is set, otherwise the built-in summary.
+ *
+ * The service is not deployed. It used to be called at 127.0.0.1:8001, which
+ * on the production server is another application (the corporate website's
+ * API), so employee attendance data was sent there and the built-in summary
+ * was returned after its error anyway.
  */
 export const getAiSummary = catchAsync(async (req, res) => {
+  const serviceUrl = process.env.AI_SUMMARY_URL;
+  if (!serviceUrl) {
+    return res.json(generateNodeAiSummaryFallback(req.body));
+  }
+
   try {
-    const response = await axios.post("http://127.0.0.1:8001/summarize", req.body, { timeout: 15000 });
+    const response = await axios.post(`${serviceUrl.replace(/\/+$/, '')}/summarize`, req.body, { timeout: 15000 });
     return res.json(response.data);
   } catch (error) {
     console.error("AI microservice error, using fallback summary:", error.message);
