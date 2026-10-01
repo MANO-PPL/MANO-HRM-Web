@@ -90,3 +90,17 @@ export const loginIpLimiter = rateLimit({
         message: 'Too many failed login attempts from this IP. Please try again after 15 minutes',
     },
 });
+
+// Chatbots - every question is an LLM call. Signed-in users are counted
+// per account, website visitors per IP.
+export const chatbotLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : getClientIp(req)),
+    message: {
+        ok: false,
+        message: 'Too many questions. Please try again in a few minutes',
+    },
+});
