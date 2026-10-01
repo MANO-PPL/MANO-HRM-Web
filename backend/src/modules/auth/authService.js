@@ -93,10 +93,11 @@ export const authenticateUser = async (userInput, password, reqInfo, rememberMe 
         force_password_change: isForcePasswordChange
     };
 
-    const accessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
     const refreshToken = TokenService.generateRefreshToken();
+    const sessionId = await TokenService.saveRefreshToken(user.user_id, refreshToken, reqInfo.ip, reqInfo.userAgent, rememberMe);
 
-    await TokenService.saveRefreshToken(user.user_id, refreshToken, reqInfo.ip, reqInfo.userAgent, rememberMe);
+    // sid identifies this login session (see changePassword)
+    const accessToken = jwt.sign({ ...tokenPayload, sid: sessionId }, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 
     try {
         EventBus.emitActivityLog({
@@ -209,9 +210,10 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
 
     if (!result) throw new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
 
-    if (result.error) throw new AppError("Security Alert: Token reuse detected. Re-login required.", 401, "TOKEN_REUSE_DETECTED");
+    // The user was deactivated or deleted; their sessions have been ended
+    if (result.error) throw new AppError("Your account is inactive or has been deleted. Please contact HR.", 401, "ACCOUNT_INACTIVE");
 
-    const { user, gracePeriodActive, activeRefreshToken, refreshTokenRecord } = result;
+    const { user, refreshTokenRecord } = result;
 
     if (user.org_id) {
         const org = await attendanceDB('core_organizations').where('org_id', user.org_id).first();
@@ -226,15 +228,9 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
         }
     }
 
-    let newRefreshToken;
-
-    if (gracePeriodActive) {
-        newRefreshToken = activeRefreshToken;
-    } else {
-        // Sliding Session: Instead of rotating the token, just extend its expiry
-        await TokenService.extendRefreshToken(refreshToken);
-        newRefreshToken = refreshToken;
-    }
+    // Sliding Session: Instead of rotating the token, just extend its expiry
+    await TokenService.extendRefreshToken(refreshToken);
+    const newRefreshToken = refreshToken;
 
     const tokenPayload = {
         user_id: user.user_id,
@@ -246,7 +242,7 @@ export const refreshAuthTokens = async (refreshToken, reqInfo) => {
         force_password_change: user.force_password_change === 1 || user.force_password_change === '1' || user.force_password_change === true || user.force_password_change === 'true'
     };
 
-    const newAccessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+    const newAccessToken = jwt.sign({ ...tokenPayload, sid: refreshTokenRecord.id }, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 
     return {
         accessToken: newAccessToken,
@@ -407,7 +403,7 @@ export const executePasswordReset = async (resetToken, newPassword) => {
     return true;
 };
 
-export const changePassword = async (userId, newPassword, currentRefreshToken = null) => {
+export const changePassword = async (userId, newPassword, currentRefreshToken = null, currentSessionId = null) => {
     if (!newPassword || newPassword.length < PASSWORD_MIN_LENGTH) {
         throw new AppError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters long`, 400);
     }
@@ -418,6 +414,6 @@ export const changePassword = async (userId, newPassword, currentRefreshToken = 
     });
 
     // Sign out all other devices; keep the session that made the change
-    await TokenService.revokeAllTokensForUser(userId, { except: currentRefreshToken });
+    await TokenService.revokeAllTokensForUser(userId, { except: currentRefreshToken, exceptSessionId: currentSessionId });
     return true;
 };

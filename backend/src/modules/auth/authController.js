@@ -5,6 +5,12 @@ import { attendanceDB } from '../../config/database.js';
 import bcrypt from 'bcrypt';
 
 const REFRESH_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 Days
+
+// The mobile apps send the refresh token in the body or X-Refresh-Token header,
+// the web app as an httpOnly cookie. A token sent explicitly wins: an app's
+// cookie store may still hold a cookie from an earlier login.
+const readRefreshToken = (req) =>
+    req.body?.refreshToken || req.headers['x-refresh-token'] || req.cookies.refreshToken || null;
 const IS_PROD = process.env.NODE_ENV === 'production';
 
 export const login = catchAsync(async (req, res, next) => {
@@ -95,7 +101,7 @@ export const resetPassword = catchAsync(async (req, res, next) => {
 });
 
 export const refreshToken = catchAsync(async (req, res, next) => {
-    const currentRefreshToken = req.cookies.refreshToken || req.body?.refreshToken || req.headers['x-refresh-token'];
+    const currentRefreshToken = readRefreshToken(req);
 
     const reqInfo = {
         ip: req.clientIp || req.ip,
@@ -134,7 +140,7 @@ export const getCurrentUser = catchAsync(async (req, res, next) => {
 });
 
 export const logout = catchAsync(async (req, res, next) => {
-    const refreshToken = req.cookies.refreshToken || req.body?.refreshToken || req.headers['x-refresh-token'];
+    const refreshToken = readRefreshToken(req);
     await authService.logoutUser(refreshToken);
 
     res.clearCookie("refreshToken", { path: '/' });
@@ -258,8 +264,8 @@ export const changePassword = catchAsync(async (req, res, next) => {
         throw new AppError("New password is required", 400);
     }
 
-    const currentRefreshToken = req.cookies.refreshToken || req.body?.refreshToken || req.headers['x-refresh-token'] || null;
-    await authService.changePassword(userId, newPassword, currentRefreshToken);
+    const currentRefreshToken = readRefreshToken(req);
+    await authService.changePassword(userId, newPassword, currentRefreshToken, req.user.sid);
 
     res.status(200).json({
         success: true,
