@@ -4,53 +4,74 @@ const API_BASE_URL = "/leaves";
 
 // Client-side memory cache for leave requests data
 const cache = {
-    myHistory: null,
-    adminHistory: null
+    myHistory: new Map(),
+    adminHistory: new Map()
 };
 
 // Synchronous client-side cache for direct component consumption
 export const leaveCacheData = {
-    myHistory: null,
-    adminHistory: null
+    myHistory: {},
+    adminHistory: {}
 };
 
-export const clearCache = () => {
-    cache.myHistory = null;
-    cache.adminHistory = null;
-    leaveCacheData.myHistory = null;
-    leaveCacheData.adminHistory = null;
+// Clear the leaves cache when data changes
+export const clearLeaveCache = () => {
+    cache.myHistory.clear();
+    cache.adminHistory.clear();
+    leaveCacheData.myHistory = {};
+    leaveCacheData.adminHistory = {};
 };
+
+export const clearCache = clearLeaveCache;
+
+async function fetchWithCache(cacheMap, syncStore, endpoint, params = {}, errorMessage) {
+    const cacheKey = JSON.stringify(params);
+    if (cacheMap.has(cacheKey)) {
+        return cacheMap.get(cacheKey);
+    }
+
+    const promise = (async () => {
+        try {
+            const res = await api.get(endpoint, { params });
+            syncStore[cacheKey] = res.data;
+            return res.data;
+        } catch (error) {
+            cacheMap.delete(cacheKey);
+            throw new Error(error.response?.data?.message || errorMessage);
+        }
+    })();
+
+    cacheMap.set(cacheKey, promise);
+    return promise;
+}
 
 export const leaveService = {
+    // Synchronous access to cached data
+    cacheData: leaveCacheData,
+
+    // Clear cache helper
+    clearCache: clearLeaveCache,
+
     // Get leave history for the current employee
-    async getMyLeaves() {
-        if (cache.myHistory) {
-            return cache.myHistory;
-        }
-
-        const promise = (async () => {
-            try {
-                const res = await api.get(`${API_BASE_URL}/my-history`);
-                leaveCacheData.myHistory = res.data;
-                return res.data;
-            } catch (error) {
-                cache.myHistory = null;
-                throw new Error(error.response?.data?.message || "Failed to fetch your leave history");
-            }
-        })();
-
-        cache.myHistory = promise;
-        return promise;
+    getMyLeaves(params = {}) {
+        return fetchWithCache(
+            cache.myHistory,
+            leaveCacheData.myHistory,
+            `${API_BASE_URL}/my-history`,
+            params,
+            "Failed to fetch your leave history"
+        );
     },
 
     // Get all leave history (Admin/HR)
-    async getAdminLeaves(params = {}) {
-        try {
-            const res = await api.get(`${API_BASE_URL}/admin/history`, { params });
-            return res.data;
-        } catch (error) {
-            throw new Error(error.response?.data?.message || "Failed to fetch admin leave history");
-        }
+    getAdminLeaves(params = {}) {
+        return fetchWithCache(
+            cache.adminHistory,
+            leaveCacheData.adminHistory,
+            `${API_BASE_URL}/admin/history`,
+            params,
+            "Failed to fetch admin leave history"
+        );
     },
 
     // Apply for leave (FormData / attachments)

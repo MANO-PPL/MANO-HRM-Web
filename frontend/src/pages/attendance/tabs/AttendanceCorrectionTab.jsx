@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
 import CorrectionDocumentCard from '../../../components/attendance/CorrectionDocumentCard';
+import AuditTrailTimeline from '../../../components/AuditTrailTimeline';
 import { parseCorrectionDetails, isCheckpointRecord } from '../../../utils/attendanceStatus';
 
 const AttendanceCorrectionTab = ({
@@ -458,39 +459,7 @@ const AttendanceCorrectionTab = ({
                                             )}
 
                                             {/* 6. Section: Audit Trail & History */}
-                                            {(() => {
-                                                const trail = typeof selectedRequest.audit_trail === 'string'
-                                                    ? (() => { try { return JSON.parse(selectedRequest.audit_trail); } catch { return []; } })()
-                                                    : (Array.isArray(selectedRequest.audit_trail) ? selectedRequest.audit_trail : []);
-                                                if (trail && trail.length > 0) {
-                                                    return (
-                                                        <div className="border-t border-slate-200/60 dark:border-[#30363d] pt-5">
-                                                            <span className="text-base font-bold text-slate-900 dark:text-white block mb-3.5 flex items-center gap-2">
-                                                                <Activity size={16} className="text-indigo-500" /> Audit Trail & History
-                                                            </span>
-                                                            <div className="relative pl-3.5 border-l-2 border-slate-200 dark:border-github-dark-border space-y-3.5">
-                                                                {trail.map((event, idx) => (
-                                                                    <div key={idx} className="relative">
-                                                                        <div className="absolute -left-[19px] top-1.5 w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white dark:border-dark-card ring-2 ring-indigo-200 dark:ring-indigo-800"></div>
-                                                                        <p className="text-sm font-bold text-slate-900 dark:text-white capitalize">
-                                                                            {String(event.action).toLowerCase()}
-                                                                        </p>
-                                                                        <p className="text-xs sm:text-sm text-slate-500 dark:text-github-dark-muted font-medium mt-0.5">
-                                                                            {event.at ? new Date(event.at).toLocaleString() : 'N/A'} • by {event.by === selectedRequest.user_id ? selectedRequest.user_name : (event.by_name || 'Admin')}
-                                                                        </p>
-                                                                        {event.comments && (
-                                                                            <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 mt-1 italic pl-2.5 border-l-2 border-slate-200 dark:border-github-dark-border font-medium">
-                                                                                "{event.comments}"
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                }
-                                                return null;
-                                            })()}
+                                            <AuditTrailTimeline record={selectedRequest} />
                                         </>
                                     );
                                 })()}

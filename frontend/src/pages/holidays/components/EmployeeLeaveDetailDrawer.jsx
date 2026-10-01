@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, X, CheckCircle, XCircle, Clock, Trash2 } from 'lucide-react';
+import AuditTrailTimeline from '../../../components/AuditTrailTimeline';
 
 const EmployeeLeaveDetailDrawer = ({
     isOpen,
@@ -71,8 +72,8 @@ const EmployeeLeaveDetailDrawer = ({
                                 {sl.status}
                             </span>
                             <p className="text-base font-semibold text-slate-800 dark:text-github-dark-text">{days} Day{days !== 1 ? 's' : ''} Leave</p>
-                            <p className="text-xs text-slate-500 font-normal">{sl.policy_name || sl.leave_type || 'Leave'}</p>
-                            {sl.policy_name && sl.leave_type && <p className="text-[10px] text-slate-400 mt-0.5 font-normal">{sl.leave_type}</p>}
+                            <p className="text-xs text-slate-500 font-normal">{sl.leave_type || sl.policy_name || 'Leave'}</p>
+                            {sl.policy_name && sl.policy_name !== sl.leave_type && <p className="text-[10px] text-slate-400 mt-0.5 font-normal">{sl.policy_name}</p>}
                         </div>
                     </div>
 
@@ -82,11 +83,11 @@ const EmployeeLeaveDetailDrawer = ({
                             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Leave Type</span>
                             <div className="flex flex-col items-end gap-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs font-semibold text-slate-800 dark:text-github-dark-text">{sl.policy_name || sl.leave_type || 'N/A'}</span>
+                                    <span className="text-xs font-semibold text-slate-800 dark:text-github-dark-text">{sl.leave_type || sl.policy_name || 'N/A'}</span>
                                     {sl.leave_code && <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">{sl.leave_code}</span>}
                                 </div>
-                                {sl.policy_name && sl.leave_type && (
-                                    <span className="text-[10px] text-slate-400 font-normal">{sl.leave_type}</span>
+                                {sl.policy_name && sl.policy_name !== sl.leave_type && (
+                                    <span className="text-[10px] text-slate-400 font-normal">{sl.policy_name}</span>
                                 )}
                             </div>
                         </div>
@@ -139,6 +140,9 @@ const EmployeeLeaveDetailDrawer = ({
                             </div>
                         </div>
                     )}
+
+                    {/* Audit Trail & History */}
+                    <AuditTrailTimeline record={sl} compact={true} currentUserId={sl.user_id} isEmployee={true} />
                 </div>
 
                 {/* Footer action */}
