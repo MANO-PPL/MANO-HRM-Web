@@ -62,62 +62,11 @@ export const getMonthDetails = (dateStr) => {
     };
 };
 
-let isWageHistoryTableEnsured = false;
-export const ensureWageHistoryTable = async () => {
-    if (isWageHistoryTableEnsured) return;
-    try {
-        const hasTable = await attendanceDB.schema.hasTable('labour_wage_history');
-        if (!hasTable) {
-            await attendanceDB.schema.createTable('labour_wage_history', (table) => {
-                table.increments('id').primary();
-                table.integer('org_id').notNullable().index();
-                table.integer('labour_id').notNullable().index();
-                table.date('effective_date').notNullable();
-                table.string('wage_type', 30).defaultTo('Daily Wage');
-                table.decimal('daily_wage', 10, 2).notNullable();
-                table.decimal('overtime_pay_per_hour', 10, 2).defaultTo(0.00);
-                table.string('notes', 255).nullable();
-                table.integer('created_by').nullable();
-                table.timestamp('created_at').defaultTo(attendanceDB.fn.now());
-                table.unique(['labour_id', 'effective_date']);
-            });
-
-            // Auto-migrate existing active workers from `labours`
-            const existingLabours = await attendanceDB('labours')
-                .select('labour_id', 'org_id', 'wage_type', 'monthly_salary', 'overtime_pay_per_hour', 'created_at');
-
-            if (existingLabours.length > 0) {
-                const seedRows = existingLabours
-                    .filter(l => Number(l.monthly_salary) > 0 || Number(l.overtime_pay_per_hour) > 0)
-                    .map(lab => {
-                        const effDate = formatDateSafe(lab.created_at) || '2020-01-01';
-                        return {
-                            org_id: lab.org_id,
-                            labour_id: lab.labour_id,
-                            effective_date: effDate,
-                            wage_type: lab.wage_type || 'Daily Wage',
-                            daily_wage: Number(lab.monthly_salary || 0),
-                            overtime_pay_per_hour: Number(lab.overtime_pay_per_hour || 0),
-                            notes: 'Initial Base Rate'
-                        };
-                    });
-                if (seedRows.length > 0) {
-                    await attendanceDB('labour_wage_history').insert(seedRows);
-                }
-            }
-        }
-        isWageHistoryTableEnsured = true;
-    } catch (err) {
-        console.error('Error ensuring labour_wage_history table:', err);
-    }
-};
-
 /**
  * Builds an in-memory wage rate lookup function for a set of workers over a date range.
  * For any given dateStr ('YYYY-MM-DD'), returns the exact rate in effect on that date.
  */
 export const buildWageRateResolver = async (labourIds, orgId, maxDate = null) => {
-    await ensureWageHistoryTable();
     if (!labourIds || labourIds.length === 0) {
         return () => ({ daily_rate: 0, overtime_pay_per_hour: 0, wage_type: 'Daily Wage' });
     }
@@ -375,7 +324,6 @@ export async function createLabour({
 
     // Seed initial wage revision if a wage was provided
     if (wageVal > 0 || otVal > 0) {
-        await ensureWageHistoryTable();
         const effDate = effective_date ? formatDateSafe(effective_date) : formatDateSafe(new Date());
         await attendanceDB('labour_wage_history')
             .insert({
@@ -435,8 +383,6 @@ export async function updateLabour({
             throw new AppError('Specified construction site does not exist in your organization', 400);
         }
     }
-
-    await ensureWageHistoryTable();
 
     // 1. Check if a wage revision was submitted (New Rate + Effective Date)
     if (new_daily_wage !== undefined && new_daily_wage !== '' && effective_date) {
@@ -581,8 +527,6 @@ export async function deleteLabour({ org_id, labour_id }) {
 // ==========================================
 
 export async function getLabourWageHistory({ org_id, labour_id }) {
-    await ensureWageHistoryTable();
-
     const worker = await attendanceDB('labours')
         .where({ labour_id, org_id })
         .select('labour_id', 'name', 'role', 'monthly_salary', 'overtime_pay_per_hour', 'created_at')
@@ -623,8 +567,6 @@ export async function addLabourWageRevision({ org_id, labour_id, effective_date,
     if (!effective_date || daily_wage === undefined || isNaN(Number(daily_wage))) {
         throw new AppError('Effective date and valid daily wage are required', 400);
     }
-
-    await ensureWageHistoryTable();
 
     const effDate = formatDateSafe(effective_date);
     const wageNum = Number(daily_wage);
@@ -678,8 +620,6 @@ export async function addLabourWageRevision({ org_id, labour_id, effective_date,
 }
 
 export async function updateLabourWageRevision({ org_id, revisionId, effective_date, daily_wage, overtime_pay_per_hour, notes }) {
-    await ensureWageHistoryTable();
-
     const existing = await attendanceDB('labour_wage_history')
         .where({ id: revisionId, org_id })
         .first();
@@ -723,8 +663,6 @@ export async function updateLabourWageRevision({ org_id, revisionId, effective_d
 }
 
 export async function deleteLabourWageRevision({ org_id, revisionId }) {
-    await ensureWageHistoryTable();
-
     const existing = await attendanceDB('labour_wage_history')
         .where({ id: revisionId, org_id })
         .first();
@@ -2317,8 +2255,6 @@ export async function bulkCreateLabours({ org_id, labours }) {
         .select('phone');
     const existingPhones = new Set(existingLabours.map(l => l.phone).filter(Boolean));
     const phonesInBatch = new Set();
-
-    await ensureWageHistoryTable();
 
     const insertData = labours.map(lab => {
         const { name, phone, sex, role, wage_type, monthly_salary, allowed_leaves, site_id, site_name, overtime_pay_per_hour } = lab;
