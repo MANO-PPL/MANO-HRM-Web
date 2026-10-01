@@ -1,0 +1,70 @@
+name: Backend CI
+
+# Checks every backend change before it reaches main. Runs without a database
+# or Redis: the unit tests and the lifecycle smoke test do not need them.
+# The database tests (npm run test:db) run locally against a test MySQL; see
+# backend/test/db/support/testDb.js.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Lint, tests, lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    # Placeholder settings so server.js passes its startup check; nothing here
+    # points at a real service.
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-only-jwt-secret
+      JWT_REFRESH_SECRET: ci-only-refresh-secret
+      DB_HOST: 127.0.0.1
+      DB_PORT: '1'
+      ATTENDANCE_DB_USER: ci
+      ATTENDANCE_DB_PASSWORD: ci
+      ATTENDANCE_DB_NAME: ci_test
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: '1'
+      RAZORPAY_KEY_ID: ci-placeholder
+      RAZORPAY_KEY_SECRET: ci-placeholder
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Syntax, lint and import check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Graceful shutdown smoke test
+        run: npm run smoke:lifecycle
