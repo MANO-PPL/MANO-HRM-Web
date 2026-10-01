@@ -1,9 +1,9 @@
 name: Backend CI
 
-# Checks every backend change before it reaches main. Runs without a database
-# or Redis: the unit tests and the lifecycle smoke test do not need them.
-# The database tests (npm run test:db) run locally against a test MySQL; see
-# backend/test/db/support/testDb.js.
+# Checks every backend change before it reaches main:
+# - backend: lint, unit tests and the graceful-shutdown smoke test (no database)
+# - database: the database tests against an empty MySQL created from
+#   backend/test/db/schema.sql (table structure only, no production data)
 
 on:
   pull_request:
@@ -68,3 +68,56 @@ jobs:
 
       - name: Graceful shutdown smoke test
         run: npm run smoke:lifecycle
+
+  database:
+    name: Database tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    # A throwaway MySQL that exists only for this job. The tests refuse to run
+    # against anything but a local database whose name contains "test"
+    # (backend/test/db/support/testDb.js).
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: authz_test_pw
+          MYSQL_DATABASE: mano_authz_test
+        ports:
+          - 3310:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pauthz_test_pw"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      JWT_SECRET: ci-only-jwt-secret
+      JWT_REFRESH_SECRET: ci-only-refresh-secret
+      RAZORPAY_KEY_ID: ci-placeholder
+      RAZORPAY_KEY_SECRET: ci-placeholder
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Create the test database tables
+        run: mysql -h 127.0.0.1 -P 3310 -uroot -pauthz_test_pw mano_authz_test < test/db/schema.sql
+
+      - name: Database tests
+        run: npm run test:db

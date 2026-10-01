@@ -1,0 +1,1276 @@
+-- ============================================================================
+-- Test database schema: STRUCTURE ONLY, NO DATA
+-- ============================================================================
+-- What this is
+--   The table definitions (columns, types, indexes, foreign keys) of the
+--   production attendance database, exported on 2026-09-29. It contains no
+--   rows: no employee names, phone numbers, salaries or passwords. Row
+--   counters (AUTO_INCREMENT=...) were removed as well.
+--
+-- What it is used for
+--   Only for automated tests. It never runs on the EC2 server or against the
+--   production database.
+--   - GitHub CI (.github/workflows/backend-ci.yml) starts an empty MySQL,
+--     loads this file and runs the database tests (npm run test:db) on every
+--     push and pull request.
+--   - Locally, the same tests run against a MySQL in Docker loaded from this
+--     file (see test/db/support/testDb.js).
+--   The tests create their own fake organisations and users, check behaviour
+--   against real MySQL (who may see or change which records, organisation
+--   deletion, attendance processing, login sessions, migrations ...) and wipe
+--   everything again. A change that breaks any of this is caught before it
+--   is merged and deployed.
+--
+-- Keeping it current
+--   Schema changes are made with migrations (backend/migrations). The tests
+--   run `migrate latest` on top of this file, so the test database always
+--   matches production after `npm run migrate`; this file only needs
+--   re-exporting when tables are changed outside migrations.
+-- ============================================================================
+
+SET FOREIGN_KEY_CHECKS=0;
+CREATE TABLE `attn_correction_requests` (
+  `acr_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `correction_type` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `original_data` json DEFAULT NULL,
+  `proposed_data` json DEFAULT NULL,
+  `request_date` date NOT NULL,
+  `reason` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `status` enum('pending','approved','rejected') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT 'pending',
+  `reviewed_by` int unsigned DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `review_comments` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+  `audit_trail` json DEFAULT NULL,
+  `submitted_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `correction_method` varchar(50) DEFAULT 'fix',
+  `correction_data` json DEFAULT NULL,
+  PRIMARY KEY (`acr_id`),
+  KEY `idx_attn_correction_requests_user_id_status` (`user_id`,`status`),
+  KEY `idx_attn_correction_requests_status_request_date` (`status`,`request_date`),
+  KEY `idx_attn_correction_requests_reviewed_by` (`reviewed_by`),
+  CONSTRAINT `fk_attn_correction_requests_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `fk_attn_correction_requests_users_reviewed_by` FOREIGN KEY (`reviewed_by`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `attn_corrections` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `submitted_by` int unsigned NOT NULL,
+  `correction_type` enum('punch','summary') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `target_id` int unsigned DEFAULT NULL,
+  `original_data` json DEFAULT NULL,
+  `proposed_data` json NOT NULL,
+  `request_date` date NOT NULL,
+  `reason` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` enum('pending','approved','rejected') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `reviewed_by` int unsigned DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `review_comments` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `audit_trail` json DEFAULT NULL,
+  `submitted_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `correction_data` json DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_type_target` (`correction_type`,`target_id`),
+  KEY `idx_user_date` (`user_id`,`request_date`),
+  KEY `idx_status` (`status`),
+  KEY `idx_submitted_by` (`submitted_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `attn_daily_activities` (
+  `activity_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `activity_date` date NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text,
+  `activity_type` varchar(50) DEFAULT NULL,
+  `status` varchar(50) NOT NULL DEFAULT 'COMPLETED',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `raw_start_time` time DEFAULT NULL,
+  `raw_end_time` time DEFAULT NULL,
+  `parent_activity_id` int DEFAULT NULL,
+  PRIMARY KEY (`activity_id`),
+  KEY `idx_attn_daily_activities_user_id` (`user_id`),
+  KEY `idx_attn_daily_activities_activity_date` (`activity_date`),
+  KEY `idx_parent_activity` (`parent_activity_id`),
+  KEY `idx_user_activity_date` (`user_id`,`activity_date`),
+  CONSTRAINT `fk_attn_daily_activities_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `attn_daily_summary` (
+  `daily_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `date` date NOT NULL,
+  `shift_id` int unsigned DEFAULT NULL,
+  `first_in` time DEFAULT NULL,
+  `last_out` time DEFAULT NULL,
+  `total_hours` decimal(5,2) DEFAULT '0.00',
+  `late_minutes` int DEFAULT '0',
+  `late_reason` varchar(255) DEFAULT NULL,
+  `overtime_hours` decimal(5,2) DEFAULT '0.00',
+  `status` varchar(50) DEFAULT 'ABSENT',
+  `remarks` varchar(255) DEFAULT NULL,
+  `is_finalized` tinyint(1) DEFAULT '0',
+  `is_manual_adjustment` tinyint(1) DEFAULT '0',
+  `adjusted_by` int unsigned DEFAULT NULL,
+  `adjustment_reason` text,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_altered` tinyint(1) DEFAULT '0',
+  PRIMARY KEY (`daily_id`),
+  UNIQUE KEY `uq_attn_daily_summary_user_id_date` (`user_id`,`date`),
+  KEY `idx_attn_daily_summary_shift_id` (`shift_id`),
+  KEY `idx_attn_daily_summary_adjusted_by` (`adjusted_by`),
+  CONSTRAINT `fk_attn_daily_summary_shifts` FOREIGN KEY (`shift_id`) REFERENCES `org_shifts` (`shift_id`),
+  CONSTRAINT `fk_attn_daily_summary_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `fk_attn_daily_summary_users_adjusted_by` FOREIGN KEY (`adjusted_by`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `attn_daily_summary_v2` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `date` date NOT NULL,
+  `shift_id` int unsigned DEFAULT NULL,
+  `session_count` int unsigned NOT NULL DEFAULT '0',
+  `total_hours` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `late_minutes` int NOT NULL DEFAULT '0',
+  `late_reason` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `overtime_hours` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `status` enum('PRESENT','HALF_DAY','ABSENT','MISSED_PUNCH','ON_LEAVE','WEEKEND','HOLIDAY') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ABSENT',
+  `remarks` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `overtime_hours_actual` decimal(6,2) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_user_date` (`user_id`,`date`),
+  KEY `idx_shift` (`shift_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `attn_dar_requests` (
+  `request_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `request_date` date NOT NULL,
+  `original_data` json DEFAULT NULL,
+  `proposed_data` json NOT NULL,
+  `status` enum('PENDING','APPROVED','REJECTED') DEFAULT 'PENDING',
+  `admin_comment` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `reason` text,
+  PRIMARY KEY (`request_id`),
+  KEY `idx_attn_dar_requests_user_id` (`user_id`),
+  CONSTRAINT `fk_attn_dar_requests_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `attn_dar_settings` (
+  `setting_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `buffer_minutes` int DEFAULT '30',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `categories` json DEFAULT NULL,
+  PRIMARY KEY (`setting_id`),
+  UNIQUE KEY `uq_attn_dar_settings_org_id` (`org_id`),
+  CONSTRAINT `fk_attn_dar_settings_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `attn_punches` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `punch_time` timestamp NOT NULL,
+  `punch_type` enum('in','out','normal_punch') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `location` json DEFAULT NULL,
+  `punch_nature` enum('default','simulated','fabricated') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'default',
+  `correction_id` int unsigned DEFAULT NULL,
+  `metadata` json DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_date` (`user_id`,`punch_time`),
+  KEY `idx_correction` (`correction_id`),
+  KEY `idx_deleted` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `attn_records` (
+  `attendance_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `time_in` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `time_in_lat` decimal(9,6) NOT NULL,
+  `time_in_lng` decimal(9,6) NOT NULL,
+  `time_in_address` varchar(255) NOT NULL DEFAULT '',
+  `time_in_image_key` varchar(255) DEFAULT '',
+  `time_out` timestamp NULL DEFAULT NULL,
+  `time_out_lat` decimal(9,6) DEFAULT NULL,
+  `time_out_lng` decimal(9,6) DEFAULT NULL,
+  `time_out_address` varchar(255) NOT NULL DEFAULT '',
+  `time_out_image_key` varchar(255) DEFAULT '',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `metadata` json DEFAULT NULL COMMENT 'Stores GPS accuracy, IP, user agent, timestamps for security auditing',
+  `altered_by` int unsigned DEFAULT NULL,
+  `status` varchar(50) DEFAULT 'PRESENT',
+  `late_minutes` int DEFAULT '0',
+  `late_reason` varchar(255) DEFAULT NULL,
+  `overtime_hours` decimal(5,2) DEFAULT '0.00',
+  PRIMARY KEY (`attendance_id`),
+  KEY `idx_attn_records_user_id` (`user_id`),
+  KEY `idx_attn_records_altered_by` (`altered_by`),
+  CONSTRAINT `fk_attn_records_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `fk_attn_records_users_altered_by` FOREIGN KEY (`altered_by`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `chat_conversation_members` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `conversation_id` int unsigned NOT NULL,
+  `user_id` int unsigned NOT NULL,
+  `role` enum('owner','admin','member') DEFAULT 'member',
+  `joined_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_read_message_id` bigint unsigned DEFAULT NULL,
+  `is_muted` tinyint(1) DEFAULT '0',
+  `is_pinned` tinyint(1) DEFAULT '0',
+  `is_archived` tinyint(1) DEFAULT '0',
+  `notification_level` enum('all','mentions','none') DEFAULT 'all',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_chat_conversation_members_conversation_id_user_id` (`conversation_id`,`user_id`),
+  KEY `idx_chat_conversation_members_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `chat_conversations` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `type` enum('dm','group','department','announcement') NOT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `description` text,
+  `avatar_url` varchar(500) DEFAULT NULL,
+  `created_by` int unsigned DEFAULT NULL,
+  `org_id` int unsigned NOT NULL,
+  `department_id` int unsigned DEFAULT NULL,
+  `last_message_id` bigint unsigned DEFAULT NULL,
+  `is_private` tinyint(1) DEFAULT '0',
+  `is_archived` tinyint(1) DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_chat_conversations_org_id` (`org_id`),
+  KEY `idx_chat_conversations_type` (`type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `chat_message_attachments` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `message_id` bigint unsigned NOT NULL,
+  `type` varchar(50) DEFAULT NULL,
+  `file_name` varchar(255) NOT NULL,
+  `mime_type` varchar(100) DEFAULT NULL,
+  `size_bytes` bigint unsigned DEFAULT NULL,
+  `storage_provider` varchar(50) DEFAULT 's3',
+  `storage_key` varchar(500) NOT NULL,
+  `public_url` text,
+  `thumbnail_url` text,
+  `width` int DEFAULT NULL,
+  `height` int DEFAULT NULL,
+  `duration_seconds` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_chat_message_attachments_message_id` (`message_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `chat_message_mentions` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `message_id` bigint unsigned NOT NULL,
+  `mentioned_user_id` int unsigned NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_chat_message_mentions_message_id_mentioned_user_id` (`message_id`,`mentioned_user_id`),
+  KEY `idx_chat_message_mentions_mentioned_user_id` (`mentioned_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `chat_message_reactions` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `message_id` bigint unsigned NOT NULL,
+  `user_id` int unsigned NOT NULL,
+  `emoji` varchar(50) NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_chat_message_reactions_message_id_user_id_emoji` (`message_id`,`user_id`,`emoji`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `chat_messages` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `conversation_id` int unsigned NOT NULL,
+  `sender_id` int unsigned NOT NULL,
+  `type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'text',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `metadata_json` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_chat_messages_sender` (`sender_id`),
+  KEY `idx_chat_messages_conversation_id` (`conversation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `chat_rooms` (
+  `room_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `room_name` varchar(255) DEFAULT NULL,
+  `room_type` enum('direct','group') DEFAULT 'direct',
+  `created_by` int unsigned DEFAULT NULL,
+  `member_ids` text NOT NULL,
+  `messages` longtext NOT NULL,
+  `last_read_times` text NOT NULL,
+  `removed_members` text,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`room_id`),
+  KEY `chat_rooms_org_id_index` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `comm_events_meetings` (
+  `event_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text,
+  `event_date` date NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `location` varchar(255) DEFAULT NULL,
+  `type` enum('EVENT','MEETING') NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`event_id`),
+  KEY `idx_comm_events_meetings_event_date` (`event_date`),
+  KEY `idx_comm_events_meetings_user_id` (`user_id`),
+  CONSTRAINT `fk_comm_events_meetings_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `comm_notifications` (
+  `notification_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `type` enum('INFO','WARNING','SUCCESS','ERROR') DEFAULT 'INFO',
+  `title` varchar(255) NOT NULL,
+  `message` text,
+  `is_read` tinyint(1) DEFAULT '0',
+  `related_entity_type` varchar(50) DEFAULT NULL,
+  `related_entity_id` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`notification_id`),
+  KEY `idx_comm_notifications_user_id` (`user_id`),
+  CONSTRAINT `fk_comm_notifications_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `core_organizations` (
+  `org_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_name` varchar(150) NOT NULL,
+  `org_code` varchar(50) NOT NULL,
+  `contact_name` varchar(100) DEFAULT NULL,
+  `contact_email` varchar(100) DEFAULT NULL,
+  `contact_phone` varchar(20) DEFAULT NULL,
+  `status` enum('active','inactive','suspended','pending_deletion','pending_approval') NOT NULL DEFAULT 'active',
+  `plan` enum('free','basic','pro','enterprise') NOT NULL DEFAULT 'free',
+  `subscription_start` date DEFAULT NULL,
+  `subscription_end` date DEFAULT NULL,
+  `is_trial` tinyint(1) NOT NULL DEFAULT '0',
+  `trial_end` date DEFAULT NULL,
+  `max_users` int unsigned DEFAULT NULL,
+  `timezone` varchar(50) DEFAULT 'Asia/Kolkata',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `last_user_number` int unsigned NOT NULL DEFAULT '0',
+  `subscription_plan` enum('free','pro','enterprise') DEFAULT 'free',
+  `subscription_expiry` datetime DEFAULT NULL,
+  `trial_used` tinyint(1) DEFAULT '0',
+  `deletion_requested_at` datetime DEFAULT NULL,
+  `deletion_scheduled_at` datetime DEFAULT NULL,
+  `deletion_requested_by` int unsigned DEFAULT NULL,
+  `gst_number` varchar(50) DEFAULT NULL,
+  `pan_number` varchar(50) DEFAULT NULL,
+  `grace_period_days` int NOT NULL DEFAULT '0',
+  `country` varchar(10) DEFAULT NULL,
+  `state` varchar(100) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`org_id`),
+  UNIQUE KEY `uq_core_organizations_org_code` (`org_code`),
+  KEY `idx_core_organizations_deletion_requested_by` (`deletion_requested_by`),
+  CONSTRAINT `fk_core_organizations_super_admins_deletion_requested_by` FOREIGN KEY (`deletion_requested_by`) REFERENCES `core_super_admins` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `core_refresh_tokens` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `token` varchar(512) NOT NULL,
+  `expires_at` datetime NOT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `revoked` tinyint(1) DEFAULT '0',
+  `replaced_by_token` varchar(512) DEFAULT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` text,
+  `remember_me` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `idx_core_refresh_tokens_user_id` (`user_id`),
+  CONSTRAINT `fk_core_refresh_tokens_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `core_subscription_history` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `plan_name` varchar(255) DEFAULT NULL,
+  `start_date` datetime DEFAULT NULL,
+  `end_date` datetime DEFAULT NULL,
+  `amount` decimal(10,2) DEFAULT NULL,
+  `action_type` enum('create','renew','upgrade','downgrade','cancel','manual_override','expire_warning') NOT NULL,
+  `performed_by` int unsigned DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_core_subscription_history_org_id` (`org_id`),
+  CONSTRAINT `fk_core_subscription_history_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `core_super_admins` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `admin_code` varchar(50) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `mobile_number` varchar(20) DEFAULT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `profile_image_url` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_core_super_admins_email` (`email`),
+  UNIQUE KEY `uq_core_super_admins_admin_code` (`admin_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `core_user_fcm_tokens` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `token` varchar(500) NOT NULL,
+  `device_type` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_core_user_fcm_tokens_token` (`token`),
+  KEY `idx_core_user_fcm_tokens_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `core_users` (
+  `user_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_name` varchar(100) NOT NULL,
+  `user_code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `user_password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `user_type` enum('admin','HR','employee','super_admin') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'employee',
+  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `phone_no` varchar(15) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `profile_image_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `org_id` int unsigned NOT NULL,
+  `dept_id` int unsigned DEFAULT NULL,
+  `desg_id` int unsigned DEFAULT NULL,
+  `shift_id` int unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_active` tinyint(1) DEFAULT '1',
+  `is_deleted` tinyint(1) DEFAULT '0',
+  `deleted_at` datetime DEFAULT NULL,
+  `column_preferences` text,
+  `checklist_template_id` int unsigned DEFAULT NULL,
+  `document_template_id` int unsigned DEFAULT NULL,
+  `joining_date` date DEFAULT NULL,
+  `reporting_manager` varchar(255) DEFAULT NULL,
+  `work_location` varchar(255) DEFAULT NULL,
+  `onboarding_progress` int DEFAULT '0',
+  `force_password_change` tinyint(1) NOT NULL DEFAULT '0',
+  `tour_dismissed` tinyint(1) NOT NULL DEFAULT '0',
+  `pages_tour_seen` text,
+  PRIMARY KEY (`user_id`),
+  UNIQUE KEY `uq_core_users_email` (`email`),
+  UNIQUE KEY `uq_core_users_phone_no` (`phone_no`),
+  UNIQUE KEY `uq_core_users_user_code` (`user_code`),
+  KEY `idx_core_users_org_id` (`org_id`),
+  KEY `idx_core_users_dept_id` (`dept_id`),
+  KEY `idx_core_users_desg_id` (`desg_id`),
+  KEY `idx_core_users_shift_id` (`shift_id`),
+  CONSTRAINT `fk_core_users_departments` FOREIGN KEY (`dept_id`) REFERENCES `org_departments` (`dept_id`),
+  CONSTRAINT `fk_core_users_designations` FOREIGN KEY (`desg_id`) REFERENCES `org_designations` (`desg_id`),
+  CONSTRAINT `fk_core_users_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`),
+  CONSTRAINT `fk_core_users_shifts` FOREIGN KEY (`shift_id`) REFERENCES `org_shifts` (`shift_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `doc_custom_templates` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int NOT NULL,
+  `template_name` varchar(255) NOT NULL,
+  `doc_type` varchar(100) NOT NULL,
+  `html_template` longtext NOT NULL,
+  `css_styles` longtext,
+  `variables_schema` longtext,
+  `created_by` int DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_doc_custom_templates_org_id` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `doc_employee_uploads` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` int NOT NULL,
+  `doc_key` varchar(100) NOT NULL,
+  `file_name` varchar(255) NOT NULL,
+  `file_key` varchar(500) NOT NULL,
+  `file_type` varchar(100) DEFAULT NULL,
+  `uploaded_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `verified_status` varchar(50) DEFAULT 'Pending',
+  `verification_comments` text,
+  `verified_by` int DEFAULT NULL,
+  `verified_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_doc_employee_uploads_employee_id_doc_key` (`employee_id`,`doc_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `doc_generated_hr_documents` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int NOT NULL,
+  `template_id` int unsigned DEFAULT NULL,
+  `title` varchar(255) NOT NULL,
+  `doc_type` varchar(100) NOT NULL,
+  `recipient_name` varchar(255) NOT NULL,
+  `recipient_email` varchar(255) DEFAULT NULL,
+  `variables_data` longtext NOT NULL,
+  `compiled_html` longtext NOT NULL,
+  `created_by` int DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_doc_generated_hr_documents_org_id` (`org_id`),
+  KEY `idx_doc_generated_hr_documents_template_id` (`template_id`),
+  CONSTRAINT `fk_doc_generated_hr_documents_custom_document_templates` FOREIGN KEY (`template_id`) REFERENCES `doc_custom_templates` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `doc_required_items` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `template_id` int unsigned NOT NULL,
+  `category` varchar(100) NOT NULL,
+  `doc_key` varchar(100) NOT NULL,
+  `doc_label` varchar(255) NOT NULL,
+  `is_mandatory` tinyint(1) DEFAULT '1',
+  `sort_order` int DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_doc_required_items_template_id` (`template_id`),
+  CONSTRAINT `fk_doc_required_items_required_document_templates` FOREIGN KEY (`template_id`) REFERENCES `doc_required_templates` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `doc_required_templates` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int NOT NULL,
+  `template_name` varchar(255) NOT NULL,
+  `description` text,
+  `created_by` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_doc_required_templates_org_id` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `employee_salary_history` (
+  `salary_history_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` int unsigned NOT NULL,
+  `gross_monthly_salary` decimal(15,2) NOT NULL,
+  `overtime_enabled` tinyint NOT NULL DEFAULT '0',
+  `overtime_rate` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `effective_from` date NOT NULL,
+  `effective_to` date DEFAULT NULL,
+  `created_by` int unsigned NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`salary_history_id`),
+  KEY `employee_salary_history_employee_id_foreign` (`employee_id`),
+  KEY `employee_salary_history_created_by_foreign` (`created_by`),
+  CONSTRAINT `employee_salary_history_created_by_foreign` FOREIGN KEY (`created_by`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `employee_salary_history_employee_id_foreign` FOREIGN KEY (`employee_id`) REFERENCES `core_users` (`user_id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `feedback_attachments` (
+  `attachment_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `feedback_id` int unsigned NOT NULL,
+  `file_key` varchar(255) NOT NULL,
+  `file_name` varchar(255) DEFAULT NULL,
+  `file_type` varchar(255) DEFAULT NULL,
+  `file_size` int DEFAULT NULL,
+  PRIMARY KEY (`attachment_id`),
+  KEY `idx_feedback_attachments_feedback_id` (`feedback_id`),
+  CONSTRAINT `fk_feedback_attachments_feedback` FOREIGN KEY (`feedback_id`) REFERENCES `feedback_tickets` (`feedback_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `feedback_tickets` (
+  `feedback_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `type` enum('BUG','FEEDBACK','OTHER') DEFAULT 'FEEDBACK',
+  `title` varchar(255) NOT NULL,
+  `description` text,
+  `status` enum('OPEN','IN_PROGRESS','RESOLVED','CLOSED') DEFAULT 'OPEN',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`feedback_id`),
+  KEY `idx_feedback_tickets_user_id` (`user_id`),
+  CONSTRAINT `fk_feedback_tickets_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `labour_advances` (
+  `advance_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `labour_id` int unsigned NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `date` date NOT NULL,
+  `notes` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `site_id` int unsigned DEFAULT NULL,
+  `org_id` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`advance_id`),
+  KEY `labour_advances_labour_id_foreign` (`labour_id`),
+  KEY `idx_labour_advances_org_id` (`org_id`),
+  CONSTRAINT `labour_advances_labour_id_foreign` FOREIGN KEY (`labour_id`) REFERENCES `labours` (`labour_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `labour_attendance` (
+  `attendance_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `labour_id` int unsigned NOT NULL,
+  `site_id` int unsigned DEFAULT NULL,
+  `date` date NOT NULL,
+  `status` varchar(50) DEFAULT 'Present',
+  `marked_by` int unsigned DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `overtime_hours` decimal(4,2) DEFAULT '0.00',
+  `working_hours` decimal(4,2) DEFAULT '8.00',
+  `org_id` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`attendance_id`),
+  UNIQUE KEY `labour_attendance_labour_id_site_id_date_unique` (`labour_id`,`site_id`,`date`),
+  KEY `labour_attendance_site_id_foreign` (`site_id`),
+  KEY `idx_labour_attendance_org_id` (`org_id`),
+  CONSTRAINT `labour_attendance_labour_id_foreign` FOREIGN KEY (`labour_id`) REFERENCES `labours` (`labour_id`) ON DELETE CASCADE,
+  CONSTRAINT `labour_attendance_site_id_foreign` FOREIGN KEY (`site_id`) REFERENCES `labour_sites` (`site_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `labour_daily_schedule` (
+  `schedule_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `labour_id` int NOT NULL,
+  `site_id` int NOT NULL,
+  `date` date NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `org_id` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`schedule_id`),
+  UNIQUE KEY `labour_daily_schedule_labour_id_site_id_date_unique` (`labour_id`,`site_id`,`date`),
+  KEY `idx_labour_daily_schedule_org_id` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `labour_monthly_payouts` (
+  `payout_id` int NOT NULL AUTO_INCREMENT,
+  `labour_id` int unsigned NOT NULL,
+  `month` varchar(7) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `wage_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `monthly_salary` decimal(10,2) NOT NULL,
+  `present_days` int DEFAULT '0',
+  `half_days` int DEFAULT '0',
+  `absent_days` int DEFAULT '0',
+  `paid_leaves` int DEFAULT '0',
+  `accrued_credit` decimal(10,2) NOT NULL,
+  `advances_taken` decimal(10,2) NOT NULL,
+  `net_payable` decimal(10,2) NOT NULL,
+  `paid_amount` decimal(10,2) NOT NULL,
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'Paid',
+  `payment_date` date NOT NULL,
+  `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `site_id` int unsigned DEFAULT NULL,
+  `org_id` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`payout_id`),
+  UNIQUE KEY `unique_labour_month` (`labour_id`,`month`),
+  KEY `idx_labour_monthly_payouts_org_id` (`org_id`),
+  CONSTRAINT `labour_monthly_payouts_ibfk_1` FOREIGN KEY (`labour_id`) REFERENCES `labours` (`labour_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `labour_site_relations` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `labour_id` int unsigned NOT NULL,
+  `site_id` int unsigned NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `org_id` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_labour_site_unique` (`labour_id`,`site_id`),
+  KEY `labour_site_relations_site_id_foreign` (`site_id`),
+  KEY `idx_labour_site_relations_org_id` (`org_id`),
+  CONSTRAINT `labour_site_relations_labour_id_foreign` FOREIGN KEY (`labour_id`) REFERENCES `labours` (`labour_id`) ON DELETE CASCADE,
+  CONSTRAINT `labour_site_relations_site_id_foreign` FOREIGN KEY (`site_id`) REFERENCES `labour_sites` (`site_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `labour_sites` (
+  `site_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `site_name` varchar(255) NOT NULL,
+  `location_details` varchar(255) DEFAULT NULL,
+  `status` enum('Active','Completed','Inactive') DEFAULT 'Active',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `end_date` date DEFAULT NULL,
+  `org_id` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`site_id`),
+  KEY `idx_labour_sites_org_id` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `labour_wage_history` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int NOT NULL,
+  `labour_id` int NOT NULL,
+  `effective_date` date NOT NULL,
+  `wage_type` varchar(30) DEFAULT 'Daily Wage',
+  `daily_wage` decimal(10,2) NOT NULL,
+  `overtime_pay_per_hour` decimal(10,2) DEFAULT '0.00',
+  `notes` varchar(255) DEFAULT NULL,
+  `created_by` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_labour_effective` (`labour_id`,`effective_date`),
+  KEY `idx_org` (`org_id`),
+  KEY `idx_labour` (`labour_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `labours` (
+  `labour_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `sex` varchar(20) DEFAULT NULL,
+  `role` varchar(100) NOT NULL,
+  `wage_type` enum('Daily Wage','Fixed Salary') DEFAULT 'Daily Wage',
+  `monthly_salary` decimal(10,2) NOT NULL,
+  `allowed_leaves` int unsigned DEFAULT '0',
+  `site_id` int unsigned DEFAULT NULL,
+  `status` enum('Active','Inactive') DEFAULT 'Active',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `overtime_pay_per_hour` decimal(10,2) DEFAULT '0.00',
+  `org_id` int NOT NULL DEFAULT '1',
+  PRIMARY KEY (`labour_id`),
+  UNIQUE KEY `idx_labours_phone_unique` (`phone`),
+  KEY `labours_site_id_foreign` (`site_id`),
+  KEY `idx_labours_org_id` (`org_id`),
+  CONSTRAINT `labours_site_id_foreign` FOREIGN KEY (`site_id`) REFERENCES `labour_sites` (`site_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `leave_attachments` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `leave_id` int unsigned NOT NULL,
+  `file_key` varchar(255) NOT NULL,
+  `file_type` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_leave_attachments_leave_id` (`leave_id`),
+  CONSTRAINT `fk_leave_attachments_leave_requests` FOREIGN KEY (`leave_id`) REFERENCES `leave_requests` (`lr_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `leave_balances` (
+  `lb_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `rule_id` int unsigned NOT NULL,
+  `year` year NOT NULL,
+  `allocated` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `used` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `carried_forward` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`lb_id`),
+  UNIQUE KEY `uq_user_rule_year` (`user_id`,`rule_id`,`year`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `leave_policies` (
+  `lp_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `description` text,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`lp_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `leave_policies_rules` (
+  `rule_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `lp_id` int unsigned NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `code` varchar(50) DEFAULT NULL,
+  `accural_type` enum('monthly','quarterly','yearly','one_time') NOT NULL,
+  `accural_amount` decimal(6,2) NOT NULL,
+  `max_balance` decimal(6,2) NOT NULL,
+  `carry_forward` tinyint(1) NOT NULL,
+  `carry_forward_max` decimal(6,2) NOT NULL,
+  `encashable` tinyint(1) NOT NULL,
+  `is_paid` tinyint(1) NOT NULL,
+  `requires_doc` tinyint(1) NOT NULL,
+  `is_active` tinyint(1) NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`rule_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `leave_request` (
+  `lr_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `rule_id` int unsigned NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `start_date` date NOT NULL,
+  `end_date` date NOT NULL,
+  `total_days` decimal(5,2) DEFAULT '0.00',
+  `status` enum('pending','approved','rejected','cancelled') DEFAULT 'pending',
+  `pay_percentage` float DEFAULT '100',
+  `pay_type` varchar(50) DEFAULT NULL,
+  `attachments` json DEFAULT NULL,
+  `applied_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `reviewed_by` int unsigned DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `admin_comment` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`lr_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `leave_requests` (
+  `lr_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `admin_comment` varchar(50) NOT NULL DEFAULT '0',
+  `leave_type` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `reason` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `start_date` date NOT NULL,
+  `end_date` date NOT NULL,
+  `status` enum('pending','approved','rejected','cancelled') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'pending',
+  `applied_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `reviewed_by` int unsigned DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `user_id` int unsigned NOT NULL,
+  `pay_percentage` float DEFAULT NULL,
+  `pay_type` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`lr_id`),
+  KEY `idx_leave_requests_user_id` (`user_id`),
+  KEY `idx_leave_requests_reviewed_by` (`reviewed_by`),
+  CONSTRAINT `fk_leave_requests_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `fk_leave_requests_users_reviewed_by` FOREIGN KEY (`reviewed_by`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `onboard_checklist_items` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `template_id` int unsigned NOT NULL,
+  `task_key` varchar(100) NOT NULL,
+  `task_label` varchar(255) NOT NULL,
+  `sort_order` int DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_onboard_checklist_items_template_id` (`template_id`),
+  CONSTRAINT `fk_onboard_checklist_items_onboarding_checklist_templates` FOREIGN KEY (`template_id`) REFERENCES `onboard_checklist_templates` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `onboard_checklist_progress` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` int NOT NULL,
+  `task_key` varchar(100) NOT NULL,
+  `is_completed` tinyint(1) DEFAULT '0',
+  `completed_at` timestamp NULL DEFAULT NULL,
+  `completed_by` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_onboard_checklist_progress_employee_id` (`employee_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `onboard_checklist_templates` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int NOT NULL,
+  `template_name` varchar(255) NOT NULL,
+  `description` text,
+  `created_by` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_onboard_checklist_templates_org_id` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `org_attendance_settings` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int NOT NULL,
+  `half_day_threshold_enabled` tinyint(1) NOT NULL DEFAULT '0',
+  `half_day_late_after_time` time DEFAULT NULL,
+  `half_day_early_before_time` time DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `org_attendance_settings_org_id_unique` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `org_departments` (
+  `dept_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `dept_name` varchar(100) NOT NULL,
+  `is_default` tinyint(1) DEFAULT '0',
+  PRIMARY KEY (`dept_id`),
+  KEY `idx_org_departments_org_id` (`org_id`),
+  CONSTRAINT `fk_org_departments_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `org_designations` (
+  `desg_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `desg_name` varchar(100) NOT NULL,
+  `is_default` tinyint(1) DEFAULT '0',
+  PRIMARY KEY (`desg_id`),
+  KEY `idx_org_designations_org_id` (`org_id`),
+  CONSTRAINT `fk_org_designations_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `org_holidays` (
+  `holiday_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `holiday_name` varchar(100) NOT NULL,
+  `holiday_date` date NOT NULL,
+  `holiday_type` varchar(50) DEFAULT 'Festival Holiday',
+  `applicable_json` json DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`holiday_id`),
+  KEY `idx_org_holidays_org_id` (`org_id`),
+  CONSTRAINT `fk_org_holidays_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `org_shifts` (
+  `shift_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `shift_name` varchar(100) NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `policy_rules` json DEFAULT NULL,
+  `processing_time` time DEFAULT '02:00:00',
+  `is_active` tinyint(1) DEFAULT '1',
+  `crosses_midnight` tinyint(1) DEFAULT '0',
+  PRIMARY KEY (`shift_id`),
+  KEY `idx_org_shifts_org_id` (`org_id`),
+  CONSTRAINT `fk_org_shifts_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `org_user_work_locations` (
+  `user_id` int unsigned NOT NULL,
+  `location_id` int unsigned NOT NULL,
+  PRIMARY KEY (`user_id`,`location_id`),
+  UNIQUE KEY `uq_org_user_work_locations_user_id_location_id` (`user_id`,`location_id`),
+  KEY `idx_org_user_work_locations_location_id` (`location_id`),
+  CONSTRAINT `fk_org_user_work_locations_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `fk_org_user_work_locations_work_locations` FOREIGN KEY (`location_id`) REFERENCES `org_work_locations` (`location_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `org_work_locations` (
+  `location_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `location_name` varchar(100) NOT NULL,
+  `address` varchar(255) DEFAULT '',
+  `latitude` decimal(10,8) NOT NULL,
+  `longitude` decimal(11,8) NOT NULL,
+  `radius` int unsigned DEFAULT '100',
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `timezone` varchar(255) DEFAULT 'UTC',
+  PRIMARY KEY (`location_id`),
+  KEY `idx_org_work_locations_org_id` (`org_id`),
+  CONSTRAINT `fk_org_work_locations_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_audit_logs` (
+  `log_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `action` varchar(50) NOT NULL,
+  `employee_id` int unsigned DEFAULT NULL,
+  `employee_name` varchar(255) DEFAULT NULL,
+  `month` varchar(50) DEFAULT NULL,
+  `performed_by` int unsigned NOT NULL,
+  `performed_by_name` varchar(255) DEFAULT NULL,
+  `details` text,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`log_id`),
+  KEY `performed_by` (`performed_by`),
+  KEY `emp_id_pr` (`employee_id`),
+  CONSTRAINT `emp_id_pr` FOREIGN KEY (`employee_id`) REFERENCES `core_users` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `performed_by` FOREIGN KEY (`performed_by`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_entries` (
+  `entry_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `run_id` int unsigned NOT NULL,
+  `employee_id` int unsigned NOT NULL,
+  `gross_salary` decimal(15,2) NOT NULL,
+  `present_days` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `half_days` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `absent_days` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `paid_leave_days` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `holiday_days` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `weekly_off_days` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `overtime_hours` decimal(8,2) NOT NULL DEFAULT '0.00',
+  `overtime_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `lop_days` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `lop_deduction` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `net_salary` decimal(15,2) NOT NULL,
+  `salary_snapshot_json` json NOT NULL,
+  `attendance_snapshot_json` json NOT NULL,
+  `calculation_snapshot_json` json NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `status` enum('Draft','Finalized','Paid') NOT NULL DEFAULT 'Draft',
+  `adjustments_json` json DEFAULT NULL,
+  PRIMARY KEY (`entry_id`),
+  UNIQUE KEY `idx_run_employee` (`run_id`,`employee_id`),
+  KEY `payroll_entries_employee_id_foreign` (`employee_id`),
+  CONSTRAINT `payroll_entries_employee_id_foreign` FOREIGN KEY (`employee_id`) REFERENCES `core_users` (`user_id`) ON DELETE RESTRICT,
+  CONSTRAINT `payroll_entries_run_id_foreign` FOREIGN KEY (`run_id`) REFERENCES `payroll_runs` (`run_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_package_groups` (
+  `package_group_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `package_name` varchar(100) NOT NULL,
+  `is_active` tinyint NOT NULL DEFAULT '1',
+  `is_deleted` tinyint NOT NULL DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`package_group_id`),
+  KEY `payroll_package_groups_org_id_index` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_packages` (
+  `package_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `package_group_id` int unsigned NOT NULL,
+  `gross_salary` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `overtime_enabled` tinyint NOT NULL DEFAULT '0',
+  `overtime_rate` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `effective_from` date NOT NULL,
+  `effective_to` date DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`package_id`),
+  KEY `payroll_packages_package_group_id_index` (`package_group_id`),
+  CONSTRAINT `payroll_packages_package_group_id_foreign` FOREIGN KEY (`package_group_id`) REFERENCES `payroll_package_groups` (`package_group_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_runs` (
+  `run_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `year` smallint unsigned NOT NULL,
+  `month` tinyint unsigned NOT NULL,
+  `status` enum('Live','Finalized','Paid') NOT NULL DEFAULT 'Live',
+  `finalized_by` int unsigned DEFAULT NULL,
+  `finalized_at` timestamp NULL DEFAULT NULL,
+  `paid_by` int unsigned DEFAULT NULL,
+  `paid_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`run_id`),
+  UNIQUE KEY `idx_org_year_month` (`org_id`,`year`,`month`),
+  KEY `payroll_runs_finalized_by_foreign` (`finalized_by`),
+  KEY `payroll_runs_paid_by_foreign` (`paid_by`),
+  CONSTRAINT `payroll_runs_finalized_by_foreign` FOREIGN KEY (`finalized_by`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `payroll_runs_org_id_foreign` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`) ON DELETE CASCADE,
+  CONSTRAINT `payroll_runs_paid_by_foreign` FOREIGN KEY (`paid_by`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_salary_history` (
+  `salary_history_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` int unsigned NOT NULL,
+  `gross_monthly_salary` decimal(15,2) NOT NULL,
+  `overtime_enabled` tinyint NOT NULL DEFAULT '0',
+  `overtime_rate` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `effective_from` date NOT NULL,
+  `effective_to` date DEFAULT NULL,
+  `created_by` int unsigned NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `package_group_id` int unsigned DEFAULT NULL,
+  PRIMARY KEY (`salary_history_id`),
+  KEY `payroll_salary_history_employee_id_foreign` (`employee_id`),
+  KEY `payroll_salary_history_created_by_foreign` (`created_by`),
+  KEY `payroll_salary_history_package_group_id_foreign` (`package_group_id`),
+  CONSTRAINT `payroll_salary_history_created_by_foreign` FOREIGN KEY (`created_by`) REFERENCES `core_users` (`user_id`),
+  CONSTRAINT `payroll_salary_history_employee_id_foreign` FOREIGN KEY (`employee_id`) REFERENCES `core_users` (`user_id`) ON DELETE RESTRICT,
+  CONSTRAINT `payroll_salary_history_package_group_id_foreign` FOREIGN KEY (`package_group_id`) REFERENCES `payroll_package_groups` (`package_group_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `payroll_settings` (
+  `setting_id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `overtime_enabled` tinyint NOT NULL DEFAULT '0',
+  `overtime_requires_approval` tinyint NOT NULL DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `lop_calculation_method` enum('calendar_days','fixed_days','working_days') NOT NULL DEFAULT 'calendar_days',
+  `lop_fixed_days_value` int unsigned DEFAULT '30',
+  `lop_factor_present` decimal(4,2) NOT NULL DEFAULT '1.00',
+  `lop_factor_half_day` decimal(4,2) NOT NULL DEFAULT '0.50',
+  `lop_factor_absent` decimal(4,2) NOT NULL DEFAULT '0.00',
+  PRIMARY KEY (`setting_id`),
+  UNIQUE KEY `idx_org_settings` (`org_id`),
+  CONSTRAINT `payroll_settings_org_id_foreign` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `perf_cycles` (
+  `id` varchar(100) NOT NULL,
+  `org_id` int NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `type` varchar(50) NOT NULL,
+  `status` varchar(50) NOT NULL,
+  `target_group` varchar(50) NOT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_perf_cycles_org_id` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `perf_employee_goals` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` int NOT NULL,
+  `cycle_id` varchar(100) NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `deadline` date NOT NULL,
+  `status` varchar(50) DEFAULT 'Pending',
+  `rating` int DEFAULT '0',
+  `comments` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `employee_comments` text,
+  PRIMARY KEY (`id`),
+  KEY `idx_perf_employee_goals_cycle_id` (`cycle_id`),
+  KEY `idx_perf_employee_goals_employee_id_cycle_id` (`employee_id`,`cycle_id`),
+  CONSTRAINT `fk_perf_employee_goals_performance_cycles` FOREIGN KEY (`cycle_id`) REFERENCES `perf_cycles` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `perf_employee_reviews` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` int NOT NULL,
+  `cycle_id` varchar(100) NOT NULL,
+  `self_achievements` text,
+  `self_challenges` text,
+  `self_learning` text,
+  `manager_comments` text,
+  `manager_recommendation` varchar(255) DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `ai_analysis_report` text,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_perf_employee_reviews_employee_id_cycle_id` (`employee_id`,`cycle_id`),
+  KEY `idx_perf_employee_reviews_cycle_id` (`cycle_id`),
+  CONSTRAINT `fk_perf_employee_reviews_performance_cycles` FOREIGN KEY (`cycle_id`) REFERENCES `perf_cycles` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `recruit_candidates` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `job_id` int unsigned NOT NULL,
+  `template_id` varchar(100) DEFAULT NULL,
+  `template_source` enum('predefined','custom','scratch') DEFAULT NULL,
+  `stage` varchar(100) DEFAULT 'Applied',
+  `form_responses` longtext NOT NULL,
+  `ai_score` int DEFAULT '0',
+  `skill_match_score` int DEFAULT '0',
+  `experience_match_score` int DEFAULT '0',
+  `education_match_score` int DEFAULT '0',
+  `culture_fit_score` int DEFAULT '0',
+  `ai_strengths` text,
+  `ai_weaknesses` text,
+  `ai_recommendation` varchar(255) DEFAULT NULL,
+  `extracted_skills` text,
+  `total_experience` varchar(50) DEFAULT NULL,
+  `relevant_experience` varchar(50) DEFAULT NULL,
+  `education` varchar(255) DEFAULT NULL,
+  `certifications` text,
+  `projects` text,
+  `achievements` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `template_snapshot` longtext,
+  `stage_history` longtext,
+  `recruiter_notes` longtext,
+  `ai_match_metrics` longtext,
+  PRIMARY KEY (`id`),
+  KEY `idx_recruit_candidates_job_id` (`job_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `recruit_form_templates` (
+  `id` varchar(100) NOT NULL,
+  `org_id` int unsigned DEFAULT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text,
+  `fields` longtext NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_recruit_form_templates_org_id` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `recruit_openings` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned NOT NULL,
+  `job_title` varchar(255) NOT NULL,
+  `slug` varchar(255) NOT NULL,
+  `department` varchar(100) NOT NULL,
+  `location` varchar(255) NOT NULL,
+  `employment_type` varchar(50) DEFAULT 'Full-time',
+  `experience_required` varchar(100) DEFAULT NULL,
+  `salary_range` varchar(100) DEFAULT NULL,
+  `skills_required` text,
+  `responsibilities` text,
+  `benefits` text,
+  `deadline` date DEFAULT NULL,
+  `status` enum('active','inactive') DEFAULT 'active',
+  `form_config` longtext,
+  `template_id` varchar(100) DEFAULT NULL,
+  `template_source` enum('predefined','custom','scratch') DEFAULT 'scratch',
+  `created_by` int unsigned DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `attachment_name` varchar(255) DEFAULT NULL,
+  `attachment_url` text,
+  `other_details` text,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_recruit_openings_slug` (`slug`),
+  KEY `idx_recruit_openings_org_id` (`org_id`),
+  KEY `idx_recruit_openings_slug` (`slug`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `recruit_pipeline_stages` (
+  `id` varchar(100) NOT NULL,
+  `org_id` int unsigned NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `color` varchar(50) DEFAULT 'slate',
+  `sort_order` int DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`,`org_id`),
+  KEY `idx_recruit_pipeline_stages_org_id` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `sys_activity_logs` (
+  `activity_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `occurred_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `user_id` int unsigned DEFAULT NULL,
+  `org_id` int unsigned DEFAULT NULL,
+  `event_type` varchar(50) NOT NULL,
+  `event_source` varchar(50) DEFAULT NULL,
+  `object_type` varchar(50) DEFAULT NULL,
+  `object_id` varchar(100) DEFAULT NULL,
+  `request_ip` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
+  `location` varchar(255) DEFAULT NULL,
+  `description` varchar(500) DEFAULT NULL,
+  `metadata` json DEFAULT NULL,
+  PRIMARY KEY (`activity_id`),
+  KEY `idx_sys_activity_logs_occurred_at` (`occurred_at`),
+  KEY `idx_sys_activity_logs_user_id` (`user_id`),
+  KEY `idx_sys_activity_logs_org_id` (`org_id`),
+  KEY `idx_sys_activity_logs_event_type` (`event_type`),
+  KEY `idx_sys_activity_logs_object_type_object_id` (`object_type`,`object_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `sys_api_logs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `occurred_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `user_id` int unsigned DEFAULT NULL,
+  `org_id` int unsigned DEFAULT NULL,
+  `request_path` varchar(255) NOT NULL,
+  `route_pattern` varchar(255) DEFAULT NULL,
+  `method` varchar(10) NOT NULL,
+  `status_code` smallint NOT NULL,
+  `duration_ms` int NOT NULL,
+  `is_success` tinyint(1) NOT NULL,
+  `event_source` varchar(50) DEFAULT NULL,
+  `module_name` varchar(100) DEFAULT NULL,
+  `client_os` varchar(50) DEFAULT NULL,
+  `client_type` varchar(50) DEFAULT NULL,
+  `device_type` varchar(50) DEFAULT NULL,
+  `request_ip` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
+  `payload_details` json DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sys_api_logs_occurred_at` (`occurred_at`),
+  KEY `idx_sys_api_logs_org_id` (`org_id`),
+  KEY `idx_sys_api_logs_user_id` (`user_id`),
+  KEY `idx_sys_api_logs_status_code` (`status_code`),
+  KEY `idx_sys_api_logs_duration_ms` (`duration_ms`),
+  KEY `idx_sys_api_logs_route_pattern` (`route_pattern`),
+  KEY `idx_sys_api_logs_module_name` (`module_name`),
+  KEY `idx_sys_api_logs_client_type` (`client_type`),
+  KEY `idx_sys_api_logs_device_type` (`device_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `sys_error_logs` (
+  `error_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `occurred_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `level` enum('DEBUG','INFO','WARN','ERROR','FATAL') NOT NULL DEFAULT 'ERROR',
+  `service_name` varchar(100) DEFAULT NULL,
+  `environment` varchar(50) DEFAULT NULL,
+  `user_id` int unsigned DEFAULT NULL,
+  `org_id` int unsigned DEFAULT NULL,
+  `error_code` varchar(100) DEFAULT NULL,
+  `error_message` varchar(500) NOT NULL,
+  `stack_trace` text,
+  `request_method` varchar(10) DEFAULT NULL,
+  `request_path` varchar(255) DEFAULT NULL,
+  `request_id` varchar(100) DEFAULT NULL,
+  `client_ip` varchar(45) DEFAULT NULL,
+  `extra_context` json DEFAULT NULL,
+  PRIMARY KEY (`error_id`),
+  KEY `idx_sys_error_logs_occurred_at` (`occurred_at`),
+  KEY `idx_sys_error_logs_user_id` (`user_id`),
+  KEY `idx_sys_error_logs_org_id` (`org_id`),
+  KEY `idx_sys_error_logs_error_code` (`error_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `sys_generated_reports` (
+  `report_id` varchar(255) NOT NULL,
+  `user_id` int NOT NULL,
+  `org_id` int NOT NULL,
+  `report_type` varchar(100) NOT NULL,
+  `format` varchar(10) NOT NULL,
+  `status` enum('pending','processing','completed','failed') DEFAULT 'pending',
+  `file_url` text,
+  `error_message` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`report_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `sys_security_alerts` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `org_id` int unsigned DEFAULT NULL,
+  `user_id` int unsigned DEFAULT NULL,
+  `alert_type` varchar(255) NOT NULL,
+  `severity` enum('low','medium','high','critical') DEFAULT 'medium',
+  `description` text,
+  `ip_address` varchar(255) DEFAULT NULL,
+  `status` enum('open','investigating','resolved') DEFAULT 'open',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_sys_security_alerts_org_id` (`org_id`),
+  KEY `idx_sys_security_alerts_user_id` (`user_id`),
+  CONSTRAINT `fk_sys_security_alerts_organizations` FOREIGN KEY (`org_id`) REFERENCES `core_organizations` (`org_id`),
+  CONSTRAINT `fk_sys_security_alerts_users` FOREIGN KEY (`user_id`) REFERENCES `core_users` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+SET FOREIGN_KEY_CHECKS=1;
