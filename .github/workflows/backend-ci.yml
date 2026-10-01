@@ -16,10 +16,15 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
+  # deploy.yml runs these checks before every deploy to production
+  workflow_call:
 
 concurrency:
-  group: backend-ci-${{ github.ref }}
-  cancel-in-progress: true
+  # github.workflow is the caller's name when called from deploy.yml, so a
+  # deploy never waits for or cancels a branch run. Deploy checks are never
+  # cancelled.
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend:

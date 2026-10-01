@@ -1,5 +1,18 @@
 name: Deploy to EC2
 
+# On every push to main:
+#   1. Backend checks (backend-ci.yml: lint, unit tests, database tests) and the
+#      frontend build run first. If either fails, nothing reaches the server.
+#   2. The server is updated to exactly the tested commit, packages are
+#      installed from the lock file and pending database migrations are applied.
+#   3. The backend is reloaded and must answer GET /ready (started and connected
+#      to the database). Otherwise the previous commit is restored and the
+#      workflow fails, so the site keeps running the old version.
+#   4. Only then is the new frontend published.
+#
+# Migrations are not undone by the rollback: every migration must keep working
+# with the previous code (see backend/migrations).
+
 on:
   push:
     branches:
@@ -9,7 +22,15 @@ concurrency:
   group: deploy-mano-attendance
   cancel-in-progress: false
 
+env:
+  APP_DIR: /var/www/MANO-HRM-Web
+  PM2_APP: MANO-Attendance
+
 jobs:
+  backend-checks:
+    name: Backend checks
+    uses: ./.github/workflows/backend-ci.yml
+
   build-assets:
     name: Build & Verify (CI)
     runs-on: ubuntu-latest
@@ -61,7 +82,7 @@ jobs:
 
   deploy-to-ec2:
     name: Deploy via Self-Hosted Runner
-    needs: build-assets
+    needs: [backend-checks, build-assets]
     runs-on: [self-hosted, ec2-prod]
     if: github.ref == 'refs/heads/main'
 
@@ -77,34 +98,63 @@ jobs:
 
       - name: Sync Production Codebase
         run: |
-          echo "📥 Updating production repository codebase..."
-          cd /var/www/MANO-HRM-Web || exit
+          cd "$APP_DIR" || exit 1
+          # Remember the running version so a failed deploy can be undone
+          echo "PREV_SHA=$(sudo git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "📥 Updating production code to ${GITHUB_SHA}..."
           sudo git fetch origin main
-          sudo git reset --hard origin/main
+          # Exactly the commit that passed the checks, not whatever main is now
+          sudo git reset --hard "$GITHUB_SHA"
 
-      - name: Deploy Backend & Restart PM2
+      - name: Install Backend Packages
         run: |
-          echo "⚙ Setting up Backend in production directory..."
-          cd /var/www/MANO-HRM-Web/backend
-          sudo npm install --production --no-audit --no-fund
-          
-          # Restart backend process using PM2
-          if sudo pm2 describe "MANO-Attendance" > /dev/null 2>&1; then
+          cd "$APP_DIR/backend"
+          # npm ci installs exactly the versions in package-lock.json
+          sudo npm ci --omit=dev --no-audit --no-fund
+
+      - name: Apply Database Migrations
+        run: |
+          cd "$APP_DIR/backend"
+          # Uses the migration user from .env; does nothing when none are pending
+          sudo npm run migrate
+
+      - name: Reload Backend
+        run: |
+          cd "$APP_DIR/backend"
+          if sudo pm2 describe "$PM2_APP" > /dev/null 2>&1; then
             echo "🔄 Reloading backend with PM2..."
-            sudo pm2 reload "MANO-Attendance" --update-env
-          elif pm2 describe "MANO-Attendance" > /dev/null 2>&1; then
-            echo "🔄 Reloading backend with PM2..."
-            pm2 reload "MANO-Attendance" --update-env
+            sudo pm2 reload "$PM2_APP" --update-env
           else
-            echo "🚀 Starting new backend process under PM2..."
-            sudo pm2 start server.js --name "MANO-Attendance" --update-env
+            echo "🚀 Starting backend under PM2 (ecosystem.config.cjs)..."
+            sudo pm2 start ecosystem.config.cjs
+            sudo pm2 save
           fi
 
+      - name: Wait Until Backend Is Ready
+        run: |
+          cd "$APP_DIR/backend"
+          PORT=$(grep -E '^PORT=' .env | tail -1 | cut -d= -f2 | tr -d "\"' \r")
+          URL="http://127.0.0.1:${PORT:-5002}/ready"
+          for i in $(seq 1 30); do
+            if curl -fsS "$URL" > /dev/null; then
+              # Still up a few seconds later, i.e. not crashing right after start
+              sleep 10
+              if curl -fsS "$URL" > /dev/null; then
+                echo "✅ Backend is ready ($URL)"
+                exit 0
+              fi
+            fi
+            sleep 2
+          done
+          echo "❌ Backend did not become ready at $URL"
+          exit 1
+
       - name: Deploy Frontend to Nginx Target
+        id: frontend
         run: |
           echo "📁 Copying pre-built assets to production dist..."
-          sudo mkdir -p /var/www/MANO-HRM-Web/frontend/dist
-          sudo cp -r $GITHUB_WORKSPACE/frontend/dist/* /var/www/MANO-HRM-Web/frontend/dist/
+          sudo mkdir -p "$APP_DIR/frontend/dist"
+          sudo cp -r $GITHUB_WORKSPACE/frontend/dist/* "$APP_DIR/frontend/dist/"
 
           # Validate and reload Nginx
           if sudo nginx -t; then
@@ -115,3 +165,31 @@ jobs:
             exit 1
           fi
           echo "🎉 Deployment successfully completed!"
+
+      # Only when the backend failed: if just the frontend/nginx step failed,
+      # the new backend is already running fine.
+      - name: Roll Back to Previous Version
+        if: failure() && env.PREV_SHA != '' && steps.frontend.outcome == 'skipped'
+        run: |
+          echo "::group::Backend logs of the failed version"
+          sudo pm2 logs "$PM2_APP" --lines 100 --nostream || true
+          echo "::endgroup::"
+
+          echo "⏪ Restoring ${PREV_SHA}..."
+          cd "$APP_DIR" || exit 1
+          sudo git reset --hard "$PREV_SHA"
+          cd backend
+          sudo npm ci --omit=dev --no-audit --no-fund
+          sudo pm2 reload "$PM2_APP" --update-env
+
+          # /health, not /ready: versions before 2026-10 have no /ready
+          PORT=$(grep -E '^PORT=' .env | tail -1 | cut -d= -f2 | tr -d "\"' \r")
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${PORT:-5002}/health" > /dev/null; then
+              echo "::error::Deploy of ${GITHUB_SHA} failed and was rolled back to ${PREV_SHA}. Database migrations, if any ran, were kept."
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::Deploy of ${GITHUB_SHA} failed AND the rollback to ${PREV_SHA} is not answering /health. Check the server now: sudo pm2 logs $PM2_APP"
+          exit 1
