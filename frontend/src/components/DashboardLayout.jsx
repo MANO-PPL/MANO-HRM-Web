@@ -9,8 +9,10 @@ import {
     User,
     ChevronDown,
     Settings,
-    MessageSquare
+    MessageSquare,
+    Eye
 } from 'lucide-react';
+import ProfilePictureModal from './modals/ProfilePictureModal';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import NotificationSidebar from './NotificationSidebar';
@@ -24,6 +26,7 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hid
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [isAvatarPreviewOpen, setIsAvatarPreviewOpen] = useState(false);
     const { logout, user, avatarTimestamp } = useAuth();
 
     const { startGlobalTour, hasSeenPage, wasSkippedThisSession, tourEnabled, isActive } = useTour();
@@ -182,6 +185,19 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hid
                                             My Profile
                                         </Link>
 
+                                        {user?.profile_image_url && (
+                                            <button
+                                                onClick={() => {
+                                                    setIsProfileOpen(false);
+                                                    setIsAvatarPreviewOpen(true);
+                                                }}
+                                                className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-700 dark:text-github-dark-text hover:bg-slate-50 dark:hover:bg-github-dark-border transition-colors text-left cursor-pointer"
+                                            >
+                                                <Eye size={16} />
+                                                View Profile Photo
+                                            </button>
+                                        )}
+
                                         <div className="my-1 border-t border-slate-100 dark:border-github-dark-border"></div>
 
                                         <button
@@ -207,9 +223,19 @@ const DashboardLayout = ({ children, title = "Dashboard", noPadding = false, hid
                 </main>
             </div>
             <InternalChatbotWidget />
+
+            <ProfilePictureModal
+                isOpen={isAvatarPreviewOpen}
+                onClose={() => setIsAvatarPreviewOpen(false)}
+                imageUrl={user?.profile_image_url ? `${user.profile_image_url}?t=${avatarTimestamp}` : null}
+                name={user?.user_name || 'My Profile'}
+                role={user?.user_type || 'User'}
+                department={user?.dept_name}
+                email={user?.email}
+                phone={user?.phone_no}
+            />
         </div>
     );
 };
-
 
 export default DashboardLayout;

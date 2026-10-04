@@ -1,102 +1,118 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import "react-toastify/dist/ReactToastify.css";
 import { ToastContainer, Slide } from "react-toastify";
 
 import ErrorBoundary from "./ErrorBoundary";
 import ResponsiveRoute from "./components/ResponsiveRoute";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SocketProvider } from "./context/SocketContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import { TourProvider } from "./context/TourContext";
 import ProtectedRoute from "./context/protection";
 import PublicRoute from "./context/publicRoute";
-import Unauthorized from "./pages/Unauthorized";
 import TourOverlay from "./components/tour/TourOverlay.jsx";
 import TestRoute from "./context/TestRoute";
-import Login from "./pages/user-auth/Login";
-import ForgotPassword from "./pages/user-auth/ForgotPassword";
-import SuperAdminLogin from "./pages/user-auth/SuperAdminLogin";
-import Register from "./pages/user-auth/Register";
-import ChangePassword from "./pages/user-auth/ChangePassword";
-import WordCaptchaTest from "./pages/test/WordCaptchaTest"; // only for testing
+import LoadingScreen from "./components/LoadingScreen.jsx";
 
-import AdminDashboard from "./pages/dashboard/AdminDashboard"
-import Attendance from "./pages/attendance/Attendance"
-import EmployeeList from "./pages/employees/EmployeeList"
-import EmployeeForm from "./pages/employees/EmployeeForm"
-import BulkUpload from "./pages/employees/BulkUpload"
-import AttendanceMonitoring from "./pages/attendance-monitoring/AttendanceMonitoring"
-import Reports from "./pages/reports/Reports"
-import HolidayManagement from "./pages/holidays/HolidayManagement"
-import BulkHolidayImport from "./pages/holidays/BulkHolidayImport"
-import ShiftManagement from "./pages/shift-management/ShiftManagement"
-import GeoFencing from "./pages/geofencing/GeoFencing"
-import PolicyManagement from "./pages/policies/PolicyManagement"
-import LeaveManagement from "./pages/leaves/LeaveManagement"
-import Profile from "./pages/profile/Profile"
-import Subscription from "./pages/subscription/Subscription"
-import TestAPI from "./pages/test/TestAPI"
-import VisualScripting from "./pages/test/VisualScripting"
-import DailyActivity from "./pages/dar/DailyActivity"
-import DARAdmin from "./pages/dar/DARAdmin"
-import LeaveApplication from "./pages/holidays/LeaveApplication"
-import ChatPage from "./pages/collaboration/ChatPage";
-import LabourManagement from "./pages/labour/LabourManagement"
-import PayrollDashboard from "./pages/payroll/PayrollDashboard";
-import SalaryPackages from "./pages/payroll/SalaryPackages";
-import Documentation from "./pages/documentation/Documentation";
+// Lazy-loaded Public Auth Pages
+const Login = lazy(() => import("./pages/user-auth/Login"));
+const ForgotPassword = lazy(() => import("./pages/user-auth/ForgotPassword"));
+const SuperAdminLogin = lazy(() => import("./pages/user-auth/SuperAdminLogin"));
+const Register = lazy(() => import("./pages/user-auth/Register"));
+const ChangePassword = lazy(() => import("./pages/user-auth/ChangePassword"));
+const WordCaptchaTest = lazy(() => import("./pages/test/WordCaptchaTest"));
 
-// Organization Pages Imports
+// Lazy-loaded Core & Dashboard Pages
+const AdminDashboard = lazy(() => import("./pages/dashboard/AdminDashboard"));
+const Attendance = lazy(() => import("./pages/attendance/Attendance"));
+const EmployeeList = lazy(() => import("./pages/employees/EmployeeList"));
+const EmployeeForm = lazy(() => import("./pages/employees/EmployeeForm"));
+const BulkUpload = lazy(() => import("./pages/employees/BulkUpload"));
+const AttendanceMonitoring = lazy(() => import("./pages/attendance-monitoring/AttendanceMonitoring"));
+const Reports = lazy(() => import("./pages/reports/Reports"));
+const HolidayManagement = lazy(() => import("./pages/holidays/HolidayManagement"));
+const BulkHolidayImport = lazy(() => import("./pages/holidays/BulkHolidayImport"));
+const ShiftManagement = lazy(() => import("./pages/shift-management/ShiftManagement"));
+const GeoFencing = lazy(() => import("./pages/geofencing/GeoFencing"));
+const PolicyManagement = lazy(() => import("./pages/policies/PolicyManagement"));
+const LeaveManagement = lazy(() => import("./pages/leaves/LeaveManagement"));
+const Profile = lazy(() => import("./pages/profile/Profile"));
+const Subscription = lazy(() => import("./pages/subscription/Subscription"));
+const TestAPI = lazy(() => import("./pages/test/TestAPI"));
+const VisualScripting = lazy(() => import("./pages/test/VisualScripting"));
+const DailyActivity = lazy(() => import("./pages/dar/DailyActivity"));
+const DARAdmin = lazy(() => import("./pages/dar/DARAdmin"));
+const LeaveApplication = lazy(() => import("./pages/holidays/LeaveApplication"));
+const ChatPage = lazy(() => import("./pages/collaboration/ChatPage"));
+const LabourManagement = lazy(() => import("./pages/labour/LabourManagement"));
+const PayrollDashboard = lazy(() => import("./pages/payroll/PayrollDashboard"));
+const SalaryPackages = lazy(() => import("./pages/payroll/SalaryPackages"));
+const Documentation = lazy(() => import("./pages/documentation/Documentation"));
+const Payroll = lazy(() => import("./pages/payroll/Payroll"));
+const SuperAdminDashboard = lazy(() => import("./pages/dashboard/SuperAdminDashboard"));
+const EmployeeDashboard = lazy(() => import("./pages/dashboard/EmployeeDashboard"));
+const Unauthorized = lazy(() => import("./pages/Unauthorized"));
 
-import OrganizationList from "./pages/organizations/OrganizationList"
-import SecurityAlerts from "./pages/super-admin/SecurityAlerts"
-import UserFeedback from "./pages/super-admin/UserFeedback"
-import PM2LogsConsole from "./pages/super-admin/PM2LogsConsole"
-import APIAnalytics from "./pages/super-admin/APIAnalytics"
-import DebugConsole from "./pages/super-admin/DebugConsole"
-import SessionManagement from "./pages/super-admin/SessionManagement"
+// Lazy-loaded Super Admin & Org Pages
+const OrganizationList = lazy(() => import("./pages/organizations/OrganizationList"));
+const SecurityAlerts = lazy(() => import("./pages/super-admin/SecurityAlerts"));
+const UserFeedback = lazy(() => import("./pages/super-admin/UserFeedback"));
+const PM2LogsConsole = lazy(() => import("./pages/super-admin/PM2LogsConsole"));
+const APIAnalytics = lazy(() => import("./pages/super-admin/APIAnalytics"));
+const DebugConsole = lazy(() => import("./pages/super-admin/DebugConsole"));
+const SessionManagement = lazy(() => import("./pages/super-admin/SessionManagement"));
 
-// Mobile View Imports
+// Lazy-loaded Mobile View Pages
+const MobileLogin = lazy(() => import("./pages/user-auth/Login-mv"));
+const MobileForgotPassword = lazy(() => import("./pages/user-auth/ForgotPassword-mv"));
+const SuperAdminLoginMobile = lazy(() => import("./pages/user-auth/SuperAdminLogin-mv"));
+const MobileRegister = lazy(() => import("./pages/user-auth/Register-mv"));
+const MobileAdminDashboard = lazy(() => import("./pages/dashboard/AdminDashboard-mv"));
+const MobileEmployeeDashboard = lazy(() => import("./pages/dashboard/EmployeeDashboard-mv"));
+const MobileAttendance = lazy(() => import("./pages/attendance/MobileAttendancePage"));
+const MobileEmployeeList = lazy(() => import("./pages/employees/EmployeeList-mv"));
+const MobileEmployeeForm = lazy(() => import("./pages/employees/EmployeeForm-mv"));
+const MobileHolidayManagement = lazy(() => import("./pages/holidays/HolidayManagement-mv"));
+const MobileLeaveApplication = lazy(() => import("./pages/holidays/LeaveApplication-mv"));
+const MobileProfile = lazy(() => import("./pages/profile/Profile-mv"));
+const MobileAttendanceMonitoring = lazy(() => import("./pages/attendance-monitoring/AttendanceMonitoring-mv"));
+const MobileShiftManagement = lazy(() => import("./pages/shift-management/ShiftManagement-mv"));
+const MobileGeoFencing = lazy(() => import("./pages/geofencing/GeoFencing-mv"));
+const MobilePolicyManagement = lazy(() => import("./pages/policies/PolicyManagement-mv"));
+const MobileLeaveManagement = lazy(() => import("./pages/leaves/LeaveManagement-mv"));
+const MobileReports = lazy(() => import("./pages/reports/Reports-mv"));
+const MobileNotifications = lazy(() => import("./pages/notifications/Notifications-mv"));
+const MobileFeedback = lazy(() => import("./pages/feedback/Feedback-mv"));
+const DailyActivityMobile = lazy(() => import("./pages/dar/DailyActivity-mv"));
+const DARAdminMobile = lazy(() => import("./pages/dar/DARAdmin-mv"));
+const MobileBulkHolidayImport = lazy(() => import("./pages/holidays/BulkHolidayImport-mv"));
+const MobileBulkUpload = lazy(() => import("./pages/employees/BulkUpload-mv"));
+const MobilePayroll = lazy(() => import("./pages/payroll/Payroll-mv"));
+const SuperAdminDashboardMobile = lazy(() => import("./pages/dashboard/SuperAdminDashboard-mv"));
+const OrganizationListMobile = lazy(() => import("./pages/organizations/OrganizationList-mv"));
+const SecurityAlertsMobile = lazy(() => import("./pages/super-admin/SecurityAlerts-mv"));
+const UserFeedbackMobile = lazy(() => import("./pages/super-admin/UserFeedback-mv"));
+const SessionManagementMobile = lazy(() => import("./pages/super-admin/SessionManagement-mv"));
+const MobileChatPage = lazy(() => import("./pages/collaboration/ChatPage-mv"));
+const MobileLabourManagement = lazy(() => import("./pages/labour/MobileLabourManagement"));
 
-import MobileLogin from "./pages/user-auth/Login-mv";
-import MobileForgotPassword from "./pages/user-auth/ForgotPassword-mv";
-import SuperAdminLoginMobile from "./pages/user-auth/SuperAdminLogin-mv";
-import MobileRegister from "./pages/user-auth/Register-mv";
-import MobileAdminDashboard from "./pages/dashboard/AdminDashboard-mv";
-import MobileEmployeeDashboard from "./pages/dashboard/EmployeeDashboard-mv";
-import MobileAttendance from "./pages/attendance/MobileAttendancePage";
-import MobileEmployeeList from "./pages/employees/EmployeeList-mv";
-import MobileEmployeeForm from "./pages/employees/EmployeeForm-mv";
-import MobileHolidayManagement from "./pages/holidays/HolidayManagement-mv";
-import MobileLeaveApplication from "./pages/holidays/LeaveApplication-mv";
-import MobileProfile from "./pages/profile/Profile-mv";
-import MobileAttendanceMonitoring from "./pages/attendance-monitoring/AttendanceMonitoring-mv";
-import MobileShiftManagement from "./pages/shift-management/ShiftManagement-mv";
-import MobileGeoFencing from "./pages/geofencing/GeoFencing-mv";
-import MobilePolicyManagement from "./pages/policies/PolicyManagement-mv";
-import MobileLeaveManagement from "./pages/leaves/LeaveManagement-mv";
-import MobileReports from "./pages/reports/Reports-mv";
-import MobileNotifications from "./pages/notifications/Notifications-mv";
-import MobileFeedback from "./pages/feedback/Feedback-mv";
-import DailyActivityMobile from "./pages/dar/DailyActivity-mv";
-import DARAdminMobile from "./pages/dar/DARAdmin-mv";
-import MobileBulkHolidayImport from "./pages/holidays/BulkHolidayImport-mv";
-import MobileBulkUpload from "./pages/employees/BulkUpload-mv";
-import Payroll from "./pages/payroll/Payroll";
-import MobilePayroll from "./pages/payroll/Payroll-mv";
-import SuperAdminDashboardMobile from "./pages/dashboard/SuperAdminDashboard-mv";
-import OrganizationListMobile from "./pages/organizations/OrganizationList-mv";
-import SecurityAlertsMobile from "./pages/super-admin/SecurityAlerts-mv";
-import UserFeedbackMobile from "./pages/super-admin/UserFeedback-mv";
-import SessionManagementMobile from "./pages/super-admin/SessionManagement-mv";
-import MobileChatPage from "./pages/collaboration/ChatPage-mv";
-import MobileLabourManagement from "./pages/labour/MobileLabourManagement";
-
-
-import SuperAdminDashboard from "./pages/dashboard/SuperAdminDashboard";
-import EmployeeDashboard from "./pages/dashboard/EmployeeDashboard";
-import { useAuth } from "./context/AuthContext";
+// Idle prefetch of public auth routes for instantaneous navigation from showcase
+if (typeof window !== "undefined") {
+  const idlePreload = () => {
+    try {
+      import("./pages/user-auth/Login");
+      import("./pages/user-auth/Register");
+      import("./pages/user-auth/Login-mv");
+      import("./pages/user-auth/Register-mv");
+    } catch {}
+  };
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(idlePreload, { timeout: 2500 });
+  } else {
+    setTimeout(idlePreload, 1500);
+  }
+}
 import ShowcaseNavbar from "./showcase/components/Navbar";
 import ShowcaseFooter from "./showcase/components/Footer";
 import ShowcaseMobileNavbar from "./showcase/components/MobileNavbar";
@@ -202,14 +218,16 @@ const DashboardHandler = () => {
   return <ResponsiveRoute DesktopComponent={AdminDashboard} MobileComponent={MobileAdminDashboard} />;
 };
 
-function ShowcaseScrollToTop() {
-  const { pathname, hash } = useLocation();
+function GlobalScrollToTop() {
+  const { pathname, search, hash } = useLocation();
 
   useEffect(() => {
     if (!hash) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      document.documentElement.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      document.body.scrollTo({ top: 0, left: 0, behavior: "instant" });
     }
-  }, [pathname]);
+  }, [pathname, search]);
 
   return null;
 }
@@ -243,7 +261,6 @@ const ShowcaseShell = ({ children }) => {
 
   return (
     <div className={`showcase-root site-bg ${theme}-mode`}>
-      <ShowcaseScrollToTop />
       <NavComp theme={theme} toggleTheme={toggleTheme} />
       <main>{children}</main>
       <WebsiteChatbotWidget theme={theme} />
@@ -293,90 +310,93 @@ function App() {
     <AuthProvider>
       <SocketProvider>
         <NotificationProvider>
+          <GlobalScrollToTop />
           <SeoManager />
           <ScaleManager />
           <ToastContainer enableMultiContainer containerId="defaultContainer" position="bottom-center" autoClose={3000} limit={1} hideProgressBar={true} pauseOnHover={false} pauseOnFocusLoss={false} closeOnClick={true} />
           <ToastContainer enableMultiContainer containerId="macOSNotifications" position="top-right" autoClose={3000} limit={3} hideProgressBar={true} closeButton={false} newestOnTop={true} transition={Slide} />
           <TourProvider>
             <TourOverlay />
-            <Routes>
+            <Suspense fallback={<LoadingScreen message="Loading..." />}>
+              <Routes>
 
-              {/* Website Landing (shown first when not logged in) */}
-              <Route path="/" element={<RootHandler />} />
-              <Route path="/get-started" element={<Navigate to="/signup" replace />} />
+                {/* Website Landing (shown first when not logged in) */}
+                <Route path="/" element={<RootHandler />} />
+                <Route path="/get-started" element={<Navigate to="/signup" replace />} />
 
-              {/* Public Route: Login & Onboarding */}
-              <Route element={<PublicRoute />}>
-                <Route path="/login" element={<ResponsiveRoute DesktopComponent={Login} MobileComponent={MobileLogin} />} />
-                <Route path="/signup" element={<ResponsiveRoute DesktopComponent={Register} MobileComponent={MobileRegister} />} />
-                <Route path="/org-login" element={<ResponsiveRoute DesktopComponent={SuperAdminLogin} MobileComponent={SuperAdminLoginMobile} />} />
-                <Route path="/forgot-password" element={<ResponsiveRoute DesktopComponent={ForgotPassword} MobileComponent={MobileForgotPassword} />} />
-              </Route>
-
-              {/* Test Routes - Only available in Development */}
-              <Route element={<TestRoute />}>
-                <Route path="/word-captcha-test" element={<WordCaptchaTest />} />
-                <Route path="/test-api" element={<TestAPI />} />
-                <Route path="/visual-scripting" element={<VisualScripting />} />
-              </Route>
-
-              <Route element={<ProtectedRoute />}>
-                <Route path="/unauthorized" element={<Unauthorized />} />
-                <Route path="/change-password" element={<ChangePassword />} />
-                {/* Common Routes (Accessible by all authenticated users: Admin, HR, Employee) */}
-                <Route element={<ProtectedRoute allowedRoles={['admin', 'hr', 'employee', 'super_admin']} />}>
-                  <Route path="/dashboard" element={<DashboardHandler />} />
-                  <Route path="/attendance" element={<ResponsiveRoute DesktopComponent={Attendance} MobileComponent={MobileAttendance} />} />
-                  <Route path="/holidays" element={<ResponsiveRoute DesktopComponent={HolidayManagement} MobileComponent={MobileHolidayManagement} />} />
-                  <Route path="/profile" element={<ResponsiveRoute DesktopComponent={Profile} MobileComponent={MobileProfile} />} />
-                  <Route path="/daily-activity" element={<ResponsiveRoute DesktopComponent={DailyActivity} MobileComponent={DailyActivityMobile} />} />
-                  <Route path="/apply-leave" element={<Navigate to="/holidays?tab=leaves&apply=true" replace />} />
-                  <Route path="/collaboration" element={<ResponsiveRoute DesktopComponent={ChatPage} MobileComponent={MobileChatPage} />} />
-                  <Route path="/documentation" element={<Documentation />} />
-                  <Route path="/reports" element={<ResponsiveRoute DesktopComponent={Reports} MobileComponent={MobileReports} />} />
-
-                  {/* Mobile-Only Pages fallback */}
-                  <Route path="/notifications" element={<MobileNotifications />} />
-                  <Route path="/feedback" element={<MobileFeedback />} />
+                {/* Public Route: Login & Onboarding */}
+                <Route element={<PublicRoute />}>
+                  <Route path="/login" element={<ResponsiveRoute DesktopComponent={Login} MobileComponent={MobileLogin} />} />
+                  <Route path="/signup" element={<ResponsiveRoute DesktopComponent={Register} MobileComponent={MobileRegister} />} />
+                  <Route path="/org-login" element={<ResponsiveRoute DesktopComponent={SuperAdminLogin} MobileComponent={SuperAdminLoginMobile} />} />
+                  <Route path="/forgot-password" element={<ResponsiveRoute DesktopComponent={ForgotPassword} MobileComponent={MobileForgotPassword} />} />
                 </Route>
 
-                {/* Admin & HR Only Routes */}
-                <Route element={<ProtectedRoute allowedRoles={['admin', 'hr']} />}>
-                  <Route path="/attendance-monitoring" element={<ResponsiveRoute DesktopComponent={AttendanceMonitoring} MobileComponent={MobileAttendanceMonitoring} />} />
-                  <Route path="/payroll" element={<ResponsiveRoute DesktopComponent={Payroll} MobileComponent={MobilePayroll} />} />
-                  <Route path="/policies" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
-                  <Route path="/leave-management" element={<Navigate to="/holidays?tab=leaves" replace />} />
-                  <Route path="/shift-management" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
-                  <Route path="/geofencing" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
-                  <Route path="/employees" element={<ResponsiveRoute DesktopComponent={EmployeeList} MobileComponent={MobileEmployeeList} />} />
-                  <Route path="/employees/add" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
-                  <Route path="/employees/edit/:id" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
-                  <Route path="/employees/bulk" element={<ResponsiveRoute DesktopComponent={BulkUpload} MobileComponent={MobileBulkUpload} />} />
-                  <Route path="/holidays/bulk" element={<ResponsiveRoute DesktopComponent={BulkHolidayImport} MobileComponent={MobileBulkHolidayImport} />} />
-                  <Route path="/dar-admin" element={<ResponsiveRoute DesktopComponent={DARAdmin} MobileComponent={DARAdminMobile} />} />
-                  <Route path="/labour-management" element={<ResponsiveRoute DesktopComponent={LabourManagement} MobileComponent={MobileLabourManagement} />} />
-                  <Route path="/payroll-dashboard" element={<ResponsiveRoute DesktopComponent={PayrollDashboard} MobileComponent={MobilePayroll} />} />
-                  <Route path="/payroll-packages" element={<Navigate to="/policies?tab=salary_packages" replace />} />
+                {/* Test Routes - Only available in Development */}
+                <Route element={<TestRoute />}>
+                  <Route path="/word-captcha-test" element={<WordCaptchaTest />} />
+                  <Route path="/test-api" element={<TestAPI />} />
+                  <Route path="/visual-scripting" element={<VisualScripting />} />
                 </Route>
 
-                {/* Admin Only Routes */}
-                <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-                  <Route path="/subscription" element={<Subscription />} />
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/unauthorized" element={<Unauthorized />} />
+                  <Route path="/change-password" element={<ChangePassword />} />
+                  {/* Common Routes (Accessible by all authenticated users: Admin, HR, Employee) */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'hr', 'employee', 'super_admin']} />}>
+                    <Route path="/dashboard" element={<DashboardHandler />} />
+                    <Route path="/attendance" element={<ResponsiveRoute DesktopComponent={Attendance} MobileComponent={MobileAttendance} />} />
+                    <Route path="/holidays" element={<ResponsiveRoute DesktopComponent={HolidayManagement} MobileComponent={MobileHolidayManagement} />} />
+                    <Route path="/profile" element={<ResponsiveRoute DesktopComponent={Profile} MobileComponent={MobileProfile} />} />
+                    <Route path="/daily-activity" element={<ResponsiveRoute DesktopComponent={DailyActivity} MobileComponent={DailyActivityMobile} />} />
+                    <Route path="/apply-leave" element={<Navigate to="/holidays?tab=leaves&apply=true" replace />} />
+                    <Route path="/collaboration" element={<ResponsiveRoute DesktopComponent={ChatPage} MobileComponent={MobileChatPage} />} />
+                    <Route path="/documentation" element={<Documentation />} />
+                    <Route path="/reports" element={<ResponsiveRoute DesktopComponent={Reports} MobileComponent={MobileReports} />} />
+
+                    {/* Mobile-Only Pages fallback */}
+                    <Route path="/notifications" element={<MobileNotifications />} />
+                    <Route path="/feedback" element={<MobileFeedback />} />
+                  </Route>
+
+                  {/* Admin & HR Only Routes */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'hr']} />}>
+                    <Route path="/attendance-monitoring" element={<ResponsiveRoute DesktopComponent={AttendanceMonitoring} MobileComponent={MobileAttendanceMonitoring} />} />
+                    <Route path="/payroll" element={<ResponsiveRoute DesktopComponent={Payroll} MobileComponent={MobilePayroll} />} />
+                    <Route path="/policies" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
+                    <Route path="/leave-management" element={<Navigate to="/holidays?tab=leaves" replace />} />
+                    <Route path="/shift-management" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
+                    <Route path="/geofencing" element={<ResponsiveRoute DesktopComponent={PolicyManagement} MobileComponent={MobilePolicyManagement} />} />
+                    <Route path="/employees" element={<ResponsiveRoute DesktopComponent={EmployeeList} MobileComponent={MobileEmployeeList} />} />
+                    <Route path="/employees/add" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
+                    <Route path="/employees/edit/:id" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
+                    <Route path="/employees/bulk" element={<ResponsiveRoute DesktopComponent={BulkUpload} MobileComponent={MobileBulkUpload} />} />
+                    <Route path="/holidays/bulk" element={<ResponsiveRoute DesktopComponent={BulkHolidayImport} MobileComponent={MobileBulkHolidayImport} />} />
+                    <Route path="/dar-admin" element={<ResponsiveRoute DesktopComponent={DARAdmin} MobileComponent={DARAdminMobile} />} />
+                    <Route path="/labour-management" element={<ResponsiveRoute DesktopComponent={LabourManagement} MobileComponent={MobileLabourManagement} />} />
+                    <Route path="/payroll-dashboard" element={<ResponsiveRoute DesktopComponent={PayrollDashboard} MobileComponent={MobilePayroll} />} />
+                    <Route path="/payroll-packages" element={<Navigate to="/policies?tab=salary_packages" replace />} />
+                  </Route>
+
+                  {/* Admin Only Routes */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                    <Route path="/subscription" element={<Subscription />} />
+                  </Route>
+
+                  {/* Super Admin Only Routes */}
+                  <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
+                    <Route path="/organizations" element={<ResponsiveRoute DesktopComponent={OrganizationList} MobileComponent={OrganizationListMobile} />} />
+                    <Route path="/super-admin/alerts" element={<ResponsiveRoute DesktopComponent={SecurityAlerts} MobileComponent={SecurityAlertsMobile} />} />
+                    <Route path="/super-admin/feedback" element={<ResponsiveRoute DesktopComponent={UserFeedback} MobileComponent={UserFeedbackMobile} />} />
+                    <Route path="/super-admin/logs" element={<ResponsiveRoute DesktopComponent={PM2LogsConsole} MobileComponent={PM2LogsConsole} />} />
+                    <Route path="/super-admin/api-analytics" element={<ResponsiveRoute DesktopComponent={APIAnalytics} MobileComponent={APIAnalytics} />} />
+                    <Route path="/super-admin/debug" element={<ResponsiveRoute DesktopComponent={DebugConsole} MobileComponent={DebugConsole} />} />
+                    <Route path="/super-admin/sessions" element={<ResponsiveRoute DesktopComponent={SessionManagement} MobileComponent={SessionManagementMobile} />} />
+                  </Route>
                 </Route>
 
-                {/* Super Admin Only Routes */}
-                <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
-                  <Route path="/organizations" element={<ResponsiveRoute DesktopComponent={OrganizationList} MobileComponent={OrganizationListMobile} />} />
-                  <Route path="/super-admin/alerts" element={<ResponsiveRoute DesktopComponent={SecurityAlerts} MobileComponent={SecurityAlertsMobile} />} />
-                  <Route path="/super-admin/feedback" element={<ResponsiveRoute DesktopComponent={UserFeedback} MobileComponent={UserFeedbackMobile} />} />
-                  <Route path="/super-admin/logs" element={<ResponsiveRoute DesktopComponent={PM2LogsConsole} MobileComponent={PM2LogsConsole} />} />
-                  <Route path="/super-admin/api-analytics" element={<ResponsiveRoute DesktopComponent={APIAnalytics} MobileComponent={APIAnalytics} />} />
-                  <Route path="/super-admin/debug" element={<ResponsiveRoute DesktopComponent={DebugConsole} MobileComponent={DebugConsole} />} />
-                  <Route path="/super-admin/sessions" element={<ResponsiveRoute DesktopComponent={SessionManagement} MobileComponent={SessionManagementMobile} />} />
-                </Route>
-              </Route>
-
-            </Routes>
+              </Routes>
+            </Suspense>
           </TourProvider>
         </NotificationProvider>
       </SocketProvider>
