@@ -90,7 +90,10 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                         className="relative w-full max-w-2xl h-full bg-white dark:bg-[#0d1117] shadow-2xl flex flex-col border-l border-slate-200 dark:border-[#30363d]"
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40">
+                        <div 
+                            className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-[#30363d] bg-slate-50/30 dark:bg-[#010409]/40"
+                            style={{ paddingTop: 'calc(1.25rem + env(safe-area-inset-top, 0px))' }}
+                        >
                             <div>
                                 <h2 className="text-xl font-black text-slate-800 dark:text-[#f0f6fc] flex items-center gap-2 tracking-tight uppercase">
                                     {type === 'BUG' ? <Bug className="text-red-500" size={22} /> : <MessageSquare className="text-indigo-500" size={22} />}
@@ -222,7 +225,10 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                         </div>
 
                         {/* Footer Actions */}
-                        <div className="px-8 py-8 border-t border-slate-100 dark:border-[#30363d] bg-slate-50/50 dark:bg-[#010409]/60 backdrop-blur-md">
+                        <div 
+                            className="px-8 py-8 border-t border-slate-100 dark:border-[#30363d] bg-slate-50/50 dark:bg-[#010409]/60 backdrop-blur-md"
+                            style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}
+                        >
                             <div className="flex gap-4">
                                 <button
                                     type="button"

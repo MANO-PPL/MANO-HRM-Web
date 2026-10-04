@@ -550,14 +550,18 @@ export default function InternalChatbotWidget() {
                                 position: 'fixed',
                                 top: 0,
                                 right: 0,
-                                height: '100vh',
+                                height: '100dvh',
+                                maxHeight: '100dvh',
                                 width: '100%',
                                 zIndex: 999999
                             }}
                             className="max-w-md bg-white dark:bg-dark-card shadow-2xl flex flex-col border-l border-slate-100 dark:border-github-dark-border"
                         >
                             {/* Drawer Header */}
-                            <div className="p-6 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between">
+                            <div 
+                                className="p-6 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between"
+                                style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}
+                            >
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg text-indigo-600 dark:text-indigo-400">
                                         <Sparkles size={20} className="animate-pulse" />
@@ -597,7 +601,7 @@ export default function InternalChatbotWidget() {
                                 ))}
                                 {loading && (
                                     <div className="flex justify-start">
-                                        <div className="max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm border bg-slate-100 dark:bg-github-dark-subtle/50 border-slate-200/50 dark:border-github-dark-border/80 text-slate-550 dark:text-github-dark-muted rounded-bl-none flex items-center gap-2.5">
+                                        <div className="max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm border bg-slate-100 dark:bg-github-dark-subtle/50 border-slate-200/50 dark:border-github-dark-border/80 text-slate-500 dark:text-github-dark-muted rounded-bl-none flex items-center gap-2.5">
                                             <Loader2 size={14} className="animate-spin text-indigo-500" />
                                             <span className="text-xs">MANO AI is thinking...</span>
                                         </div>
@@ -628,7 +632,10 @@ export default function InternalChatbotWidget() {
                             </div>
 
                             {/* Form Input Area */}
-                            <div className="p-4 border-t border-slate-100 dark:border-github-dark-border bg-white dark:bg-dark-card flex items-center gap-2">
+                            <div 
+                                className="p-4 border-t border-slate-100 dark:border-github-dark-border bg-white dark:bg-dark-card flex items-center gap-2"
+                                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+                            >
                                 <input
                                     type="text"
                                     value={input}
@@ -661,7 +668,7 @@ export default function InternalChatbotWidget() {
                     style={{
                         position: 'fixed',
                         right: '24px',
-                        bottom: '24px',
+                        bottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
                         zIndex: 40,
                         display: 'flex',
                         alignItems: 'center',

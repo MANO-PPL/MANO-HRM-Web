@@ -117,7 +117,10 @@ const NotificationSidebar = ({ isOpen, onClose }) => {
                         className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-dark-card shadow-2xl z-[101] flex flex-col border-l border-slate-100 dark:border-github-dark-border"
                     >
                         {/* Header */}
-                        <div className="p-6 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between">
+                        <div 
+                            className="p-6 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between"
+                            style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}
+                        >
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg text-indigo-600 dark:text-indigo-400">
                                     <Bell size={20} />
@@ -176,7 +179,10 @@ const NotificationSidebar = ({ isOpen, onClose }) => {
                         </div>
 
                         {/* List */}
-                        <div className="flex-1 overflow-y-auto px-2 no-scrollbar">
+                        <div 
+                            className="flex-1 overflow-y-auto px-2 no-scrollbar"
+                            style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+                        >
                             {filteredNotifications.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-center px-6">
                                     <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
