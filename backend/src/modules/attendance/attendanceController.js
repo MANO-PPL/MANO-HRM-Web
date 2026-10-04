@@ -430,7 +430,7 @@ export const getAdminRecords = catchAsync(async (req, res) => {
     return res.status(403).json({ ok: false, message: "Access denied" });
   }
 
-  const { user_id, date_from, date_to, limit = 50 } = req.query;
+  const { user_id, date_from, date_to, limit = 50, skip_images } = req.query;
   const org_id = req.user.org_id;
   const current_user_id = req.user.id || req.user.user_id;
 
@@ -439,7 +439,8 @@ export const getAdminRecords = catchAsync(async (req, res) => {
     user_id,
     date_from,
     date_to,
-    limit
+    limit,
+    skip_images: skip_images === 'true' || skip_images === true
   });
 
   res.json({ ok: true, data: records });

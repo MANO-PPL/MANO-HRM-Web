@@ -70,7 +70,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
           </div>
           <button
             onClick={() => logout()}
-            className="w-full bg-indigo-600 hover:bg-indigo-750 text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-[0.25em] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl text-xs font-bold uppercase tracking-[0.25em] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-indigo-600/20"
           >
             <LogOut size={14} />
             Log Out

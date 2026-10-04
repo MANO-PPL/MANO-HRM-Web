@@ -570,8 +570,18 @@ async function fetchSessionsFromPunches({ user_id = null, org_id = null, date_fr
 /**
  * Fetch attendance records for admin view with user details
  */
-export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, limit }) {
+export async function fetchAdminRecords({ org_id, user_id, date_from, date_to, limit, skip_images = false }) {
   const records = await fetchSessionsFromPunches({ org_id, user_id, date_from, date_to, limit }).catch(() => []);
+
+  if (skip_images) {
+    return (records || []).map(row => ({
+      ...row,
+      time_in: row.time_in_ts || (row.time_in ? String(row.time_in) : null),
+      time_out: row.time_out_ts || (row.time_out ? String(row.time_out) : null),
+      created_at: row.created_at_ts || (row.created_at ? String(row.created_at) : null),
+      updated_at: row.updated_at_ts || (row.updated_at ? String(row.updated_at) : null)
+    }));
+  }
 
   // Fetch pre-signed URLs for images
   const withUrls = await Promise.all(

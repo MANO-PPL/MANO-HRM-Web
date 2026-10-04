@@ -45,7 +45,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(getInitialUser);
   const [authChecked, setAuthChecked] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return !!(localStorage.getItem(AUTH_USER_KEY) || localStorage.getItem('accessToken'));
+    // Guest visitors (no token or stored user) don't need to be blocked
+    return !localStorage.getItem(AUTH_USER_KEY) && !localStorage.getItem('accessToken');
   });
   const [avatarTimestamp, setAvatarTimestamp] = useState(Date.now());
 
@@ -88,6 +89,28 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true;
     const initAuth = async () => {
       const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const cachedUser = typeof window !== 'undefined' ? localStorage.getItem(AUTH_USER_KEY) : null;
+
+      // If user has no token and no cached user, they are a guest.
+      // Mark auth checked immediately so public routing is non-blocking.
+      if (!token && !cachedUser) {
+        if (isMounted) setAuthChecked(true);
+        // Attempt silent background refresh only in case an httpOnly session cookie exists
+        try {
+          const res = await api.post("/auth/refresh");
+          if (res.data?.accessToken && isMounted) {
+            setAccessToken(res.data.accessToken);
+            const userRes = await api.get("/auth/me");
+            if (userRes.data && isMounted) {
+              updateUserData(userRes.data);
+            }
+          }
+        } catch {
+          // Expected for guest visitors
+        }
+        return;
+      }
+
       try {
         if (token) {
           // Token exists: verify / refresh user state directly
