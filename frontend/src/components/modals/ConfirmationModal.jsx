@@ -163,7 +163,10 @@ const ConfirmationModal = ({
                 </div>
 
                 {/* Actions */}
-                <div className="flex p-5 sm:p-6 gap-3 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/5">
+                <div 
+                    className="flex p-5 sm:p-6 gap-3 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/5"
+                    style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+                >
                     <button
                         onClick={onClose}
                         disabled={isSubmitting}

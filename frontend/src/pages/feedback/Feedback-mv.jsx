@@ -56,7 +56,7 @@ const Feedback = () => {
 
     return (
         <MobileDashboardLayout title="Support Lab">
-            <div className="min-h-screen bg-slate-50 dark:bg-black pb-24 transition-colors duration-300">
+            <div className="w-full bg-slate-50 dark:bg-black pb-6 transition-colors duration-300">
                 {/* Header Metadata */}
                 <div className="px-5 pt-4 pb-6 bg-slate-50 dark:bg-black border-b border-slate-100 dark:border-slate-800">
                     <div className="flex items-center gap-2.5 mb-1">

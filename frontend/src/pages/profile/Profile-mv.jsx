@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
-import { Mail, Phone, Briefcase, Shield, Camera, Loader2, Edit, Trash2, LogOut, Sparkles, Map } from 'lucide-react';
+import { Camera, Loader2, Edit, Trash2, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTour } from '../../context/TourContext';
 import api from '../../services/api';
@@ -90,9 +90,10 @@ const Profile = () => {
         name: profileData?.user_name || authUser?.user_name || 'Mano Admin',
         role: profileData?.user_type || authUser?.user_type || 'admin',
         email: profileData?.email || authUser?.email || 'admin@demo.com',
-        phone: profileData?.phone_no || authUser?.phone_no || '5',
-        department: profileData?.dept_name || 'Engineering',
-        employeeCode: profileData?.user_code || authUser?.user_code || '...',
+        phone: profileData?.phone_no || authUser?.phone_no || '',
+        department: profileData?.dept_name || authUser?.dept_name || 'Engineering',
+        designation: profileData?.designation || authUser?.designation || 'Staff',
+        employeeCode: profileData?.user_code || authUser?.user_code || '',
         avatar: getAvatarUrl()
     };
 
@@ -180,7 +181,7 @@ const Profile = () => {
 
     if (loading) {
         return (
-            <MobileDashboardLayout title="My Profile">
+            <MobileDashboardLayout title="My Profile" contentClassName="p-0">
                 <div className="flex items-center justify-center h-64">
                     <Loader2 className="animate-spin text-indigo-600" size={48} />
                 </div>
@@ -189,172 +190,171 @@ const Profile = () => {
     }
 
     return (
-        <MobileDashboardLayout title="My Profile">
-            <div className="w-full space-y-4 pb-6 px-4">
+        <MobileDashboardLayout title="My Profile" contentClassName="p-0 pb-12 space-y-0 w-full overflow-x-hidden">
+            <div className="w-full">
 
-                {/* Profile Header Card */}
-                <div className="bg-white dark:bg-[#1f2937] rounded-3xl p-6 shadow-sm flex flex-col items-center gap-3 text-center border border-slate-100 dark:border-transparent">
-                    <div className="relative group mt-2">
-                        <div
-                            onClick={handleAvatarClick}
-                            className="w-20 h-20 rounded-full bg-indigo-50 dark:bg-indigo-900/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-2xl font-bold border-[3px] border-white dark:border-github-dark-border shadow-lg shrink-0 overflow-hidden cursor-pointer"
-                        >
-                            {user.avatar ? (
-                                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-                            ) : (
-                                user.name.charAt(0).toUpperCase()
-                            )}
-                        </div>
+                {/* 1. Full-Width Edge-to-Edge Hero Header Banner */}
+                <div className="relative w-full bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] text-white pt-6 pb-7 px-4 shadow-lg border-b border-indigo-500/20 overflow-hidden">
+                    {/* Ambient Glows */}
+                    <div className="absolute -top-16 -right-16 w-52 h-52 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute -bottom-16 -left-16 w-52 h-52 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
 
-                        {/* Camera Icon Badge */}
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center border-[3px] border-white dark:border-[#1f2937] shadow-lg active:scale-95 transition-transform"
-                            title="Change Profile Picture"
-                        >
-                            {uploading ? (
-                                <Loader2 className="animate-spin" size={14} />
-                            ) : (
-                                <Camera size={14} />
-                            )}
-                        </button>
-
-                        {/* Hidden Input */}
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={handleFileChange}
-                            accept="image/*"
-                            className="hidden"
-                        />
-                    </div>
-
-                    <div className="space-y-2 mt-2">
-                        <h2 className="text-[17px] font-bold text-slate-800 dark:text-github-dark-text capitalize tracking-tight">{user.name}</h2>
-                        <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold uppercase tracking-widest border border-indigo-100 dark:border-indigo-500/20">
-                            <Shield size={12} />
-                            <span>{user.role}</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Contact Info Card */}
-                <div className="bg-white dark:bg-[#1f2937] border border-slate-100 dark:border-transparent rounded-3xl p-6 shadow-sm space-y-6">
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-github-dark-text">Contact Information</h3>
-
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-700/50 flex items-center justify-center text-slate-500 dark:text-github-dark-muted shrink-0 border border-slate-100 dark:border-transparent">
-                            <Mail size={18} />
-                        </div>
-                        <div className="min-w-0 pt-0.5">
-                            <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mb-0.5">Email Address</p>
-                            <p className="text-[13px] font-semibold text-slate-800 dark:text-github-dark-text truncate">{user.email}</p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-700/50 flex items-center justify-center text-slate-500 dark:text-github-dark-muted shrink-0 border border-slate-100 dark:border-transparent">
-                            <Phone size={18} />
-                        </div>
-                        <div className="min-w-0 pt-0.5">
-                            <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mb-0.5">Phone Number</p>
-                            <p className="text-[13px] font-semibold text-slate-800 dark:text-github-dark-text">{user.phone}</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Employment Details Card */}
-                <div className="bg-white dark:bg-[#1f2937] border border-slate-100 dark:border-transparent rounded-3xl p-6 shadow-sm space-y-6">
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-github-dark-text">Employment Details</h3>
-
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-700/50 flex items-center justify-center text-slate-500 dark:text-github-dark-muted shrink-0 border border-slate-100 dark:border-transparent">
-                            {/* Using a building/company icon to match UI roughly */}
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                                <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
-                                <path d="M9 22v-4h6v4"></path>
-                                <path d="M8 6h.01"></path>
-                                <path d="M16 6h.01"></path>
-                                <path d="M12 6h.01"></path>
-                                <path d="M12 10h.01"></path>
-                                <path d="M12 14h.01"></path>
-                                <path d="M16 10h.01"></path>
-                                <path d="M16 14h.01"></path>
-                                <path d="M8 10h.01"></path>
-                                <path d="M8 14h.01"></path>
-                            </svg>
-                        </div>
-                        <div className="min-w-0 pt-0.5">
-                            <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mb-0.5">Department</p>
-                            <p className="text-[13px] font-semibold text-slate-800 dark:text-github-dark-text truncate">{user.department}</p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-700/50 flex items-center justify-center text-slate-500 dark:text-github-dark-muted shrink-0 border border-slate-100 dark:border-transparent">
-                            <Briefcase size={18} />
-                        </div>
-                        <div className="min-w-0 pt-0.5">
-                            <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mb-0.5">Designation</p>
-                            <p className="text-[13px] font-semibold text-slate-800 dark:text-github-dark-text">Manager</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Preferences Card */}
-                <div className="bg-white dark:bg-[#1f2937] border border-slate-100 dark:border-transparent rounded-3xl p-6 shadow-sm space-y-4">
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-github-dark-text border-b border-slate-100 dark:border-slate-800 pb-3">Preferences</h3>
-                    
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                                <Sparkles size={16} />
+                    <div className="relative z-10 flex flex-col items-center text-center">
+                        {/* Avatar */}
+                        <div className="relative group">
+                            <div
+                                onClick={handleAvatarClick}
+                                className="w-24 h-24 rounded-full bg-white/10 dark:bg-white/5 flex items-center justify-center text-white text-3xl font-extrabold ring-4 ring-white/20 dark:ring-white/10 shadow-2xl shrink-0 overflow-hidden cursor-pointer backdrop-blur-md active:scale-95 transition-transform"
+                            >
+                                {user.avatar ? (
+                                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                                ) : (
+                                    user.name.charAt(0).toUpperCase()
+                                )}
                             </div>
+
+                            {/* Camera Icon Badge */}
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center justify-center ring-2 ring-slate-900 shadow-lg active:scale-90 transition-transform"
+                                title="Change Profile Picture"
+                                aria-label="Change Profile Picture"
+                            >
+                                {uploading ? (
+                                    <Loader2 className="animate-spin" size={14} />
+                                ) : (
+                                    <Camera size={14} />
+                                )}
+                            </button>
+
+                            {/* Hidden Input */}
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                accept="image/*"
+                                className="hidden"
+                            />
+                        </div>
+
+                        {/* User Name & Details */}
+                        <div className="mt-3.5 space-y-2">
+                            <h2 className="text-xl font-extrabold text-white capitalize tracking-tight">{user.name}</h2>
+                            <div className="flex items-center justify-center gap-2 flex-wrap">
+                                <div className="inline-flex items-center px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-indigo-200 text-[11px] font-bold uppercase tracking-wider border border-white/15 shadow-2xs">
+                                    <span>{user.role}</span>
+                                </div>
+                                {user.employeeCode && (
+                                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 backdrop-blur-md text-slate-300 text-[11px] font-medium tracking-wider border border-white/10">
+                                        <span className="text-slate-400 font-mono text-[10px]">ID:</span>
+                                        <span className="font-mono font-semibold">{user.employeeCode}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. Full-Width Body Content */}
+                <div className="w-full px-3.5 sm:px-5 py-3 space-y-2.5">
+                    {/* Contact Info Card */}
+                    <div className="w-full bg-white dark:bg-[#161B22] border border-slate-200/80 dark:border-[#30363D] rounded-xl p-3.5 sm:p-4 shadow-2xs space-y-2.5">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#21262D]">
+                            <h3 className="text-xs font-bold text-slate-900 dark:text-github-dark-text uppercase tracking-wider">
+                                Contact Information
+                            </h3>
+                        </div>
+
+                        <div className="space-y-2">
+                            <div>
+                                <p className="text-[10px] font-semibold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Email Address</p>
+                                <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate mt-0.5">{user.email || '—'}</p>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100/60 dark:border-[#21262D]/60">
+                                <p className="text-[10px] font-semibold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Phone Number</p>
+                                <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate mt-0.5">{user.phone || '—'}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Employment Details Card */}
+                    <div className="w-full bg-white dark:bg-[#161B22] border border-slate-200/80 dark:border-[#30363D] rounded-xl p-3.5 sm:p-4 shadow-2xs space-y-2.5">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#21262D]">
+                            <h3 className="text-xs font-bold text-slate-900 dark:text-github-dark-text uppercase tracking-wider">
+                                Employment Details
+                            </h3>
+                        </div>
+
+                        <div className="space-y-2">
+                            <div>
+                                <p className="text-[10px] font-semibold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Department</p>
+                                <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate mt-0.5">{user.department || '—'}</p>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100/60 dark:border-[#21262D]/60">
+                                <p className="text-[10px] font-semibold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Designation</p>
+                                <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate mt-0.5">{user.designation || '—'}</p>
+                            </div>
+
+                            {user.employeeCode && (
+                                <div className="pt-2 border-t border-slate-100/60 dark:border-[#21262D]/60">
+                                    <p className="text-[10px] font-semibold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Employee Code</p>
+                                    <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-github-dark-text font-mono truncate mt-0.5">{user.employeeCode}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Preferences Card */}
+                    <div className="w-full bg-white dark:bg-[#161B22] border border-slate-200/80 dark:border-[#30363D] rounded-xl p-3.5 sm:p-4 shadow-2xs space-y-2.5">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#21262D]">
+                            <h3 className="text-xs font-bold text-slate-900 dark:text-github-dark-text uppercase tracking-wider">
+                                Preferences
+                            </h3>
+                        </div>
+                        
+                        <div className="flex items-center justify-between gap-4">
                             <div>
                                 <p className="font-semibold text-slate-800 dark:text-github-dark-text text-xs">AI Chatbot (Mano Copilot)</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">{chatbotVisible ? 'Visible' : 'Hidden'}</p>
                             </div>
+                            <button
+                                onClick={toggleChatbot}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none shrink-0 cursor-pointer ${chatbotVisible ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                            >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${chatbotVisible ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                            </button>
                         </div>
-                        <button
-                            onClick={toggleChatbot}
-                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none shrink-0 ${chatbotVisible ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
-                        >
-                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${chatbotVisible ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
-                        </button>
-                    </div>
 
-                    <div className="flex items-center justify-between gap-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                                <Map size={16} />
-                            </div>
+                        <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-slate-100 dark:border-[#21262D]">
                             <div>
                                 <p className="font-semibold text-slate-800 dark:text-github-dark-text text-xs">Interactive Page Guides</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">{!tourDismissed ? 'Enabled' : 'Disabled'}</p>
                             </div>
+                            <button
+                                onClick={toggleTourDismissed}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none shrink-0 cursor-pointer ${!tourDismissed ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                            >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${!tourDismissed ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                            </button>
                         </div>
-                        <button
-                            onClick={toggleTourDismissed}
-                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none shrink-0 ${!tourDismissed ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
-                        >
-                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${!tourDismissed ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
-                        </button>
                     </div>
-                </div>
 
-                {/* Active Devices & Sessions */}
-                <div className="mt-2">
-                    <ActiveDevicesManager />
-                </div>
+                    {/* Active Devices & Sessions */}
+                    <div className="w-full">
+                        <ActiveDevicesManager />
+                    </div>
 
-                {/* Logout Button */}
-                <button
-                    onClick={logout}
-                    className="w-full py-4 mt-2 bg-red-500/90 hover:bg-red-500 text-white font-bold text-[13px] rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 border border-red-500/20 shadow-sm"
-                >
-                    <LogOut size={16} />
-                    Log Out
-                </button>
+                    {/* Logout Button */}
+                    <button
+                        onClick={logout}
+                        className="w-full py-3.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.99] border border-rose-600/30 shadow-sm uppercase tracking-wider"
+                    >
+                        <LogOut size={16} />
+                        Log Out
+                    </button>
+                </div>
             </div>
 
             {/* --- IMAGE PREVIEW MODAL --- */}

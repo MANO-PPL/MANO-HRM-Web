@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
-import { User, Mail, Phone, Briefcase, Shield, Camera, Loader2, X, RefreshCw, Edit, Download, Trash2, Sparkles, Eye, EyeOff, Map } from 'lucide-react';
+import { Camera, Loader2, X, Edit, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTour } from '../../context/TourContext';
 import api from '../../services/api';
@@ -226,34 +226,32 @@ const Profile = () => {
 
     return (
         <DashboardLayout title="My Profile">
-            <div className="w-full space-y-6">
+            <div className="w-full space-y-3">
 
                 {/* Profile Header Card */}
-                <div className="bg-white dark:bg-dark-card rounded-2xl p-8 shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col md:flex-row items-center md:items-center gap-8 transition-colors">
+                <div className="bg-white dark:bg-dark-card rounded-xl p-4 sm:p-5 shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col sm:flex-row items-center gap-4 sm:gap-5 transition-colors">
                     <div className="relative group">
                         <div
                             onClick={handleAvatarClick}
-                            className="w-32 h-32 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-4xl font-bold border-4 border-white dark:border-github-dark-border shadow-lg shrink-0 overflow-hidden cursor-pointer"
+                            className="w-20 h-20 sm:w-22 sm:h-22 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-2xl font-bold border-2 border-white dark:border-github-dark-border shadow-md shrink-0 overflow-hidden cursor-pointer"
                         >
                             {user.avatar ? (
                                 <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
                             ) : (
                                 user.name.charAt(0).toUpperCase()
                             )}
-
-
                         </div>
 
                         {/* Camera Icon Badge */}
                         <button
                             onClick={() => fileInputRef.current?.click()}
-                            className="absolute bottom-0 right-0 w-10 h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center border-4 border-white dark:border-github-dark-border shadow-lg transition-all active:scale-95"
+                            className="absolute bottom-0 right-0 w-7 h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center border-2 border-white dark:border-github-dark-border shadow-md transition-all active:scale-95 cursor-pointer"
                             title="Change Profile Picture"
                         >
                             {uploading ? (
-                                <Loader2 className="animate-spin" size={18} />
+                                <Loader2 className="animate-spin" size={13} />
                             ) : (
-                                <Camera size={18} />
+                                <Camera size={13} />
                             )}
                         </button>
 
@@ -267,92 +265,68 @@ const Profile = () => {
                         />
                     </div>
 
-                    <div className="flex-1 text-center md:text-left space-y-2">
-                        <h2 className="text-3xl font-bold text-slate-800 dark:text-github-dark-text capitalize">{user.name}</h2>
-                        <div className="flex items-center justify-center md:justify-start gap-2 text-indigo-600 dark:text-indigo-400 font-medium bg-indigo-50 dark:bg-indigo-900/10 px-3 py-1 rounded-full w-fit mx-auto md:mx-0 capitalize">
-                            <Shield size={16} />
-                            <span>{user.role}</span>
+                    <div className="flex-1 text-center sm:text-left space-y-1.5">
+                        <h2 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-github-dark-text capitalize">{user.name}</h2>
+                        <div className="flex items-center justify-center sm:justify-start">
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 capitalize">
+                                {user.role}
+                            </span>
                         </div>
                     </div>
                 </div>
 
                 {/* Details Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Personal Info */}
-                    <div className="bg-white dark:bg-dark-card rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-github-dark-border space-y-6">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text border-b border-slate-100 dark:border-github-dark-border pb-4">
+                    <div className="bg-white dark:bg-dark-card rounded-xl p-4 sm:p-5 shadow-sm border border-slate-200 dark:border-github-dark-border space-y-3">
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text border-b border-slate-100 dark:border-github-dark-border pb-2.5">
                             Contact Information
                         </h3>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-slate-100 dark:bg-github-dark-subtle rounded-xl text-slate-500 dark:text-github-dark-muted shrink-0">
-                                    <Mail size={22} />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-sm text-slate-500 dark:text-github-dark-muted mb-0.5">Email Address</p>
-                                    <p className="text-slate-800 dark:text-github-dark-text font-medium truncate">{user.email}</p>
-                                </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="min-w-0">
+                                <p className="text-xs text-slate-400 dark:text-github-dark-muted font-medium mb-0.5">Email Address</p>
+                                <p className="text-sm text-slate-800 dark:text-github-dark-text font-semibold truncate">{user.email || '—'}</p>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-slate-100 dark:bg-github-dark-subtle rounded-xl text-slate-500 dark:text-github-dark-muted shrink-0">
-                                    <Phone size={22} />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-sm text-slate-500 dark:text-github-dark-muted mb-0.5">Phone Number</p>
-                                    <p className="text-slate-800 dark:text-github-dark-text font-medium truncate">{user.phone}</p>
-                                </div>
+                            <div className="min-w-0">
+                                <p className="text-xs text-slate-400 dark:text-github-dark-muted font-medium mb-0.5">Phone Number</p>
+                                <p className="text-sm text-slate-800 dark:text-github-dark-text font-semibold truncate">{user.phone || '—'}</p>
                             </div>
                         </div>
                     </div>
 
                     {/* Employment Info */}
-                    <div className="bg-white dark:bg-dark-card rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-github-dark-border space-y-6">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text border-b border-slate-100 dark:border-github-dark-border pb-4">
+                    <div className="bg-white dark:bg-dark-card rounded-xl p-4 sm:p-5 shadow-sm border border-slate-200 dark:border-github-dark-border space-y-3">
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text border-b border-slate-100 dark:border-github-dark-border pb-2.5">
                             Employment Details
                         </h3>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-slate-100 dark:bg-github-dark-subtle rounded-xl text-slate-500 dark:text-github-dark-muted shrink-0">
-                                    <Briefcase size={22} />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-sm text-slate-500 dark:text-github-dark-muted mb-0.5">Department</p>
-                                    <p className="text-slate-800 dark:text-github-dark-text font-medium truncate">{user.department}</p>
-                                </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="min-w-0">
+                                <p className="text-xs text-slate-400 dark:text-github-dark-muted font-medium mb-0.5">Department</p>
+                                <p className="text-sm text-slate-800 dark:text-github-dark-text font-semibold truncate">{user.department || '—'}</p>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-slate-100 dark:bg-github-dark-subtle rounded-xl text-slate-500 dark:text-github-dark-muted shrink-0">
-                                    <User size={22} />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-sm text-slate-500 dark:text-github-dark-muted mb-0.5">Employee Code</p>
-                                    <p className="text-slate-800 dark:text-github-dark-text font-medium truncate">{user.employeeCode}</p>
-                                </div>
+                            <div className="min-w-0">
+                                <p className="text-xs text-slate-400 dark:text-github-dark-muted font-medium mb-0.5">Employee Code</p>
+                                <p className="text-sm text-slate-800 dark:text-github-dark-text font-semibold truncate">{user.employeeCode || '—'}</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Preferences Card */}
-                <div className="bg-white dark:bg-dark-card rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-github-dark-border space-y-4 transition-colors">
-                    <h3 className="text-lg font-bold text-slate-800 dark:text-github-dark-text border-b border-slate-100 dark:border-github-dark-border pb-4">
+                <div className="bg-white dark:bg-dark-card rounded-xl p-4 sm:p-5 shadow-sm border border-slate-200 dark:border-github-dark-border space-y-3 transition-colors">
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text border-b border-slate-100 dark:border-github-dark-border pb-2.5">
                         Preferences
                     </h3>
-                    <div className="flex items-center justify-between gap-6">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl text-indigo-600 dark:text-indigo-400 shrink-0">
-                                <Sparkles size={22} />
-                            </div>
-                            <div>
-                                <p className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">AI Chatbot (Mano Copilot)</p>
-                                <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-0.5">
-                                    {chatbotVisible ? 'Visible on all pages' : 'Hidden from all pages'}
-                                </p>
-                            </div>
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <p className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">AI Chatbot (Mano Copilot)</p>
+                            <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-0.5">
+                                {chatbotVisible ? 'Visible on all pages' : 'Hidden from all pages'}
+                            </p>
                         </div>
                         <button
                             onClick={toggleChatbot}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none shrink-0 ${
+                            className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors duration-300 focus:outline-none shrink-0 cursor-pointer ${
                                 chatbotVisible
                                     ? 'bg-indigo-600'
                                     : 'bg-slate-200 dark:bg-github-dark-border'
@@ -360,29 +334,24 @@ const Profile = () => {
                             aria-label="Toggle AI Chatbot"
                         >
                             <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${
-                                    chatbotVisible ? 'translate-x-6' : 'translate-x-1'
+                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${
+                                    chatbotVisible ? 'translate-x-5' : 'translate-x-1'
                                 }`}
                             />
                         </button>
                     </div>
 
-                    <div className="flex items-center justify-between gap-6 pt-4 border-t border-slate-100 dark:border-github-dark-border">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl text-indigo-600 dark:text-indigo-400 shrink-0">
-                                <Map size={22} />
-                            </div>
-                            <div>
-                                <p className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Interactive Page Guides</p>
-                                <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-0.5 max-w-sm leading-relaxed">
-                                    {!tourDismissed ? 'Enabled' : 'Disabled'}. When enabled, helpful walkthrough guides automatically introduce key features the first time you visit a page.
-                                </p>
-                            </div>
+                    <div className="flex items-center justify-between gap-4 pt-2.5 border-t border-slate-100 dark:border-github-dark-border">
+                        <div>
+                            <p className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Interactive Page Guides</p>
+                            <p className="text-xs text-slate-500 dark:text-github-dark-muted mt-0.5 leading-normal">
+                                {!tourDismissed ? 'Enabled' : 'Disabled'}. Walkthrough guides automatically introduce key features the first time you visit a page.
+                            </p>
                         </div>
                         <div className="flex items-center gap-4 shrink-0">
                             <button
                                 onClick={toggleTourDismissed}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${
+                                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors duration-300 focus:outline-none cursor-pointer ${
                                     !tourDismissed
                                         ? 'bg-indigo-600'
                                         : 'bg-slate-200 dark:bg-github-dark-border'
@@ -390,8 +359,8 @@ const Profile = () => {
                                 aria-label="Toggle App Walkthrough"
                             >
                                 <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${
-                                        !tourDismissed ? 'translate-x-6' : 'translate-x-1'
+                                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${
+                                        !tourDismissed ? 'translate-x-5' : 'translate-x-1'
                                     }`}
                                 />
                             </button>
