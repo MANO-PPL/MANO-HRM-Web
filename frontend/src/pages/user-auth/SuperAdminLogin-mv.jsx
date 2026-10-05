@@ -49,7 +49,13 @@ const SuperAdminLoginMobile = () => {
     };
 
     return (
-        <div className="relative min-h-screen bg-[#F8FAFC] dark:bg-[#010404] font-inter text-slate-900 dark:text-white transition-colors duration-300 flex flex-col justify-center items-center overflow-x-hidden px-6 py-8">
+        <div 
+            className="relative min-h-screen min-h-[100dvh] bg-[#F8FAFC] dark:bg-[#010404] font-inter text-slate-900 dark:text-white transition-colors duration-300 flex flex-col justify-center items-center overflow-x-hidden px-6"
+            style={{ 
+                paddingTop: 'calc(2rem + env(safe-area-inset-top, 0px))', 
+                paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' 
+            }}
+        >
             {/* Background glowing spheres */}
             <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
                 <div
@@ -71,7 +77,7 @@ const SuperAdminLoginMobile = () => {
             </div>
 
             {/* Top Right Theme Toggle */}
-            <div className="fixed top-5 right-5 z-20">
+            <div className="fixed right-5 z-20" style={{ top: 'calc(1.25rem + env(safe-area-inset-top, 0px))' }}>
                 <button
                     type="button"
                     onClick={() => setIsDark(!isDark)}

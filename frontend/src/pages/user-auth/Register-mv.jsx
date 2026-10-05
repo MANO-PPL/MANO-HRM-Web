@@ -448,7 +448,7 @@ const MobileRegisterPage = () => {
     };
 
     return (
-        <div className="relative min-h-screen bg-slate-50 dark:bg-[#010404] font-poppins selection:bg-indigo-500/30 overflow-x-hidden transition-colors duration-500 flex flex-col">
+        <div className="relative min-h-screen min-h-[100dvh] bg-slate-50 dark:bg-[#010404] font-poppins selection:bg-indigo-500/30 overflow-x-hidden transition-colors duration-500 flex flex-col">
             <AnimatePresence>
                 {loading && (
                     <LoadingScreen message="Creating workspace..." />
@@ -462,7 +462,13 @@ const MobileRegisterPage = () => {
                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.02] dark:opacity-[0.03]" />
             </div>
 
-            <div className="relative z-10 flex flex-col flex-1 px-5 py-6">
+            <div 
+                className="relative z-10 flex flex-col flex-1 px-5"
+                style={{ 
+                    paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))', 
+                    paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' 
+                }}
+            >
                 {/* Header */}
                 <header className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-3">
