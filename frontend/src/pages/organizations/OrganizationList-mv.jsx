@@ -270,11 +270,11 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
             </div>
 
             <div className="flex gap-3 pt-3">
-              <button type="submit" disabled={formLoading} className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-2">
+              <button type="submit" disabled={formLoading} className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-2">
                 {formLoading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                 Save Changes
               </button>
-              <button type="button" onClick={() => setIsEditing(false)} className="flex-1 py-3.5 bg-slate-100 dark:bg-white/5 text-slate-655 dark:text-github-dark-muted rounded-xl text-xs font-bold uppercase tracking-wider border border-slate-200 dark:border-white/5">Cancel</button>
+              <button type="button" onClick={() => setIsEditing(false)} className="flex-1 py-3.5 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-github-dark-muted rounded-xl text-xs font-bold uppercase tracking-wider border border-slate-200 dark:border-white/5">Cancel</button>
             </div>
           </form>
         ) : (
@@ -544,9 +544,9 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 300 }} className="relative bg-white dark:bg-black w-full rounded-t-[2.5rem] p-6 shadow-2xl border-t border-slate-100 dark:border-slate-800 max-h-[92vh] overflow-y-auto no-scrollbar">
         {/* Drag Handle */}
-        <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-850 rounded-full mx-auto mb-6" />
+        <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-6" />
 
-        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-655 dark:hover:text-white rounded-full bg-slate-50 dark:bg-white/5"><X size={18} /></button>
+        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full bg-slate-50 dark:bg-white/5"><X size={18} /></button>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-tight">Onboard New Org</h3>
@@ -603,11 +603,11 @@ const AddOrgModal = ({ onClose, onRefresh }) => {
           </div>
 
           <div className="flex gap-3 pt-3">
-            <button type="submit" disabled={formLoading} className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-2">
+            <button type="submit" disabled={formLoading} className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-2">
               {formLoading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
               Onboard Organization
             </button>
-            <button type="button" onClick={onClose} className="flex-1 py-3.5 bg-slate-100 dark:bg-white/5 text-slate-655 dark:text-github-dark-muted rounded-xl text-xs font-bold uppercase tracking-wider border border-slate-200 dark:border-white/5">Cancel</button>
+            <button type="button" onClick={onClose} className="flex-1 py-3.5 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-github-dark-muted rounded-xl text-xs font-bold uppercase tracking-wider border border-slate-200 dark:border-white/5">Cancel</button>
           </div>
         </form>
       </motion.div>
@@ -651,10 +651,10 @@ const OrganizationListMobile = () => {
 
   return (
     <MobileDashboardLayout title="Organizations">
-      <div className="space-y-4 pb-24">
+      <div className="space-y-4 pb-6">
         
         {/* Sticky Search & Tabs Header */}
-        <div className="sticky top-16 -mx-4 px-4 py-3 bg-slate-50 dark:bg-black z-20 transition-all duration-300">
+        <div className="sticky -mx-4 px-4 py-3 bg-slate-50 dark:bg-black z-20 transition-all duration-300" style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}>
           <div className="space-y-3">
             {/* Search */}
             <div className="relative group">
@@ -748,7 +748,7 @@ const OrganizationListMobile = () => {
                     
                     <div className="min-w-0">
                       <h4 className="font-bold text-slate-800 dark:text-github-dark-text text-[13px] truncate">{org.org_name}</h4>
-                      <p className="text-[10px] text-slate-450 dark:text-github-dark-muted font-mono tracking-widest mt-0.5">CODE: {org.org_code}</p>
+                      <p className="text-[10px] text-slate-400 dark:text-github-dark-muted font-mono tracking-widest mt-0.5">CODE: {org.org_code}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider flex items-center gap-1">
                           <Shield size={10} /> {org.subscription_plan}
@@ -779,7 +779,8 @@ const OrganizationListMobile = () => {
         {/* FAB */}
         <button
           onClick={() => setShowAddModal(true)}
-          className="fixed bottom-6 right-6 w-16 h-16 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[2rem] shadow-2xl shadow-indigo-500/40 flex items-center justify-center active:scale-90 active:rotate-90 transition-all z-30 group"
+          className="fixed right-6 w-16 h-16 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[2rem] shadow-2xl shadow-indigo-500/40 flex items-center justify-center active:scale-90 active:rotate-90 transition-all z-30 group"
+          style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
         >
           <Plus size={28} className="group-hover:scale-110 transition-transform" />
           <div className="absolute -inset-2 bg-indigo-500/20 blur-xl rounded-full opacity-0 group-active:opacity-100 transition-opacity" />

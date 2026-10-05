@@ -119,7 +119,7 @@ const SecurityAlertsMobile = () => {
                   {/* Actions footer */}
                   <div className="flex justify-between items-center pt-2.5 border-t border-slate-50 dark:border-white/5 mt-0.5">
                     <div className="text-[10px] text-slate-400">
-                      Time: <span className="font-semibold text-slate-650 dark:text-slate-350">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      Time: <span className="font-semibold text-slate-600 dark:text-slate-400">{new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
 
                     <div>
@@ -134,7 +134,7 @@ const SecurityAlertsMobile = () => {
                           </span>
                           <button
                             onClick={() => handleResolve(alert.id)}
-                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-750 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 dark:text-indigo-300 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-indigo-100 dark:border-white/5 transition-colors"
+                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 dark:text-indigo-300 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-indigo-100 dark:border-white/5 transition-colors"
                           >
                             Resolve
                           </button>

@@ -44,11 +44,11 @@ ${item.description}
   const getTypeBadge = (type) => {
     switch (type?.toLowerCase()) {
       case 'bug': 
-        return <span className="px-2 py-0.5 text-[8px] font-black rounded bg-red-105 text-red-700 dark:bg-red-950/40 dark:text-red-400 uppercase tracking-widest border border-red-200/25">BUG REPORT</span>;
+        return <span className="px-2 py-0.5 text-[8px] font-black rounded bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400 uppercase tracking-widest border border-red-200/25">BUG REPORT</span>;
       case 'feature': 
-        return <span className="px-2 py-0.5 text-[8px] font-black rounded bg-indigo-105 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 uppercase tracking-widest border border-indigo-200/25">FEATURE REQ</span>;
+        return <span className="px-2 py-0.5 text-[8px] font-black rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 uppercase tracking-widest border border-indigo-200/25">FEATURE REQ</span>;
       default: 
-        return <span className="px-2 py-0.5 text-[8px] font-black rounded bg-slate-105 text-slate-700 dark:bg-github-dark-border dark:text-github-dark-muted uppercase tracking-widest">{type}</span>;
+        return <span className="px-2 py-0.5 text-[8px] font-black rounded bg-slate-100 text-slate-700 dark:bg-github-dark-border dark:text-github-dark-muted uppercase tracking-widest">{type}</span>;
     }
   };
 
@@ -57,7 +57,7 @@ ${item.description}
       case 'resolved':
         return <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest"><CheckCircle size={12} /> Resolved</span>;
       case 'reviewed':
-        return <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-650 dark:text-indigo-400 uppercase tracking-widest"><Eye size={12} /> Reviewed</span>;
+        return <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest"><Eye size={12} /> Reviewed</span>;
       default:
         return <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest"><Clock size={12} /> Pending</span>;
     }
@@ -70,13 +70,13 @@ ${item.description}
         {/* Drag Handle */}
         <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-2" />
 
-        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-650 dark:hover:text-white rounded-full bg-slate-50 dark:bg-white/5"><X size={18} /></button>
+        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full bg-slate-50 dark:bg-white/5"><X size={18} /></button>
 
         {/* Header */}
         <div className="border-b border-slate-100 dark:border-white/5 pb-4 space-y-2">
           <div className="flex flex-wrap gap-2 items-center">
             {getTypeBadge(item.type)}
-            <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-350">Ticket #{item.feedback_id}</span>
+            <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400">Ticket #{item.feedback_id}</span>
           </div>
           <h3 className="text-base font-bold text-slate-900 dark:text-white uppercase leading-snug">{item.title}</h3>
           <p className="text-[10px] text-slate-400">Submitted on {formatDateTime(item.created_at)}</p>
@@ -169,7 +169,7 @@ ${item.description}
           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</h4>
           <div className="flex gap-2">
             {item.email && (
-              <a href={`mailto:${item.email}?subject=Re: [MANO Support - Ticket %23${item.feedback_id}] ${encodeURIComponent(item.title)}&body=Hi ${encodeURIComponent(item.user_name || '')},%0A%0AWe have received your report regarding "${encodeURIComponent(item.title)}".%0A%0A[Write reply details here]%0A%0ABest regards,%0ASupport Team`} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-md flex items-center justify-center gap-1.5">
+              <a href={`mailto:${item.email}?subject=Re: [MANO Support - Ticket %23${item.feedback_id}] ${encodeURIComponent(item.title)}&body=Hi ${encodeURIComponent(item.user_name || '')},%0A%0AWe have received your report regarding "${encodeURIComponent(item.title)}".%0A%0A[Write reply details here]%0A%0ABest regards,%0ASupport Team`} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-md flex items-center justify-center gap-1.5">
                 <Mail size={13} /> Draft Reply
               </a>
             )}
@@ -287,7 +287,7 @@ const UserFeedbackMobile = () => {
 
   return (
     <MobileDashboardLayout title="User Feedback">
-      <div className="space-y-4 pb-24">
+      <div className="space-y-4 pb-6">
         
         {/* Dynamic Metric cards */}
         <div className="grid grid-cols-4 gap-2.5">
@@ -321,23 +321,23 @@ const UserFeedbackMobile = () => {
               onClick={() => { setActiveCategoryTab('bug'); setFilterStatus('all'); }}
               className={`flex-1 py-2 text-[10px] font-bold rounded-xl uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                 activeCategoryTab === 'bug'
-                  ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 transform scale-[1.02] shadow-sm border border-slate-200 dark:border-github-dark-border'
+                  ? 'bg-white dark:bg-[#21262d] text-indigo-600 dark:text-indigo-400 transform scale-[1.02] shadow-sm border border-slate-200 dark:border-github-dark-border'
                   : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-[#21262d]/50'
               }`}
             >
               Bug Reports
-              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeCategoryTab === 'bug' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 dark:bg-slate-750'}`}>{totalBugCount}</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeCategoryTab === 'bug' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>{totalBugCount}</span>
             </button>
             <button
               onClick={() => { setActiveCategoryTab('feedback'); setFilterStatus('all'); }}
               className={`flex-1 py-2 text-[10px] font-bold rounded-xl uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                 activeCategoryTab === 'feedback'
-                  ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 transform scale-[1.02] shadow-sm border border-slate-200 dark:border-github-dark-border'
+                  ? 'bg-white dark:bg-[#21262d] text-indigo-600 dark:text-indigo-400 transform scale-[1.02] shadow-sm border border-slate-200 dark:border-github-dark-border'
                   : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-[#21262d]/50'
               }`}
             >
               Feedbacks
-              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeCategoryTab === 'feedback' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 dark:bg-slate-750'}`}>{totalFeedbackCount}</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeCategoryTab === 'feedback' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}>{totalFeedbackCount}</span>
             </button>
           </div>
 

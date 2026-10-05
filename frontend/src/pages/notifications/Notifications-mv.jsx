@@ -121,32 +121,40 @@ const Notifications = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-black font-poppins text-slate-900 dark:text-github-dark-text transition-colors duration-300">
+        <div className="min-h-screen min-h-[100dvh] bg-slate-50 dark:bg-black font-poppins text-slate-900 dark:text-github-dark-text transition-colors duration-300">
             {/* Header */}
-            <header className="fixed top-0 left-0 right-0 h-16 bg-white dark:bg-black border-b border-slate-100 dark:border-slate-800 flex items-center px-4 z-40">
-                <button
-                    onClick={() => navigate(-1)}
-                    className="p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-colors"
-                >
-                    <ArrowLeft size={22} />
-                </button>
-                <div className="flex-1 text-center">
-                    <h1 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">Notifications</h1>
-                </div>
-                {unreadCount > 0 && (
+            <header 
+                className="fixed top-0 left-0 right-0 bg-white dark:bg-black border-b border-slate-100 dark:border-slate-800 z-40 transition-colors duration-300"
+                style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+            >
+                <div className="h-16 flex items-center px-4">
                     <button
-                        onClick={() => markAllAsRead()}
-                        className="p-2 -mr-2 text-indigo-600 dark:text-indigo-400 hover:opacity-80"
-                        title="Mark all as read"
+                        onClick={() => navigate(-1)}
+                        className="p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-colors"
                     >
-                        <CheckCheck size={20} />
+                        <ArrowLeft size={22} />
                     </button>
-                )}
+                    <div className="flex-1 text-center">
+                        <h1 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">Notifications</h1>
+                    </div>
+                    {unreadCount > 0 && (
+                        <button
+                            onClick={() => markAllAsRead()}
+                            className="p-2 -mr-2 text-indigo-600 dark:text-indigo-400 hover:opacity-80"
+                            title="Mark all as read"
+                        >
+                            <CheckCheck size={20} />
+                        </button>
+                    )}
+                </div>
             </header>
             {/* Main Content Area */}
-            <main className="pt-16">
+            <main style={{ paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))', paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}>
                 {/* Tab Bar - Pill Style - Standardized */}
-                <div className="py-3 bg-white dark:bg-black px-4 sticky top-16 z-30 transition-all duration-300 border-b border-slate-100 dark:border-slate-800">
+                <div 
+                    className="py-3 bg-white dark:bg-black px-4 sticky z-30 transition-all duration-300 border-b border-slate-100 dark:border-slate-800"
+                    style={{ top: 'calc(4rem + env(safe-area-inset-top, 0px))' }}
+                >
                     <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1.5 flex rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm">
                         <button
                             onClick={() => setActiveTab('all')}
