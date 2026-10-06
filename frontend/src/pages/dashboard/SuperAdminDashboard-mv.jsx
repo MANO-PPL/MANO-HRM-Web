@@ -391,7 +391,7 @@ const StatCard = ({ title, value, label, icon, loading, onClick, highlight, dang
             {icon}
           </div>
         </div>
-        <div className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted bg-slate-100 dark:bg-slate-750 px-1.5 py-0.5 rounded w-fit uppercase tracking-widest">
+        <div className="text-[9px] font-bold text-slate-400 dark:text-github-dark-muted bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded w-fit uppercase tracking-widest">
           {label}
         </div>
       </>
@@ -413,8 +413,8 @@ const QuickLinkCard = ({ icon, title, onClick }) => (
 
 const TypeBadge = ({ type }) => {
   const map = {
-    bug: 'bg-red-100 text-red-750 dark:bg-red-900/40 dark:text-red-400',
-    feature: 'bg-indigo-100 text-indigo-750 dark:bg-indigo-900/40 dark:text-indigo-400',
+    bug: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+    feature: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400',
     general: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
   };
   const cls = map[type?.toLowerCase()] || map.general;
@@ -423,9 +423,9 @@ const TypeBadge = ({ type }) => {
 
 const SeverityBadge = ({ severity }) => {
   const map = {
-    high: 'bg-red-100 text-red-750 dark:bg-red-900/40 dark:text-red-400',
-    medium: 'bg-amber-100 text-amber-755 dark:bg-amber-900/40 dark:text-amber-400',
-    low: 'bg-blue-100 text-blue-750 dark:bg-blue-900/40 dark:text-blue-400',
+    high: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+    medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+    low: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
   };
   const cls = map[severity?.toLowerCase()] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400';
   return <span className={`shrink-0 px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider ${cls}`}>{severity || 'N/A'}</span>;

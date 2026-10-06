@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import { adminService, adminCacheData } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
+import { getLocalDateString } from '../../utils/dateUtils';
 import employeeService from '../../services/employeeService';
 import { parsePolicy } from '../../utils/weekOffPolicy';
 import { toast } from 'react-toastify';
@@ -148,11 +149,11 @@ const AdminDashboard = () => {
             }
 
             if (recentRes.status === 'fulfilled' && recentRes.value?.data?.length > 0) {
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getLocalDateString();
                 const missed = [];
                 for (const session of recentRes.value.data) {
                     if (!session.time_out && session.time_in) {
-                        const sDate = new Date(session.time_in).toISOString().split('T')[0];
+                        const sDate = getLocalDateString(session.time_in);
                         if (sDate < todayStr && !['ABSENT', 'REJECTED'].includes(session.status)) {
                             missed.push(sDate);
                         }

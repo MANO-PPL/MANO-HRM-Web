@@ -167,7 +167,7 @@ const AdminDashboard = () => {
         if (!status || status === 'ABSENT') return 'bg-white/10 text-white/60 border border-white/5';
         switch (status) {
             case 'Active':
-                return 'bg-emerald-500/30 text-emerald-250 border border-emerald-500/20 animate-pulse';
+                return 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/20 animate-pulse';
             case 'Late Active':
                 return 'bg-orange-500/30 text-orange-200 border border-orange-500/20 animate-pulse';
             case 'PRESENT':
@@ -432,7 +432,7 @@ const AdminDashboard = () => {
                                             <div className="hidden sm:block h-8 w-px bg-white/20"></div>
                                             <div>
                                                 <span className="block text-[10px] font-black text-indigo-200/60 tracking-wider uppercase mb-1">Duration</span>
-                                                <span className="text-base font-extrabold font-mono text-emerald-350 block mt-1">
+                                                <span className="text-base font-extrabold font-mono text-emerald-300 block mt-1">
                                                     {formatDuration(todayStatus?.total_hours || todayStatus?.duration)}
                                                 </span>
                                             </div>
@@ -466,21 +466,21 @@ const AdminDashboard = () => {
                                     </div>
                                     <div className="flex items-center justify-between gap-4 border-l-2 border-indigo-500/30 pl-4 mt-2">
                                         <div className="flex-1">
-                                            <span className="block text-[10px] font-black text-indigo-250/70 tracking-wider uppercase">Start Time</span>
+                                            <span className="block text-[10px] font-black text-indigo-200/70 tracking-wider uppercase">Start Time</span>
                                             <span className="text-base font-extrabold font-mono text-white mt-1 block">
                                                 {shift ? formatTime12h(shift.start_time || shift.rules?.shift_timing?.start_time) : '--:--'}
                                             </span>
                                         </div>
                                         <div className="w-px h-10 bg-white/10"></div>
                                         <div className="flex-1">
-                                            <span className="block text-[10px] font-black text-indigo-250/70 tracking-wider uppercase">End Time</span>
+                                            <span className="block text-[10px] font-black text-indigo-200/70 tracking-wider uppercase">End Time</span>
                                             <span className="text-base font-extrabold font-mono text-white mt-1 block">
                                                 {shift ? formatTime12h(shift.end_time || shift.rules?.shift_timing?.end_time) : '--:--'}
                                             </span>
                                         </div>
                                         <div className="w-px h-10 bg-white/10"></div>
                                         <div className="flex-2">
-                                            <span className="block text-[10px] font-black text-indigo-250/70 tracking-wider uppercase mb-1.5">Working Days</span>
+                                            <span className="block text-[10px] font-black text-indigo-200/70 tracking-wider uppercase mb-1.5">Working Days</span>
                                             <div className="flex flex-wrap gap-1">
                                                 {weekdays.map(day => {
                                                     const active = shift ? activeWorkingDays.includes(day) : false;

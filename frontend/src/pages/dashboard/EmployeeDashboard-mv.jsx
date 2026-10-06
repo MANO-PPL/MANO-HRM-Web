@@ -16,6 +16,7 @@ import {
     Zap
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { toast } from 'react-toastify';
 
 const EmployeeDashboard = () => {
@@ -24,7 +25,7 @@ const EmployeeDashboard = () => {
 
     const todayDate = new Date();
     const monthKey = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}`;
-    const todayStr = todayDate.toISOString().split('T')[0];
+    const todayStr = getLocalDateString(todayDate);
 
     const [stats, setStats] = useState(() => {
         const cached = attendanceCacheData.myStats[monthKey];
@@ -150,7 +151,7 @@ const EmployeeDashboard = () => {
             const recentRes = await attendanceService.getMyRecords();
             if (recentRes && recentRes.data && recentRes.data.length > 0) {
                 const today = new Date();
-                const todayDateStr = today.toISOString().split('T')[0];
+                const todayDateStr = getLocalDateString(today);
                 const todayMidnight = new Date(today);
                 todayMidnight.setHours(0, 0, 0, 0);
 
@@ -160,7 +161,7 @@ const EmployeeDashboard = () => {
                 for (const session of recentRes.data) {
                     if (!session.time_out) {
                         const sessionDate = new Date(session.time_in);
-                        const sessionDateStr = sessionDate.toISOString().split('T')[0];
+                        const sessionDateStr = getLocalDateString(sessionDate);
 
                         if (sessionDateStr < todayDateStr) {
                             const diffTime = todayMidnight - new Date(sessionDate).setHours(0, 0, 0, 0);
