@@ -17,7 +17,7 @@ import AttendanceDetailDrawer from './components/AttendanceDetailDrawer';
 import ExportHistoryDrawer from './components/ExportHistoryDrawer';
 import AttendanceRecordTooltip from './components/AttendanceRecordTooltip';
 import ImageLightboxModal from './components/ImageLightboxModal';
-import { getWeeksOfMonth } from './components/reportsUtils';
+import { getWeeksOfMonth, classifyAttendanceStatus } from './components/reportsUtils';
 
 const PAGE_KEY = 'admin_reports';
 
@@ -103,6 +103,9 @@ const Reports = () => {
     const [previewImage, setPreviewImage] = useState(null);
     const [hoveredRecord, setHoveredRecord] = useState(null);
     const [hoveredPosition, setHoveredPosition] = useState({ top: 0, left: 0 });
+
+    // Summary Columns Pin State: false = P&A sticky (default) + rest draggable; true = all totals sticky stationary
+    const [isAllTotalsSticky, setIsAllTotalsSticky] = useState(false);
 
     // Metadata lists
     const [employees, setEmployees] = useState([]);
@@ -636,22 +639,18 @@ const Reports = () => {
         if (previewData.cardRecords && previewData.cardRecords.length > 0) {
             summary.hasData = true;
             previewData.cardRecords.forEach(record => {
-                const status = record.status || '';
-                const statusLower = status.toLowerCase();
-
-                if (status === 'Present' || statusLower.includes('present')) {
+                const category = classifyAttendanceStatus(record.status);
+                if (category === 'present') {
                     summary.present += 1;
-                } else if (status === 'Absent' || statusLower.includes('absent')) {
+                } else if (category === 'absent') {
                     summary.absent += 1;
-                } else if (statusLower === 'on leave' || statusLower === 'leave') {
+                } else if (category === 'leave') {
                     summary.leave += 1;
-                } else if (statusLower === 'half day') {
+                } else if (category === 'halfDay') {
                     summary.halfDay += 1;
-                } else if (statusLower.includes('late') || statusLower.includes('overtime')) {
-                    summary.present += 1;
                 }
 
-                const otHrs = parseFloat(record.overtime_hours);
+                const otHrs = parseFloat(record.overtime_hours ?? record.ot_hours ?? record.overtime ?? 0);
                 if (!isNaN(otHrs) && otHrs > 0) {
                     summary.overtime += otHrs;
                 }
@@ -760,26 +759,22 @@ const Reports = () => {
                 const record = emp.records[rawDate];
                 if (!record) return;
 
-                const status = record.status || '';
-                const statusLower = status.toLowerCase();
-
-                if (statusLower.includes('missed') || status === 'MP') {
+                const category = classifyAttendanceStatus(record.status);
+                if (category === 'missedPunch') {
                     stats.missedPunch += 1;
-                } else if (status === 'Present' || statusLower.includes('present')) {
-                    stats.present += 1;
-                } else if (status === 'Absent' || statusLower.includes('absent')) {
-                    stats.absent += 1;
-                } else if (statusLower === 'on leave' || statusLower === 'leave') {
+                } else if (category === 'leave') {
                     stats.leave += 1;
-                } else if (statusLower === 'half day') {
+                } else if (category === 'halfDay') {
                     stats.halfDay += 1;
-                } else if (status === 'Sun' || status === 'Sat' || statusLower.includes('weekly off') || statusLower === 'wo') {
+                } else if (category === 'weeklyOff') {
                     stats.weeklyOff += 1;
-                } else if (statusLower.includes('late') || statusLower.includes('overtime')) {
+                } else if (category === 'present') {
                     stats.present += 1;
+                } else if (category === 'absent') {
+                    stats.absent += 1;
                 }
 
-                const otHrs = parseFloat(record.overtime_hours);
+                const otHrs = parseFloat(record.overtime_hours ?? record.ot_hours ?? record.overtime ?? 0);
                 if (!isNaN(otHrs) && otHrs > 0) {
                     stats.overtimeHrs += otHrs;
                 }
@@ -861,6 +856,9 @@ const Reports = () => {
                             attendanceIsWeekDropdownOpen={attendanceIsWeekDropdownOpen}
                             setAttendanceIsWeekDropdownOpen={setAttendanceIsWeekDropdownOpen}
                             attendanceWeekDropdownRef={attendanceWeekDropdownRef}
+
+                            isAllTotalsSticky={isAllTotalsSticky}
+                            setIsAllTotalsSticky={setIsAllTotalsSticky}
 
                             departments={departments}
                             attendanceDeptId={attendanceDeptId}
@@ -1003,6 +1001,8 @@ const Reports = () => {
                             onCellHover={handleCellHover}
                             onCellLeave={handleCellLeave}
                             onRecordClick={handleRecordClick}
+                            isAllTotalsSticky={isAllTotalsSticky}
+                            onToggleAllTotalsSticky={() => setIsAllTotalsSticky(prev => !prev)}
                         />
                     </div>
                 ) : (

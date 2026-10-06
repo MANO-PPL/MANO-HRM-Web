@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, Search, User, Filter } from 'lucide-react';
+import { ChevronDown, Search, User, Filter, RotateCcw, Building2, Briefcase, Clock } from 'lucide-react';
 import MonthPicker from '../../../components/MonthPicker';
 import DatePicker from '../../../components/DatePicker';
+import { SummaryToggleIcon } from './SummaryToggleIcon';
 
 const AttendanceViewToolbar = ({
     isEmployee = false,
@@ -17,6 +18,10 @@ const AttendanceViewToolbar = ({
     attendanceIsWeekDropdownOpen,
     setAttendanceIsWeekDropdownOpen,
     attendanceWeekDropdownRef,
+
+    // Summary Columns Pin State: false = P&A sticky (default) + rest draggable at end; true = all totals sticky stationary
+    isAllTotalsSticky = false,
+    setIsAllTotalsSticky = () => {},
 
     // Department
     departments = [],
@@ -146,6 +151,32 @@ const AttendanceViewToolbar = ({
                 </div>
             )}
 
+            {/* Summary Columns Stationary Toggle */}
+            <button
+                type="button"
+                onClick={() => setIsAllTotalsSticky(!isAllTotalsSticky)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer shadow-xs select-none ${
+                    isAllTotalsSticky
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-semibold'
+                        : 'bg-white dark:bg-[#161b22] border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-muted hover:bg-slate-50 dark:hover:bg-[#21262d]'
+                }`}
+                title={
+                    isAllTotalsSticky
+                        ? "All totals stationary on right. Click to make other summary columns draggable at end"
+                        : "Present & Absent sticky. Click to make ALL summary totals stationary on right"
+                }
+            >
+                <SummaryToggleIcon size={14} className={isAllTotalsSticky ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"} />
+                <span>Summary:</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    isAllTotalsSticky
+                        ? 'bg-indigo-600 text-white dark:bg-indigo-500'
+                        : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                }`}>
+                    {isAllTotalsSticky ? 'ALL PINNED' : 'DEFAULT'}
+                </span>
+            </button>
+
             {isEmployee ? (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 rounded-xl text-xs font-medium text-indigo-700 dark:text-indigo-300">
                     <User size={13} className="text-indigo-500" />
@@ -175,128 +206,157 @@ const AttendanceViewToolbar = ({
                     </button>
 
                     {isFilterPopoverOpen && (
-                        <div className="absolute right-0 mt-1.5 w-80 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-xl shadow-2xl z-50 p-4 space-y-3.5 animate-in fade-in duration-150 text-left">
+                        <div className="absolute right-0 mt-2 w-84 sm:w-96 max-w-[95vw] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-github-dark-border rounded-2xl shadow-2xl z-50 p-4 sm:p-5 space-y-4 animate-in fade-in duration-150 text-left">
                             {/* Header */}
-                            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-[#30363d]">
-                                <div className="flex items-center gap-2">
-                                    <Filter size={13} className="text-indigo-600 dark:text-indigo-400" />
-                                    <span className="font-semibold text-xs text-slate-800 dark:text-github-dark-text">Filter Options</span>
-                                    {activeFilterCount > 0 && (
-                                        <span className="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium rounded-full">
-                                            {activeFilterCount} active
-                                        </span>
-                                    )}
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#30363d]">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                        <Filter size={15} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-xs text-slate-800 dark:text-github-dark-text">Filter Staff & Org</span>
+                                            {activeFilterCount > 0 && (
+                                                <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold rounded-full">
+                                                    {activeFilterCount} active
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 dark:text-github-dark-muted mt-0.5">Filter employee matrix by department, role, or shift</p>
+                                    </div>
                                 </div>
                                 {activeFilterCount > 0 && (
                                     <button
                                         type="button"
                                         onClick={handleClearAllFilters}
-                                        className="text-[11px] font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors cursor-pointer"
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                        title="Reset all filters to default"
                                     >
-                                        Reset All
+                                        <RotateCcw size={11} />
+                                        <span>Reset</span>
                                     </button>
                                 )}
                             </div>
 
-                            {/* Department */}
-                            <div className="space-y-1">
-                                <label className="text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Department</label>
-                                <div className="relative">
-                                    <select
-                                        value={attendanceDeptId}
-                                        onChange={(e) => setAttendanceDeptId(e.target.value)}
-                                        className="w-full pl-3 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer font-normal appearance-none"
-                                    >
-                                        <option value="">All Departments</option>
-                                        {departments.map((d) => (
-                                            <option key={d.dept_id} value={d.dept_id} className="bg-white dark:bg-[#0d1117]">
-                                                {d.dept_name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                </div>
-                            </div>
-
-                            {/* Designation */}
-                            <div className="space-y-1">
-                                <label className="text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Designation</label>
-                                <div className="relative">
-                                    <select
-                                        value={attendanceDesgId}
-                                        onChange={(e) => setAttendanceDesgId(e.target.value)}
-                                        className="w-full pl-3 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer font-normal appearance-none"
-                                    >
-                                        <option value="">All Designations</option>
-                                        {designations.map((d) => (
-                                            <option key={d.desg_id} value={d.desg_id} className="bg-white dark:bg-[#0d1117]">
-                                                {d.desg_name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                </div>
-                            </div>
-
-                            {/* Shift */}
-                            <div className="space-y-1">
-                                <label className="text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Shift</label>
-                                <div className="relative">
-                                    <select
-                                        value={attendanceShiftId}
-                                        onChange={(e) => setAttendanceShiftId(e.target.value)}
-                                        className="w-full pl-3 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer font-normal appearance-none"
-                                    >
-                                        <option value="">All Shifts</option>
-                                        <option value="open_shift">Open Shift</option>
-                                        {shifts.map((s) => (
-                                            <option key={s.shift_id} value={s.shift_id} className="bg-white dark:bg-[#0d1117]">
-                                                {s.shift_name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                </div>
-                            </div>
-
-                            {/* Employee */}
-                            <div className="space-y-1">
-                                <label className="text-[11px] font-medium text-slate-500 dark:text-github-dark-muted">Employee</label>
-                                {attendanceFilteredEmployees.length > 8 && (
-                                    <div className="relative mb-1">
-                                        <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search employee..."
-                                            value={attendanceEmpSearchQuery}
-                                            onChange={(e) => setAttendanceEmpSearchQuery(e.target.value)}
-                                            className="w-full pl-7 pr-2.5 py-1 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-md text-[11px] outline-none text-slate-700 dark:text-github-dark-text focus:ring-1 focus:ring-indigo-500 font-normal"
-                                        />
+                            {/* Organization Filters: 2-column Grid */}
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                    {/* Department */}
+                                    <div className="space-y-1">
+                                        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">
+                                            <Building2 size={11} className="text-slate-400" />
+                                            <span>Department</span>
+                                        </label>
+                                        <div className="relative">
+                                            <select
+                                                value={attendanceDeptId}
+                                                onChange={(e) => setAttendanceDeptId(e.target.value)}
+                                                className="w-full pl-2.5 pr-7 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer font-normal appearance-none truncate"
+                                            >
+                                                <option value="">All Departments</option>
+                                                {departments.map((d) => (
+                                                    <option key={d.dept_id} value={d.dept_id} className="bg-white dark:bg-[#0d1117]">
+                                                        {d.dept_name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        </div>
                                     </div>
-                                )}
-                                <div className="relative">
-                                    <select
-                                        value={attendanceEmployeeId}
-                                        onChange={(e) => setAttendanceEmployeeId(e.target.value)}
-                                        className="w-full pl-3 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer font-normal appearance-none"
-                                    >
-                                        <option value="">All Employees ({attendanceFilteredEmployees.length})</option>
-                                        {attendanceFilteredEmployees.map((emp) => (
-                                            <option key={emp.user_id} value={emp.user_id} className="bg-white dark:bg-[#0d1117]">
-                                                {emp.user_name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+                                    {/* Designation */}
+                                    <div className="space-y-1">
+                                        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">
+                                            <Briefcase size={11} className="text-slate-400" />
+                                            <span>Designation</span>
+                                        </label>
+                                        <div className="relative">
+                                            <select
+                                                value={attendanceDesgId}
+                                                onChange={(e) => setAttendanceDesgId(e.target.value)}
+                                                className="w-full pl-2.5 pr-7 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer font-normal appearance-none truncate"
+                                            >
+                                                <option value="">All Designations</option>
+                                                {designations.map((d) => (
+                                                    <option key={d.desg_id} value={d.desg_id} className="bg-white dark:bg-[#0d1117]">
+                                                        {d.desg_name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        </div>
+                                    </div>
+
+                                    {/* Shift */}
+                                    <div className="space-y-1">
+                                        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">
+                                            <Clock size={11} className="text-slate-400" />
+                                            <span>Shift</span>
+                                        </label>
+                                        <div className="relative">
+                                            <select
+                                                value={attendanceShiftId}
+                                                onChange={(e) => setAttendanceShiftId(e.target.value)}
+                                                className="w-full pl-2.5 pr-7 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer font-normal appearance-none truncate"
+                                            >
+                                                <option value="">All Shifts</option>
+                                                <option value="open_shift">Open Shift</option>
+                                                {shifts.map((s) => (
+                                                    <option key={s.shift_id} value={s.shift_id} className="bg-white dark:bg-[#0d1117]">
+                                                        {s.shift_name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        </div>
+                                    </div>
+
+                                    {/* Employee */}
+                                    <div className="space-y-1">
+                                        <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-github-dark-muted">
+                                            <User size={11} className="text-slate-400" />
+                                            <span>Employee</span>
+                                        </label>
+                                        {attendanceFilteredEmployees.length > 8 && (
+                                            <div className="relative mb-1">
+                                                <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search employee..."
+                                                    value={attendanceEmpSearchQuery}
+                                                    onChange={(e) => setAttendanceEmpSearchQuery(e.target.value)}
+                                                    className="w-full pl-6 pr-2 py-1 bg-slate-50 dark:bg-[#161b22] border border-slate-200 dark:border-[#30363d] rounded-md text-[11px] outline-none text-slate-700 dark:text-github-dark-text focus:ring-1 focus:ring-indigo-500 font-normal"
+                                                />
+                                            </div>
+                                        )}
+                                        <div className="relative">
+                                            <select
+                                                value={attendanceEmployeeId}
+                                                onChange={(e) => setAttendanceEmployeeId(e.target.value)}
+                                                className="w-full pl-2.5 pr-7 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-[#30363d] bg-slate-50 dark:bg-[#161b22] text-slate-700 dark:text-github-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer font-normal appearance-none truncate"
+                                            >
+                                                <option value="">All Employees ({attendanceFilteredEmployees.length})</option>
+                                                {attendanceFilteredEmployees.map((emp) => (
+                                                    <option key={emp.user_id} value={emp.user_id} className="bg-white dark:bg-[#0d1117]">
+                                                        {emp.user_name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Footer */}
-                            <div className="pt-2 border-t border-slate-100 dark:border-[#30363d] flex justify-end">
+                            <div className="pt-3 border-t border-slate-100 dark:border-[#30363d] flex items-center justify-between">
+                                <span className="text-[11px] text-slate-500 dark:text-github-dark-muted font-normal">
+                                    {activeFilterCount > 0 ? `${activeFilterCount} active filters` : 'No staff filters applied'}
+                                </span>
                                 <button
                                     type="button"
                                     onClick={() => setIsFilterPopoverOpen(false)}
-                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm hover:shadow"
                                 >
                                     Apply & Close
                                 </button>

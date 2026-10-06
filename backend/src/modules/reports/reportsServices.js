@@ -724,6 +724,7 @@ export async function getCardRecords({ org_id, targetUserId, startDate, endDate,
 
             const rules = getShiftRules(u);
             const dayType = getDayType(dateStr, rules.week_off_policy);
+            const userStartDate = getUserStartDate(u);
 
             const holidayOverride = !aggregated.time_in ? getHolidayOverride(dateStr, holidayByDate) : null;
 
@@ -733,6 +734,8 @@ export async function getCardRecords({ org_id, targetUserId, startDate, endDate,
             } else if (!aggregated.time_in && leaveOnDate) {
                 status = "On Leave";
                 lateReason = leaveOnDate.reason || "Approved Leave";
+            } else if (!aggregated.time_in && userStartDate && dateStr < userStartDate) {
+                status = "-";
             } else if (dateStr > todayStr) {
                 if (dayType === 'week_off') {
                     if (dayOfWeekNum === 0) status = "Sun";
