@@ -1078,10 +1078,10 @@ const MobileLabourManagement = () => {
     // ------------------------------------------------------------------------
     return (
         <MobileDashboardLayout title="Labour Management">
-            <div className="space-y-3.5 pb-24 text-xs font-sans">
+            <div className="space-y-3.5 pb-6 text-xs font-sans">
                 {/* Top Tab Bar: Only displayed when not drilled down into a specific site */}
                 {selectedSite === null && (
-                    <div className="bg-slate-200/80 dark:bg-[#161B22] p-1 flex rounded-xl border border-slate-300 dark:border-[#30363D] sticky top-16 z-20 shadow-2xs">
+                    <div className="bg-slate-200/80 dark:bg-[#161B22] p-1 flex rounded-xl border border-slate-300 dark:border-[#30363D] sticky z-20 shadow-2xs" style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}>
                         <button
                             type="button"
                             onClick={() => setActiveTab('sites')}
@@ -1093,7 +1093,7 @@ const MobileLabourManagement = () => {
                         >
                             <Building2 size={14} />
                             <span>Sites Overview</span>
-                            <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
                                 activeTab === 'sites' ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-[#30363D] text-slate-700 dark:text-slate-300'
                             }`}>
                                 {sites.length}
@@ -1110,7 +1110,7 @@ const MobileLabourManagement = () => {
                         >
                             <Users size={14} />
                             <span>Worker Directory</span>
-                            <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
                                 activeTab === 'directory' ? 'bg-white/20 text-white' : 'bg-slate-300 dark:bg-[#30363D] text-slate-700 dark:text-slate-300'
                             }`}>
                                 {labours.length}
@@ -1221,7 +1221,7 @@ const MobileLabourManagement = () => {
                                                     }`}
                                                 >
                                                     <span>{st}</span>
-                                                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                                                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
                                                         isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-[#30363D] text-slate-500 dark:text-slate-400'
                                                     }`}>
                                                         {count}
@@ -1548,7 +1548,7 @@ const MobileLabourManagement = () => {
                                                                     />
                                                                     <span>{p.label}</span>
                                                                     <span
-                                                                        className="px-1.5 py-0.2 rounded-full text-[9px] font-bold"
+                                                                        className="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                                                                         style={{
                                                                             backgroundColor: isSelected ? 'rgba(255,255,255,0.22)' : `${p.color}1f`,
                                                                             color: isSelected ? '#FFFFFF' : p.color
@@ -1767,17 +1767,17 @@ const MobileLabourManagement = () => {
                                                                                     {item.name}
                                                                                 </h4>
                                                                                 {item.is_borrowed && (
-                                                                                    <span className="px-1.5 py-0.2 rounded text-[8px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40 uppercase">
+                                                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40 uppercase">
                                                                                         Added
                                                                                     </span>
                                                                                 )}
                                                                                 {!item.status && (
-                                                                                    <span className="px-1.5 py-0.2 rounded text-[8px] font-medium bg-slate-100 dark:bg-[#21262D] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-[#30363D]">
+                                                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-100 dark:bg-[#21262D] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-[#30363D]">
                                                                                         Unmarked
                                                                                     </span>
                                                                                 )}
                                                                                 {item.is_scheduled_multi_site && (
-                                                                                    <span className="px-1.5 py-0.2 rounded text-[8px] font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200/60 dark:border-purple-800/40 uppercase">
+                                                                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200/60 dark:border-purple-800/40 uppercase">
                                                                                         Multi-Site
                                                                                     </span>
                                                                                 )}
@@ -3393,7 +3393,7 @@ const MobileLabourManagement = () => {
                                                                     <span>{site.site_name}</span>
                                                                 </div>
                                                                 {isPrimary && (
-                                                                    <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 text-[8px] font-bold uppercase">
+                                                                    <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 text-[8px] font-bold uppercase">
                                                                         Base Site
                                                                     </span>
                                                                 )}

@@ -86,7 +86,7 @@ const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date",
                     disabled={isDisabled}
                     className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all
                         ${isDisabled
-                            ? 'opacity-20 cursor-not-allowed text-slate-350 dark:text-slate-650'
+                            ? 'opacity-20 cursor-not-allowed text-slate-400 dark:text-slate-600'
                             : isSelected(i)
                                 ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 font-semibold'
                                 : isToday(i)

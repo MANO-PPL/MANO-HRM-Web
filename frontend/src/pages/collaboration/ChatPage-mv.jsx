@@ -156,14 +156,14 @@ const renderParsedMessageContent = (text, isSelf) => {
 
 const getUserColor = (userId) => {
     const colors = [
-        { text: 'text-rose-600 dark:text-rose-450 font-black', bg: 'bg-rose-50/50 dark:bg-rose-950/15 border-rose-200/60 dark:border-rose-900/20' },
-        { text: 'text-emerald-600 dark:text-emerald-450 font-black', bg: 'bg-emerald-50/50 dark:bg-emerald-950/15 border-emerald-200/60 dark:border-emerald-900/20' },
-        { text: 'text-sky-600 dark:text-sky-450 font-black', bg: 'bg-sky-50/50 dark:bg-sky-950/15 border-sky-200/60 dark:border-sky-900/30' },
-        { text: 'text-amber-700 dark:text-amber-450 font-black', bg: 'bg-amber-50/50 dark:bg-amber-950/15 border-amber-200/60 dark:border-amber-900/30' },
-        { text: 'text-violet-650 dark:text-violet-450 font-black', bg: 'bg-violet-50/50 dark:bg-violet-950/15 border-violet-200/60 dark:border-violet-900/30' },
-        { text: 'text-teal-650 dark:text-teal-450 font-black', bg: 'bg-teal-50/50 dark:bg-teal-950/15 border-teal-200/60 dark:border-teal-900/30' },
-        { text: 'text-fuchsia-650 dark:text-fuchsia-450 font-black', bg: 'bg-fuchsia-50/50 dark:bg-fuchsia-950/15 border-fuchsia-200/60 dark:border-fuchsia-900/30' },
-        { text: 'text-orange-650 dark:text-orange-450 font-black', bg: 'bg-orange-50/50 dark:bg-orange-950/15 border-orange-200/60 dark:border-orange-900/30' }
+        { text: 'text-rose-600 dark:text-rose-400 font-black', bg: 'bg-rose-50/50 dark:bg-rose-950/15 border-rose-200/60 dark:border-rose-900/20' },
+        { text: 'text-emerald-600 dark:text-emerald-400 font-black', bg: 'bg-emerald-50/50 dark:bg-emerald-950/15 border-emerald-200/60 dark:border-emerald-900/20' },
+        { text: 'text-sky-600 dark:text-sky-400 font-black', bg: 'bg-sky-50/50 dark:bg-sky-950/15 border-sky-200/60 dark:border-sky-900/30' },
+        { text: 'text-amber-700 dark:text-amber-400 font-black', bg: 'bg-amber-50/50 dark:bg-amber-950/15 border-amber-200/60 dark:border-amber-900/30' },
+        { text: 'text-violet-600 dark:text-violet-400 font-black', bg: 'bg-violet-50/50 dark:bg-violet-950/15 border-violet-200/60 dark:border-violet-900/30' },
+        { text: 'text-teal-600 dark:text-teal-400 font-black', bg: 'bg-teal-50/50 dark:bg-teal-950/15 border-teal-200/60 dark:border-teal-900/30' },
+        { text: 'text-fuchsia-600 dark:text-fuchsia-400 font-black', bg: 'bg-fuchsia-50/50 dark:bg-fuchsia-950/15 border-fuchsia-200/60 dark:border-fuchsia-900/30' },
+        { text: 'text-orange-600 dark:text-orange-400 font-black', bg: 'bg-orange-50/50 dark:bg-orange-950/15 border-orange-200/60 dark:border-orange-900/30' }
     ];
     const id = Number(userId) || 0;
     return colors[id % colors.length];
@@ -1446,7 +1446,7 @@ const MobileChatPage = () => {
                                                                                 className={`p-1.5 rounded-lg border transition-all ${
                                                                                     isSelf 
                                                                                     ? 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500 text-white hover:scale-105' 
-                                                                                    : 'bg-white dark:bg-[#21262d] border-slate-200 dark:border-white/5 text-slate-500 dark:text-slate-450 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                                                                    : 'bg-white dark:bg-[#21262d] border-slate-200 dark:border-white/5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                                                                                 }`}
                                                                                 title="Download File"
                                                                             >
@@ -1554,7 +1554,7 @@ const MobileChatPage = () => {
                                                                     )}
                                                                     <div>
                                                                         <div className="font-bold text-xs text-slate-800 dark:text-white">{u.user_name}</div>
-                                                                        <div className="text-[9px] text-slate-450 dark:text-slate-500">{u.dept_name || 'Staff'} • {u.desg_name || 'Member'}</div>
+                                                                        <div className="text-[9px] text-slate-400 dark:text-slate-500">{u.dept_name || 'Staff'} • {u.desg_name || 'Member'}</div>
                                                                     </div>
                                                                 </button>
                                                             ))}

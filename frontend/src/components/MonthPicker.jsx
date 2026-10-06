@@ -75,17 +75,17 @@ const MonthPicker = ({ label, value, onChange, placeholder = "Select month", com
                         : 'border-slate-200 dark:border-github-dark-border'
                 } rounded-xl flex items-center justify-between cursor-pointer transition-all shadow-sm select-none ${
                     compact 
-                        ? 'py-2 px-3 text-xs bg-slate-50 dark:bg-[#161b22] hover:bg-slate-100 dark:hover:bg-[#21262d]' 
+                        ? 'py-2 px-2.5 text-xs bg-slate-50 dark:bg-[#161b22] hover:bg-slate-100 dark:hover:bg-[#21262d]' 
                         : 'py-2.5 px-4 text-sm bg-white dark:bg-dark-card hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
             >
-                <div className="flex items-center gap-2 overflow-hidden">
-                    <Calendar size={18} className="text-indigo-500 shrink-0" />
+                <div className="flex items-center gap-1.5 overflow-hidden">
+                    <Calendar size={compact ? 15 : 18} className="text-indigo-500 shrink-0" />
                     <span className={`${compact ? 'text-xs font-semibold' : 'text-sm font-medium'} ${value ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'} truncate`}>
                         {value ? formatDateDisplay(value) : placeholder}
                     </span>
                 </div>
-                <ChevronDown size={14} className={`text-slate-400 transition-transform duration-300 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={14} className={`text-slate-400 shrink-0 ml-1 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
             </div>
 
             {isOpen && (
