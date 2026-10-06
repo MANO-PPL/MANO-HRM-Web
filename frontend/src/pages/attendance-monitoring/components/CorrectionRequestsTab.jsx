@@ -421,7 +421,7 @@ const CorrectionRequestsTab = ({
                                                     {request.user_name}
                                                 </p>
                                                 <p className="text-xs text-slate-500 dark:text-github-dark-muted font-normal truncate">
-                                                    {request.designation || `ID: ${request.user_id}`}
+                                                    {request.designation || 'Employee'}
                                                 </p>
                                             </div>
                                         </div>

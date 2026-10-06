@@ -227,7 +227,7 @@ const AttendanceCorrectionTab = ({
                                                         {req.user_name}
                                                     </p>
                                                     <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
-                                                        {req.designation || `ID: ${req.user_id || req.acr_id}`}
+                                                        {req.designation || 'Employee'}
                                                     </p>
                                                 </div>
                                             </div>
