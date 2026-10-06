@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Clock,
     Activity,
     MoreVertical,
     Search,
-    MapPin
+    MapPin,
+    Maximize2
 } from 'lucide-react';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 
 const extractShortLocation = (address) => {
     if (!address || typeof address !== 'string') return null;
@@ -72,6 +74,7 @@ const LiveOverviewTab = ({
     selectedDate = null
 }) => {
     const resolveStatusStyle = getStatusStyle || defaultGetStatusStyle;
+    const [profilePictureData, setProfilePictureData] = useState(null);
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
             {loading ? (
@@ -111,12 +114,33 @@ const LiveOverviewTab = ({
                                 data-tour-id={index === 0 ? "attendance-employee-card" : undefined}
                                 className={`bg-white dark:bg-dark-card rounded-lg border border-slate-200 dark:border-github-dark-border/60 hover:shadow-md transition-all duration-300 overflow-hidden group flex flex-col cursor-pointer ${item.status === 'Absent' ? 'opacity-70 grayscale-[0.3]' : ''}`}
                             >
-                                {/* Card Header */}
+                                 {/* Card Header */}
                                 <div className="p-4 flex items-start justify-between">
                                     <div className="flex gap-3 min-w-0">
-                                        <div className={`w-11 h-11 shrink-0 rounded-lg flex items-center justify-center font-semibold text-base shadow-sm overflow-hidden ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle dark:text-github-dark-muted' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'}`}>
+                                        <div
+                                            onClick={(e) => {
+                                                if (item.avatar && typeof item.avatar === 'string' && item.avatar.startsWith('http')) {
+                                                    e.stopPropagation();
+                                                    setProfilePictureData({
+                                                        imageUrl: `${item.avatar}?t=${avatarTimestamp || Date.now()}`,
+                                                        name: item.name || 'Staff',
+                                                        role: item.role,
+                                                        department: item.department
+                                                    });
+                                                }
+                                            }}
+                                            title={item.avatar && typeof item.avatar === 'string' && item.avatar.startsWith('http') ? `View ${item.name}'s profile photo` : (item.name || 'Staff')}
+                                            className={`relative group/card-avatar w-11 h-11 shrink-0 rounded-lg flex items-center justify-center font-semibold text-base shadow-sm overflow-hidden transition-all ${
+                                                item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle dark:text-github-dark-muted' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
+                                            } ${item.avatar && typeof item.avatar === 'string' && item.avatar.startsWith('http') ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50' : ''}`}
+                                        >
                                             {item.avatar && typeof item.avatar === 'string' && item.avatar.startsWith('http') ? (
-                                                <img src={`${item.avatar}?t=${avatarTimestamp || Date.now()}`} alt={item.name || 'Staff'} className="w-full h-full object-cover" />
+                                                <>
+                                                    <img src={`${item.avatar}?t=${avatarTimestamp || Date.now()}`} alt={item.name || 'Staff'} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/card-avatar:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                                        <Maximize2 size={16} />
+                                                    </div>
+                                                </>
                                             ) : (
                                                 item.avatar || (item.name ? item.name.charAt(0) : '?')
                                             )}
@@ -254,6 +278,13 @@ const LiveOverviewTab = ({
                     <p className="text-sm">Try adjusting your filters or search terms</p>
                 </div>
             )}
+
+            {/* Profile Picture Lightbox Modal */}
+            <ProfilePictureModal
+                isOpen={!!profilePictureData}
+                onClose={() => setProfilePictureData(null)}
+                {...profilePictureData}
+            />
         </div>
     );
 };

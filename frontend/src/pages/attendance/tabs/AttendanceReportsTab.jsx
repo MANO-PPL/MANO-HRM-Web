@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import DatePicker from '../../../components/DatePicker';
 import MonthPicker from '../../../components/MonthPicker';
+import MusterRollPreviewTable from '../../reports/components/MusterRollPreviewTable';
 
 const getAlignmentClass = (colHeader) => {
     if (!colHeader) return 'center';
@@ -150,13 +151,9 @@ const AttendanceReportsTab = ({
                             <span className="truncate">
                                 {(() => {
                                     const opts = [
-                                        { value: 'attendance_detailed', label: 'Detailed Attendance Report' },
-                                        { value: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
                                         { value: 'matrix_daily', label: 'Daily Attendance Report' },
-                                        { value: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix' },
                                         { value: 'matrix_monthly', label: 'Monthly Attendance Report' },
                                         { value: 'attendance_summary', label: 'Monthly Summary Report' },
-                                        { value: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix' },
                                         { value: 'matrix_weekly', label: 'Weekly Attendance Report' }
                                     ];
                                     return opts.find(o => o.value === reportsReportType)?.label || reportsReportType;
@@ -168,13 +165,9 @@ const AttendanceReportsTab = ({
                         {reportsIsTypeDropdownOpen && (
                             <div className="absolute left-0 mt-1 w-full bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl z-50 p-2 max-h-60 overflow-y-auto no-scrollbar space-y-0.5">
                                 {[
-                                    { value: 'attendance_detailed', label: 'Detailed Attendance Report' },
-                                    { value: 'attendance_matrix_daily', label: 'Daily Attendance Matrix' },
                                     { value: 'matrix_daily', label: 'Daily Attendance Report' },
-                                    { value: 'attendance_matrix_monthly', label: 'Monthly Attendance Matrix' },
                                     { value: 'matrix_monthly', label: 'Monthly Attendance Report' },
                                     { value: 'attendance_summary', label: 'Monthly Summary Report' },
-                                    { value: 'attendance_matrix_weekly', label: 'Weekly Attendance Matrix' },
                                     { value: 'matrix_weekly', label: 'Weekly Attendance Report' }
                                 ].map((opt) => (
                                     <button
@@ -215,14 +208,14 @@ const AttendanceReportsTab = ({
                             </div>
                         ) : (
                             <div>
-                                {['matrix_monthly', 'attendance_matrix_monthly', 'attendance_detailed', 'attendance_summary'].includes(reportsReportType) ? (
+                                {['matrix_monthly', 'attendance_summary'].includes(reportsReportType) ? (
                                     <MonthPicker
                                         label="Select Month"
                                         value={reportsSelectedMonth}
                                         onChange={(val) => setReportsSelectedMonth(val)}
                                         compact={true}
                                     />
-                                ) : ['matrix_weekly', 'attendance_matrix_weekly'].includes(reportsReportType) ? (
+                                ) : reportsReportType === 'matrix_weekly' ? (
                                     <div className="grid grid-cols-2 gap-3.5">
                                         <MonthPicker
                                             label="Select Month"
@@ -452,7 +445,7 @@ const AttendanceReportsTab = ({
                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 p-5 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/5">
                                     <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex items-center justify-between">
                                         <div>
-                                            <span className="text-[10px] font-bold text-slate-450 dark:text-github-dark-muted uppercase tracking-wider">Total Present</span>
+                                            <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Total Present</span>
                                             <h3 className="text-xl font-black text-emerald-600 mt-0.5">{reportsSummary.present}</h3>
                                         </div>
                                         <div className="p-2 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
@@ -461,7 +454,7 @@ const AttendanceReportsTab = ({
                                     </div>
                                     <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border p-3.5 rounded-xl shadow-sm flex items-center justify-between">
                                         <div>
-                                            <span className="text-[10px] font-bold text-slate-450 dark:text-github-dark-muted uppercase tracking-wider">Total Absent</span>
+                                            <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Total Absent</span>
                                             <h3 className="text-xl font-black text-rose-600 mt-0.5">{reportsSummary.absent}</h3>
                                         </div>
                                         <div className="p-2 bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 rounded-lg">
@@ -504,6 +497,8 @@ const AttendanceReportsTab = ({
                                         <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
                                         <p className="text-slate-500 text-sm font-medium">Loading preview data...</p>
                                     </div>
+                                ) : reportsPreviewData.musterRoll ? (
+                                    <MusterRollPreviewTable musterRoll={reportsPreviewData.musterRoll} />
                                 ) : reportsPreviewData.rows && reportsPreviewData.rows.length > 0 ? (
                                     <table className="w-full text-left border-collapse bg-white dark:bg-[#0d1117] text-slate-800 dark:text-github-dark-text shadow-sm rounded border border-slate-300 dark:border-[#30363d]" style={{ fontFamily: '"Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
                                         <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-github-dark-subtle/95 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-[#30363d]">

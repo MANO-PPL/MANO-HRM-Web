@@ -1,5 +1,6 @@
-import React from 'react';
-import { Camera, MapPin } from 'lucide-react';
+import React, { useState } from 'react';
+import { Camera, MapPin, Maximize2 } from 'lucide-react';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 
 const getCurrentTimeInTimezone = () => {
     return new Date();
@@ -13,6 +14,7 @@ const LiveTimelineTab = ({
     setPreviewImage,
     orgTimezone = 'Asia/Kolkata',
 }) => {
+    const [profilePictureData, setProfilePictureData] = useState(null);
     const timeToPct = (rawDate) => {
         if (!rawDate) return null;
         const date = rawDate instanceof Date ? rawDate : new Date(rawDate);
@@ -67,9 +69,32 @@ const LiveTimelineTab = ({
                                         {/* Employee Info (Sticky) */}
                                         <div className="w-[300px] shrink-0 px-6 py-4 flex items-center gap-3 border-r border-slate-200 dark:border-github-dark-border sticky left-0 bg-white dark:bg-dark-card group-hover:bg-slate-50 dark:group-hover:bg-github-dark-subtle z-20">
                                             <div className="flex items-center gap-4">
-                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-semibold text-sm overflow-hidden ${item.status === 'Absent' ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle dark:text-github-dark-muted' : 'bg-gradient-to-br from-indigo-500/10 to-purple-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20'}`}>
+                                                <div
+                                                    onClick={(e) => {
+                                                        if (item.avatar && typeof item.avatar === 'string' && item.avatar.startsWith('http')) {
+                                                            e.stopPropagation();
+                                                            setProfilePictureData({
+                                                                imageUrl: item.avatar,
+                                                                name: item.name || 'Staff',
+                                                                role: item.role,
+                                                                department: item.department
+                                                            });
+                                                        }
+                                                    }}
+                                                    title={item.avatar && typeof item.avatar === 'string' && item.avatar.startsWith('http') ? `View ${item.name}'s profile photo` : (item.name || 'Staff')}
+                                                    className={`relative group/row-avatar w-10 h-10 rounded-lg flex items-center justify-center font-semibold text-sm overflow-hidden shrink-0 transition-all ${
+                                                        item.status === 'Absent'
+                                                            ? 'bg-slate-100 text-slate-400 dark:bg-github-dark-subtle dark:text-github-dark-muted'
+                                                            : 'bg-gradient-to-br from-indigo-500/10 to-purple-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20'
+                                                    } ${item.avatar && typeof item.avatar === 'string' && item.avatar.startsWith('http') ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50' : ''}`}
+                                                >
                                                     {item.avatar && typeof item.avatar === 'string' && item.avatar.startsWith('http') ? (
-                                                        <img src={item.avatar} alt={item.name || 'Staff'} className="w-full h-full object-cover" />
+                                                        <>
+                                                            <img src={item.avatar} alt={item.name || 'Staff'} className="w-full h-full object-cover" />
+                                                            <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/row-avatar:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                                                <Maximize2 size={14} />
+                                                            </div>
+                                                        </>
                                                     ) : (
                                                         item.avatar || (item.name ? item.name.charAt(0) : '?')
                                                     )}
@@ -212,6 +237,13 @@ const LiveTimelineTab = ({
                     </div>
                 </div>
             </div>
+
+            {/* Profile Picture Lightbox Modal */}
+            <ProfilePictureModal
+                isOpen={!!profilePictureData}
+                onClose={() => setProfilePictureData(null)}
+                {...profilePictureData}
+            />
         </div>
     );
 };

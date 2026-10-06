@@ -465,8 +465,10 @@ const MobileAttendancePage = () => {
 
     const calculateSessionDurationHours = useCallback((startStr, endStr) => {
         if (!startStr || !endStr) return 0;
-        const [sH, sM] = startStr.split(':').map(Number);
-        const [eH, eM] = endStr.split(':').map(Number);
+        const sStr = String(startStr).trim();
+        const eStr = String(endStr).trim();
+        const [sH, sM] = sStr.split(':').map(Number);
+        const [eH, eM] = eStr.split(':').map(Number);
         if (isNaN(sH) || isNaN(sM) || isNaN(eH) || isNaN(eM)) return 0;
         let startMins = sH * 60 + sM;
         let endMins = eH * 60 + eM;
@@ -475,6 +477,111 @@ const MobileAttendancePage = () => {
         }
         return (endMins - startMins) / 60;
     }, []);
+
+    const normalizeCorrectionSessions = useCallback((data, req) => {
+        let parsed = data;
+        if (typeof parsed === 'string') {
+            try { parsed = JSON.parse(parsed); } catch { parsed = []; }
+        }
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray(parsed.sessions)) {
+            parsed = parsed.sessions;
+        }
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            const cleaned = parsed
+                .map((s, idx) => {
+                    if (!s) return null;
+                    const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                    const timeIn = s.time_in ? String(s.time_in).slice(0, 5) : (s.requested_time_in ? String(s.requested_time_in).slice(0, 5) : (s.punch_time ? String(s.punch_time).slice(11, 16) : ''));
+                    const timeOut = isChk ? '' : (s.time_out ? String(s.time_out).slice(0, 5) : (s.requested_time_out ? String(s.requested_time_out).slice(0, 5) : ''));
+                    return {
+                        id: s.id || `sess-${idx}-${Date.now()}`,
+                        time_in: timeIn,
+                        time_out: timeOut,
+                        punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                        address: s.address || '',
+                        checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : (Array.isArray(s.raw_checkpoints) ? s.raw_checkpoints : []),
+                        ...(s.attachment ? { attachment: s.attachment } : {})
+                    };
+                })
+                .filter(Boolean)
+                .filter(s => s.time_in || s.time_out);
+            if (cleaned.length > 0) return cleaned;
+        }
+        if (parsed && typeof parsed === 'object' && (parsed.time_in || parsed.time_out)) {
+            return [{
+                id: 'sess-0',
+                time_in: parsed.time_in ? String(parsed.time_in).slice(0, 5) : '',
+                time_out: parsed.time_out ? String(parsed.time_out).slice(0, 5) : '',
+                punch_type: 'regular'
+            }];
+        }
+        if (req?.requested_time_in || req?.requested_time_out) {
+            const getTime = (val) => {
+                if (!val) return '';
+                const t = val.includes(' ') ? val.split(' ')[1] : (val.includes('T') ? val.split('T')[1] : val);
+                return t.substring(0, 5);
+            };
+            const inT = getTime(req.requested_time_in);
+            const outT = getTime(req.requested_time_out);
+            if (inT || outT) {
+                return [{
+                    id: 'sess-0',
+                    time_in: inT,
+                    time_out: outT,
+                    punch_type: 'regular'
+                }];
+            }
+        }
+        return [];
+    }, []);
+
+    const extractCorrectionAttachment = useCallback((req) => {
+        if (!req) return null;
+        let url = req.attachment_url || null;
+        let fileName = 'Proof Attachment';
+        let fileSize = null;
+        let fileType = null;
+
+        if (req.attachment) {
+            if (typeof req.attachment === 'object') {
+                url = url || req.attachment.url || req.attachment.file_url;
+                fileName = req.attachment.file_name || req.attachment.fileName || req.attachment.name || fileName;
+                fileSize = req.attachment.file_size || req.attachment.fileSize || req.attachment.size || null;
+                fileType = req.attachment.file_type || req.attachment.fileType || req.attachment.type || null;
+            } else if (typeof req.attachment === 'string') {
+                url = url || req.attachment;
+            }
+        }
+
+        if (!url && req.proof_url) url = req.proof_url;
+        if (!url && req.proof_image) url = req.proof_image;
+
+        if (!url) return null;
+        const isDoc = !!String(url).match(/\.(pdf|doc|docx|csv|xlsx|xls)/i) || (fileType && String(fileType).includes('pdf'));
+        return {
+            url,
+            fileName,
+            fileSize,
+            fileType,
+            isDoc,
+            isImg: !isDoc
+        };
+    }, []);
+
+    const selectedRequestProposedSessions = useMemo(() => {
+        if (!selectedRequest) return [];
+        const sourceData = selectedRequest.proposed_data ?? selectedRequest.correction_data ?? selectedRequest.sessions;
+        return normalizeCorrectionSessions(sourceData, selectedRequest);
+    }, [selectedRequest, normalizeCorrectionSessions]);
+
+    const selectedRequestOriginalSessions = useMemo(() => {
+        if (!selectedRequest) return [];
+        return normalizeCorrectionSessions(selectedRequest.original_data, selectedRequest);
+    }, [selectedRequest, normalizeCorrectionSessions]);
+
+    const selectedRequestAttachment = useMemo(() => {
+        return extractCorrectionAttachment(selectedRequest);
+    }, [selectedRequest, extractCorrectionAttachment]);
 
     const totalProposedHours = useMemo(() => {
         const valid = corrSessions.filter(s => s.time_in && s.time_out);
@@ -950,8 +1057,8 @@ const MobileAttendancePage = () => {
                 setCorrAttachment(null);
                 setCorrAttachmentPreview(null);
 
-                const proposedList = Array.isArray(pendingReq.proposed_data) ? pendingReq.proposed_data : [];
-                const originalList = Array.isArray(pendingReq.original_data) ? pendingReq.original_data : [];
+                const proposedList = normalizeCorrectionSessions(pendingReq.proposed_data ?? pendingReq.correction_data ?? pendingReq.sessions, pendingReq);
+                const originalList = normalizeCorrectionSessions(pendingReq.original_data, pendingReq);
 
                 setOriginalSessions(originalList);
                 if (proposedList.length > 0) {
@@ -965,6 +1072,8 @@ const MobileAttendancePage = () => {
                             address: s.address || ''
                         };
                     }));
+                } else {
+                    setCorrSessions([]);
                 }
                 return;
             }
@@ -1669,41 +1778,19 @@ const MobileAttendancePage = () => {
         const newIndex = mainTabs.indexOf(newTab);
         setDirection(newIndex > currentMainIndex ? 1 : -1);
         setMainTab(newTab);
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     };
 
     const handleSubTabChange = (newTab) => {
         const newIndex = subTabs.indexOf(newTab);
         setDirection(newIndex > currentSubIndex ? 1 : -1);
         setSubTab(newTab);
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     };
 
 
 
-    const handleSwipe = (swipeDir) => {
-        if (mainTab === 'attendance') {
-            if (swipeDir === 'left' && currentMainIndex < mainTabs.length - 1) {
-                setDirection(1);
-                setMainTab(mainTabs[currentMainIndex + 1]);
-            }
-        } else {
-            // In my_attendance, swipe subtabs
-            if (swipeDir === 'left') {
-                if (currentSubIndex < subTabs.length - 1) {
-                    setDirection(1);
-                    setSubTab(subTabs[currentSubIndex + 1]);
-                }
-            } else if (swipeDir === 'right') {
-                if (currentSubIndex > 0) {
-                    setDirection(-1);
-                    setSubTab(subTabs[currentSubIndex - 1]);
-                } else {
-                    // At the first subtab, swipe back to main attendance
-                    setDirection(-1);
-                    setMainTab('attendance');
-                }
-            }
-        }
-    };
+    const handleSwipe = () => {};
 
     // --- HELPERS ---
 
@@ -1953,7 +2040,7 @@ const MobileAttendancePage = () => {
 
     return (
         <MobileDashboardLayout title="Attendance" hideScrollbar={true} contentClassName="p-0 space-y-0">
-            <div className="pb-24 no-scrollbar w-full">
+            <div className="pb-6 no-scrollbar w-full max-w-full overflow-x-hidden">
                 {/* Premium Header / Greeting */}
                 <div className="w-full px-4 sm:px-5 pt-4 pb-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-b-2xl border-b border-indigo-500/20 shadow-xl relative overflow-hidden">
                     {/* Animated Background Blobs */}
@@ -2052,24 +2139,11 @@ const MobileAttendancePage = () => {
                         {mainTab === 'attendance' ? (
                             <motion.div
                                 key="attendance-tab"
-                                custom={direction}
-                                variants={{
-                                    enter: (direction) => ({ x: direction > 0 ? 50 : -50, opacity: 0 }),
-                                    center: { x: 0, opacity: 1 },
-                                    exit: (direction) => ({ x: direction < 0 ? 50 : -50, opacity: 0, position: 'absolute', width: '100%' })
-                                }}
-                                initial="enter"
-                                animate="center"
-                                exit="exit"
-                                transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15, ease: "easeOut" }}
                                 className="space-y-6"
-                                drag="x"
-                                dragConstraints={{ left: 0, right: 0 }}
-                                dragElastic={0.2}
-                                onDragEnd={(e, info) => {
-                                    if (info.offset.x < -80) handleSwipe('left');
-                                    else if (info.offset.x > 80) handleSwipe('right');
-                                }}
                             >
                                 {/* Punch Cards - Redesigned to match image */}
                                 <div className="grid grid-cols-1 gap-2.5">
@@ -2466,7 +2540,7 @@ const MobileAttendancePage = () => {
                                                                                             {formatTime(chk.punch_time, s, false)}
                                                                                         </span>
                                                                                         {chk.accuracy && (
-                                                                                            <span className="text-[8px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-1.5 py-0.2 rounded">
+                                                                                            <span className="text-[8px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
                                                                                                 ±{Math.round(chk.accuracy)}m
                                                                                             </span>
                                                                                         )}
@@ -2527,9 +2601,10 @@ const MobileAttendancePage = () => {
                         ) : (
                             <motion.div
                                 key="logs-tab"
-                                initial={{ opacity: 0, y: 20 }}
+                                initial={{ opacity: 0, y: 8 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -20 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15, ease: "easeOut" }}
                                 className="space-y-6"
                             >
                                 {/* Logs Subtabs - Standardized Icon Style */}
@@ -2561,26 +2636,13 @@ const MobileAttendancePage = () => {
                                     })}
                                 </div>
 
-                                <AnimatePresence mode="wait" initial={false} custom={direction}>
+                                <AnimatePresence mode="wait" initial={false}>
                                     <motion.div
                                         key={subTab}
-                                        custom={direction}
-                                        variants={{
-                                            enter: (direction) => ({ x: direction > 0 ? 30 : -30, opacity: 0 }),
-                                            center: { x: 0, opacity: 1 },
-                                            exit: (direction) => ({ x: direction < 0 ? 30 : -30, opacity: 0, position: 'absolute', width: '100%' })
-                                        }}
-                                        initial="enter"
-                                        animate="center"
-                                        exit="exit"
-                                        transition={{ type: "spring", stiffness: 400, damping: 40 }}
-                                        drag="x"
-                                        dragConstraints={{ left: 0, right: 0 }}
-                                        dragElastic={0.2}
-                                        onDragEnd={(e, info) => {
-                                            if (info.offset.x < -80) handleSwipe('left');
-                                            else if (info.offset.x > 80) handleSwipe('right');
-                                        }}
+                                        initial={{ opacity: 0, y: 6 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0 }}
+                                        transition={{ duration: 0.12, ease: "easeOut" }}
                                         className="space-y-3 pt-2"
                                     >
                                         {subTab === 'history' && (
@@ -2687,7 +2749,7 @@ const MobileAttendancePage = () => {
                                                                                         <div className="flex items-center gap-1.5">
                                                                                             <span className="font-bold text-slate-700 dark:text-slate-200 text-xs">Session {sIdx + 1}</span>
                                                                                             {sessionStatus === 'MISSED_PUNCH' && (
-                                                                                                <span className="px-1.5 py-0.2 rounded-full text-[8px] font-bold uppercase tracking-wider inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40 text-slate-800 dark:text-white">
+                                                                                                <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40 text-slate-800 dark:text-white">
                                                                                                     <span className="w-1 h-1 rounded-full bg-rose-500"></span>
                                                                                                     MISSED OUT
                                                                                                 </span>
@@ -3289,7 +3351,7 @@ const MobileAttendancePage = () => {
                             animate={{ y: 0 }} 
                             exit={{ y: '100%' }} 
                             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-                            className="relative w-full max-w-lg bg-white dark:bg-github-dark-subtle rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] border border-slate-200/80 dark:border-github-dark-border z-10 overflow-hidden"
+                            className="relative w-full sm:max-w-xl bg-white dark:bg-github-dark-subtle rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[94vh] sm:max-h-[90vh] border-t sm:border border-slate-200/80 dark:border-github-dark-border z-10 overflow-hidden left-0 right-0 mx-0"
                         >
                             {/* Modal Header */}
                             <div className="px-4 pt-3 pb-3 border-b border-slate-100 dark:border-github-dark-border bg-gradient-to-r from-indigo-50/50 via-white to-transparent dark:from-github-dark-bg/60 dark:via-github-dark-subtle dark:to-transparent shrink-0">
@@ -3857,7 +3919,7 @@ const MobileAttendancePage = () => {
                             animate={{ y: 0 }}
                             exit={{ y: '100%' }}
                             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-                            className="relative bg-white dark:bg-github-dark-subtle w-full max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden z-10 flex flex-col max-h-[92vh] text-left"
+                            className="relative bg-white dark:bg-github-dark-subtle w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-2xl border-t sm:border border-slate-200 dark:border-github-dark-border overflow-hidden z-10 flex flex-col max-h-[94vh] sm:max-h-[90vh] text-left left-0 right-0 mx-0"
                         >
                             <div className="px-3.5 pt-2.5 pb-2.5 border-b border-slate-100 dark:border-github-dark-border bg-gradient-to-r from-indigo-50/70 to-transparent dark:from-github-dark-bg/50 shrink-0">
                                 <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-2 sm:hidden" />
@@ -4046,7 +4108,7 @@ const MobileAttendancePage = () => {
                             animate={{ y: 0 }} 
                             exit={{ y: '100%' }} 
                             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-                            className="relative w-full max-w-lg bg-white dark:bg-github-dark-subtle rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] border border-slate-200/80 dark:border-github-dark-border z-10 overflow-hidden"
+                            className="relative w-full sm:max-w-xl bg-white dark:bg-github-dark-subtle rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[94vh] sm:max-h-[90vh] border-t sm:border border-slate-200/80 dark:border-github-dark-border z-10 overflow-hidden left-0 right-0 mx-0"
                         >
                             {/* Modal Header */}
                             <div className="px-3.5 pt-2.5 pb-2.5 border-b border-slate-100 dark:border-github-dark-border shrink-0">
@@ -4116,52 +4178,98 @@ const MobileAttendancePage = () => {
                                 <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50">
                                     <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 mb-1">Reason for Request</span>
                                     <div className="text-xs text-slate-700 dark:text-slate-300 italic leading-relaxed">
-                                        "{selectedRequest.reason}"
+                                        "{selectedRequest.reason || 'No justification provided.'}"
                                     </div>
                                 </div>
 
                                 {/* Proposed Attendance */}
-                                {selectedRequest.correction_data && (
+                                {selectedRequestProposedSessions.length > 0 && (
                                     <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50">
-                                        <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 mb-2">Proposed Attendance</span>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Proposed Attendance</span>
+                                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                                                {selectedRequestProposedSessions.reduce((acc, s) => acc + (calculateSessionDurationHours(s.time_in, s.time_out) || 0), 0).toFixed(1)} hrs
+                                            </span>
+                                        </div>
                                         <div className="space-y-1.5">
-                                            {(typeof selectedRequest.correction_data === 'string'
-                                                ? JSON.parse(selectedRequest.correction_data).sessions
-                                                : selectedRequest.correction_data.sessions || []
-                                            ).sort((a, b) => (a.time_in || "").localeCompare(b.time_in || "")).map((s, i) => (
-                                                <div key={i} className="flex items-center justify-between p-2 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-lg shadow-2xs">
+                                            {selectedRequestProposedSessions.map((s, i) => (
+                                                <div key={s.id || i} className="flex items-center justify-between p-2 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-lg shadow-2xs">
                                                     <div className="flex items-center gap-1.5">
                                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
                                                         <span className="text-[9px] font-medium text-slate-400 uppercase">In</span>
-                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">{s.time_in}</span>
+                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">
+                                                            {s.time_in ? (formatTime ? formatTime(`2000-01-01T${s.time_in}:00`) : s.time_in) : '--:--'}
+                                                        </span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
                                                         <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
                                                         <span className="text-[9px] font-medium text-slate-400 uppercase">Out</span>
-                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">{s.time_out}</span>
+                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">
+                                                            {s.time_out ? (formatTime ? formatTime(`2000-01-01T${s.time_out}:00`) : s.time_out) : '--:--'}
+                                                        </span>
                                                     </div>
+                                                    {s.time_in && s.time_out && (
+                                                        <span className="text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400">
+                                                            {(calculateSessionDurationHours(s.time_in, s.time_out) || 0).toFixed(1)}h
+                                                        </span>
+                                                    )}
                                                 </div>
                                             ))}
-                                            {/* Single Session Check */}
-                                            {(typeof selectedRequest.correction_data === 'string' ? JSON.parse(selectedRequest.correction_data) : selectedRequest.correction_data).time_in && (
-                                                <div className="flex items-center justify-between p-2 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-lg shadow-2xs">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                                        <span className="text-[9px] font-medium text-slate-400 uppercase">In</span>
-                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">
-                                                            {(typeof selectedRequest.correction_data === 'string' ? JSON.parse(selectedRequest.correction_data) : selectedRequest.correction_data).time_in}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
-                                                        <span className="text-[9px] font-medium text-slate-400 uppercase">Out</span>
-                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">
-                                                            {(typeof selectedRequest.correction_data === 'string' ? JSON.parse(selectedRequest.correction_data) : selectedRequest.correction_data).time_out}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* Original Recorded Logs (if any) */}
+                                {selectedRequestOriginalSessions.length > 0 && (
+                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50">
+                                        <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Original Recorded Logs</span>
+                                        <div className="space-y-1.5">
+                                            {selectedRequestOriginalSessions.map((s, i) => (
+                                                <div key={s.id || i} className="flex items-center justify-between p-2 bg-white dark:bg-github-dark-bg/60 border border-slate-200/60 dark:border-github-dark-border/60 rounded-lg">
+                                                    <span className="text-[10px] font-medium text-slate-500">#{i + 1}</span>
+                                                    <span className="text-xs font-mono text-slate-700 dark:text-slate-300">
+                                                        {s.time_in || 'Missing In'} → {s.time_out || 'Missing Out'}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-400 font-mono">
+                                                        {s.time_in && s.time_out ? `${(calculateSessionDurationHours(s.time_in, s.time_out) || 0).toFixed(1)}h` : '--'}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Supporting Attached Proof */}
+                                {selectedRequestAttachment && (
+                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50">
+                                        <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Supporting Proof Document</span>
+                                        {selectedRequestAttachment.isImg ? (
+                                            <div 
+                                                onClick={() => setPreviewImage(selectedRequestAttachment.url)}
+                                                className="flex items-center gap-3 p-2 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                            >
+                                                <img src={selectedRequestAttachment.url} alt="Proof" className="w-12 h-12 object-cover rounded-md border border-slate-200 dark:border-github-dark-border shrink-0" />
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{selectedRequestAttachment.fileName}</p>
+                                                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 flex items-center gap-1 mt-0.5">
+                                                        <Eye size={12} /> Tap to preview full image
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <a 
+                                                href={selectedRequestAttachment.url} 
+                                                target="_blank" 
+                                                rel="noreferrer"
+                                                className="flex items-center justify-between p-2.5 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                            >
+                                                <div className="flex items-center gap-2 truncate">
+                                                    <Paperclip size={15} />
+                                                    <span className="truncate">{selectedRequestAttachment.fileName}</span>
+                                                </div>
+                                                <Download size={14} className="shrink-0 ml-2" />
+                                            </a>
+                                        )}
                                     </div>
                                 )}
 
@@ -4170,7 +4278,7 @@ const MobileAttendancePage = () => {
                                     <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50 border-t-2 border-t-indigo-500">
                                         <span className="block text-[10px] font-semibold text-indigo-500 mb-1">Reviewer Decision</span>
                                         <p className="text-xs text-slate-700 dark:text-slate-300 font-normal">
-                                            {selectedRequest.review_comments || "No reviewer comments provided."}
+                                            {selectedRequest.review_comments || selectedRequest.admin_comment || "No reviewer comments provided."}
                                         </p>
                                         <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-github-dark-border/50 text-[10px] text-slate-400 font-normal">
                                             Reviewed on {selectedRequest.reviewed_at ? formatPlatformDate(selectedRequest.reviewed_at) : 'N/A'}

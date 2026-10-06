@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import AiSummaryModal from './components/AiSummaryModal';
+import ProfilePictureModal from '../../components/modals/ProfilePictureModal';
 import { adminService } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import DatePicker from '../../components/DatePicker';
@@ -267,6 +268,74 @@ const processAttendanceData = (staff, tz = 'UTC', selectedDateStr = null) => {
     return mergedData;
 };
 
+const formatHeaderDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T12:00:00'));
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch (e) {
+        return dateStr;
+    }
+};
+
+const calculateProposedHours = (req) => {
+    try {
+        let sessions = [];
+        if (req.proposed_data) {
+            let pData = req.proposed_data;
+            if (typeof pData === 'string') {
+                try { pData = JSON.parse(pData); } catch { pData = []; }
+            }
+            if (Array.isArray(pData)) sessions = pData;
+            else if (pData?.sessions && Array.isArray(pData.sessions)) sessions = pData.sessions;
+            else if (pData?.time_in && pData?.time_out) sessions = [pData];
+        }
+        if (sessions.length === 0 && req.correction_data) {
+            let data = req.correction_data;
+            if (typeof data === 'string') {
+                try { data = JSON.parse(data); } catch { data = []; }
+            }
+            if (Array.isArray(data)) sessions = data;
+            else if (data?.sessions && Array.isArray(data.sessions)) sessions = data.sessions;
+            else if (data?.time_in && data?.time_out) sessions = [data];
+        }
+        if (sessions.length === 0 && req.sessions && Array.isArray(req.sessions)) {
+            sessions = req.sessions;
+        }
+        if (sessions.length === 0 && req.time_in && req.time_out) {
+            sessions = [{ time_in: req.time_in, time_out: req.time_out }];
+        }
+
+        let totalMin = 0;
+        sessions.forEach(s => {
+            if (s.time_in && s.time_out) {
+                const inParts = String(s.time_in).split(':').map(Number);
+                const outParts = String(s.time_out).split(':').map(Number);
+                const inMin = inParts[0] * 60 + inParts[1];
+                const outMin = outParts[0] * 60 + outParts[1];
+                if (outMin > inMin) totalMin += (outMin - inMin);
+            }
+        });
+        return totalMin > 0 ? (totalMin / 60).toFixed(1) : null;
+    } catch (e) {
+        return null;
+    }
+};
+
+const getRequestTypeStyle = (type) => {
+    const typeStr = String(type).toLowerCase().replace(/_/g, ' ');
+    if (typeStr.includes('overtime')) {
+        return 'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-purple-600 bg-purple-50 dark:bg-purple-900/20';
+    }
+    if (typeStr.includes('missed') || typeStr.includes('manual')) {
+        return 'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-amber-600 bg-amber-50 dark:bg-amber-900/20';
+    }
+    if (typeStr.includes('correction') || typeStr.includes('time') || typeStr.includes('adjustment')) {
+        return 'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-blue-600 bg-blue-50 dark:bg-blue-900/20';
+    }
+    return 'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-slate-600 bg-slate-50 dark:text-github-dark-muted dark:bg-github-dark-subtle';
+};
+
 const MobileAttendanceMonitoring = () => {
     const { avatarTimestamp, user: currentUser } = useAuth();
 
@@ -283,58 +352,6 @@ const MobileAttendanceMonitoring = () => {
 
     const [orgTimezone, setOrgTimezone] = useState(() => cachedResponse?.timezone || 'UTC');
 
-    const formatHeaderDate = (dateStr) => {
-        if (!dateStr) return '';
-        try {
-            const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T12:00:00'));
-            return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-        } catch (e) {
-            return dateStr;
-        }
-    };
-
-    const calculateProposedHours = (req) => {
-        try {
-            let sessions = [];
-            if (req.sessions && Array.isArray(req.sessions)) {
-                sessions = req.sessions;
-            } else if (req.correction_data) {
-                const data = typeof req.correction_data === 'string' ? JSON.parse(req.correction_data) : req.correction_data;
-                if (data?.sessions && Array.isArray(data.sessions)) sessions = data.sessions;
-                else if (data?.time_in && data?.time_out) sessions = [data];
-            } else if (req.time_in && req.time_out) {
-                sessions = [{ time_in: req.time_in, time_out: req.time_out }];
-            }
-
-            let totalMin = 0;
-            sessions.forEach(s => {
-                if (s.time_in && s.time_out) {
-                    const inParts = s.time_in.split(':').map(Number);
-                    const outParts = s.time_out.split(':').map(Number);
-                    const inMin = inParts[0] * 60 + inParts[1];
-                    const outMin = outParts[0] * 60 + outParts[1];
-                    if (outMin > inMin) totalMin += (outMin - inMin);
-                }
-            });
-            return totalMin > 0 ? (totalMin / 60).toFixed(1) : null;
-        } catch (e) {
-            return null;
-        }
-    };
-
-    const getRequestTypeStyle = (type) => {
-        const typeStr = String(type).toLowerCase().replace(/_/g, ' ');
-        if (typeStr.includes('overtime')) {
-            return 'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-purple-600 bg-purple-50 dark:bg-purple-900/20';
-        }
-        if (typeStr.includes('missed') || typeStr.includes('manual')) {
-            return 'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-amber-600 bg-amber-50 dark:bg-amber-900/20';
-        }
-        if (typeStr.includes('correction') || typeStr.includes('time') || typeStr.includes('adjustment')) {
-            return 'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-blue-600 bg-blue-50 dark:bg-blue-900/20';
-        }
-        return 'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-slate-600 bg-slate-50 dark:text-github-dark-muted dark:bg-github-dark-subtle';
-    };
     const MAIN_TABS = ['dashboard', 'requests'];
     const SUB_TABS = [
         { id: 'overview', label: 'Overview', icon: LayoutGrid },
@@ -585,6 +602,7 @@ const MobileAttendanceMonitoring = () => {
         const newIndex = MAIN_TABS.indexOf(newTab);
         setDirection(newIndex > currentIndex ? 1 : -1);
         setActiveTab(newTab);
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     };
 
     const handlePrevDay = () => {
@@ -887,12 +905,12 @@ const MobileAttendanceMonitoring = () => {
     }, [correctionRequests]);
 
     return (
-        <MobileDashboardLayout title="Live Attendance">
-            <div className="min-h-screen bg-slate-50 dark:bg-github-dark-bg transition-colors duration-300 pb-24">
+        <MobileDashboardLayout title="Live Attendance" contentClassName="px-0 pt-0 pb-4">
+            <div className="w-full bg-slate-50 dark:bg-github-dark-bg transition-colors duration-300 pb-6">
 
                 {/* --- TOP TABS (Matching Flutter _buildTabs) --- */}
-                <div className="sticky top-0 z-20 bg-white/95 dark:bg-github-dark-bg/95 backdrop-blur-md px-3 pt-2 pb-2.5 border-b border-slate-100 dark:border-slate-800">
-                    <div className="bg-slate-100 dark:bg-[#161B22] p-1 flex rounded-xl border border-slate-200/70 dark:border-github-dark-border shadow-sm max-w-lg mx-auto">
+                <div className="sticky z-20 bg-white/95 dark:bg-github-dark-bg/95 backdrop-blur-md px-3 pt-2 pb-2.5 border-b border-slate-100 dark:border-slate-800 w-full" style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}>
+                    <div className="bg-slate-100 dark:bg-[#161B22] p-1 flex rounded-xl border border-slate-200/70 dark:border-github-dark-border shadow-sm w-full">
                         <button
                             onClick={() => handleTabChange('dashboard')}
                             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
@@ -916,7 +934,7 @@ const MobileAttendanceMonitoring = () => {
                             <FileText size={14} className={activeTab === 'requests' ? 'text-indigo-600 dark:text-white' : 'text-slate-400'} />
                             <span>Correction Requests</span>
                             {requestCount > 0 && (
-                                <span className="ml-1 px-1.5 py-0.2 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold inline-flex items-center justify-center leading-none">
+                                <span className="ml-1 px-1.5 py-0.5 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold inline-flex items-center justify-center leading-none">
                                     {requestCount}
                                 </span>
                             )}
@@ -926,17 +944,17 @@ const MobileAttendanceMonitoring = () => {
 
                 {/* --- TAB CONTENT --- */}
                 {activeTab === 'dashboard' ? (
-                    <div className="max-w-lg mx-auto space-y-3 pb-6">
+                    <div className="w-full space-y-3 pb-6">
                         {/* 1. Date Selector + Action Buttons (Matching Flutter _buildDateSelector) */}
-                        <div className="flex items-center justify-between gap-2 px-3 pt-3">
-                            <div className="relative flex items-center gap-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 px-3 py-1.5 rounded-xl shadow-sm">
+                        <div className="flex items-center justify-between gap-2 px-3 pt-3 w-full">
+                            <div className="relative flex items-center gap-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 px-3 py-1.5 rounded-xl shadow-sm flex-1 min-w-0">
                                 <Calendar size={13} className="text-indigo-600 dark:text-white shrink-0" />
                                 <DatePicker
                                     value={selectedDate}
                                     onChange={setSelectedDate}
                                     maxDate={new Date().toISOString().split('T')[0]}
                                     customDisplay={
-                                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 cursor-pointer">
+                                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 cursor-pointer truncate">
                                             {formatHeaderDate(selectedDate)}
                                         </span>
                                     }
@@ -1113,7 +1131,7 @@ const MobileAttendanceMonitoring = () => {
                                                             backgroundColor: isSelected ? tab.color : undefined,
                                                             color: isSelected ? '#ffffff' : undefined
                                                         }}
-                                                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                                                             isSelected ? '' : 'bg-black/5 dark:bg-white/10 text-slate-500 dark:text-slate-400'
                                                         }`}
                                                     >
@@ -1294,7 +1312,7 @@ const MobileAttendanceMonitoring = () => {
                     </div>
                 ) : (
                     /* --- CORRECTION REQUESTS TAB (Matching Flutter AdminCorrectionRequests) --- */
-                    <div className="max-w-lg mx-auto px-3 pt-3 space-y-3 pb-6">
+                    <div className="w-full px-3 pt-3 space-y-3 pb-6">
                         {/* Header: Title + Refresh (Matching Flutter _buildHeader) */}
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-slate-900 dark:text-white">Correction Requests</h3>
@@ -1345,7 +1363,7 @@ const MobileAttendanceMonitoring = () => {
                                             }`}
                                         >
                                             <span>{tab.label}</span>
-                                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                                                 isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400'
                                             }`}>
                                                 {tab.count}
@@ -1696,6 +1714,7 @@ const RequestCard = ({ request, onClick, avatarTimestamp }) => {
 
 const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
     const [previewImage, setPreviewImage] = useState(null);
+    const [profilePictureData, setProfilePictureData] = useState(null);
 
     return (
         <motion.div
@@ -1734,8 +1753,27 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                 <div className="w-12 h-1 bg-slate-200 dark:bg-white/10 rounded-full mx-auto mb-6" />
 
                 <div className="flex items-center gap-4 mb-6">
-                    <div className="w-14 h-14 rounded-2xl bg-white dark:bg-dark-card border-2 border-white dark:border-github-dark-border overflow-hidden shadow-lg flex items-center justify-center">
-                        {employee.avatar.length > 1 ? <img src={`${employee.avatar}?t=${avatarTimestamp}`} className="w-full h-full object-cover" /> : <div className="text-xl font-black text-indigo-500">{employee.avatar}</div>}
+                    <div 
+                        onClick={() => {
+                            if (employee.avatar && employee.avatar.length > 1 && employee.avatar.startsWith('http')) {
+                                setProfilePictureData({
+                                    imageUrl: `${employee.avatar}?t=${avatarTimestamp}`,
+                                    name: employee.name,
+                                    role: employee.role,
+                                    department: employee.department
+                                });
+                            }
+                        }}
+                        className={`w-14 h-14 rounded-2xl bg-white dark:bg-dark-card border-2 border-white dark:border-github-dark-border overflow-hidden shadow-lg flex items-center justify-center shrink-0 ${
+                            employee.avatar && employee.avatar.length > 1 && employee.avatar.startsWith('http') ? 'cursor-pointer active:scale-95 transition-transform' : ''
+                        }`}
+                        title="Click to view full photo"
+                    >
+                        {employee.avatar.length > 1 ? (
+                            <img src={`${employee.avatar}?t=${avatarTimestamp}`} className="w-full h-full object-cover" alt={employee.name} />
+                        ) : (
+                            <div className="text-xl font-black text-indigo-500">{employee.avatar}</div>
+                        )}
                     </div>
                     <div>
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-tight mb-1">{employee.name}</h3>
@@ -1835,6 +1873,13 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
                 <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 active:scale-90 transition-all">
                     <X size={20} />
                 </button>
+
+                {/* Profile Picture Lightbox Modal */}
+                <ProfilePictureModal
+                    isOpen={!!profilePictureData}
+                    onClose={() => setProfilePictureData(null)}
+                    {...profilePictureData}
+                />
             </motion.div>
         </motion.div>
     );
@@ -1843,6 +1888,25 @@ const EmployeeDetailModal = ({ employee, onClose, date, avatarTimestamp }) => {
 const RequestDetailModal = ({ request, onClose, onUpdate }) => {
     const [comment, setComment] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+
+    const proposedSessions = useMemo(() => {
+        if (!request) return [];
+        let raw = request.proposed_data ?? request.correction_data ?? request.sessions;
+        if (typeof raw === 'string') {
+            try { raw = JSON.parse(raw); } catch { raw = []; }
+        }
+        if (raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray(raw.sessions)) {
+            raw = raw.sessions;
+        }
+        if (Array.isArray(raw)) {
+            return raw.filter(s => s && (s.time_in || s.time_out));
+        }
+        if (raw && (raw.time_in || raw.time_out)) return [raw];
+        return [];
+    }, [request]);
+
+    const attachmentUrl = request?.attachment_url || request?.attachment?.url || request?.proof_url || null;
+    const isAttachmentImg = attachmentUrl && !String(attachmentUrl).match(/\.(pdf|doc|docx|csv|xlsx|xls)/i);
 
     const handleAction = async (status) => {
         setIsProcessing(true);
@@ -1864,7 +1928,7 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9000] flex items-end justify-center sm:items-center"
+            className="fixed inset-0 z-[9000] flex items-end justify-center sm:items-center p-0 sm:p-4"
         >
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm cursor-pointer" onClick={onClose} />
             <motion.div
@@ -1872,7 +1936,7 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
                 transition={{ type: "spring", damping: 28, stiffness: 300 }}
-                className="relative w-full max-w-lg bg-white dark:bg-github-dark-subtle rounded-t-[2rem] sm:rounded-2xl p-6 pb-12 shadow-2xl border-t border-slate-200 dark:border-github-dark-border z-10 max-h-[90vh] overflow-y-auto"
+                className="relative w-full sm:max-w-xl bg-white dark:bg-github-dark-subtle rounded-t-[2rem] sm:rounded-2xl p-5 sm:p-6 pb-10 sm:pb-12 shadow-2xl border-t sm:border border-slate-200 dark:border-github-dark-border z-10 max-h-[94vh] sm:max-h-[90vh] overflow-y-auto left-0 right-0 mx-0"
             >
                 <div className="w-12 h-1 bg-slate-200 dark:bg-white/10 rounded-full mx-auto mb-6" />
 
@@ -1894,6 +1958,37 @@ const RequestDetailModal = ({ request, onClose, onUpdate }) => {
                             "{request.reason || 'No justification provided'}"
                         </p>
                     </div>
+
+                    {proposedSessions.length > 0 && (
+                        <div className="bg-slate-50 dark:bg-github-dark-subtle/40 p-4 rounded-xl space-y-2 border border-slate-100 dark:border-github-dark-border">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Proposed Attendance</span>
+                            <div className="space-y-1.5 pt-1">
+                                {proposedSessions.map((s, idx) => (
+                                    <div key={idx} className="flex items-center justify-between text-xs py-1 px-2.5 rounded-lg bg-white dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border font-mono">
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{s.time_in ? String(s.time_in).slice(0, 5) : '--:--'}</span>
+                                        <span className="text-slate-400">→</span>
+                                        <span className="text-rose-600 dark:text-rose-400 font-semibold">{s.time_out ? String(s.time_out).slice(0, 5) : '--:--'}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {attachmentUrl && (
+                        <div className="bg-slate-50 dark:bg-github-dark-subtle/40 p-3.5 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Supporting Proof Document</span>
+                            {isAttachmentImg ? (
+                                <a href={attachmentUrl} target="_blank" rel="noreferrer" className="block rounded-lg overflow-hidden border border-slate-200 dark:border-github-dark-border max-h-36">
+                                    <img src={attachmentUrl} alt="Proof" className="w-full h-full object-cover" />
+                                </a>
+                            ) : (
+                                <a href={attachmentUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                                    <Paperclip size={14} />
+                                    <span>View Attached Document</span>
+                                </a>
+                            )}
+                        </div>
+                    )}
 
                     {request.status?.toUpperCase() === 'PENDING' ? (
                         <div className="space-y-2">
@@ -1989,7 +2084,7 @@ const MobileClusterDrawer = ({ selectedCluster, onClose, avatarTimestamp }) => {
                 className="relative max-h-[85vh] bg-slate-50 dark:bg-dark-card border-t border-slate-200 dark:border-github-dark-border flex flex-col z-10 shadow-2xl rounded-t-2xl pb-6 w-full"
             >
                 {/* Drag Handle Visual */}
-                <div className="w-12 h-1 bg-slate-350 dark:bg-white/10 rounded-full mx-auto my-3 shrink-0" />
+                <div className="w-12 h-1 bg-slate-400 dark:bg-white/10 rounded-full mx-auto my-3 shrink-0" />
 
                 {/* Header */}
                 <div className="px-5 pb-3 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between shrink-0">
@@ -2093,7 +2188,7 @@ const MobileClusterDrawer = ({ selectedCluster, onClose, avatarTimestamp }) => {
                                                     </span>
                                                 </div>
                                             </div>
-                                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-slate-350 group-hover:bg-indigo-500 group-hover:text-white transition-all">
+                                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 group-hover:bg-indigo-500 group-hover:text-white transition-all">
                                                 <ChevronRight size={14} />
                                             </div>
                                         </div>
