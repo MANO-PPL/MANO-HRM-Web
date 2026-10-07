@@ -8,11 +8,14 @@ import {
     MapPin,
     Search,
     XCircle,
-    TrendingUp
+    TrendingUp,
+    Maximize2
 } from 'lucide-react';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 
 const UserAttendanceDetailsModal = ({ user, onClose }) => {
     const [previewImage, setPreviewImage] = useState(null);
+    const [profilePictureData, setProfilePictureData] = useState(null);
 
     // If we're closing and no user, we rely on AnimatePresence in the parent
     if (!user) return null;
@@ -39,9 +42,29 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                 {/* Header */}
                 <div className="p-5 border-b border-slate-100 dark:border-github-dark-border flex items-center justify-between bg-slate-50/50 dark:bg-github-dark-subtle/20 sticky top-0 z-10">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full flex items-center justify-center font-semibold text-lg shadow-sm overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+                        <div
+                            onClick={() => {
+                                if (user.avatar && user.avatar.startsWith('http')) {
+                                    setProfilePictureData({
+                                        imageUrl: user.avatar,
+                                        name: user.name,
+                                        role: user.role,
+                                        department: user.department
+                                    });
+                                }
+                            }}
+                            title={user.avatar && user.avatar.startsWith('http') ? `View ${user.name}'s profile photo` : user.name}
+                            className={`relative group/modal-avatar w-12 h-12 rounded-full flex items-center justify-center font-semibold text-lg shadow-sm overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600 text-white shrink-0 transition-all ${
+                                user.avatar && user.avatar.startsWith('http') ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-400' : ''
+                            }`}
+                        >
                             {user.avatar && user.avatar.startsWith('http') ? (
-                                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                                <>
+                                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/modal-avatar:opacity-100 transition-opacity flex items-center justify-center text-white backdrop-blur-[1px]">
+                                        <Maximize2 size={16} />
+                                    </div>
+                                </>
                             ) : (
                                 user.avatar
                             )}
@@ -71,13 +94,13 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                                 user.allStatuses.map(s => (
                                     <span key={s} className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-xs ${
                                         s === 'Holiday'
-                                            ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-850'
+                                            ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-800'
                                             : s === 'Week Off'
                                             ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                                             : s === 'Absent'
-                                            ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-850'
+                                            ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800'
                                             : s === 'Leave'
-                                            ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-850'
+                                            ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800'
                                             : s === 'Late' || s.includes('Late')
                                             ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800'
                                             : s === 'Overtime'
@@ -92,13 +115,13 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                             ) : (
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-xs ${
                                     user.status === 'Holiday'
-                                        ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-850'
+                                        ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-800'
                                         : user.status === 'Week Off'
                                         ? 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                                         : user.status === 'Absent'
-                                        ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-850'
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800'
                                         : user.status === 'Leave'
-                                        ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-850'
+                                        ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800'
                                         : user.status.includes('Active')
                                         ? 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800 animate-pulse'
                                         : 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800'
@@ -278,6 +301,13 @@ const UserAttendanceDetailsModal = ({ user, onClose }) => {
                 </AnimatePresence>,
                 document.body
             )}
+
+            {/* Profile Picture Lightbox Modal */}
+            <ProfilePictureModal
+                isOpen={!!profilePictureData}
+                onClose={() => setProfilePictureData(null)}
+                {...profilePictureData}
+            />
         </>,
         document.body
     );

@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import { holidayService, parseLocalDate } from '../../services/holidayService';
-import { leaveService } from '../../services/leaveService';
-import api from '../../services/api';
-import DatePicker from '../../components/DatePicker';
 import { formatPlatformDate } from '../../utils/dateUtils';
+import MobileLeaveApplication from './LeaveApplication-mv';
 import { toast } from 'react-toastify';
+import Papa from 'papaparse';
 import {
     Calendar,
     Plus,
@@ -16,66 +15,79 @@ import {
     Search,
     X,
     FileText,
-    Shield,
     Upload,
-    MoreVertical,
-    Clock,
-    CheckCircle,
-    XCircle,
-    ChevronDown,
-    Paperclip,
-    ExternalLink,
-    Filter,
-    ArrowLeft,
-    Umbrella,
-    Edit3,
     CalendarDays,
-    Info,
-    History,
+    ChevronLeft,
+    ChevronRight,
+    Edit3,
+    PartyPopper,
+    Download,
     Check,
-    Users,
-    Settings,
-    Layers
+    AlertCircle,
+    Loader2,
+    CheckCircle
 } from 'lucide-react';
-import MobileDatePicker from '../../components/MobileDatePicker';
-import MobileSelect from '../../components/MobileSelect';
-import MobileConfirmModal from '../../components/MobileConfirmModal';
+import DatePicker from '../../components/DatePicker';
 
-const AttachmentModal = ({ file, onClose }) => {
-    if (!file) return null;
-    const isImage = file.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_key || file.name);
-    const isPdf = file.file_type === 'application/pdf' || /\.pdf$/i.test(file.file_key || file.name);
+// =============================================================================
+// 1. HOLIDAY DETAIL DIALOG (Matching Flutter HolidayDetailDialog)
+// =============================================================================
+const HolidayDetailDialog = ({ holiday, onClose }) => {
+    if (!holiday) return null;
+    const date = parseLocalDate(holiday.holiday_date);
 
     return createPortal(
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-4">
-            <div className="absolute -inset-10 bg-black/80 backdrop-blur-md" onClick={onClose}></div>
-            <div className="relative z-10 bg-white dark:bg-black rounded-2xl overflow-hidden w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-black">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600 dark:text-indigo-400">
-                            {isImage ? <FileText size={20} /> : <FileText size={20} />}
-                        </div>
-                        <div className="overflow-hidden">
-                            <h3 className="font-medium text-slate-800 dark:text-github-dark-text text-sm truncate max-w-[200px]">
-                                {(file.file_key || file.name)?.split('/').pop() || 'Attachment'}
-                            </h3>
-                        </div>
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative z-10 w-full max-w-sm bg-white dark:bg-[#161B22] rounded-3xl overflow-hidden shadow-2xl border border-slate-200/80 dark:border-[#30363D] animate-in zoom-in-95 duration-200">
+                {/* Header Image/Icon Area */}
+                <div className="h-28 w-full bg-[#6366F1]/10 dark:bg-[#6366F1]/15 flex items-center justify-center relative">
+                    <div className="w-14 h-14 rounded-full bg-[#6366F1]/20 dark:bg-[#6366F1]/30 flex items-center justify-center text-[#6366F1] dark:text-[#818CF8]">
+                        <PartyPopper size={30} />
                     </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-red-500 transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
-                        <X size={20} />
+                    <button
+                        onClick={onClose}
+                        className="absolute top-3 right-3 p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                        <X size={18} />
                     </button>
                 </div>
-                <div className="flex-1 bg-slate-100 dark:bg-slate-950/50 p-4 flex items-center justify-center overflow-hidden relative">
-                    {isImage ? (
-                        <img src={file.file_url} alt="Attachment" className="max-w-full max-h-full object-contain rounded-lg shadow-sm" />
-                    ) : isPdf ? (
-                        <iframe src={file.file_url} className="w-full h-full rounded-lg border border-slate-200 dark:border-github-dark-border bg-white" title="PDF Viewer"></iframe>
-                    ) : (
-                        <div className="text-center">
-                            <p className="text-slate-500 dark:text-github-dark-muted mb-4">This file type cannot be previewed.</p>
-                            <a href={file.file_url} download className="text-indigo-600 hover:underline font-medium">Download to view</a>
+
+                <div className="p-6 text-center space-y-4">
+                    {/* Date Badge */}
+                    <div className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-[#6366F1]/10 text-[#6366F1] dark:bg-[#6366F1]/20 dark:text-[#818CF8]">
+                        {formatPlatformDate(holiday.holiday_date)}
+                    </div>
+
+                    {/* Holiday Name */}
+                    <div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">
+                            {holiday.holiday_name}
+                        </h3>
+                    </div>
+
+                    {/* Details Grid */}
+                    <div className="grid grid-cols-2 gap-3 pt-2 text-left">
+                        <div className="bg-slate-50 dark:bg-[#0D1117] p-3 rounded-2xl border border-slate-100 dark:border-[#30363D]">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Category</span>
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                {holiday.holiday_type || 'Public Holiday'}
+                            </span>
                         </div>
-                    )}
+                        <div className="bg-slate-50 dark:bg-[#0D1117] p-3 rounded-2xl border border-slate-100 dark:border-[#30363D]">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">Applicable</span>
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                All Locations
+                            </span>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={onClose}
+                        className="w-full py-3 bg-[#6366F1] hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md active:scale-98 transition-all"
+                    >
+                        Got it
+                    </button>
                 </div>
             </div>
         </div>,
@@ -83,1126 +95,875 @@ const AttachmentModal = ({ file, onClose }) => {
     );
 };
 
+// =============================================================================
+// 2. HOLIDAY FORM MODAL (Add / Edit - Matching Flutter HolidayFormDialog)
+// =============================================================================
+const HolidayFormModal = ({ isOpen, isEdit, initialData, onClose, onSave }) => {
+    const [name, setName] = useState('');
+    const [date, setDate] = useState('');
+    const [type, setType] = useState('Public Holiday');
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            setName(initialData?.name || initialData?.holiday_name || '');
+            setDate(initialData?.date || initialData?.holiday_date || new Date().toISOString().split('T')[0]);
+            setType(initialData?.type || initialData?.holiday_type || 'Public Holiday');
+        }
+    }, [isOpen, initialData]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!name.trim()) {
+            toast.error("Please enter holiday name");
+            return;
+        }
+        if (!date) {
+            toast.error("Please select holiday date");
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            await onSave({
+                holiday_name: name.trim(),
+                holiday_date: date,
+                holiday_type: type,
+                applicable_json: ['All Locations']
+            });
+            onClose();
+        } catch (err) {
+            toast.error(err.message || "Failed to save holiday");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return createPortal(
+        <div className="fixed inset-0 z-[600] flex items-end justify-center">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative z-10 w-full bg-white dark:bg-[#161B22] rounded-t-2xl p-5 max-h-[90vh] overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+20px)] border-t border-slate-200 dark:border-[#30363D] animate-in slide-in-from-bottom duration-200">
+                <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-4" />
+
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-github-dark-text">
+                        {isEdit ? 'Edit Holiday' : 'Create New Holiday'}
+                    </h3>
+                    <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 rounded-full">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                            Holiday Name
+                        </label>
+                        <input
+                            type="text"
+                            required
+                            placeholder="e.g. New Year's Day"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="w-full py-2.5 px-3 bg-slate-50 dark:bg-[#0D1117] border border-slate-200 dark:border-[#30363D] rounded-lg text-xs font-semibold text-slate-800 dark:text-github-dark-text outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                    </div>
+
+                    <div>
+                        <DatePicker
+                            label="Holiday Date"
+                            value={date}
+                            onChange={setDate}
+                            placeholder="Select date"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                            Category / Type
+                        </label>
+                        <select
+                            value={type}
+                            onChange={(e) => setType(e.target.value)}
+                            className="w-full py-2.5 px-3 bg-slate-50 dark:bg-[#0D1117] border border-slate-200 dark:border-[#30363D] rounded-lg text-xs font-semibold text-slate-800 dark:text-github-dark-text outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                            <option value="Public Holiday">Public Holiday</option>
+                            <option value="Optional Holiday">Optional Holiday</option>
+                            <option value="National Holiday">National Holiday</option>
+                            <option value="Festival Holiday">Festival Holiday</option>
+                        </select>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="w-full py-3 bg-[#6366F1] hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5 mt-2"
+                    >
+                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : (isEdit ? <Check size={16} /> : <Plus size={16} />)}
+                        <span>{isSaving ? 'Saving...' : (isEdit ? 'Update Holiday' : 'Save Holiday')}</span>
+                    </button>
+                </form>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
+// =============================================================================
+// 3. BULK HOLIDAY IMPORT MODAL (Matching Flutter CSV Import)
+// =============================================================================
+const BulkHolidayImportModal = ({ isOpen, onClose, onImportSuccess }) => {
+    const [file, setFile] = useState(null);
+    const [previewData, setPreviewData] = useState([]);
+    const [isParsing, setIsParsing] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+
+    if (!isOpen) return null;
+
+    const handleFileSelect = (e) => {
+        const selectedFile = e.target.files[0];
+        if (selectedFile) {
+            setFile(selectedFile);
+            setIsParsing(true);
+            Papa.parse(selectedFile, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    const parsed = (results.data || []).map(row => {
+                        const name = row['Holiday Name'] || row['holiday_name'] || row['name'] || row['Name'];
+                        const date = row['Date'] || row['holiday_date'] || row['date'];
+                        const rawType = row['Type'] || row['holiday_type'] || row['type'] || 'Public';
+                        return {
+                            name: (name || '').trim(),
+                            date: (date || '').trim(),
+                            type: (rawType || 'Public').trim()
+                        };
+                    }).filter(r => r.name && r.date);
+
+                    setPreviewData(parsed);
+                    setIsParsing(false);
+                },
+                error: (err) => {
+                    toast.error("Failed to parse CSV: " + err.message);
+                    setIsParsing(false);
+                }
+            });
+        }
+    };
+
+    const handleConfirmImport = async () => {
+        if (!previewData.length) {
+            toast.error("No valid holiday rows found in CSV");
+            return;
+        }
+
+        setIsUploading(true);
+        try {
+            const batch = previewData.map(p => ({
+                holiday_name: p.name,
+                holiday_date: p.date,
+                holiday_type: p.type || 'Public Holiday',
+                applicable_json: ['All Locations']
+            }));
+
+            await holidayService.bulkCreateHolidaysJson(batch);
+            toast.success(`Imported ${batch.length} holidays successfully`);
+            onImportSuccess();
+            onClose();
+        } catch (err) {
+            toast.error(err.message || "Bulk import failed");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const downloadSampleCSV = () => {
+        const csvContent = "Holiday Name,Date,Type\nNew Year's Day,2026-01-01,National Holiday\nRepublic Day,2026-01-26,National Holiday\nTamil New Year,2026-04-14,Festival Holiday";
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "holiday_template.csv";
+        a.click();
+        window.URL.revokeObjectURL(url);
+    };
+
+    return createPortal(
+        <div className="fixed inset-0 z-[600] flex items-end justify-center">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative z-10 w-full bg-white dark:bg-[#161B22] rounded-t-2xl p-5 max-h-[90vh] overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+20px)] border-t border-slate-200 dark:border-[#30363D] animate-in slide-in-from-bottom duration-200 space-y-4">
+                <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-2" />
+
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-[#30363D]">
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400">
+                            <Upload size={16} />
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-github-dark-text">Import Holidays from CSV</h3>
+                    </div>
+                    <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 rounded-full">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Upload box */}
+                <div className="space-y-3">
+                    <label className="border-2 border-dashed border-slate-300 dark:border-[#30363D] hover:border-indigo-500 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-50/50 dark:bg-[#0D1117] transition-colors text-center">
+                        <Upload size={28} className="text-indigo-500 mb-2" />
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            {file ? file.name : "Tap to choose CSV file"}
+                        </span>
+                        <span className="text-[10px] text-slate-400 mt-1">Columns: Holiday Name, Date (YYYY-MM-DD), Type</span>
+                        <input type="file" accept=".csv" className="hidden" onChange={handleFileSelect} />
+                    </label>
+
+                    <div className="flex items-center justify-between text-xs px-1">
+                        <span className="text-slate-400 text-[11px]">Need format example?</span>
+                        <button
+                            type="button"
+                            onClick={downloadSampleCSV}
+                            className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1 hover:underline text-[11px]"
+                        >
+                            <Download size={13} />
+                            <span>Download Template</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Preview Table */}
+                {isParsing && (
+                    <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                        <Loader2 size={16} className="animate-spin text-indigo-600" />
+                        <span>Parsing CSV file...</span>
+                    </div>
+                )}
+
+                {previewData.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-[#30363D]">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                Parsed Holidays ({previewData.length})
+                            </span>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                <CheckCircle size={12} /> Ready to import
+                            </span>
+                        </div>
+
+                        <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 dark:border-[#30363D] divide-y divide-slate-100 dark:divide-[#30363D]">
+                            {previewData.map((row, idx) => (
+                                <div key={idx} className="p-2.5 bg-white dark:bg-[#0D1117] flex items-center justify-between text-xs">
+                                    <div className="min-w-0 flex-1 mr-2">
+                                        <p className="font-bold text-slate-900 dark:text-white truncate">{row.name}</p>
+                                        <p className="text-[10px] text-slate-400">{row.date}</p>
+                                    </div>
+                                    <span className="px-2 py-0.5 rounded text-[9px] font-semibold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 shrink-0">
+                                        {row.type}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={handleConfirmImport}
+                            disabled={isUploading}
+                            className="w-full py-3 bg-[#6366F1] hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md active:scale-98 transition-all flex items-center justify-center gap-1.5 mt-2"
+                        >
+                            {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                            <span>{isUploading ? 'Importing...' : `Import ${previewData.length} Holidays`}</span>
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>,
+        document.body
+    );
+};
+
+// =============================================================================
+// 4. HOLIDAY CALENDAR CARD (Matching Flutter HolidayCalendarCard)
+// =============================================================================
+const HolidayCalendarCard = ({
+    currentMonth,
+    selectedDate,
+    holidays,
+    onMonthChanged,
+    onDateSelected,
+    onTodayPressed
+}) => {
+    const now = new Date();
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth(); // 0-indexed
+
+    // Calculate 42 days grid starting on Sunday
+    const firstDayOfMonth = new Date(year, month, 1);
+    const leadingDays = firstDayOfMonth.getDay(); // 0 is Sunday
+    const gridStartDate = new Date(year, month, 1 - leadingDays);
+
+    const monthName = currentMonth.toLocaleDateString('en-US', { month: 'long' });
+    const yearNum = currentMonth.getFullYear();
+
+    // Generate 42 cells (6 rows x 7 days)
+    const dayCells = useMemo(() => {
+        const cells = [];
+        for (let i = 0; i < 42; i++) {
+            const cellDate = new Date(gridStartDate);
+            cellDate.setDate(gridStartDate.getDate() + i);
+            cells.push(cellDate);
+        }
+        return cells;
+    }, [year, month, leadingDays]);
+
+    const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+    return (
+        <div className="bg-white dark:bg-[#161B22] rounded-2xl border border-slate-200/80 dark:border-[#30363D] shadow-sm p-4 sm:p-5 space-y-4">
+            {/* Header: Month/Year + Navigation Button Group */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white leading-tight">
+                        {monthName}
+                    </h3>
+                    <p className="text-xs font-semibold text-slate-400">
+                        {yearNum}
+                    </p>
+                </div>
+
+                {/* < TODAY > Navigation pill */}
+                <div className="flex items-center bg-slate-100 dark:bg-[#0D1117] rounded-lg border border-slate-200 dark:border-[#30363D] overflow-hidden">
+                    <button
+                        onClick={() => onMonthChanged(new Date(year, month - 1, 1))}
+                        className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#21262D] transition-colors"
+                        title="Previous Month"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                    <div className="w-[1px] h-4 bg-slate-200 dark:bg-[#30363D]" />
+                    <button
+                        onClick={onTodayPressed}
+                        className="px-2.5 py-1 text-[10.5px] font-bold tracking-wider text-slate-800 dark:text-white hover:bg-slate-200 dark:hover:bg-[#21262D] transition-colors"
+                    >
+                        TODAY
+                    </button>
+                    <div className="w-[1px] h-4 bg-slate-200 dark:bg-[#30363D]" />
+                    <button
+                        onClick={() => onMonthChanged(new Date(year, month + 1, 1))}
+                        className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#21262D] transition-colors"
+                        title="Next Month"
+                    >
+                        <ChevronRight size={16} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Weekday Header Row */}
+            <div className="grid grid-cols-7 text-center">
+                {weekdays.map(w => (
+                    <span key={w} className="text-[10px] font-bold tracking-wider text-slate-400">
+                        {w}
+                    </span>
+                ))}
+            </div>
+
+            {/* 42-day Month Grid */}
+            <div className="grid grid-cols-7 gap-y-1.5 gap-x-1 text-center">
+                {dayCells.map((cellDate, idx) => {
+                    const isCurrentMonth = cellDate.getMonth() === month;
+                    const isToday = cellDate.getFullYear() === now.getFullYear() &&
+                        cellDate.getMonth() === now.getMonth() &&
+                        cellDate.getDate() === now.getDate();
+
+                    const isSelected = selectedDate &&
+                        cellDate.getFullYear() === selectedDate.getFullYear() &&
+                        cellDate.getMonth() === selectedDate.getMonth() &&
+                        cellDate.getDate() === selectedDate.getDate();
+
+                    const dateStr = `${cellDate.getFullYear()}-${String(cellDate.getMonth() + 1).padStart(2, '0')}-${String(cellDate.getDate()).padStart(2, '0')}`;
+                    const dayHolidays = holidays.filter(h => (h.holiday_date || '').startsWith(dateStr));
+
+                    const hasPublic = dayHolidays.any ? dayHolidays.some(h => (h.holiday_type || '').toLowerCase().includes('public') || (h.holiday_type || '').toLowerCase().includes('nh') || (h.holiday_type || '').toLowerCase().includes('national')) : false;
+                    const hasOptional = dayHolidays.some(h => (h.holiday_type || '').toLowerCase().includes('optional') || (h.holiday_type || '').toLowerCase().includes('festival') || (h.holiday_type || '').toLowerCase().includes('fh'));
+
+                    return (
+                        <button
+                            key={idx}
+                            type="button"
+                            onClick={() => onDateSelected(cellDate)}
+                            className={`h-9 w-full rounded-full flex flex-col items-center justify-center relative transition-all ${
+                                isToday
+                                    ? 'bg-[#4F46E5] text-white font-bold shadow-sm'
+                                    : isSelected
+                                        ? 'border-2 border-[#6366F1] bg-indigo-50 dark:bg-[#21262D] text-indigo-600 dark:text-indigo-400 font-bold'
+                                        : isCurrentMonth
+                                            ? 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#21262D]'
+                                            : 'text-slate-300 dark:text-[#484F58]'
+                            }`}
+                        >
+                            <span className="text-xs leading-none">
+                                {cellDate.getDate()}
+                            </span>
+
+                            {/* Holiday indicator dots */}
+                            {(hasPublic || hasOptional) && (
+                                <div className="flex items-center gap-0.5 mt-0.5">
+                                    {hasPublic && (
+                                        <span className="w-1 h-1 rounded-full bg-[#9333EA]" />
+                                    )}
+                                    {hasOptional && (
+                                        <span className="w-1 h-1 rounded-full bg-[#F59E0B]" />
+                                    )}
+                                </div>
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-slate-100 dark:border-[#30363D]" />
+
+            {/* Legend Row */}
+            <div className="flex items-center justify-center gap-6 text-[10.5px] font-bold tracking-wider text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-[2px] bg-[#9333EA]" />
+                    <span>PUBLIC</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-[2px] bg-[#F59E0B]" />
+                    <span>OPTIONAL</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// =============================================================================
+// MAIN HOLIDAY MANAGEMENT COMPONENT
+// =============================================================================
 const HolidayManagement = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
+    const isAdmin = user?.user_type === 'admin' || user?.user_type === 'hr';
 
-    // --- TABS STATE ---
+    // Tabs
     const [activeTab, setActiveTab] = useState(() => {
         const params = new URLSearchParams(window.location.search);
-        const tab = params.get('tab') || 'holidays';
-        if (tab === 'leave_policies' || tab === 'policies') {
-            return 'policies';
-        }
-        if (['my_leaves', 'leave_application', 'requests', 'balances', 'leaves'].includes(tab)) {
+        const tab = params.get('tab');
+        if (['leaves', 'leave_application', 'my_leaves', 'requests', 'balances'].includes(tab)) {
             return 'leaves';
         }
         return 'holidays';
     });
-    const [leaveSubTab, setLeaveSubTab] = useState(() => {
-        const params = new URLSearchParams(window.location.search);
-        const tab = params.get('tab');
-        if (tab === 'leave_balances' || tab === 'balances') return 'balances';
-        return 'requests';
-    });
-    const [adminLeaveView, setAdminLeaveView] = useState(() => {
-        const params = new URLSearchParams(window.location.search);
-        const tab = params.get('tab');
-        if (tab === 'my_leaves' || params.get('apply') === 'true') {
-            return 'my_leaves';
-        }
-        return 'requests';
-    });
-    const [requestSubTab, setRequestSubTab] = useState('pending'); // 'pending', 'history'
-    const [requestStatusFilter, setRequestStatusFilter] = useState('All');
 
-    // --- DATA STATE ---
+    // Calendar state
+    const [currentMonth, setCurrentMonth] = useState(() => {
+        const d = new Date();
+        return new Date(d.getFullYear(), d.getMonth(), 1);
+    });
+    const [selectedDate, setSelectedDate] = useState(null);
+
+    // Holidays data
     const [holidays, setHolidays] = useState([]);
-    const [leaves, setLeaves] = useState([]); // My Leaves
-    const [requests, setRequests] = useState([]); // Admin Requests
-    const [policies, setPolicies] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
-    // --- MODAL STATE ---
-    const [showApplyModal, setShowApplyModal] = useState(() => {
-        const params = new URLSearchParams(window.location.search);
-        return params.get('apply') === 'true';
-    });
-    const [selectedLeaf, setSelectedLeaf] = useState(null); // For details view
-    const [selectedHoliday, setSelectedHoliday] = useState(null); // For holiday details view
-    const [viewingAttachment, setViewingAttachment] = useState(null); // For attachment modal
+    // Modals
+    const [selectedHoliday, setSelectedHoliday] = useState(null);
+    const [formModal, setFormModal] = useState({ isOpen: false, isEdit: false, holiday: null });
+    const [bulkImportModalOpen, setBulkImportModalOpen] = useState(false);
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, holiday: null });
 
-    // --- FORMS ---
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [newHoliday, setNewHoliday] = useState({
-        name: '',
-        date: '',
-        type: 'Festival Holiday',
-    });
-
-    const [applyForm, setApplyForm] = useState({
-        leave_type: 'Casual Leave',
-        start_date: '',
-        end_date: '',
-        reason: '',
-        attachments: []
-    });
-
+    // Sync tab with URL
     useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
+        const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
-        if (params.get('apply') === 'true') {
-            setShowApplyModal(true);
-            setAdminLeaveView('my_leaves');
+        if (['leaves', 'leave_application', 'my_leaves', 'requests', 'balances'].includes(tab)) {
+            setActiveTab('leaves');
+        } else if (tab === 'holidays') {
+            setActiveTab('holidays');
         }
-        if (tab) {
-            if (tab === 'leave_policies' || tab === 'policies') {
-                navigate('/policies?tab=leave_policies', { replace: true });
-                return;
-            } else if (tab === 'my_leaves') {
-                setActiveTab('leaves');
-                setAdminLeaveView('my_leaves');
-                setLeaveSubTab('requests');
-            } else if (['leave_application', 'leaves', 'requests'].includes(tab)) {
-                setActiveTab('leaves');
-                setLeaveSubTab('requests');
-            } else if (tab === 'leave_balances' || tab === 'balances') {
-                setActiveTab('leaves');
-                setLeaveSubTab('balances');
-            } else {
-                setActiveTab(tab);
-            }
-        }
-    }, [window.location.search, navigate]);
+    }, [location.search]);
 
-    useEffect(() => {
-        window.dispatchEvent(new CustomEvent('mano-active-tab', {
-            detail: { tab: activeTab }
-        }));
-    }, [activeTab]);
-
-    const handleTabChange = (tab) => {
-        setActiveTab(tab);
-        navigate(`/holidays?tab=${tab}`);
+    const handleTabChange = (tabId) => {
+        setActiveTab(tabId);
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        navigate(`/holidays?tab=${tabId}`);
     };
 
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isSearching, setIsSearching] = useState(false);
-    const [isEditMode, setIsEditMode] = useState(false);
-    const [holidayActionSheet, setHolidayActionSheet] = useState(null); // For edit/delete menu
-    const [remarks, setRemarks] = useState('');
-    const [payType, setPayType] = useState('Paid');
-    const adminRemarksRef = useRef(null);
-
-    useEffect(() => {
-        if (adminRemarksRef.current) {
-            adminRemarksRef.current.style.height = 'auto';
-            adminRemarksRef.current.style.height = adminRemarksRef.current.scrollHeight + 'px';
-        }
-    }, [remarks, selectedLeaf]);
-
-    // --- CONFIRM MODAL STATE ---
-    const [confirmModal, setConfirmModal] = useState({
-        isOpen: false,
-        title: '',
-        message: '',
-        type: 'info',
-        onConfirm: () => {},
-        confirmText: 'Confirm'
-    });
-
-    // --- NAVIGATION SYNC FOR BACK BUTTON ---
-    useEffect(() => {
-        const handlePopState = () => {
-            // Close all modals when back button is pressed
-            if (showApplyModal) setShowApplyModal(false);
-            if (selectedLeaf) setSelectedLeaf(null);
-            if (isAddModalOpen) setIsAddModalOpen(false);
-            if (viewingAttachment) setViewingAttachment(null);
-            if (holidayActionSheet) setHolidayActionSheet(null);
-            if (confirmModal.isOpen) setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        };
-
-        const isAnyModalOpen = showApplyModal || !!selectedLeaf || isAddModalOpen || !!viewingAttachment || !!holidayActionSheet || confirmModal.isOpen;
-
-        if (isAnyModalOpen) {
-            window.history.pushState({ modalOpen: true }, '');
-            window.addEventListener('popstate', handlePopState);
-        }
-
-        return () => {
-            window.removeEventListener('popstate', handlePopState);
-        };
-    }, [showApplyModal, !!selectedLeaf, isAddModalOpen, !!viewingAttachment, !!holidayActionSheet]);
-
-    // --- LEAVE BALANCES STATE ---
-    const [myBalances, setMyBalances] = useState([]);
-
-    const availableLeaveTypes = React.useMemo(() => {
-        if (myBalances.length > 0) return myBalances.map(b => b.leave_type);
-        const policyTypes = policies.flatMap(p => p.rules?.map(r => r.leave_type) || []).filter(Boolean);
-        if (policyTypes.length > 0) return Array.from(new Set(policyTypes));
-        return ['Casual Leave', 'Sick Leave', 'Earned Leave', 'Maternity Leave', 'Paternity Leave', 'Compensatory Off', 'Unpaid Leave'];
-    }, [myBalances, policies]);
-
-    // --- FETCH DATA ---
-    const loadData = async () => {
+    // Load Holidays
+    const fetchHolidays = async () => {
         setIsLoading(true);
         try {
-            // Parallel fetch could be better, but sequential for safety on mobile
-            // 1. Holidays
-            const holidayRes = await holidayService.getHolidays();
-            if (holidayRes.ok) setHolidays(holidayRes.holidays || []);
-
-            // 2. My Leaves
-            const myLeavesRes = await api.get('/leaves/my-history');
-            if (myLeavesRes.data.ok) setLeaves(myLeavesRes.data.leaves || []);
-
-            // 3. My Balances
-            const balancesRes = await api.get('/leaves/balances');
-            if (balancesRes.data.ok) {
-                setMyBalances(balancesRes.data.balances || []);
-                if (balancesRes.data.balances?.length > 0 && !applyForm.leave_type) {
-                    setApplyForm(prev => ({ ...prev, leave_type: balancesRes.data.balances[0].leave_type }));
-                }
+            const res = await holidayService.getHolidays();
+            if (res.ok && res.holidays) {
+                setHolidays(res.holidays);
             }
-
-            // 4. Admin Requests (if applicable)
-            // Even if not admin, we might just fetch empty or skip
-            if (user?.user_type === 'admin' || user?.user_type === 'hr') {
-                const requestsRes = await api.get('/leaves/admin/history');
-                if (requestsRes.data.ok) {
-                    const rawList = requestsRes.data.history || requestsRes.data.requests || [];
-                    const activeList = rawList.filter(l => {
-                        const isUserActive = l.is_active === undefined ? true : (l.is_active === 1 || l.is_active === true || l.is_active === '1');
-                        const isUserDeleted = l.is_deleted === undefined ? false : (l.is_deleted === 1 || l.is_deleted === true || l.is_deleted === '1');
-                        return isUserActive && !isUserDeleted;
-                    });
-                    setRequests(activeList);
-                }
-            }
-
-            // 5. Policies
-            try {
-                const polRes = await leaveService.getLeavePolicies();
-                if (polRes.data?.ok && polRes.data?.policies) {
-                    setPolicies(polRes.data.policies);
-                }
-            } catch (pErr) {
-                // non-blocking
-            }
-
-        } catch (error) {
-            console.error("Failed to load data", error);
+        } catch (err) {
+            console.error(err);
+            toast.error("Failed to load holidays");
         } finally {
             setIsLoading(false);
         }
     };
 
     useEffect(() => {
-        loadData();
-    }, [user]); // Reload if user context changes
+        fetchHolidays();
+    }, []);
 
-    // --- ACTIONS ---
+    // Filtered visible holidays
+    const visibleHolidays = useMemo(() => {
+        const query = searchTerm.trim().toLowerCase();
 
-    const handleApplyLeave = async (e) => {
-        e.preventDefault();
+        if (query) {
+            return holidays.filter(h =>
+                (h.holiday_name || '').toLowerCase().includes(query) ||
+                (h.holiday_date || '').toLowerCase().includes(query) ||
+                (h.holiday_type || '').toLowerCase().includes(query)
+            );
+        }
+
+        if (selectedDate) {
+            const selDateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
+            return holidays.filter(h => (h.holiday_date || '').startsWith(selDateStr));
+        }
+
+        const currYear = currentMonth.getFullYear();
+        const currMonth = currentMonth.getMonth();
+        return holidays.filter(h => {
+            const d = parseLocalDate(h.holiday_date);
+            return d.getFullYear() === currYear && d.getMonth() === currMonth;
+        });
+    }, [holidays, searchTerm, selectedDate, currentMonth]);
+
+    // Group visible holidays by Month Year
+    const monthGroups = useMemo(() => {
+        const groups = {};
+        visibleHolidays.forEach(h => {
+            const d = parseLocalDate(h.holiday_date);
+            const key = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(h);
+        });
+
+        // Sort items inside each month
+        Object.keys(groups).forEach(key => {
+            groups[key].sort((a, b) => new Date(a.holiday_date) - new Date(b.holiday_date));
+        });
+
+        return groups;
+    }, [visibleHolidays]);
+
+    // CRUD Handlers
+    const handleSaveHoliday = async (payload) => {
+        if (formModal.isEdit && formModal.holiday) {
+            const targetId = formModal.holiday.holiday_id || formModal.holiday.id;
+            await holidayService.updateHoliday(targetId, payload);
+            toast.success("Holiday updated successfully");
+        } else {
+            await holidayService.addHoliday(payload);
+            toast.success("Holiday added successfully");
+        }
+        await fetchHolidays();
+    };
+
+    const handleDeleteHoliday = async () => {
+        if (!deleteModal.holiday) return;
         try {
-            const data = new FormData();
-            data.append('leave_type', applyForm.leave_type);
-            data.append('start_date', applyForm.start_date);
-            data.append('end_date', applyForm.end_date);
-            data.append('reason', applyForm.reason);
-            if (applyForm.attachments) {
-                applyForm.attachments.forEach(file => data.append('attachments', file));
-            }
-
-            const res = await api.post('/leaves/request', data, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            if (res.data.ok) {
-                toast.success("Leave applied successfully");
-                setShowApplyModal(false);
-                setApplyForm({ leave_type: myBalances[0]?.leave_type || 'Casual Leave', start_date: '', end_date: '', reason: '', attachments: [] });
-                loadData();
-            }
-        } catch (error) {
-            toast.error(error.response?.data?.message || "Failed to apply");
+            const targetId = deleteModal.holiday.holiday_id || deleteModal.holiday.id;
+            await holidayService.deleteHolidays([targetId]);
+            toast.success("Holiday deleted successfully");
+            setDeleteModal({ isOpen: false, holiday: null });
+            await fetchHolidays();
+        } catch (err) {
+            toast.error(err.message || "Failed to delete holiday");
         }
     };
-
-    const handleAddHoliday = async (e) => {
-        e.preventDefault();
-        try {
-            const payload = {
-                holiday_name: newHoliday.name,
-                holiday_date: newHoliday.date,
-                holiday_type: newHoliday.type,
-                applicable_json: ['All Locations']
-            };
-
-            if (isEditMode) {
-                await holidayService.updateHoliday(holidayActionSheet.holiday_id, payload);
-                toast.success("Holiday updated successfully");
-            } else {
-                await holidayService.addHoliday(payload);
-                toast.success("Holiday added successfully");
-            }
-            setIsAddModalOpen(false);
-            setNewHoliday({ name: '', date: '', type: 'Festival Holiday' });
-            loadData();
-        } catch (error) {
-            console.error("Holiday operation error", error);
-            toast.error(error.message || "Operation failed");
-        }
-    };
-
-    // --- HELPERS ---
-    const getStatusColor = (status) => {
-        switch (status?.toLowerCase()) {
-            case 'approved': return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400';
-            case 'rejected': return 'bg-red-100 text-red-500 dark:bg-red-900/20 dark:text-red-400';
-            default: return 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400';
-        }
-    };
-
-    const handleAdminAction = async (status) => {
-        try {
-            const res = await api.put(`/leaves/admin/status/${selectedLeaf.lr_id}`, {
-                status: status.charAt(0).toUpperCase() + status.slice(1),
-                admin_comment: remarks || '',
-                pay_type: payType,
-                pay_percentage: payType === 'Paid' ? 100 : 0
-            });
-
-            if (res.data.ok) {
-                toast.success(`Leave request ${status.toLowerCase()} successfully`);
-                setSelectedLeaf(null);
-                setRemarks('');
-                setPayType('Paid');
-                loadData();
-            }
-        } catch (error) {
-            toast.error(error.response?.data?.message || `Failed to ${status}`);
-        }
-    };
-
-    const filteredHolidays = holidays.filter(h =>
-        h.holiday_name?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    // --- RENDER CONTENT ---
 
     return (
-        <MobileDashboardLayout title="Holidays & Leave">
-
-            {/* STICKY SEARCH & TABS CONTAINER */}
-            <div className="sticky top-0 z-30 bg-slate-50 dark:bg-black pb-2 transition-colors">
-                {/* Search Bar */}
-                <div className="px-4 py-3">
-                    <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                            <Search size={16} className={`${searchTerm ? 'text-indigo-500' : 'text-slate-400'} transition-colors`} />
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Search holidays, leaves..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-github-dark-border rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all dark:text-github-dark-text shadow-sm"
-                        />
-                        {searchTerm && (
-                            <button
-                                onClick={() => setSearchTerm('')}
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                            >
-                                <X size={16} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {/* TABS - Standardized Full Width */}
-                <div className="px-4">
-                    <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1.5 flex rounded-2xl border border-slate-200 dark:border-github-dark-border shadow-sm overflow-x-auto no-scrollbar">
-                        {[
-                            { id: 'holidays', label: 'Holidays', icon: Umbrella },
-                            { id: 'leaves', label: ['admin', 'hr'].includes(user?.user_type) ? 'Leaves' : 'My Leaves', icon: CalendarDays }
-                        ].map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => handleTabChange(tab.id)}
-                                className={`flex-1 min-w-[85px] py-3 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0
-                                    ${activeTab === tab.id
-                                        ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-md transform scale-[1.02] border border-slate-200 dark:border-github-dark-border'
-                                        : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'
-                                    }`}
-                            >
-                                <tab.icon size={12} className={activeTab === tab.id ? 'animate-pulse' : ''} />
-                                <span className="whitespace-nowrap">{tab.label}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
-            <div className="px-4 pb-20 min-h-screen bg-slate-50 dark:bg-black transition-colors">
-
-                {/* --- HOLIDAYS TAB --- */}
-                {activeTab === 'holidays' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-left-4 mt-2">
-                        <div className="flex flex-col gap-3 px-1 mb-2">
-                            <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <History size={12} /> Yearly Schedule
-                            </h3>
-                            {(user?.user_type === 'admin' || user?.user_type === 'hr') && (
-                                <button
-                                    onClick={() => navigate('/holidays/bulk')}
-                                    className="w-full flex items-center justify-center gap-2.5 py-4 bg-indigo-600 text-white rounded-2xl font-semibold shadow-xl shadow-indigo-200 dark:shadow-none active:scale-95 transition-all"
-                                >
-                                    <Upload size={18} /> 
-                                    <span className="text-sm">Bulk Import Holidays</span>
-                                </button>
-                            )}
-                        </div>
-
-                        {/* List */}
-                        <div className="space-y-2.5">
-                            {filteredHolidays.length > 0 ? (
-                                filteredHolidays.map((holiday, idx) => (
-                                    <div
-                                        key={idx}
-                                        onClick={() => setSelectedHoliday(holiday)}
-                                        className="bg-white dark:bg-black p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-3.5 active:scale-[0.98] transition-all cursor-pointer group hover:border-indigo-200 dark:hover:border-indigo-900/50"
-                                    >
-                                        {/* Date Badge - Ultra Compact */}
-                                        <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex flex-col items-center justify-center text-white flex-shrink-0 shadow-sm shadow-indigo-200 dark:shadow-none">
-                                            <span className="text-[9px] font-medium uppercase leading-none opacity-80">{parseLocalDate(holiday.holiday_date).toLocaleDateString('en-US', { month: 'short' })}</span>
-                                            <span className="text-lg font-medium leading-none mt-0.5">{parseLocalDate(holiday.holiday_date).getDate()}</span>
-                                        </div>
-
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="font-semibold text-slate-900 dark:text-github-dark-text text-[13px] truncate leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                                {holiday.holiday_name}
-                                            </h4>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[10px] font-medium text-slate-400">{parseLocalDate(holiday.holiday_date).toLocaleDateString('en-US', { weekday: 'long' })}</span>
-                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium uppercase tracking-wider ${(holiday.holiday_type === 'National Holiday' || holiday.holiday_type === 'NH') ? 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'}`}>
-                                                    {holiday.holiday_type || 'Festival Holiday'}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setHolidayActionSheet(holiday);
-                                            }}
-                                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-full transition-all"
-                                        >
-                                            <MoreVertical size={16} />
-                                        </button>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                                    <div className="w-16 h-16 bg-slate-100 dark:bg-github-dark-border rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 mb-3">
-                                        <Search size={24} />
-                                    </div>
-                                    <p className="text-xs font-medium text-slate-500 dark:text-github-dark-muted">No holidays match your search</p>
-                                    <button onClick={() => setSearchTerm('')} className="mt-2 text-[11px] font-medium text-indigo-600">Clear Search</button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* FAB */}
-                        {(user?.user_type === 'admin' || user?.user_type === 'hr') && (
-                            <button
-                                onClick={() => {
-                                    setIsEditMode(false);
-                                    setNewHoliday({ name: '', date: '', type: 'Festival Holiday' });
-                                    setIsAddModalOpen(true);
-                                }}
-                                style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)', right: 20 }}
-                                className="fixed w-14 h-14 bg-indigo-600 rounded-2xl text-white shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center active:scale-90 active:rotate-12 transition-all z-40"
-                            >
-                                <Plus size={28} strokeWidth={3} />
-                            </button>
-                        )}
-                    </div>
-                )}
-
-
-                {/* --- LEAVES TAB --- */}
-                {activeTab === 'leaves' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 mt-2">
-                        {/* Admin / HR Sub-tab selector */}
-                        {['admin', 'hr'].includes(user?.user_type) && (
-                            <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1 rounded-xl flex border border-slate-200 dark:border-github-dark-border shadow-sm mb-3">
-                                <button
-                                    onClick={() => setAdminLeaveView('requests')}
-                                    className={`flex-1 py-2 text-[11px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                                        adminLeaveView === 'requests'
-                                            ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
-                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'
-                                    }`}
-                                >
-                                    <Shield size={13} /> Team Requests
-                                    {requests.filter(r => r.status === 'pending').length > 0 && (
-                                        <span className="px-1.5 py-0.2 bg-amber-500 text-white rounded-full text-[9px] font-bold ml-1">
-                                            {requests.filter(r => r.status === 'pending').length}
-                                        </span>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => setAdminLeaveView('my_leaves')}
-                                    className={`flex-1 py-2 text-[11px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                                        adminLeaveView === 'my_leaves'
-                                            ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
-                                            : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'
-                                    }`}
-                                >
-                                    <CalendarDays size={13} /> My Leave
-                                </button>
-                            </div>
-                        )}
-
-                        {/* View 1: Personal Leaves (shown to employees, or Admin/HR when adminLeaveView === 'my_leaves') */}
-                        {(!['admin', 'hr'].includes(user?.user_type) || adminLeaveView === 'my_leaves') ? (
-                            <div className="space-y-4">
-                                {/* Leave Balances display */}
-                                {myBalances.length > 0 ? (
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {myBalances.map(bal => (
-                                            <div key={bal.lb_id} className="bg-white dark:bg-black border border-slate-100 dark:border-slate-800 p-3.5 rounded-2xl shadow-sm flex flex-col">
-                                                <span className="text-[9px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">{bal.leave_type}</span>
-                                                <div className="flex justify-between items-baseline mt-1.5">
-                                                    <span className="text-xl font-black text-indigo-650 dark:text-indigo-400">{Number(bal.available)}</span>
-                                                    <span className="text-[10px] text-slate-500 dark:text-github-dark-muted">/ {Number(bal.allocated) + Number(bal.carried_forward)} left</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    ['admin', 'hr'].includes(user?.user_type) && (
-                                        <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 p-4 rounded-2xl shadow-sm flex items-center justify-between">
-                                            <div>
-                                                <p className="text-xs font-bold text-indigo-900 dark:text-indigo-200">Management Leave Application</p>
-                                                <p className="text-[11px] text-indigo-600/80 dark:text-indigo-400 mt-0.5">Submit leave requests according to company policy</p>
-                                            </div>
-                                            <button
-                                                onClick={() => setShowApplyModal(true)}
-                                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold shadow-sm active:scale-95 transition-all"
-                                            >
-                                                Apply
-                                            </button>
-                                        </div>
-                                    )
-                                )}
-
-                                {/* Leave Summary Stats */}
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm text-center">
-                                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-tight">Total</p>
-                                        <p className="text-lg font-medium text-slate-900 dark:text-github-dark-text mt-0.5">{leaves.length}</p>
-                                    </div>
-                                    <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/20 shadow-sm text-center">
-                                        <p className="text-[10px] font-semibold text-emerald-500/80 uppercase tracking-tight">Approved</p>
-                                        <p className="text-lg font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                            {leaves.filter(l => l.status?.toLowerCase() === 'approved').length}
-                                        </p>
-                                    </div>
-                                    <div className="bg-amber-50/50 dark:bg-amber-900/10 p-3 rounded-2xl border border-amber-100/50 dark:border-amber-900/20 shadow-sm text-center">
-                                        <p className="text-[10px] font-semibold text-amber-500/80 uppercase tracking-tight">Pending</p>
-                                        <p className="text-lg font-medium text-amber-600 dark:text-amber-400 mt-0.5">
-                                            {leaves.filter(l => l.status?.toLowerCase() === 'pending').length}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* List */}
-                                <div className="space-y-2.5 pb-24">
-                                    {leaves.length > 0 ? (
-                                        leaves.map(leave => (
-                                            <div
-                                                key={leave.lr_id}
-                                                onClick={() => setSelectedLeaf(leave)}
-                                                className="bg-white dark:bg-black p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
-                                            >
-                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${getStatusColor(leave.status).replace('text-', 'bg-').replace('-600', '-500/10').replace('-500', '-500/10')}`}>
-                                                    {leave.status?.toLowerCase() === 'approved' ? <CheckCircle size={20} className="text-emerald-500" /> :
-                                                     leave.status?.toLowerCase() === 'rejected' ? <XCircle size={20} className="text-red-500" /> :
-                                                     <Clock size={20} className="text-amber-500" />}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex justify-between items-start">
-                                                        <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate leading-tight group-hover:text-indigo-650 transition-colors">{leave.leave_type}</h3>
-                                                        <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(leave.status)}`}>
-                                                            {leave.status}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <CalendarDays size={12} className="text-slate-400" />
-                                                        <span className="text-[11px] font-medium text-slate-500">
-                                                            {formatPlatformDate(leave.start_date)} - {formatPlatformDate(leave.end_date)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="text-center py-12">
-                                            <div className="w-16 h-16 bg-slate-100 dark:bg-[#161b22] rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 mx-auto mb-3">
-                                                <CalendarDays size={24} />
-                                            </div>
-                                            <p className="text-xs font-semibold text-slate-500">No leave records yet</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ) : (
-                            /* View 2: Admin Requests List */
-                            <div className="space-y-4">
-                                {/* Sub Tabs for pending vs history */}
-                                <div className="bg-[#f6f8fa] dark:bg-github-dark-subtle p-1 rounded-xl flex border border-slate-200 dark:border-github-dark-border shadow-sm">
-                                    <button
-                                        onClick={() => setRequestSubTab('pending')}
-                                        className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
-                                        ${requestSubTab === 'pending'
-                                                ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
-                                                : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
-                                    >
-                                        <Clock size={14} className="inline mr-1" /> Pending
-                                    </button>
-                                    <button
-                                        onClick={() => setRequestSubTab('history')}
-                                        className={`flex-1 py-2 text-[11px] font-medium rounded-lg transition-all
-                                        ${requestSubTab === 'history'
-                                                ? 'bg-white dark:bg-[#21262d] text-indigo-650 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-github-dark-border'
-                                                : 'text-slate-500 dark:text-github-dark-muted hover:bg-slate-100 dark:hover:bg-[#21262d]/50'}`}
-                                    >
-                                        <History size={14} className="inline mr-1" /> History
-                                    </button>
-                                </div>
-
-                                {/* Filter */}
-                                <div className="bg-white dark:bg-black rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                                    <MobileSelect
-                                        value={requestStatusFilter}
-                                        options={['All', 'Approved', 'Rejected']}
-                                        onChange={(val) => setRequestStatusFilter(val)}
-                                        placeholder="All Status"
-                                    />
-                                </div>
-
-                                {/* Request List */}
-                                <div className="space-y-2.5 pb-24">
-                                    {requests
-                                        .filter(req => {
-                                            if (requestSubTab === 'pending') return req.status === 'pending';
-                                            return req.status !== 'pending';
-                                        })
-                                        .filter(req => {
-                                            if (requestStatusFilter === 'All') return true;
-                                            return req.status.toLowerCase() === requestStatusFilter.toLowerCase();
-                                        })
-                                        .map(req => (
-                                            <div
-                                                key={req.lr_id}
-                                                onClick={() => setSelectedLeaf(req)}
-                                                className="bg-white dark:bg-black p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer flex gap-4 items-center group"
-                                            >
-                                                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-black border-slate-100 dark:border-slate-800 flex items-center justify-center font-bold text-slate-650 dark:text-slate-400 text-sm">
-                                                    {(req.user_name || 'U').charAt(0).toUpperCase()}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex justify-between items-start">
-                                                        <h3 className="text-[13px] font-semibold text-slate-900 dark:text-github-dark-text truncate group-hover:text-indigo-650 transition-colors">{req.user_name}</h3>
-                                                        <span className={`text-[9px] font-medium uppercase px-2 py-0.5 rounded-full ${getStatusColor(req.status)}`}>
-                                                            {req.status}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between mt-1.5">
-                                                        <p className="text-[11px] font-semibold text-slate-500">{req.leave_type}</p>
-                                                        <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
-                                                            <CalendarDays size={12} />
-                                                            <span>{formatPlatformDate(req.start_date)}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    }
-                                    {requests.length === 0 && (
-                                        <div className="text-center py-12">
-                                            <Shield size={32} className="mx-auto text-slate-200 mb-3" />
-                                            <p className="text-xs font-medium text-slate-400">No requests found</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Apply FAB */}
+        <MobileDashboardLayout title="Holidays & Leave" contentClassName="px-0 pt-0 pb-4">
+            <div className="w-full bg-slate-50 dark:bg-[#0D1117] transition-colors duration-300">
+                {/* STICKY TOP TAB BAR (Matching Flutter LeavePage _tabController) */}
+                <div className="sticky z-20 bg-white/95 dark:bg-[#0D1117]/95 backdrop-blur-md px-2.5 sm:px-3 pt-2 pb-2.5 border-b border-slate-100 dark:border-slate-800 w-full" style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}>
+                    <div className="bg-slate-100 dark:bg-[#161B22] p-1 flex rounded-xl border border-slate-200/70 dark:border-[#30363D] shadow-sm w-full">
                         <button
-                            onClick={() => setShowApplyModal(true)}
-                            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)', right: 20 }}
-                            className="fixed w-14 h-14 bg-indigo-600 rounded-2xl text-white shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center active:scale-90 active:rotate-12 transition-all z-40"
+                            onClick={() => handleTabChange('holidays')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                activeTab === 'holidays'
+                                    ? 'bg-white dark:bg-[#2D3139] text-indigo-600 dark:text-white shadow-sm'
+                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                            }`}
                         >
-                            <Plus size={28} strokeWidth={3} />
+                            <CalendarDays size={14} className={activeTab === 'holidays' ? 'text-indigo-600 dark:text-white' : 'text-slate-400'} />
+                            <span>Holidays List</span>
+                        </button>
+
+                        <button
+                            onClick={() => handleTabChange('leaves')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                                activeTab === 'leaves'
+                                    ? 'bg-white dark:bg-[#2D3139] text-indigo-600 dark:text-white shadow-sm'
+                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                            }`}
+                        >
+                            <FileText size={14} className={activeTab === 'leaves' ? 'text-indigo-600 dark:text-white' : 'text-slate-400'} />
+                            <span>{isAdmin ? 'Leave Requests' : 'Leave'}</span>
                         </button>
                     </div>
-                )}
+                </div>
 
-
-
-            </div>
-
-            {/* --- BOTTOM SHEETS --- */}
-
-            {/* Holiday Action Sheet (Edit/Delete Menu) */}
-            {holidayActionSheet && createPortal(
-                <div className="fixed inset-0 z-[600] flex items-end justify-center">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setHolidayActionSheet(null)}></div>
-                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-2xl p-6 animate-in slide-in-from-bottom duration-300 pb-[env(safe-area-inset-bottom)]">
-                        <div className="flex justify-center mb-6">
-                            <span className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
-                        </div>
-                        <div className="text-center mb-6">
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-github-dark-text">{holidayActionSheet.holiday_name}</h3>
-                            <p className="text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider">
-                                {formatPlatformDate(holidayActionSheet.holiday_date)}
-                            </p>
-                        </div>
-
-                        <div className="space-y-3">
-                            <button
-                                onClick={() => {
-                                    setIsEditMode(true);
-                                    setNewHoliday({
-                                        name: holidayActionSheet.holiday_name,
-                                        date: holidayActionSheet.holiday_date,
-                                        type: holidayActionSheet.holiday_type || 'Festival Holiday'
-                                    });
-                                    setIsAddModalOpen(true);
-                                    setHolidayActionSheet(null);
-                                }}
-                                className="w-full py-4 bg-slate-50 dark:bg-github-dark-border rounded-2xl flex items-center justify-center gap-3 text-slate-700 dark:text-github-dark-text font-medium active:scale-[0.98] transition-all"
-                            >
-                                <Edit3 size={18} className="text-indigo-500" /> Edit Holiday
-                            </button>
-                             <button
-                                onClick={() => {
-                                    setConfirmModal({
-                                        isOpen: true,
-                                        title: 'Delete Holiday?',
-                                        message: `Are you sure you want to remove "${holidayActionSheet.holiday_name}" from the schedule? This action cannot be undone.`,
-                                        type: 'delete',
-                                        confirmText: 'Delete',
-                                        onConfirm: async () => {
-                                            try {
-                                                await holidayService.deleteHolidays([holidayActionSheet.holiday_id]);
-                                                toast.success("Holiday deleted successfully");
-                                                setHolidayActionSheet(null);
-                                                setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                                                loadData();
-                                            } catch (err) {
-                                                toast.error("Failed to delete");
-                                            }
-                                        }
-                                    });
-                                }}
-                                className="w-full py-4 bg-red-50 dark:bg-red-900/10 rounded-2xl flex items-center justify-center gap-3 text-red-600 dark:text-red-400 font-medium active:scale-[0.98] transition-all"
-                            >
-                                <Trash2 size={18} /> Delete Holiday
-                            </button>
-                            <button
-                                onClick={() => setHolidayActionSheet(null)}
-                                className="w-full py-4 text-slate-400 font-medium text-sm"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {/* Add/Edit Holiday Bottom Sheet */}
-            {isAddModalOpen && createPortal(
-                <div className="fixed inset-0 z-[600] flex items-end justify-center">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)}></div>
-                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-2xl p-6 animate-in slide-in-from-bottom duration-300 min-h-[80vh] max-h-[95vh] overflow-y-auto pb-[15vh] border-t border-slate-100 dark:border-slate-800">
-                        <div className="flex justify-center mb-6">
-                            <span className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
-                        </div>
-                        <h3 className="text-xl font-semibold text-center mb-8 text-slate-900 dark:text-github-dark-text">
-                            {isEditMode ? 'Edit Holiday' : 'Create New Holiday'}
-                        </h3>
-
-                        <form
-                            onSubmit={handleAddHoliday}
-                            className="space-y-6"
-                        >
-                            <div className="bg-slate-50 dark:bg-black rounded-2xl p-4 border border-slate-100 dark:border-slate-800 focus-within:border-indigo-500 transition-all">
-                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">Holiday Name</label>
+                {/* TAB 1: HOLIDAYS LIST */}
+                {activeTab === 'holidays' && (
+                    <div className="w-full px-2.5 sm:px-3 pt-2.5 space-y-3 pb-6">
+                        {/* SubBar: Search + (Admin) Import & Add buttons */}
+                        <div className="flex items-center gap-2 w-full">
+                            <div className="relative flex-1 h-9">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                                 <input
                                     type="text"
-                                    required
-                                    value={newHoliday.name}
-                                    onChange={(e) => setNewHoliday({ ...newHoliday, name: e.target.value })}
-                                    className="w-full text-base font-semibold bg-transparent outline-none dark:text-white"
-                                    placeholder="e.g. Independence Day"
+                                    placeholder="Search holidays..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full h-9 pl-9 pr-8 text-xs bg-white dark:bg-[#161B22] border border-slate-200 dark:border-[#30363D] rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none text-slate-800 dark:text-github-dark-text placeholder:text-slate-400"
                                 />
-                            </div>
-
-                            <MobileDatePicker
-                                label="Holiday Date"
-                                value={newHoliday.date}
-                                onChange={(date) => setNewHoliday({ ...newHoliday, date: date })}
-                            />
-
-                            <MobileSelect
-                                label="Category"
-                                value={newHoliday.type}
-                                options={['National Holiday', 'Festival Holiday']}
-                                onChange={(val) => setNewHoliday({ ...newHoliday, type: val })}
-                            />
-
-                            <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-100 dark:shadow-none mt-6 active:scale-95 transition-all">
-                                {isEditMode ? 'Update Holiday' : 'Save Holiday'}
-                            </button>
-                        </form>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {/* Apply Leave Bottom Sheet */}
-            {showApplyModal && createPortal(
-                <div className="fixed inset-0 z-[600] flex items-end justify-center">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowApplyModal(false)}></div>
-                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-2xl p-6 animate-in slide-in-from-bottom duration-300 min-h-[85vh] max-h-[95vh] overflow-y-auto pb-[15vh] border-t border-slate-100 dark:border-slate-800">
-                        <div className="flex justify-center mb-6">
-                            <span className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
-                        </div>
-                        <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-8 tracking-tight">Request Leave</h3>
-
-                        <form onSubmit={handleApplyLeave} className="space-y-6">
-                            <MobileSelect
-                                label="Leave Type"
-                                value={applyForm.leave_type || availableLeaveTypes[0]}
-                                options={availableLeaveTypes}
-                                onChange={(val) => setApplyForm({ ...applyForm, leave_type: val })}
-                            />
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <MobileDatePicker
-                                    label="Start Date"
-                                    value={applyForm.start_date}
-                                    onChange={(date) => setApplyForm({ ...applyForm, start_date: date })}
-                                />
-                                <MobileDatePicker
-                                    label="End Date"
-                                    value={applyForm.end_date}
-                                    onChange={(date) => setApplyForm({ ...applyForm, end_date: date })}
-                                />
-                            </div>
-
-                            <div className="bg-slate-50 dark:bg-black rounded-2xl p-4 border border-slate-100 dark:border-slate-800 focus-within:border-indigo-500 transition-all">
-                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">Reason for Leave</label>
-                                <textarea
-                                    className="w-full bg-transparent text-sm font-medium text-slate-800 dark:text-white outline-none resize-none h-24"
-                                    placeholder="Tell us why you need this leave..."
-                                    value={applyForm.reason}
-                                    onChange={(e) => setApplyForm({ ...applyForm, reason: e.target.value })}
-                                    required
-                                ></textarea>
-                            </div>
-
-                            <div className="bg-slate-50 dark:bg-black rounded-2xl p-4 border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-between cursor-pointer active:bg-slate-100 dark:active:bg-slate-900 transition-all relative">
-                                <div className="flex items-center gap-3 text-slate-500">
-                                    <Paperclip size={18} />
-                                    <span className="text-sm font-medium">
-                                        Attach Documents
-                                    </span>
-                                </div>
-                                <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg">
-                                    <Plus size={16} strokeWidth={2.5} />
-                                </div>
-                                <input
-                                    type="file"
-                                    multiple
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                    onChange={(e) => setApplyForm({ 
-                                        ...applyForm, 
-                                        attachments: [...applyForm.attachments, ...Array.from(e.target.files)] 
-                                    })}
-                                />
-                            </div>
-
-                            {applyForm.attachments.length > 0 && (
-                                <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                                    {applyForm.attachments.map((file, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-black rounded-xl border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-500">
-                                                    <FileText size={14} />
-                                                </div>
-                                                <span className="text-xs font-semibold text-slate-700 dark:text-white truncate max-w-[200px]">{file.name}</span>
-                                            </div>
-                                            <button 
-                                                type="button" 
-                                                onClick={() => {
-                                                    const newFiles = [...applyForm.attachments];
-                                                    newFiles.splice(idx, 1);
-                                                    setApplyForm({ ...applyForm, attachments: newFiles });
-                                                }}
-                                                className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors"
-                                            >
-                                                <X size={14} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-semibold shadow-xl shadow-indigo-200 dark:shadow-none mt-4 active:scale-95 transition-all">
-                                Submit Request
-                            </button>
-                        </form>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {/* Detailed Leave View Bottom Sheet */}
-            {selectedLeaf && createPortal(
-                <div className="fixed inset-0 z-[600] flex items-end justify-center">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedLeaf(null)}></div>
-                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-[2.5rem] p-6 animate-in slide-in-from-bottom duration-300 max-h-[95vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] border-t border-slate-100 dark:border-slate-800">
-                        <div className="flex justify-center mb-6">
-                            <span className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
-                        </div>
-                        
-                        <div className="flex justify-between items-start mb-10">
-                            <div>
-                                <h3 className="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight">{selectedLeaf.leave_type}</h3>
-                                <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mt-2 flex items-center gap-2">
-                                    <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                    ID: #{selectedLeaf.lr_id}
-                                </p>
-                            </div>
-                            <div className="flex flex-col items-end gap-1.5">
-                                <div className={`px-4 py-2 rounded-2xl text-[10px] font-bold uppercase tracking-widest ${getStatusColor(selectedLeaf.status)} shadow-sm border border-black/5`}>
-                                    {selectedLeaf.status}
-                                </div>
-                                {selectedLeaf.status?.toLowerCase() === 'approved' && selectedLeaf.pay_type && (
-                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                                        selectedLeaf.pay_type === 'Paid'
-                                            ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20'
-                                            : 'text-red-700 bg-red-50 dark:bg-red-950/20'
-                                    }`}>
-                                        {selectedLeaf.pay_type}
-                                    </span>
+                                {searchTerm && (
+                                    <button
+                                        onClick={() => setSearchTerm('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    >
+                                        <X size={14} />
+                                    </button>
                                 )}
                             </div>
+
+                            {isAdmin && (
+                                <>
+                                    <button
+                                        onClick={() => setBulkImportModalOpen(true)}
+                                        className="h-9 px-2.5 sm:px-3.5 bg-white dark:bg-[#21262D] border border-slate-200 dark:border-[#30363D] text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all shrink-0"
+                                        title="Import CSV"
+                                    >
+                                        <Upload size={14} />
+                                        <span>Import</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setFormModal({ isOpen: true, isEdit: false, holiday: null })}
+                                        className="h-9 px-3 bg-[#6366F1] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all shrink-0"
+                                    >
+                                        <Plus size={15} />
+                                        <span>Add</span>
+                                    </button>
+                                </>
+                            )}
                         </div>
 
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
-                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">From</label>
-                                    <p className="text-base font-semibold text-slate-800 dark:text-white">{formatPlatformDate(selectedLeaf.start_date)}</p>
-                                </div>
-                                <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
-                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">To</label>
-                                    <p className="text-base font-semibold text-slate-800 dark:text-white">{formatPlatformDate(selectedLeaf.end_date)}</p>
-                                </div>
-                            </div>
+                        {/* Calendar Card (Matching Flutter HolidayCalendarCard) */}
+                        <HolidayCalendarCard
+                            currentMonth={currentMonth}
+                            selectedDate={selectedDate}
+                            holidays={holidays}
+                            onMonthChanged={(newMonth) => {
+                                setCurrentMonth(newMonth);
+                                setSelectedDate(null);
+                            }}
+                            onDateSelected={(date) => {
+                                if (selectedDate && date.getTime() === selectedDate.getTime()) {
+                                    setSelectedDate(null);
+                                } else {
+                                    setSelectedDate(date);
+                                    if (date.getMonth() !== currentMonth.getMonth() || date.getFullYear() !== currentMonth.getFullYear()) {
+                                        setCurrentMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                                    }
+                                }
+                            }}
+                            onTodayPressed={() => {
+                                const now = new Date();
+                                setCurrentMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+                                setSelectedDate(now);
+                            }}
+                        />
 
-                            <div className="bg-indigo-600 rounded-[2.5rem] p-6 text-white shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-between overflow-hidden relative">
-                                <div className="absolute right-[-10%] top-[-20%] opacity-10">
-                                    <CalendarDays size={120} />
-                                </div>
-                                <div className="flex items-center gap-4 relative z-10">
-                                    <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
-                                        <CalendarDays size={24} />
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-semibold uppercase tracking-widest opacity-80 leading-none">Total Duration</p>
-                                        <p className="text-2xl font-semibold mt-1">
-                                            {Math.ceil((new Date(selectedLeaf.end_date) - new Date(selectedLeaf.start_date)) / (1000 * 60 * 60 * 24)) + 1} Days
-                                        </p>
-                                    </div>
-                                </div>
+                        {/* Month Grouped Holidays List (Matching Flutter _buildMainHolidayCard) */}
+                        {isLoading ? (
+                            <div className="py-12 flex items-center justify-center">
+                                <Loader2 size={28} className="animate-spin text-indigo-600" />
                             </div>
-
-                            <div className="bg-slate-50 dark:bg-black rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800">
-                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-3">Reason for Leave</label>
-                                <p className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed italic bg-white/50 dark:bg-white/5 p-4 rounded-2xl">
-                                    "{selectedLeaf.reason || 'No reason provided.'}"
+                        ) : visibleHolidays.length === 0 ? (
+                            <div className="bg-white dark:bg-[#161B22] rounded-2xl border border-slate-200/80 dark:border-[#30363D] p-8 text-center shadow-sm">
+                                <p className="text-sm font-semibold text-[#2563EB] dark:text-[#58A6FF]">
+                                    {searchTerm.trim()
+                                        ? `No holidays found matching '${searchTerm.trim()}'`
+                                        : selectedDate
+                                            ? `No holidays on ${formatPlatformDate(selectedDate.toISOString())}`
+                                            : `No holidays in ${currentMonth.toLocaleDateString('en-US', { month: 'long' })}`}
                                 </p>
                             </div>
-
-                            {selectedLeaf.attachments?.length > 0 && (
-                                <div>
-                                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-3 ml-1">Supporting Documents</label>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        {selectedLeaf.attachments.map((file, i) => (
-                                            <div
-                                                key={i}
-                                                onClick={() => setViewingAttachment(file)}
-                                                className="flex items-center gap-4 p-4 rounded-[1.5rem] bg-white dark:bg-black border border-slate-100 dark:border-slate-800 shadow-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900 transition-all active:scale-[0.98]"
-                                            >
-                                                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600">
-                                                    <Paperclip size={18} />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-xs font-semibold text-slate-700 dark:text-white truncate">{file.file_key?.split('/').pop() || 'Attachment'}</p>
-                                                    <p className="text-[10px] text-slate-400 font-medium">Tap to view document</p>
-                                                </div>
-                                                <ExternalLink size={16} className="text-slate-300" />
+                        ) : (
+                            <div className="space-y-3">
+                                {Object.entries(monthGroups).map(([monthYear, hList]) => (
+                                    <div
+                                        key={monthYear}
+                                        className="bg-white dark:bg-[#161B22] rounded-2xl border border-slate-200/80 dark:border-[#30363D] shadow-sm overflow-hidden"
+                                    >
+                                        {/* Month Heading with Indigo Pill Accent */}
+                                        <div className="p-3.5 sm:p-4 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-4 bg-[#6366F1] rounded-full" />
+                                                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                                                    {monthYear}
+                                                </h4>
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                                            <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-[#21262D] border border-slate-200 dark:border-[#30363D] text-slate-600 dark:text-slate-300">
+                                                {hList.length} {hList.length === 1 ? 'Holiday' : 'Holidays'}
+                                            </span>
+                                        </div>
 
-                            {/* Admin Action Area */}
-                            {(adminLeaveView === 'requests' || activeTab === 'requests') && ['admin', 'hr'].includes(user?.user_type) && selectedLeaf.status?.toLowerCase() === 'pending' && (!selectedLeaf.user_id || selectedLeaf.user_id !== user?.user_id) && (
-                                <div className="border-t border-slate-100 dark:border-slate-800 pt-8 mt-4 space-y-6">
-                                    <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
-                                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-2">Pay Type</label>
-                                        <div className="flex gap-4">
-                                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
-                                                <input
-                                                    type="radio"
-                                                    name="mobilePayType"
-                                                    value="Paid"
-                                                    checked={payType === 'Paid'}
-                                                    onChange={(e) => setPayType(e.target.value)}
-                                                    className="text-indigo-650 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-                                                />
-                                                Paid Leave
-                                            </label>
-                                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
-                                                <input
-                                                    type="radio"
-                                                    name="mobilePayType"
-                                                    value="Unpaid"
-                                                    checked={payType === 'Unpaid'}
-                                                    onChange={(e) => setPayType(e.target.value)}
-                                                    className="text-indigo-650 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-                                                />
-                                                Unpaid Leave
-                                            </label>
+                                        <div className="border-t border-slate-100 dark:border-[#30363D]" />
+
+                                        {/* Holiday items in month */}
+                                        <div className="divide-y divide-slate-100 dark:divide-[#21262D]">
+                                            {hList.map((holiday) => {
+                                                const d = parseLocalDate(holiday.holiday_date);
+                                                const dayNum = d.getDate();
+                                                const weekday = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+                                                const isPublic = (holiday.holiday_type || '').toLowerCase().includes('public') ||
+                                                    (holiday.holiday_type || '').toLowerCase().includes('nh') ||
+                                                    (holiday.holiday_type || '').toLowerCase().includes('national');
+
+                                                return (
+                                                    <div
+                                                        key={holiday.holiday_id || holiday.id}
+                                                        onClick={() => setSelectedHoliday(holiday)}
+                                                        className="p-3 sm:p-3.5 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-white/[0.02] active:scale-[0.99] transition-all cursor-pointer"
+                                                    >
+                                                        {/* Date Badge (Day + Weekday) */}
+                                                        <div className="w-[52px] h-[52px] rounded-xl bg-slate-50 dark:bg-[#0D1117] border border-slate-200 dark:border-[#30363D] flex flex-col items-center justify-center shrink-0">
+                                                            <span className="text-base font-extrabold text-slate-900 dark:text-white leading-none">
+                                                                {dayNum}
+                                                            </span>
+                                                            <span className="text-[9.5px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase leading-none">
+                                                                {weekday}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Holiday Name & Date */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <h5 className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                                                                {holiday.holiday_name}
+                                                            </h5>
+                                                            <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 truncate font-medium">
+                                                                {formatPlatformDate(holiday.holiday_date)}
+                                                            </p>
+                                                        </div>
+
+                                                        {/* Type Chip */}
+                                                        <div className="shrink-0 flex items-center gap-1.5">
+                                                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider border ${
+                                                                isPublic
+                                                                    ? 'bg-[#9333EA]/10 border-[#9333EA]/30 text-[#A855F7]'
+                                                                    : 'bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#FBBF24]'
+                                                            }`}>
+                                                                {isPublic ? 'PUBLIC' : 'OPTIONAL'}
+                                                            </span>
+
+                                                            {/* Admin Action Buttons */}
+                                                            {isAdmin && (
+                                                                <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                                                                    <button
+                                                                        onClick={() => setFormModal({ isOpen: true, isEdit: true, holiday })}
+                                                                        className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
+                                                                        title="Edit"
+                                                                    >
+                                                                        <Edit3 size={15} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setDeleteModal({ isOpen: true, holiday })}
+                                                                        className="p-1.5 text-red-400 hover:text-red-600 rounded-lg transition-colors"
+                                                                        title="Delete"
+                                                                    >
+                                                                        <Trash2 size={15} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
-                                    <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800">
-                                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-2">Admin Remarks</label>
-                                        <textarea
-                                            ref={adminRemarksRef}
-                                            placeholder="Enter approval/rejection remarks..."
-                                            value={remarks}
-                                            onChange={(e) => setRemarks(e.target.value)}
-                                            rows="1"
-                                            className="w-full bg-transparent text-sm font-medium text-slate-800 dark:text-white outline-none resize-none overflow-hidden min-h-[24px]"
-                                        ></textarea>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button 
-                                            onClick={() => handleAdminAction('Rejected')}
-                                            className="py-4 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 font-bold rounded-2xl active:scale-95 transition-all shadow-sm"
-                                        >
-                                            Reject
-                                        </button>
-                                        <button 
-                                            onClick={() => handleAdminAction('Approved')}
-                                            className="py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl shadow-indigo-100 dark:shadow-none active:scale-95 transition-all"
-                                        >
-                                            Approve
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
 
-                            <button
-                                onClick={() => setSelectedLeaf(null)}
-                                className="w-full py-4 text-slate-400 font-semibold text-sm mt-4 hover:text-slate-600 transition-colors"
-                            >
-                                Close Details
-                            </button>
+                {/* TAB 2: LEAVE & LEAVE REQUESTS */}
+                {activeTab === 'leaves' && (
+                    <div className="w-full">
+                        <MobileLeaveApplication isEmbedded={true} />
+                    </div>
+                )}
+
+                {/* MODALS */}
+                {selectedHoliday && (
+                    <HolidayDetailDialog
+                        holiday={selectedHoliday}
+                        onClose={() => setSelectedHoliday(null)}
+                    />
+                )}
+
+                {formModal.isOpen && (
+                    <HolidayFormModal
+                        isOpen={formModal.isOpen}
+                        isEdit={formModal.isEdit}
+                        initialData={formModal.holiday}
+                        onClose={() => setFormModal({ isOpen: false, isEdit: false, holiday: null })}
+                        onSave={handleSaveHoliday}
+                    />
+                )}
+
+                {bulkImportModalOpen && (
+                    <BulkHolidayImportModal
+                        isOpen={bulkImportModalOpen}
+                        onClose={() => setBulkImportModalOpen(false)}
+                        onImportSuccess={fetchHolidays}
+                    />
+                )}
+
+                {deleteModal.isOpen && (
+                    <div className="fixed inset-0 z-[600] flex items-center justify-center p-4">
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteModal({ isOpen: false, holiday: null })} />
+                        <div className="relative z-10 w-full max-w-sm bg-white dark:bg-[#161B22] rounded-2xl p-5 border border-slate-200 dark:border-[#30363D] shadow-2xl animate-in zoom-in-95 duration-200 space-y-4">
+                            <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto">
+                                <Trash2 size={24} />
+                            </div>
+                            <div className="text-center">
+                                <h3 className="text-base font-bold text-slate-900 dark:text-white">Delete Holiday?</h3>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                    Are you sure you want to delete <span className="font-semibold text-slate-800 dark:text-slate-200">"{deleteModal.holiday?.holiday_name}"</span>?
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                                <button
+                                    onClick={() => setDeleteModal({ isOpen: false, holiday: null })}
+                                    className="py-2.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-[#21262D] text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleDeleteHoliday}
+                                    className="py-2.5 rounded-xl text-xs font-bold bg-red-600 text-white hover:bg-red-700 shadow-sm"
+                                >
+                                    Delete
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>,
-                document.body
-            )}
-
-            {/* Holiday Details Bottom Sheet */}
-            {selectedHoliday && createPortal(
-                <div className="fixed inset-0 z-[600] flex items-end justify-center">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedHoliday(null)}></div>
-                    <div className="relative z-10 w-full bg-white dark:bg-black rounded-t-[2.5rem] p-6 animate-in slide-in-from-bottom duration-300 pb-[env(safe-area-inset-bottom)] border-t border-slate-100 dark:border-slate-800">
-                        <div className="flex justify-center mb-6">
-                            <span className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full"></span>
-                        </div>
-                        
-                        <div className="text-center mb-10">
-                            <div className="w-24 h-24 bg-indigo-600 text-white rounded-[2rem] flex flex-col items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-100 dark:shadow-none">
-                                <span className="text-[12px] font-bold uppercase tracking-widest leading-none opacity-80">{parseLocalDate(selectedHoliday.holiday_date).toLocaleDateString('en-US', { month: 'short' })}</span>
-                                <span className="text-4xl font-semibold leading-none mt-2">{parseLocalDate(selectedHoliday.holiday_date).getDate()}</span>
-                            </div>
-                            <h3 className="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight px-4">{selectedHoliday.holiday_name}</h3>
-                            <p className="text-sm font-semibold text-slate-400 mt-2">
-                                {formatPlatformDate(selectedHoliday.holiday_date)}
-                            </p>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4 mb-8">
-                            <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800 text-center">
-                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">Category</label>
-                                <p className="text-sm font-semibold text-slate-800 dark:text-white">{selectedHoliday.holiday_type || 'Public Holiday'}</p>
-                            </div>
-                            <div className="bg-slate-50 dark:bg-black rounded-3xl p-5 border border-slate-100 dark:border-slate-800 text-center">
-                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block mb-1">Applicable</label>
-                                <p className="text-sm font-semibold text-slate-800 dark:text-white">All Locations</p>
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={() => setSelectedHoliday(null)}
-                            className="w-full py-4 bg-slate-900 dark:bg-white dark:text-black text-white rounded-2xl font-bold shadow-xl active:scale-95 transition-all mb-4"
-                        >
-                            Got it
-                        </button>
-                    </div>
-                </div>,
-                document.body
-            )}
-
-            {/* Attachment Viewing Modal - Keep as centered for better focus */}
-            {viewingAttachment && (
-                <AttachmentModal
-                    file={viewingAttachment}
-                    onClose={() => setViewingAttachment(null)}
-                />
-            )}
-
-            <MobileConfirmModal
-                isOpen={confirmModal.isOpen}
-                title={confirmModal.title}
-                message={confirmModal.message}
-                type={confirmModal.type}
-                confirmText={confirmModal.confirmText}
-                onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-                onConfirm={confirmModal.onConfirm}
-            />
-
+                )}
+            </div>
         </MobileDashboardLayout>
     );
 };
-
 
 export default HolidayManagement;

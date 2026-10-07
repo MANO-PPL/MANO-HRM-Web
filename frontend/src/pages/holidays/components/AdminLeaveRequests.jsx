@@ -1,7 +1,8 @@
-import React from 'react';
-import { Calendar, CheckCircle, XCircle, Paperclip, ChevronDown, FileText, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { Calendar, CheckCircle, XCircle, Paperclip, ChevronDown, FileText, ExternalLink, Eye } from 'lucide-react';
 import AuditTrailTimeline from '../../../components/AuditTrailTimeline';
 import { formatPlatformDate } from '../../../utils/dateUtils';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 
 const AdminLeaveRequests = ({
     searchQuery,
@@ -24,6 +25,19 @@ const AdminLeaveRequests = ({
     handleAdminAction,
     onOpenApply
 }) => {
+    const [previewAvatarData, setPreviewAvatarData] = useState(null);
+
+    const openAvatarPreview = (userObj) => {
+        if (!userObj) return;
+        setPreviewAvatarData({
+            imageUrl: userObj.profile_image_url ? `${userObj.profile_image_url}?t=${avatarTimestamp}` : null,
+            name: userObj.user_name || 'Staff Member',
+            role: userObj.designation || userObj.role || 'Employee',
+            department: userObj.dept_name,
+            email: userObj.email || userObj.user_email,
+            phone: userObj.phone_no
+        });
+    };
     return (
         <div className="flex flex-row gap-4 h-full min-h-0">
             {/* LEFT PANEL: LIST */}
@@ -51,9 +65,25 @@ const AdminLeaveRequests = ({
                             >
                                 <div className="flex justify-between items-start mb-2">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center font-medium text-xs text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
+                                        <div
+                                            onClick={(e) => {
+                                                if (request.profile_image_url) {
+                                                    e.stopPropagation();
+                                                    openAvatarPreview(request);
+                                                }
+                                            }}
+                                            className={`relative w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center font-medium text-xs text-slate-600 dark:text-slate-300 overflow-hidden shrink-0 transition-transform ${
+                                                request.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50 group/av' : ''
+                                            }`}
+                                            title={request.profile_image_url ? `View ${request.user_name}'s profile photo` : request.user_name}
+                                        >
                                             {request.profile_image_url && request.profile_image_url.startsWith('http') ? (
-                                                <img src={`${request.profile_image_url}?t=${avatarTimestamp}`} alt={request.user_name} className="w-full h-full object-cover" />
+                                                <>
+                                                    <img src={`${request.profile_image_url}?t=${avatarTimestamp}`} alt={request.user_name} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/av:opacity-100 flex items-center justify-center transition-opacity">
+                                                        <Eye size={12} className="text-white drop-shadow" />
+                                                    </div>
+                                                </>
                                             ) : (
                                                 (request.user_name || 'U').charAt(0).toUpperCase()
                                             )}
@@ -89,9 +119,20 @@ const AdminLeaveRequests = ({
                         {/* Detail Header */}
                         <div className="p-6 border-b border-slate-200 dark:border-github-dark-border flex justify-between items-start bg-slate-50/50 dark:bg-github-dark-subtle/10">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-sm text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
+                                <div
+                                    onClick={() => selectedLeave?.profile_image_url && openAvatarPreview(selectedLeave)}
+                                    className={`relative w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-sm text-slate-600 dark:text-slate-300 overflow-hidden shrink-0 transition-transform ${
+                                        selectedLeave.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50 group/hdr-av' : ''
+                                    }`}
+                                    title={selectedLeave.profile_image_url ? `View ${selectedLeave.user_name}'s profile photo` : selectedLeave.user_name}
+                                >
                                     {selectedLeave.profile_image_url && selectedLeave.profile_image_url.startsWith('http') ? (
-                                        <img src={`${selectedLeave.profile_image_url}?t=${avatarTimestamp}`} alt={selectedLeave.user_name} className="w-full h-full object-cover" />
+                                        <>
+                                            <img src={`${selectedLeave.profile_image_url}?t=${avatarTimestamp}`} alt={selectedLeave.user_name} className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 bg-black/35 opacity-0 group-hover/hdr-av:opacity-100 flex items-center justify-center transition-opacity">
+                                                <Eye size={14} className="text-white drop-shadow" />
+                                            </div>
+                                        </>
                                     ) : (
                                         (selectedLeave.user_name || 'U').charAt(0).toUpperCase()
                                     )}
@@ -307,6 +348,17 @@ const AdminLeaveRequests = ({
                     </div>
                 )}
             </div>
+
+            <ProfilePictureModal
+                isOpen={!!previewAvatarData}
+                onClose={() => setPreviewAvatarData(null)}
+                imageUrl={previewAvatarData?.imageUrl}
+                name={previewAvatarData?.name}
+                role={previewAvatarData?.role}
+                department={previewAvatarData?.department}
+                email={previewAvatarData?.email}
+                phone={previewAvatarData?.phone}
+            />
         </div>
     );
 };

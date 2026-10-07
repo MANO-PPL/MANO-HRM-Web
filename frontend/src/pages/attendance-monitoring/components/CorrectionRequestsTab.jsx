@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import VisualCorrectionTimeline from '../../../components/attendance/VisualCorrectionTimeline';
 import AuditTrailTimeline from '../../../components/AuditTrailTimeline';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 import { attendanceService } from '../../../services/attendanceService';
 import { toast } from 'react-toastify';
 import { parseCorrectionDetails, isCheckpointRecord } from '../../../utils/attendanceStatus';
@@ -52,6 +53,7 @@ const CorrectionRequestsTab = ({
     const [overrideSessions, setOverrideSessions] = useState([]);
     const [reviewComment, setReviewComment] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    const [profilePictureData, setProfilePictureData] = useState(null);
     const [timelineScale, setTimelineScale] = useState(1);
 
     // Reject Modal State
@@ -409,7 +411,22 @@ const CorrectionRequestsTab = ({
                                 >
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center font-medium text-xs text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
+                                            <div
+                                                onClick={(e) => {
+                                                    if (request.profile_image_url && request.profile_image_url.startsWith('http')) {
+                                                        e.stopPropagation();
+                                                        setProfilePictureData({
+                                                            imageUrl: `${request.profile_image_url}?t=${avatarTimestamp}`,
+                                                            name: request.user_name,
+                                                            role: request.designation
+                                                        });
+                                                    }
+                                                }}
+                                                title={request.profile_image_url && request.profile_image_url.startsWith('http') ? `View ${request.user_name}'s profile photo` : request.user_name}
+                                                className={`w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center font-medium text-xs text-slate-600 dark:text-slate-300 overflow-hidden shrink-0 transition-transform ${
+                                                    request.profile_image_url && request.profile_image_url.startsWith('http') ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50' : ''
+                                                }`}
+                                            >
                                                 {request.profile_image_url && request.profile_image_url.startsWith('http') ? (
                                                     <img src={`${request.profile_image_url}?t=${avatarTimestamp}`} alt={request.user_name} className="w-full h-full object-cover" />
                                                 ) : (
@@ -461,7 +478,21 @@ const CorrectionRequestsTab = ({
                         {/* Detail Header */}
                         <div className="p-5 px-6 border-b border-slate-200 dark:border-github-dark-border flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-dark-card shrink-0">
                             <div className="flex items-center gap-3.5 min-w-0">
-                                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-sm text-slate-600 dark:text-slate-300 overflow-hidden shrink-0">
+                                <div
+                                    onClick={() => {
+                                        if (selectedRequestData.profile_image_url && selectedRequestData.profile_image_url.startsWith('http')) {
+                                            setProfilePictureData({
+                                                imageUrl: `${selectedRequestData.profile_image_url}?t=${avatarTimestamp}`,
+                                                name: selectedRequestData.user_name,
+                                                role: selectedRequestData.designation
+                                            });
+                                        }
+                                    }}
+                                    title={selectedRequestData.profile_image_url && selectedRequestData.profile_image_url.startsWith('http') ? `View ${selectedRequestData.user_name}'s profile photo` : selectedRequestData.user_name}
+                                    className={`w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-medium text-sm text-slate-600 dark:text-slate-300 overflow-hidden shrink-0 transition-transform ${
+                                        selectedRequestData.profile_image_url && selectedRequestData.profile_image_url.startsWith('http') ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50' : ''
+                                    }`}
+                                >
                                     {selectedRequestData.profile_image_url && selectedRequestData.profile_image_url.startsWith('http') ? (
                                         <img src={`${selectedRequestData.profile_image_url}?t=${avatarTimestamp}`} alt={selectedRequestData.user_name} className="w-full h-full object-cover" />
                                     ) : (
@@ -786,6 +817,13 @@ const CorrectionRequestsTab = ({
                     </div>
                 )}
             </AnimatePresence>
+
+            {/* Profile Picture Lightbox Modal */}
+            <ProfilePictureModal
+                isOpen={!!profilePictureData}
+                onClose={() => setProfilePictureData(null)}
+                {...profilePictureData}
+            />
         </div>
     );
 };
