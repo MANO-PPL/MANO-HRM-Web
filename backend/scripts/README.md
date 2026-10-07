@@ -1,7 +1,7 @@
 # Backend Scripts & Administrative Tooling
 
 ## Overview
-The `backend/scripts/` directory contains administrative utilities, database migration/refactoring tools, diagnostics, and test data simulation engines for the MANO Workforce Intelligence Platform.
+The `backend/scripts/` directory contains verified administrative utilities, database migration runners, smoke tests, and developer tooling for the MANO Workforce Intelligence Platform.
 
 ---
 
@@ -9,59 +9,83 @@ The `backend/scripts/` directory contains administrative utilities, database mig
 
 ```
 backend/scripts/
-├── db/                                # Database migration and schema manipulation tools
-│   ├── migrate.js                     # Knex migration runner: npm run migrate / migrate:status / migrate:rollback (files in backend/migrations/)
-│   ├── add-tour-dismissed.js          # Migration helper to add tour_dismissed columns
-│   └── db_refactor/                   # Table and column refactoring utilities
-│       ├── all-mappings.csv           # Complete entity and column mapping definitions
-│       ├── mappings.csv               # Active table refactoring mappings
-│       └── rename-table.js            # Batch table renaming and column migration script
-├── diagnostics/                       # Diagnostic and infrastructure validation tools
-│   └── verify_cache.js                # Redis cache connectivity, TTL, and cluster test
-└── tools/                             # Data generation and simulation utilities
-    ├── generate_password.js           # Bcrypt password hash generator for seed accounts
-    ├── simulate_attendance.js         # Real-time attendance simulation runner
-    ├── simulate_data.json             # Seed profile & location data for live simulations
-    ├── simulate_past_attendance.js    # Historical attendance data backfill generator
-    └── simulate_past_data.json        # Historical attendance datasets for reporting tests
+├── db/                                # Database management & migration runner
+│   ├── migrations/                    # Knex schema migrations (.mjs files)
+│   ├── migrate.js                     # Knex runner: npm run migrate / migrate:status / migrate:rollback
+│   └── db_dump.js                     # Database schema and data export utility
+├── diagnostics/                       # Infrastructure validation & performance benchmarks
+│   └── verify_cache.js                # Redis cache speedup benchmark & offline fallback test
+├── smoke/                             # Automated CI & pre-commit validation tests
+│   ├── check-syntax.js                # AST syntax verification across all backend JS files
+│   ├── imports.js                     # ES module import resolution verification
+│   └── lifecycle.js                   # Connection health & graceful shutdown verification
+└── tools/                             # Developer utilities
+    ├── generate_password.js           # CLI bcrypt password hash generator for test accounts
+    └── route-inventory.js             # Express API route catalog generator
 ```
 
 ---
 
 ## Tool Details & Usage
 
-### 1. Database Utilities (`db/`)
-* **`add-tour-dismissed.js`**: Adds `tour_dismissed` boolean flag to the user/preferences tables to manage onboarding tour states.
+### 1. Database Management (`db/`)
+
+* **`migrate.js`**: Applies, rolls back, or checks the status of database schema migrations in `backend/scripts/db/migrations/` using Knex.
   ```bash
-  node scripts/db/add-tour-dismissed.js
-  ```
-* **`db_refactor/rename-table.js`**: Reads `mappings.csv` and safely renames database tables, foreign keys, and indexes using Knex.
-  ```bash
-  node scripts/db/db_refactor/rename-table.js
+  npm run migrate          # Apply all pending migrations (node scripts/db/migrate.js latest)
+  npm run migrate:status   # Check applied vs pending migrations
+  npm run migrate:rollback # Roll back the last migration batch
   ```
 
-### 2. Diagnostics (`diagnostics/`)
-* **`verify_cache.js`**: Verifies Redis caching operations (PING, SET, GET, EXPIRE, DEL, and key eviction) to ensure Redis infrastructure is healthy.
+* **`db_dump.js`**: Exports clean MySQL database dumps directly using connection settings from `.env`.
   ```bash
-  node scripts/diagnostics/verify_cache.js
-  ```
+  # Schema only (table structures without data):
+  node scripts/db/db_dump.js
 
-### 3. Simulation & Development Tools (`tools/`)
-* **`generate_password.js`**: Generates a secure bcrypt salt and hash from a plaintext input password for database seeds.
-  ```bash
-  node scripts/tools/generate_password.js "YourPasswordHere"
-  ```
-* **`simulate_attendance.js`**: Simulates live workforce check-in and check-out events across organizations, verifying geofences and shift schedules.
-  ```bash
-  node scripts/tools/simulate_attendance.js
-  ```
-* **`simulate_past_attendance.js`**: Generates historical attendance records for the past 30–90 days to test reporting, payroll calculations, and analytics dashboards.
-  ```bash
-  node scripts/tools/simulate_past_attendance.js
+  # Full dump (schema + data):
+  node scripts/db/db_dump.js --data
   ```
 
 ---
 
-## Best Practices
-1. **Never run simulation scripts in Production**: Always check `NODE_ENV` before executing simulation tools.
-2. **Database Migrations**: Always take a database backup before executing any script in `db/db_refactor/`.
+### 2. Smoke & Integrity Checks (`smoke/`)
+
+* **`check-syntax.js`**: Validates syntax across `server.js` and all files under `src/`.
+  ```bash
+  node scripts/smoke/check-syntax.js
+  ```
+
+* **`imports.js`**: Dynamically verifies that all ES module import paths exist and resolve without errors.
+  ```bash
+  node scripts/smoke/imports.js
+  ```
+
+* **`lifecycle.js`**: Tests database and Redis connections and verifies that graceful SIGTERM shutdown handlers execute cleanly.
+  ```bash
+  npm run smoke:lifecycle
+  ```
+
+* **`npm run check`**: Runs syntax check, ESLint, and import checks in a single pipeline.
+
+---
+
+### 3. Diagnostics (`diagnostics/`)
+
+* **`verify_cache.js`**: Measures Redis vs MySQL latency differences, tests cache invalidation, and verifies that the app gracefully falls back to MySQL if Redis is disconnected.
+  ```bash
+  node scripts/diagnostics/verify_cache.js
+  ```
+
+---
+
+### 4. Developer Tools (`tools/`)
+
+* **`generate_password.js`**: Generates a secure random password or hashes a custom password with bcrypt for database seed accounts.
+  ```bash
+  node scripts/tools/generate_password.js "YourPasswordHere"
+  ```
+
+* **`route-inventory.js`**: Scans Express routing definitions and prints a table of all registered API endpoints.
+  ```bash
+  npm run routes:inventory
+  ```

@@ -2,9 +2,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Knex migration settings shared by scripts/db/migrate.js and the DB tests.
-// Migration files are ES modules (.mjs) in backend/migrations/.
+// Migration files are ES modules (.mjs) in backend/scripts/db/migrations/.
 export const migrationConfig = {
-    directory: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../migrations'),
+    directory: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/db/migrations'),
     loadExtensions: ['.mjs'],
     // Reverting a commit whose migration already ran removes the file but not
     // its row in knex_migrations. Knex would then refuse every later migrate

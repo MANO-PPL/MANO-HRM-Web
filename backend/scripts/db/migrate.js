@@ -1,14 +1,12 @@
 /**
- * Database migrations (knex). Migration files live in backend/migrations/.
+ * Database migrations (knex). Migration files live in backend/scripts/db/migrations/.
  *
  *   npm run migrate:status     list applied and pending migrations
  *   npm run migrate            apply pending migrations
  *   npm run migrate:rollback   undo the last batch
  *
- * Schema changes need ALTER privileges, which the app's DB user may not have.
- * Credentials: MIGRATION_DB_USER / MIGRATION_DB_PASSWORD if set, otherwise
- * DB_ADMIN_USER / DB_ADMIN_PASSWORD, otherwise the app user. The database is
- * ATTENDANCE_DB_NAME on DB_HOST:DB_PORT.
+ * Schema changes need ALTER privileges; connections use DB_ADMIN_USER / DB_ADMIN_PASSWORD.
+ * The database is ATTENDANCE_DB_NAME on DB_HOST:DB_PORT.
  */
 import knex from 'knex';
 import '../../src/config/config.js';
@@ -19,8 +17,8 @@ const db = knex({
     connection: {
         host: process.env.DB_HOST,
         port: Number(process.env.DB_PORT) || 3306,
-        user: process.env.MIGRATION_DB_USER || process.env.DB_ADMIN_USER || process.env.ATTENDANCE_DB_USER,
-        password: process.env.MIGRATION_DB_PASSWORD || process.env.DB_ADMIN_PASSWORD || process.env.ATTENDANCE_DB_PASSWORD,
+        user: process.env.DB_ADMIN_USER,
+        password: process.env.DB_ADMIN_PASSWORD,
         database: process.env.ATTENDANCE_DB_NAME,
         timezone: 'Z',
     },
