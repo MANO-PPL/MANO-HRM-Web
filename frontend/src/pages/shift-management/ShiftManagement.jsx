@@ -430,6 +430,7 @@ const ShiftManagement = ({ embedded = false }) => {
                             calculateDuration={calculateDuration}
                             loadShifts={loadShifts}
                             onEditShift={(shift) => { setEditingShift(shift); setShowShiftForm(true); }}
+                            onDeleteShift={handleDeleteShiftClick}
                             formatDecimalHours={formatDecimalHours}
                             DEFAULT_MAX_OT_HOURS={DEFAULT_MAX_OT_HOURS}
                         />

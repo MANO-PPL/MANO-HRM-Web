@@ -210,7 +210,7 @@ const GeoFencing = ({ embedded = false }) => {
 
     const content = (
         <>
-            <div className={embedded ? "space-y-3 pb-20 pt-1" : "space-y-3 pb-20"}>
+            <div className="w-full px-3 pt-2.5 pb-6 space-y-3">
                 {loadingLocations ? (
                     <div className="text-center py-10 text-slate-400 text-xs">Loading locations...</div>
                 ) : locations.map((loc) => {
@@ -218,24 +218,24 @@ const GeoFencing = ({ embedded = false }) => {
                         .filter(s => s.work_locations?.some(wl => wl.location_id === loc.location_id))
                         .map(s => s.id);
                     return (
-                        <div key={loc.location_id} className="bg-white dark:bg-dark-card rounded-2xl p-3.5 shadow-sm border border-slate-100 dark:border-github-dark-border group active:scale-[0.99] transition-all">
+                        <div key={loc.location_id} className="w-full bg-white dark:bg-dark-card rounded-2xl p-3.5 shadow-2xs border border-slate-200/80 dark:border-github-dark-border group active:scale-[0.99] transition-all">
                             <div className="flex items-start gap-3">
                                 <div className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${loc.is_active === 1 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start mb-1">
-                                        <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-[15px] truncate pr-2">
+                                        <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm truncate pr-2">
                                             {loc.location_name}
                                         </h3>
                                         <button 
                                             onClick={() => openAssignModal(loc)}
-                                            className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 active:scale-95 transition-all"
+                                            className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-medium flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
                                         >
                                             <Users size={12} />
                                             Assign
                                         </button>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 dark:text-github-dark-muted line-clamp-1 mb-3 flex items-center gap-1">
-                                        <MapPin size={10} className="shrink-0" />
+                                    <p className="text-xs text-slate-500 dark:text-github-dark-muted line-clamp-1 mb-2.5 flex items-center gap-1 font-normal">
+                                        <MapPin size={11} className="shrink-0 text-slate-400" />
                                         {loc.address}
                                     </p>
 
@@ -246,13 +246,13 @@ const GeoFencing = ({ embedded = false }) => {
                                                     {assignedStaffIds.slice(0, 4).map((staffId, i) => {
                                                         const s = staff.find(st => st.id === staffId);
                                                         return (
-                                                            <div key={i} className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-github-dark-subtle bg-slate-100 flex items-center justify-center text-[8px] font-semibold text-slate-600 overflow-hidden">
+                                                            <div key={i} className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-github-dark-subtle bg-slate-100 flex items-center justify-center text-[8px] font-medium text-slate-600 overflow-hidden">
                                                                 {s ? (s.image ? <img src={s.image} alt="" className="w-full h-full object-cover" /> : s.name.charAt(0)) : '?'}
                                                             </div>
                                                         );
                                                     })}
                                                     {assignedStaffIds.length > 4 && (
-                                                        <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-github-dark-subtle bg-slate-50 dark:bg-github-dark-border flex items-center justify-center text-[8px] font-semibold text-slate-500">
+                                                        <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white dark:ring-github-dark-subtle bg-slate-50 dark:bg-github-dark-border flex items-center justify-center text-[8px] font-medium text-slate-500">
                                                             +{assignedStaffIds.length - 4}
                                                         </div>
                                                     )}
@@ -262,7 +262,7 @@ const GeoFencing = ({ embedded = false }) => {
                                             )}
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-slate-400 font-medium">{loc.radius}m radius</span>
+                                            <span className="text-[10px] text-slate-400 font-normal font-mono">{loc.radius}m radius</span>
                                         </div>
                                     </div>
                                 </div>
@@ -293,35 +293,35 @@ const GeoFencing = ({ embedded = false }) => {
                             <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-1" />
                             
                             {/* Header */}
-                            <div className="p-6 pb-2 flex justify-between items-center">
+                            <div className="p-4 border-b border-slate-200/80 dark:border-github-dark-border flex justify-between items-center">
                                 <div>
-                                    <h3 className="font-semibold text-xl text-slate-900 dark:text-github-dark-text tracking-tight">Assign Staff</h3>
-                                    <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mt-1">
-                                        <MapPin size={12} className="text-indigo-500" />
+                                    <h3 className="font-semibold text-sm text-slate-900 dark:text-github-dark-text tracking-tight">Assign Staff</h3>
+                                    <p className="text-xs font-normal text-slate-500 flex items-center gap-1 mt-0.5">
+                                        <MapPin size={11} className="text-indigo-500" />
                                         {selectedLocation?.location_name}
                                     </p>
                                 </div>
-                                <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90 transition-all">
-                                    <X size={20} />
+                                <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 active:scale-95 transition-all cursor-pointer">
+                                    <X size={16} />
                                 </button>
                             </div>
 
                         {/* Search */}
-                        <div className="px-6 py-4">
+                        <div className="px-4 py-3">
                             <div className="relative group">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={15} />
                                 <input
                                     type="text"
                                     placeholder="Search by name or role..."
                                     value={staffSearchTerm}
                                     onChange={(e) => setStaffSearchTerm(e.target.value)}
-                                    className="w-full pl-11 pr-4 py-4 bg-slate-50 dark:bg-slate-800/50 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm font-normal focus:ring-0 outline-none transition-all"
+                                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:border-indigo-500/50 rounded-xl text-xs font-normal focus:ring-0 outline-none transition-all"
                                 />
                             </div>
                         </div>
 
                         {/* List */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[300px] no-scrollbar">
+                        <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[300px] no-scrollbar">
                             {loadingStaff ? (
                                 <div className="text-center py-10 text-slate-400 text-xs">Loading staff...</div>
                             ) : filteredStaff.length === 0 ? (
@@ -333,23 +333,23 @@ const GeoFencing = ({ embedded = false }) => {
                                         <div
                                             key={s.id}
                                             onClick={() => toggleStaffAssignmentRealTime(s.id, isSelected)}
-                                            className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${isSelected
-                                                ? 'bg-indigo-50/50 dark:bg-indigo-900/10'
-                                                : 'bg-transparent'
+                                            className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all ${isSelected
+                                                ? 'bg-indigo-50/60 dark:bg-indigo-900/10'
+                                                : 'bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/40'
                                                 }`}
                                         >
-                                            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center text-sm font-semibold text-slate-600 shrink-0">
+                                            <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center text-xs font-medium text-slate-600 shrink-0">
                                                 {s.image ? <img src={s.image} alt="" className="w-full h-full object-cover" /> : s.name.charAt(0)}
                                             </div>
-                                            <div className="flex-1">
-                                                <h4 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text">{s.name}</h4>
-                                                <p className="text-[10px] text-slate-500">{s.role}</p>
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="text-xs font-medium text-slate-800 dark:text-github-dark-text truncate">{s.name}</h4>
+                                                <p className="text-[10px] text-slate-500 font-normal">{s.role}</p>
                                             </div>
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isSelected
+                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${isSelected
                                                 ? 'bg-emerald-100 text-emerald-600'
                                                 : 'bg-slate-100 text-slate-400 hover:bg-indigo-100 hover:text-indigo-600'
                                                 }`}>
-                                                {isSelected ? <Check size={16} strokeWidth={3} /> : <Plus size={16} />}
+                                                {isSelected ? <Check size={14} strokeWidth={2.5} /> : <Plus size={14} />}
                                             </div>
                                         </div>
                                     );
@@ -358,12 +358,12 @@ const GeoFencing = ({ embedded = false }) => {
                         </div>
 
                         {/* Footer */}
-                        <div className="p-6 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] border-t border-slate-50 dark:border-slate-800/50">
+                        <div className="p-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] border-t border-slate-100 dark:border-slate-800/50">
                             <button
                                 onClick={() => setIsModalOpen(false)}
-                                className="w-full py-4 bg-indigo-600 dark:bg-indigo-500 text-white font-semibold rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                className="w-full py-3 bg-indigo-600 dark:bg-indigo-500 text-white font-medium text-xs rounded-xl shadow-xs active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
                             >
-                                <CheckCircle2 size={20} />
+                                <CheckCircle2 size={16} />
                                 Done
                             </button>
                         </div>
@@ -379,53 +379,53 @@ const GeoFencing = ({ embedded = false }) => {
                     <div className="flex min-h-full items-end justify-center">
                         <div 
                             onClick={e => e.stopPropagation()}
-                            className="bg-white dark:bg-github-dark-subtle w-full rounded-t-[2.5rem] max-h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300 relative"
+                            className="bg-white dark:bg-github-dark-subtle w-full rounded-t-[2rem] max-h-[92vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300 relative"
                         >
                             {/* Drag Handle */}
-                            <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-1" />
+                            <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mt-3 mb-1" />
                             
-                            <div className="p-6 pb-2 flex justify-between items-center">
+                            <div className="p-4 border-b border-slate-200/80 dark:border-github-dark-border flex justify-between items-center">
                                 <div>
-                                    <h3 className="font-semibold text-xl text-slate-800 dark:text-github-dark-text tracking-tight">New Location</h3>
-                                    <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted mt-1">Add a new geo-fencing zone</p>
+                                    <h3 className="font-semibold text-sm text-slate-800 dark:text-github-dark-text tracking-tight">New Location</h3>
+                                    <p className="text-xs font-normal text-slate-500 dark:text-github-dark-muted mt-0.5">Add a new geo-fencing zone</p>
                                 </div>
-                                <button onClick={() => setIsCreateModalOpen(false)} className="w-10 h-10 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90 transition-all">
-                                    <X size={20} />
+                                <button onClick={() => setIsCreateModalOpen(false)} className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 active:scale-95 transition-all cursor-pointer">
+                                    <X size={16} />
                                 </button>
                             </div>
 
-                        <form onSubmit={handleCreateGeofence} className="p-5 space-y-4">
+                        <form onSubmit={handleCreateGeofence} className="p-4 space-y-3.5">
                             <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Location Name *</label>
+                                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Location Name *</label>
                                 <input
                                     type="text"
                                     required
                                     value={newGeo.location_name}
                                     onChange={(e) => setNewGeo({ ...newGeo, location_name: e.target.value })}
                                     placeholder="e.g. Main Office"
-                                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5 flex justify-between items-center">
+                                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex justify-between items-center">
                                     <span>Coordinates *</span>
                                 </label>
                                 <button 
                                     type="button" 
                                     onClick={useMyLocation}
-                                    className="w-full mb-3 py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold border-2 border-indigo-100 dark:border-indigo-900/30 active:scale-[0.98] transition-all"
+                                    className="w-full mb-2.5 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center gap-1.5 text-xs font-medium border border-indigo-200/60 dark:border-indigo-900/30 active:scale-[0.99] transition-all cursor-pointer"
                                 >
-                                    <MapPin size={16} /> Use My Current Location
+                                    <MapPin size={14} /> Use My Current Location
                                 </button>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-2 gap-2.5">
                                     <input
                                         type="text"
                                         required
                                         value={newGeo.latitude}
                                         onChange={(e) => setNewGeo({ ...newGeo, latitude: e.target.value })}
                                         placeholder="Lat (e.g. 19.12)"
-                                        className="w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-mono"
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                     />
                                     <input
                                         type="text"
@@ -433,27 +433,27 @@ const GeoFencing = ({ embedded = false }) => {
                                         value={newGeo.longitude}
                                         onChange={(e) => setNewGeo({ ...newGeo, longitude: e.target.value })}
                                         placeholder="Lng (e.g. 72.84)"
-                                        className="w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-mono"
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5">Address *</label>
+                                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Address *</label>
                                 <textarea
                                     required
                                     value={newGeo.address}
                                     onChange={(e) => setNewGeo({ ...newGeo, address: e.target.value })}
                                     placeholder="Full street address..."
                                     rows="2"
-                                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none max-h-[80px]"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-github-dark-subtle text-slate-800 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none max-h-[80px]"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-github-dark-muted mb-1.5 flex justify-between">
+                                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex justify-between">
                                     <span>Radius Slider</span>
-                                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{newGeo.radius}m</span>
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-medium font-mono">{newGeo.radius}m</span>
                                 </label>
                                 <input
                                     type="range"
@@ -462,26 +462,21 @@ const GeoFencing = ({ embedded = false }) => {
                                     step="10"
                                     value={newGeo.radius}
                                     onChange={(e) => setNewGeo({ ...newGeo, radius: e.target.value })}
-                                    className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600
-                                        [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 
-                                        [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 
-                                        [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white
-                                        [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full 
-                                        [&::-moz-range-thumb]:bg-indigo-600 [&::-moz-range-thumb]:border-none"
+                                    className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                 />
                             </div>
 
-                            <div className="p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
+                            <div className="pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
                                 <button
                                     type="submit"
                                     disabled={isCreating}
-                                    className="w-full py-4 bg-indigo-600 dark:bg-indigo-500 hover:bg-indigo-700 text-white font-semibold rounded-2xl shadow-xl shadow-indigo-100 dark:shadow-none transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.98]"
+                                    className="w-full py-3 bg-indigo-600 dark:bg-indigo-500 hover:bg-indigo-700 text-white font-medium text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.99] cursor-pointer"
                                 >
                                     {isCreating ? (
-                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                     ) : (
                                         <>
-                                            <Plus size={20} strokeWidth={2.5} />
+                                            <Plus size={16} strokeWidth={2} />
                                             Save Location
                                         </>
                                     )}
@@ -498,7 +493,7 @@ const GeoFencing = ({ embedded = false }) => {
 
     if (loadingLocations || loadingStaff) {
         const loadingContent = (
-            <div className="p-4 space-y-4 animate-in fade-in duration-300">
+            <div className="w-full px-3 pt-2.5 pb-6 space-y-3 animate-in fade-in duration-300">
                 {/* Mobile Radar Card */}
                 <div className="relative h-64 bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-github-dark-border shadow-md flex items-center justify-center">
                     <div

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Crosshair, Users } from 'lucide-react';
+import { Plus, Search, Crosshair, Users, MapPin } from 'lucide-react';
 
 const GeofenceLocationList = ({
   locations = [],
@@ -17,25 +17,31 @@ const GeofenceLocationList = ({
   );
 
   return (
-    <div data-tour-id="geo-sidebar-locations" className="w-[380px] flex-shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm flex flex-col overflow-hidden">
+    <div data-tour-id="geo-sidebar-locations" className="w-[360px] 2xl:w-[380px] shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm flex flex-col overflow-hidden">
       {/* Header / Search */}
-      <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/50 space-y-3">
+      <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50 space-y-3">
         <div className="flex justify-between items-center">
-          <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Locations</h3>
+          <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-sm">
+            <MapPin size={16} className="text-indigo-500" />
+            <span>Geofence Zones</span>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+              {locations.length}
+            </span>
+          </h3>
           <button
             onClick={onOpenCreate}
             className="p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer"
             title="Add Location"
           >
-            <Plus size={18} />
+            <Plus size={16} />
           </button>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input
             type="text"
-            placeholder="Search offices..."
-            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text"
+            placeholder="Search locations..."
+            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text placeholder:text-slate-400"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />

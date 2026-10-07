@@ -1,5 +1,5 @@
-import React from 'react';
-import { Users, Check, Plus } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, Check, Plus, Search } from 'lucide-react';
 
 const GeofenceStaffAssignment = ({
   users = [],
@@ -11,13 +11,43 @@ const GeofenceStaffAssignment = ({
   avatarTimestamp,
   toggleUserAssignment
 }) => {
+  const [staffSearch, setStaffSearch] = useState('');
+
+  const filteredUsers = users.filter(u =>
+    u.user_name?.toLowerCase().includes(staffSearch.toLowerCase()) ||
+    u.desg_name?.toLowerCase().includes(staffSearch.toLowerCase())
+  );
+
+  const selectedLocId = selectedLocation ? Number(selectedLocation.location_id) : null;
+  const assignedUsersCount = users.filter(user => 
+    selectedLocId != null &&
+    Array.isArray(user.work_locations) &&
+    user.work_locations.some(wl => wl.location_id === selectedLocId)
+  ).length;
+
   return (
-    <div data-tour-id="geo-sidebar-users" className="w-[380px] flex-shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm flex flex-col overflow-hidden">
-      <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/50">
+    <div data-tour-id="geo-sidebar-users" className="w-[360px] 2xl:w-[380px] shrink-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm flex flex-col overflow-hidden">
+      <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50 space-y-3">
         <div className="flex justify-between items-center">
           <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-sm">
-            <Users size={16} /> Assigned Staff
+            <Users size={16} className="text-indigo-500" />
+            <span>Assigned Staff</span>
           </h3>
+          {selectedLocation && (
+            <span className="text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+              {assignedUsersCount} Assigned
+            </span>
+          )}
+        </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          <input
+            type="text"
+            placeholder="Search staff..."
+            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text placeholder:text-slate-400"
+            value={staffSearch}
+            onChange={(e) => setStaffSearch(e.target.value)}
+          />
         </div>
       </div>
       <div className="p-2 flex-1 overflow-y-auto space-y-4 no-scrollbar">
@@ -26,15 +56,13 @@ const GeofenceStaffAssignment = ({
         )}
 
         {!loadingUsers && (() => {
-          const selectedLocId = selectedLocation ? Number(selectedLocation.location_id) : null;
-          
-          const assignedUsers = users.filter(user => 
+          const assignedUsers = filteredUsers.filter(user => 
             selectedLocId != null &&
             Array.isArray(user.work_locations) &&
             user.work_locations.some(wl => wl.location_id === selectedLocId)
           );
           
-          const unassignedUsers = users.filter(user => 
+          const unassignedUsers = filteredUsers.filter(user => 
             selectedLocId == null ||
             !Array.isArray(user.work_locations) ||
             !user.work_locations.some(wl => wl.location_id === selectedLocId)
