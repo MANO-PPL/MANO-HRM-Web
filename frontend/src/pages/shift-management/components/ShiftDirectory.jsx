@@ -15,10 +15,16 @@ const ShiftDirectory = ({
     calculateDuration
 }) => {
     return (
-        <div data-tour-id="shift-mgmt-list" className="w-[380px] flex-shrink-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
+        <div data-tour-id="shift-mgmt-list" className="w-[360px] 2xl:w-[380px] shrink-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50 space-y-3">
                 <div className="flex justify-between items-center">
-                    <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Shifts</h3>
+                    <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-sm">
+                        <Clock size={16} className="text-indigo-500" />
+                        <span>Work Shifts</span>
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                            {shifts.length}
+                        </span>
+                    </h3>
                     <div className="flex items-center gap-1.5">
                         <button
                             data-tour-id="shift-mgmt-add"
@@ -26,7 +32,7 @@ const ShiftDirectory = ({
                             className="p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer"
                             title="Create new shift"
                         >
-                            <Plus size={18} />
+                            <Plus size={16} />
                         </button>
                     </div>
                 </div>
@@ -35,7 +41,7 @@ const ShiftDirectory = ({
                     <input
                         type="text"
                         placeholder="Search shifts..."
-                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text"
+                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text placeholder:text-slate-400"
                         value={shiftSearch}
                         onChange={e => setShiftSearch(e.target.value)}
                     />

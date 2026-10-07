@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Users, Search, Clock, Check, Plus } from 'lucide-react';
+import ProfilePictureModal from '../../../components/modals/ProfilePictureModal';
 
 const ShiftStaffAssignment = ({
     selectedShift,
@@ -13,20 +14,23 @@ const ShiftStaffAssignment = ({
     avatarTimestamp,
     handleToggleUserShift
 }) => {
+    const [profilePictureData, setProfilePictureData] = useState(null);
     const filteredUsers = users.filter(u =>
         u.user_name?.toLowerCase().includes(userSearch.toLowerCase()) ||
         u.desg_name?.toLowerCase().includes(userSearch.toLowerCase())
     );
 
     return (
-        <div data-tour-id="shift-mgmt-users" className="w-[380px] flex-shrink-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
+        <div data-tour-id="shift-mgmt-users" className="w-[360px] 2xl:w-[380px] shrink-0 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-slate-200 dark:border-github-dark-border flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50 dark:bg-github-dark-subtle/50 space-y-3">
-                <div className="flex items-center gap-2">
-                    <Users size={16} className="text-slate-500" />
-                    <h3 className="font-semibold text-slate-800 dark:text-github-dark-text text-sm">Assigned Staff</h3>
+                <div className="flex justify-between items-center">
+                    <h3 className="font-semibold text-slate-800 dark:text-github-dark-text flex items-center gap-2 text-sm">
+                        <Users size={16} className="text-indigo-500" />
+                        <span>Assigned Staff</span>
+                    </h3>
                     {selectedShift && (
-                        <span className="ml-auto text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
-                            {users.filter(u => u.shift_id === selectedShift.id).length}
+                        <span className="text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+                            {users.filter(u => u.shift_id === selectedShift.id).length} Assigned
                         </span>
                     )}
                 </div>
@@ -35,7 +39,7 @@ const ShiftStaffAssignment = ({
                     <input
                         type="text"
                         placeholder="Search staff..."
-                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text"
+                        className="w-full pl-9 pr-3 py-2 bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-lg text-xs font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-github-dark-text placeholder:text-slate-400"
                         value={userSearch}
                         onChange={e => setUserSearch(e.target.value)}
                     />
@@ -62,7 +66,23 @@ const ShiftStaffAssignment = ({
                                     }`}
                             >
                                 <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-bold text-indigo-700 dark:text-indigo-400 overflow-hidden flex-shrink-0">
+                                    <div
+                                        onClick={(e) => {
+                                            if (user.profile_image_url) {
+                                                e.stopPropagation();
+                                                setProfilePictureData({
+                                                    imageUrl: `${user.profile_image_url}?t=${avatarTimestamp}`,
+                                                    name: user.user_name,
+                                                    role: user.desg_name,
+                                                    department: user.dept_name
+                                                });
+                                            }
+                                        }}
+                                        title={user.profile_image_url ? `View ${user.user_name}'s profile photo` : user.user_name}
+                                        className={`w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-bold text-indigo-700 dark:text-indigo-400 overflow-hidden flex-shrink-0 transition-transform ${
+                                            user.profile_image_url ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-indigo-500/50' : ''
+                                        }`}
+                                    >
                                         {user.profile_image_url ? (
                                             <img src={`${user.profile_image_url}?t=${avatarTimestamp}`} alt={user.user_name} className="w-full h-full object-cover" />
                                         ) : user.user_name?.charAt(0)}
@@ -126,6 +146,13 @@ const ShiftStaffAssignment = ({
                     );
                 })()}
             </div>
+
+            {/* Profile Picture Lightbox Modal */}
+            <ProfilePictureModal
+                isOpen={!!profilePictureData}
+                onClose={() => setProfilePictureData(null)}
+                {...profilePictureData}
+            />
         </div>
     );
 };

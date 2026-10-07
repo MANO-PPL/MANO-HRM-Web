@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import ShiftManagementMobile from '../shift-management/ShiftManagement-mv';
 import GeoFencingMobile from '../geofencing/GeoFencing-mv';
-import SalaryPackages from '../payroll/SalaryPackages';
-import LeavePolicies from '../leaves/LeavePolicies';
+import SalaryPackagesMobile from '../payroll/SalaryPackages-mv';
+import LeavePoliciesMobile from '../leaves/LeavePolicies-mv';
 import { Clock, MapPin, Layers, CalendarCheck } from 'lucide-react';
 
 const PolicyManagementMobile = () => {
@@ -41,70 +41,69 @@ const PolicyManagementMobile = () => {
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
         navigate(`/policies?tab=${tab}`);
     };
 
     return (
-        <MobileDashboardLayout title="Policy Management">
-            <div className="px-2 pt-2 space-y-3">
-                {/* Mobile Tabs Strip */}
-                <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-github-dark-subtle rounded-xl border border-slate-200/60 dark:border-github-dark-border overflow-x-auto no-scrollbar">
-                    <button
-                        onClick={() => handleTabChange('shifts')}
-                        className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                            activeTab === 'shifts'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                : 'text-slate-500 dark:text-github-dark-muted'
-                        }`}
-                    >
-                        <Clock size={13} />
-                        <span>Shifts</span>
-                    </button>
-                    <button
-                        onClick={() => handleTabChange('geofencing')}
-                        className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                            activeTab === 'geofencing'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                : 'text-slate-500 dark:text-github-dark-muted'
-                        }`}
-                    >
-                        <MapPin size={13} />
-                        <span>Geo</span>
-                    </button>
-                    <button
-                        onClick={() => handleTabChange('salary_packages')}
-                        className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                            activeTab === 'salary_packages'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                : 'text-slate-500 dark:text-github-dark-muted'
-                        }`}
-                    >
-                        <Layers size={13} />
-                        <span>Salary</span>
-                    </button>
-                    <button
-                        onClick={() => handleTabChange('leave_policies')}
-                        className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                            activeTab === 'leave_policies'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] shadow-sm'
-                                : 'text-slate-500 dark:text-github-dark-muted'
-                        }`}
-                    >
-                        <CalendarCheck size={13} />
-                        <span>Leaves</span>
-                    </button>
+        <MobileDashboardLayout title="Policy Management" contentClassName="px-0 pt-0 pb-4 w-full">
+            <div className="w-full">
+                {/* Mobile Tabs Strip - Sticky Full Width from Left to Right */}
+                <div className="sticky z-20 bg-slate-50/95 dark:bg-[#0D1117]/95 backdrop-blur-md px-3 pt-2 pb-2 border-b border-slate-200/80 dark:border-github-dark-border w-full" style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}>
+                    <div className="flex w-full items-center gap-1 p-1 bg-white dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shadow-2xs">
+                        <button
+                            onClick={() => handleTabChange('shifts')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
+                                activeTab === 'shifts'
+                                    ? 'bg-[#f6f8fa] dark:bg-[#21262D] text-[#6366F1] dark:text-indigo-400 font-medium shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                            }`}
+                        >
+                            <Clock size={13} className={activeTab === 'shifts' ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-400'} />
+                            <span className="leading-none text-[11.5px]">Shifts</span>
+                        </button>
+                        <button
+                            onClick={() => handleTabChange('geofencing')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
+                                activeTab === 'geofencing'
+                                    ? 'bg-[#f6f8fa] dark:bg-[#21262D] text-[#6366F1] dark:text-indigo-400 font-medium shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                            }`}
+                        >
+                            <MapPin size={13} className={activeTab === 'geofencing' ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-400'} />
+                            <span className="leading-none text-[11.5px]">Geofence</span>
+                        </button>
+                        <button
+                            onClick={() => handleTabChange('salary_packages')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
+                                activeTab === 'salary_packages'
+                                    ? 'bg-[#f6f8fa] dark:bg-[#21262D] text-[#6366F1] dark:text-indigo-400 font-medium shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                            }`}
+                        >
+                            <Layers size={13} className={activeTab === 'salary_packages' ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-400'} />
+                            <span className="leading-none text-[11.5px]">Salary</span>
+                        </button>
+                        <button
+                            onClick={() => handleTabChange('leave_policies')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
+                                activeTab === 'leave_policies'
+                                    ? 'bg-[#f6f8fa] dark:bg-[#21262D] text-[#6366F1] dark:text-indigo-400 font-medium shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                            }`}
+                        >
+                            <CalendarCheck size={13} className={activeTab === 'leave_policies' ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-400'} />
+                            <span className="leading-none text-[11.5px]">Leaves</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content Panel */}
-                <div className="relative">
+                <div className="w-full">
                     {activeTab === 'shifts' && <ShiftManagementMobile embedded={true} />}
                     {activeTab === 'geofencing' && <GeoFencingMobile embedded={true} />}
-                    {activeTab === 'salary_packages' && <SalaryPackages embedded={true} />}
-                    {activeTab === 'leave_policies' && (
-                        <div className="space-y-4 pb-24 animate-in fade-in duration-300">
-                            <LeavePolicies />
-                        </div>
-                    )}
+                    {activeTab === 'salary_packages' && <SalaryPackagesMobile embedded={true} />}
+                    {activeTab === 'leave_policies' && <LeavePoliciesMobile embedded={true} />}
                 </div>
             </div>
         </MobileDashboardLayout>

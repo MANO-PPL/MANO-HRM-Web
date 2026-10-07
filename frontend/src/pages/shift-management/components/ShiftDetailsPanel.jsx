@@ -1,7 +1,7 @@
 import React from 'react';
 import {
     Clock, Edit2, ArrowRight, AlertTriangle, FileClock,
-    Calendar, MapPin, Check, X, Zap
+    Calendar, MapPin, Check, X, Zap, Trash2
 } from 'lucide-react';
 import { adminService } from '../../../services/adminService';
 import { toast } from 'react-toastify';
@@ -12,6 +12,7 @@ const ShiftDetailsPanel = ({
     calculateDuration,
     loadShifts,
     onEditShift,
+    onDeleteShift,
     formatDecimalHours,
     DEFAULT_MAX_OT_HOURS = 3
 }) => {
@@ -19,7 +20,7 @@ const ShiftDetailsPanel = ({
 
     return (
         <div data-tour-id="shift-detail-pane" className="flex flex-col h-full overflow-hidden">
-            <div className="p-5 border-b border-slate-200 dark:border-github-dark-border flex items-center justify-between">
+            <div className="p-4 border-b border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-subtle/20 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <div className="p-2.5 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
                         <Clock size={20} />
@@ -29,9 +30,9 @@ const ShiftDetailsPanel = ({
                         <p className="text-xs text-slate-500 font-mono font-normal">{selectedShift.start} → {selectedShift.end} • {calculateDuration(selectedShift.start, selectedShift.end)}</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                     {/* Inline Status Toggle */}
-                    <div className="flex items-center gap-2.5 border border-slate-200 dark:border-github-dark-border rounded-xl px-3 py-1.5 bg-slate-50 dark:bg-slate-800/30 text-xs font-medium select-none">
+                    <div className="flex items-center gap-2 border border-slate-200 dark:border-[#30363d] px-3 py-1 rounded-xl bg-slate-50/50 dark:bg-[#161b22]/30 select-none">
                         <span className={`text-xs font-medium transition-colors ${selectedShift.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
                             {selectedShift.is_active ? 'Active' : 'Inactive'}
                         </span>
@@ -64,10 +65,21 @@ const ShiftDetailsPanel = ({
                     </div>
                     <button
                         onClick={() => onEditShift(selectedShift)}
-                        className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 dark:border-github-dark-border text-slate-600 dark:text-github-dark-text bg-white dark:bg-github-dark-subtle hover:bg-slate-50 dark:hover:bg-github-dark-subtle/80 rounded-lg text-xs font-medium transition-all shadow-xs cursor-pointer"
+                        title="Edit shift"
                     >
-                        <Edit2 size={14} /> Edit
+                        <Edit2 size={13} />
+                        <span>Edit</span>
                     </button>
+                    {onDeleteShift && (
+                        <button
+                            onClick={() => onDeleteShift(selectedShift)}
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/10 rounded-lg border border-transparent hover:border-rose-200 transition-all cursor-pointer"
+                            title="Delete shift"
+                        >
+                            <Trash2 size={15} />
+                        </button>
+                    )}
                 </div>
             </div>
 

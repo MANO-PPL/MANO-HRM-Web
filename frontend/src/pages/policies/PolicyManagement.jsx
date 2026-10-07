@@ -48,50 +48,50 @@ const PolicyManagement = () => {
     return (
         <DashboardLayout title="Policy Management" noPadding={true}>
             <div className="flex flex-col h-[calc(100vh-64px)] w-full min-w-[1000px] overflow-hidden px-2.5 pt-2 pb-2 bg-slate-50 dark:bg-dark-bg space-y-2">
-                {/* Tabs Strip */}
-                <div className="flex w-fit items-center gap-1.5 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0">
+                {/* Tabs Strip - Unified with Platform Design System */}
+                <div className="flex w-fit items-center gap-1.5 p-1 bg-[#f6f8fa] dark:bg-[#161b22] border border-[#d0d7de] dark:border-[#30363d] rounded-xl shrink-0 shadow-2xs">
                     <button
                         onClick={() => handleTabChange('shifts')}
                         className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
                             activeTab === 'shifts'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                                ? 'bg-white dark:bg-[#21262D] text-[#6366F1] dark:text-white font-bold shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                         }`}
                     >
-                        <Clock size={14} className={`${activeTab === 'shifts' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
-                        <span className="leading-none">Shift Management</span>
+                        <Clock size={14} className={activeTab === 'shifts' ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-400'} />
+                        <span className="leading-none">Work Shifts</span>
                     </button>
                     <button
                         onClick={() => handleTabChange('geofencing')}
                         className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
                             activeTab === 'geofencing'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
-                                : 'text-slate-605 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                                ? 'bg-white dark:bg-[#21262D] text-[#6366F1] dark:text-white font-bold shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                         }`}
                     >
-                        <MapPin size={14} className={`${activeTab === 'geofencing' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-450'} -mt-[1px]`} />
-                        <span className="leading-none">Geo Fencing</span>
+                        <MapPin size={14} className={activeTab === 'geofencing' ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-400'} />
+                        <span className="leading-none">Geofence Zones</span>
                     </button>
                     <button
                         onClick={() => handleTabChange('salary_packages')}
                         className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
                             activeTab === 'salary_packages'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                                ? 'bg-white dark:bg-[#21262D] text-[#6366F1] dark:text-white font-bold shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                         }`}
                     >
-                        <Layers size={14} className={`${activeTab === 'salary_packages' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
+                        <Layers size={14} className={activeTab === 'salary_packages' ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-400'} />
                         <span className="leading-none">Salary Packages</span>
                     </button>
                     <button
                         onClick={() => handleTabChange('leave_policies')}
                         className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs transition-all duration-200 cursor-pointer ${
                             activeTab === 'leave_policies'
-                                ? 'bg-white dark:bg-slate-700 text-[#0969da] dark:text-[#f0f6fc] font-medium shadow-sm'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-normal'
+                                ? 'bg-white dark:bg-[#21262D] text-[#6366F1] dark:text-white font-bold shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                         }`}
                     >
-                        <CalendarCheck size={14} className={`${activeTab === 'leave_policies' ? 'text-[#0969da] dark:text-[#f0f6fc]' : 'text-slate-455'} -mt-[1px]`} />
+                        <CalendarCheck size={14} className={activeTab === 'leave_policies' ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-400'} />
                         <span className="leading-none">Leave Policies</span>
                     </button>
                 </div>
@@ -101,11 +101,7 @@ const PolicyManagement = () => {
                     {activeTab === 'shifts' && <ShiftManagement embedded={true} />}
                     {activeTab === 'geofencing' && <GeoFencing embedded={true} />}
                     {activeTab === 'salary_packages' && <SalaryPackages embedded={true} />}
-                    {activeTab === 'leave_policies' && (
-                        <div className="h-full overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <LeavePolicies />
-                        </div>
-                    )}
+                    {activeTab === 'leave_policies' && <LeavePolicies embedded={true} />}
                 </div>
             </div>
         </DashboardLayout>
