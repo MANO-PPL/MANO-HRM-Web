@@ -230,6 +230,7 @@ const Login = () => {
                                         value={formData.identifier}
                                         onChange={handleChange}
                                         required
+                                        autoComplete="username"
                                         className="w-full bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-2xl py-4 pl-14 pr-5 text-slate-900 dark:text-white font-normal outline-none ring-offset-bg focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
                                         placeholder="Enter Email or Mobile"
                                     />
@@ -257,6 +258,7 @@ const Login = () => {
                                         value={formData.password}
                                         onChange={handleChange}
                                         required
+                                        autoComplete="current-password"
                                         className="w-full bg-slate-50 dark:bg-[#0d1117] border border-slate-200 dark:border-[#30363d] rounded-2xl py-4 pl-14 pr-12 text-slate-900 dark:text-white font-normal outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-sm"
                                         placeholder="••••••••"
                                     />

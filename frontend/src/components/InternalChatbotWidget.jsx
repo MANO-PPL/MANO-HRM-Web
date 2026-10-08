@@ -449,6 +449,21 @@ export default function InternalChatbotWidget() {
         return () => window.removeEventListener('mano-active-tab', handleTabChange);
     }, []);
 
+    // Detect open drawers or modals so the copilot button never obscures action buttons
+    const [hasActiveOverlay, setHasActiveOverlay] = useState(false);
+    useEffect(() => {
+        const checkOverlays = () => {
+            const overlay = document.querySelector('[data-tour-id="att-correction-drawer"]') ||
+                            document.querySelector('.correction-modal-overlay') ||
+                            document.querySelector('[role="dialog"]');
+            setHasActiveOverlay(Boolean(overlay));
+        };
+        const observer = new MutationObserver(checkOverlays);
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        checkOverlays();
+        return () => observer.disconnect();
+    }, []);
+
     // Fetch route suggestions dynamically based on the current active page, active tab, and role
     const suggestions = useMemo(() => 
         getSuggestionsForRoute(location.pathname, activeTabInfo, currentRole), 
@@ -638,7 +653,7 @@ export default function InternalChatbotWidget() {
             </AnimatePresence>
 
             {/* Toggle Trigger Button */}
-            {!isOpen && (
+            {!isOpen && !hasActiveOverlay && (
                 <button
                     type="button"
                     onClick={() => setIsOpen(true)}
@@ -647,7 +662,7 @@ export default function InternalChatbotWidget() {
                         position: 'fixed',
                         right: '24px',
                         bottom: '24px',
-                        zIndex: 999999,
+                        zIndex: 40,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',

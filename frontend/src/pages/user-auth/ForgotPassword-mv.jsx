@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { Mail, ArrowRight, Loader2, Key, CheckCircle, Lock } from 'lucide-react';
+import { Mail, ArrowLeft, Loader2, Key, Lock, Sun, Moon } from 'lucide-react';
 
 const ForgotPassword = () => {
     const navigate = useNavigate();
@@ -15,8 +15,25 @@ const ForgotPassword = () => {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [resetToken, setResetToken] = useState(null);
 
-    // API URL - Using relative path based on proxy setup or direct if needed
-    // Assuming Vite proxy is set up correctly to http://127.0.0.1:5002
+    const [isDark, setIsDark] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) return savedTheme === 'dark';
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        return true;
+    });
+
+    useEffect(() => {
+        if (isDark) {
+            document.documentElement.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+        }
+    }, [isDark]);
+
     const API_BASE = '/api/auth';
 
     const handleSendOtp = async (e) => {
@@ -37,7 +54,7 @@ const ForgotPassword = () => {
 
             if (!response.ok) throw new Error(data.message || "Failed to send OTP");
 
-            toast.success(data.message);
+            toast.success(data.message || "OTP sent to your email!");
             setStep('otp');
         } catch (error) {
             toast.error(error.message);
@@ -100,7 +117,7 @@ const ForgotPassword = () => {
 
             if (!response.ok) throw new Error(data.message || "Failed to reset password");
 
-            toast.success("Password reset successfully! Please login.");
+            toast.success("Password reset successfully! Please sign in.");
             navigate('/login');
         } catch (error) {
             toast.error(error.message);
@@ -110,47 +127,94 @@ const ForgotPassword = () => {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-dark-bg transition-colors duration-300 font-poppins px-4">
-            <div className="w-full max-w-md">
+        <div className="relative min-h-screen bg-[#F8FAFC] dark:bg-[#010404] font-inter text-slate-900 dark:text-white transition-colors duration-300 flex flex-col justify-center items-center overflow-x-hidden px-6 py-8">
+            {/* Background glowing spheres */}
+            <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+                <div
+                    className="absolute -top-[100px] -left-[100px] w-[320px] h-[320px] rounded-full blur-[90px]"
+                    style={{
+                        background: isDark
+                            ? 'radial-gradient(circle, rgba(37, 99, 235, 0.14) 0%, transparent 70%)'
+                            : 'radial-gradient(circle, rgba(37, 99, 235, 0.08) 0%, transparent 70%)'
+                    }}
+                />
+                <div
+                    className="absolute -bottom-[100px] -right-[100px] w-[300px] h-[300px] rounded-full blur-[90px]"
+                    style={{
+                        background: isDark
+                            ? 'radial-gradient(circle, rgba(79, 70, 229, 0.12) 0%, transparent 70%)'
+                            : 'radial-gradient(circle, rgba(79, 70, 229, 0.06) 0%, transparent 70%)'
+                    }}
+                />
+            </div>
 
+            {/* Top Right Theme Toggle */}
+            <div className="fixed top-5 right-5 z-20">
+                <button
+                    type="button"
+                    onClick={() => setIsDark(!isDark)}
+                    className="w-10 h-10 flex items-center justify-center rounded-[16px] bg-white dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#30363D] shadow-sm text-[#475569] dark:text-[#94A3B8] hover:text-[#2563EB] dark:hover:text-white active:scale-95 transition-all"
+                    title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                >
+                    {isDark ? <Sun size={19} className="text-amber-400" /> : <Moon size={19} />}
+                </button>
+            </div>
+
+            <div className="relative z-10 w-full max-w-[440px] my-auto">
                 {/* Brand Header */}
-                <div className="flex flex-col items-center mb-8">
-                    <div className="w-16 h-16 bg-white dark:bg-dark-card rounded-2xl shadow-lg flex items-center justify-center mb-6 border border-slate-100 dark:border-github-dark-border">
-                        <img src="/mano-logo.svg" alt="MANO" className="w-10 h-10" />
+                <div className="flex items-center justify-center gap-3.5 mb-8">
+                    <div className="w-11 h-11 bg-white dark:bg-[#0D1117] rounded-[14px] border border-[#E2E8F0] dark:border-[#30363D] shadow-md flex items-center justify-center p-1.5 shrink-0">
+                        <img
+                            src="/mano.png"
+                            alt="Mano Logo"
+                            className="w-full h-full object-contain"
+                            onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = '/mano-logo.svg';
+                            }}
+                        />
                     </div>
-                    <h2 className="text-3xl font-bold text-slate-900 dark:text-github-dark-text mb-2">
-                        {step === 'email' && "Forgot Password?"}
-                        {step === 'otp' && "Verify OTP"}
-                        {step === 'reset' && "Reset Password"}
-                    </h2>
-                    <p className="text-slate-500 dark:text-github-dark-muted text-center max-w-sm">
-                        {step === 'email' && "Enter your email address and we'll send you an OTP to reset your password."}
-                        {step === 'otp' && `We've sent an OTP to ${email}. Please enter it below.`}
-                        {step === 'reset' && "Create a new strong password for your account."}
-                    </p>
+                    <div className="flex flex-col justify-center">
+                        <div className="text-[20px] font-black italic tracking-tight leading-none text-slate-900 dark:text-white">
+                            MANO <span className="text-[#2563EB] not-italic font-bold">ATTENDANCE</span>
+                        </div>
+                        <span className="text-[8.5px] font-extrabold uppercase text-[#94A3B8] dark:text-[#64748B] tracking-[2.2px] mt-1">
+                            ACCOUNT RECOVERY PORTAL
+                        </span>
+                    </div>
                 </div>
 
-                {/* Card */}
-                <div className="bg-white dark:bg-dark-card rounded-2xl shadow-xl dark:shadow-2xl border border-slate-100 dark:border-github-dark-border p-8 relative overflow-hidden">
+                {/* Form Card matching Flutter ForgotPasswordMobilePortrait */}
+                <div className="bg-white dark:bg-[#161B22] rounded-[20px] p-6 sm:p-7 border border-[#E2E8F0] dark:border-[#30363D] shadow-xl">
+                    <h2 className="text-xl font-bold text-center text-[#0F172A] dark:text-[#C9D1D9] mb-1.5">
+                        {step === 'email' && "Forgot Password"}
+                        {step === 'otp' && "Verify Security Code"}
+                        {step === 'reset' && "Reset Your Password"}
+                    </h2>
+                    <p className="text-xs text-center text-[#64748B] dark:text-[#8B949E] mb-6 leading-relaxed">
+                        {step === 'email' && "Enter your registered email to receive OTP."}
+                        {step === 'otp' && `Enter the 6-digit verification code sent to ${email}.`}
+                        {step === 'reset' && "Create a new strong password for your account."}
+                    </p>
 
-                    {/* Step 1: Email Input */}
+                    {/* Step 1: Email Form */}
                     {step === 'email' && (
-                        <form onSubmit={handleSendOtp} className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <form onSubmit={handleSendOtp} className="space-y-4">
+                            <div>
+                                <label className="block text-[13px] font-semibold text-[#334155] dark:text-[#CBD5E1] mb-2">
                                     Email Address
                                 </label>
-                                <div className="relative group">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Mail className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-[#94A3B8]">
+                                        <Mail size={19} />
                                     </div>
                                     <input
                                         type="email"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
-                                        className="block w-full pl-10 pr-3 py-3 border border-slate-200 dark:border-github-dark-border rounded-xl bg-slate-50 dark:bg-github-dark-subtle/50 text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
-                                        placeholder="admin@demo.com"
+                                        placeholder="Enter your registered email"
+                                        className="w-full h-[52px] pl-11 pr-4 rounded-[16px] bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#30363D] text-[14px] font-medium text-[#0F172A] dark:text-white placeholder-[#94A3B8] dark:placeholder-[#64748B] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-colors"
                                     />
                                 </div>
                             </div>
@@ -158,32 +222,32 @@ const ForgotPassword = () => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40"
+                                className="w-full h-[52px] rounded-[16px] bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.99] disabled:opacity-50 text-white font-extrabold text-[14px] tracking-[0.8px] uppercase flex items-center justify-center shadow-md shadow-blue-600/30 transition-all cursor-pointer mt-2"
                             >
-                                {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Send OTP"}
+                                {loading ? <Loader2 className="animate-spin" size={20} /> : "SEND OTP"}
                             </button>
                         </form>
                     )}
 
-                    {/* Step 2: OTP Input */}
+                    {/* Step 2: OTP Form */}
                     {step === 'otp' && (
-                        <form onSubmit={handleVerifyOtp} className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                                    Enter OTP
+                        <form onSubmit={handleVerifyOtp} className="space-y-4">
+                            <div>
+                                <label className="block text-[13px] font-semibold text-[#334155] dark:text-[#CBD5E1] mb-2">
+                                    Verification Code (OTP)
                                 </label>
-                                <div className="relative group">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Key className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-[#94A3B8]">
+                                        <Key size={19} />
                                     </div>
                                     <input
                                         type="text"
                                         value={otp}
                                         onChange={(e) => setOtp(e.target.value)}
                                         required
-                                        className="block w-full pl-10 pr-3 py-3 border border-slate-200 dark:border-github-dark-border rounded-xl bg-slate-50 dark:bg-github-dark-subtle/50 text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 tracking-[0.5em] font-mono text-center text-lg"
-                                        placeholder="123456"
                                         maxLength={6}
+                                        placeholder="••••••"
+                                        className="w-full h-[52px] pl-11 pr-4 rounded-[16px] bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#30363D] text-[16px] font-mono tracking-[0.3em] text-center text-[#0F172A] dark:text-white placeholder-[#94A3B8] dark:placeholder-[#64748B] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-colors"
                                     />
                                 </div>
                             </div>
@@ -191,31 +255,31 @@ const ForgotPassword = () => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40"
+                                className="w-full h-[52px] rounded-[16px] bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.99] disabled:opacity-50 text-white font-extrabold text-[14px] tracking-[0.8px] uppercase flex items-center justify-center shadow-md shadow-blue-600/30 transition-all cursor-pointer"
                             >
-                                {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Verify OTP"}
+                                {loading ? <Loader2 className="animate-spin" size={20} /> : "VERIFY OTP"}
                             </button>
 
                             <button
                                 type="button"
                                 onClick={() => setStep('email')}
-                                className="w-full text-center text-sm text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+                                className="w-full text-center text-[12px] font-semibold text-[#2563EB] hover:underline pt-1"
                             >
-                                Change Email
+                                Change Email Address
                             </button>
                         </form>
                     )}
 
-                    {/* Step 3: Reset Password */}
+                    {/* Step 3: Reset Password Form */}
                     {step === 'reset' && (
-                        <form onSubmit={handleResetPassword} className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <form onSubmit={handleResetPassword} className="space-y-4">
+                            <div>
+                                <label className="block text-[13px] font-semibold text-[#334155] dark:text-[#CBD5E1] mb-2">
                                     New Password
                                 </label>
-                                <div className="relative group">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Lock className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-[#94A3B8]">
+                                        <Lock size={19} />
                                     </div>
                                     <input
                                         type="password"
@@ -223,19 +287,19 @@ const ForgotPassword = () => {
                                         onChange={(e) => setNewPassword(e.target.value)}
                                         required
                                         minLength={8}
-                                        className="block w-full pl-10 pr-3 py-3 border border-slate-200 dark:border-github-dark-border rounded-xl bg-slate-50 dark:bg-github-dark-subtle/50 text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
-                                        placeholder="••••••••"
+                                        placeholder="At least 8 characters"
+                                        className="w-full h-[52px] pl-11 pr-4 rounded-[16px] bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#30363D] text-[14px] font-medium text-[#0F172A] dark:text-white placeholder-[#94A3B8] dark:placeholder-[#64748B] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-colors"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                                    Confirm Password
+                            <div>
+                                <label className="block text-[13px] font-semibold text-[#334155] dark:text-[#CBD5E1] mb-2">
+                                    Confirm New Password
                                 </label>
-                                <div className="relative group">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <CheckCircle className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-[#94A3B8]">
+                                        <Lock size={19} />
                                     </div>
                                     <input
                                         type="password"
@@ -243,8 +307,8 @@ const ForgotPassword = () => {
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         required
                                         minLength={8}
-                                        className="block w-full pl-10 pr-3 py-3 border border-slate-200 dark:border-github-dark-border rounded-xl bg-slate-50 dark:bg-github-dark-subtle/50 text-slate-900 dark:text-github-dark-text placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
-                                        placeholder="••••••••"
+                                        placeholder="Repeat new password"
+                                        className="w-full h-[52px] pl-11 pr-4 rounded-[16px] bg-[#F8FAFC] dark:bg-[#0D1117] border border-[#E2E8F0] dark:border-[#30363D] text-[14px] font-medium text-[#0F172A] dark:text-white placeholder-[#94A3B8] dark:placeholder-[#64748B] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-colors"
                                     />
                                 </div>
                             </div>
@@ -252,21 +316,21 @@ const ForgotPassword = () => {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40"
+                                className="w-full h-[52px] rounded-[16px] bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.99] disabled:opacity-50 text-white font-extrabold text-[14px] tracking-[0.8px] uppercase flex items-center justify-center shadow-md shadow-blue-600/30 transition-all cursor-pointer"
                             >
-                                {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Reset Password"}
+                                {loading ? <Loader2 className="animate-spin" size={20} /> : "RESET PASSWORD"}
                             </button>
                         </form>
                     )}
 
-                </div>
-
-                {/* Footer Back to Login */}
-                <div className="mt-8 text-center">
-                    <Link to="/login" className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-github-dark-muted dark:hover:text-white transition-colors">
-                        <ArrowRight className="mr-2 h-4 w-4 rotate-180" />
-                        Back to Login
-                    </Link>
+                    <div className="mt-5 text-center">
+                        <Link
+                            to="/login"
+                            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#2563EB] hover:underline"
+                        >
+                            <ArrowLeft size={15} /> Back to Sign In
+                        </Link>
+                    </div>
                 </div>
             </div>
         </div>
