@@ -7,10 +7,7 @@ import * as MapsService from "../../services/google_api_services/maps.js";
 import { getEventSource } from "../../utils/clientInfo.js";
 import * as AttendanceService from "./attendanceService.js";
 import * as ShiftService from "../shifts/shiftService.js";
-import ExcelJS from "exceljs";
 import { attendanceDB } from "../../config/database.js";
-import { generatePdf, styleExcelWorksheet } from "../reports/reportBuilder.js";
-import { getDetailedRecords, getUsers, getTodayStr, groupRecordsByUserAndDay } from "../reports/reportsServices.js";
 import { notifyCorrectionApplied, notifyCorrectionStatusUpdated } from "../collaboration/chatAlertService.js";
 import { getLocalNow } from "../../services/statusEvalution/statusEvaluationService.js";
 import { attendanceQueue, redisConnection } from "../../config/queues.js";
@@ -464,120 +461,6 @@ export const getUserRecords = catchAsync(async (req, res) => {
   });
 
   res.json({ ok: true, data: records });
-});
-
-/**
- * GET /attendance/records/export
- * Export user's attendance records for a month as Excel
- */
-export const exportRecords = catchAsync(async (req, res) => {
-  const { month, format = "xlsx" } = req.query;
-  const user_id = req.user.id || req.user.user_id;
-  const org_id = req.user.org_id;
-  const user_name = req.user.user_name;
-
-  if (!month) {
-    return res.status(400).json({ ok: false, message: "Month (YYYY-MM) is required" });
-  }
-
-  const [yearStr, monthStr] = month.split("-");
-  const year = parseInt(yearStr);
-  const monthNum = parseInt(monthStr);
-
-  if (isNaN(year) || isNaN(monthNum)) {
-    return res.status(400).json({ ok: false, message: "Invalid month format. Use YYYY-MM." });
-  }
-
-  // Fetch monthly records for individual user
-  const startDate = `${month}-01`;
-  const lastDay = new Date(year, monthNum, 0).getDate();
-  const endDate = `${year}-${String(monthNum).padStart(2, '0')}-${lastDay}`;
-
-  const records = await getDetailedRecords({ org_id, startDate, endDate, targetUserId: user_id });
-  const users = await getUsers({ org_id, targetUserId: user_id, startDate, endDate });
-  const todayStr = await getTodayStr(org_id);
-  const dayRows = groupRecordsByUserAndDay(records, users, todayStr);
-
-  const sanitizedUserName = user_name.replace(/\s+/g, '_');
-
-  // Handle PDF Export
-  if (format === "pdf") {
-    const pdfTitle = `Attendance Report - ${user_name} (${month})`;
-    const pdfCols = ["Date", "Time In", "Time Out", "Work Hours", "Status", "Late (Mins)", "In Location", "Out Location"];
-    const pdfRows = dayRows.map(r => [
-      new Date(r.time_in).toLocaleDateString(),
-      r.time_in ? new Date(r.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
-      r.time_out ? new Date(r.time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
-      r.worked_hours.toFixed(2),
-      r.status,
-      r.late_minutes || 0,
-      r.time_in_address || "-",
-      r.time_out_address || "-"
-    ]);
-
-    const pdfDoc = generatePdf(pdfTitle, pdfCols, pdfRows);
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename=Attendance_${month}_${sanitizedUserName}.pdf`);
-    pdfDoc.pipe(res);
-    pdfDoc.end();
-    return;
-  }
-
-  // Handle Excel / CSV Export
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("My Attendance");
-
-  worksheet.columns = [
-    { header: "Date", key: "date", width: 12 },
-    { header: "Time In", key: "time_in", width: 15 },
-    { header: "Time Out", key: "time_out", width: 15 },
-    { header: "Work Hours", key: "work_hours", width: 12 },
-    { header: "Status", key: "status", width: 15 },
-    { header: "Late (Mins)", key: "late_minutes", width: 12 },
-    { header: "In Location", key: "in_location", width: 40 },
-    { header: "Out Location", key: "out_location", width: 40 }
-  ];
-
-  dayRows.forEach(r => {
-    worksheet.addRow({
-      date: new Date(r.time_in).toLocaleDateString(),
-      time_in: r.time_in ? new Date(r.time_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
-      time_out: r.time_out ? new Date(r.time_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-",
-      work_hours: parseFloat(r.worked_hours.toFixed(2)) || 0,
-      status: r.status,
-      late_minutes: r.late_minutes || 0,
-      in_location: r.time_in_address || "-",
-      out_location: r.time_out_address || "-"
-    });
-  });
-
-  const lastRow = worksheet.rowCount;
-  if (lastRow > 1) {
-    worksheet.addRow({
-      date: "TOTALS",
-      time_in: "",
-      time_out: "",
-      work_hours: { formula: `SUM(D2:D${lastRow})` },
-      status: "",
-      late_minutes: { formula: `SUM(F2:F${lastRow})` },
-      in_location: "",
-      out_location: ""
-    });
-  }
-
-  if (format === "xlsx") {
-    styleExcelWorksheet(worksheet, "individual_attendance");
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", `attachment; filename=Attendance_${month}_${sanitizedUserName}.xlsx`);
-    await workbook.xlsx.write(res);
-  } else {
-    // CSV
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename=Attendance_${month}_${sanitizedUserName}.csv`);
-    await workbook.csv.write(res);
-  }
-
-  res.end();
 });
 
 /**

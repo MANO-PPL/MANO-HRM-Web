@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 import { encryptText, decryptText } from '../../utils/encryption.js';
 import { cacheService } from '../../services/cache/cacheService.js';
+import { getOpenShiftFallback } from '../shifts/shiftService.js';
 
 // Reuse logic from Admin.js and UserCleanupService.js
 
@@ -110,6 +111,89 @@ export const getAllUsers = async (orgId, options = false) => {
 
     return users;
 };
+
+const isValidFilterId = (id) => Boolean(id && id !== 'All' && id !== 'undefined' && id !== 'null' && String(id).trim() !== '');
+const isValidDeptId = isValidFilterId;
+const isValidDesgId = isValidFilterId;
+const isValidShiftId = isValidFilterId;
+
+/**
+ * Fetch employees scoped for attendance, shifts, and reports evaluation,
+ * with shift policies, open shift fallback, and optional date-range punch window.
+ */
+export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate, include_inactive }) {
+    const usersQuery = attendanceDB("core_users as u")
+        .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
+        .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
+        .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
+        .select(
+            "u.user_id", "u.user_name", "u.is_active", "u.is_deleted",
+            "u.dept_id", "u.desg_id", "u.shift_id",
+            "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type",
+            "s.policy_rules", "s.shift_name", "u.created_at", "u.joining_date"
+        )
+        .where("u.org_id", org_id)
+        .modify(qb => {
+            if (targetUserId) {
+                qb.where("u.user_id", targetUserId);
+            }
+            if (include_inactive) {
+                // For employee directory / master: include all employees across all statuses
+            } else if (startDate && endDate) {
+                qb.where(function () {
+                    this.where(function () {
+                        this.where(function () {
+                            this.where("u.is_active", 1).orWhere("u.is_active", true);
+                        }).andWhere(function () {
+                            this.whereNull("u.is_deleted").orWhere("u.is_deleted", 0).orWhere("u.is_deleted", false);
+                        }).andWhere(function () {
+                            this.whereRaw("COALESCE(DATE(u.joining_date), DATE(u.created_at)) <= ?", [endDate]);
+                        });
+                    }).orWhereExists(function () {
+                        this.select(1)
+                            .from("attn_punches as ap")
+                            .whereRaw("ap.user_id = u.user_id")
+                            .whereNull("ap.deleted_at")
+                            .whereRaw("DATE(ap.punch_time) >= ?", [startDate])
+                            .whereRaw("DATE(ap.punch_time) <= ?", [endDate]);
+                    });
+                });
+            } else {
+                qb.where(function () {
+                    this.where("u.is_active", 1).orWhere("u.is_active", true);
+                }).andWhere(function () {
+                    this.whereNull("u.is_deleted").orWhere("u.is_deleted", 0).orWhere("u.is_deleted", false);
+                });
+            }
+
+            if (isValidDeptId(dept_id)) {
+                qb.where("u.dept_id", dept_id);
+            }
+            if (isValidDesgId(desg_id)) {
+                qb.where("u.desg_id", desg_id);
+            }
+            if (shift_id === 'open_shift') {
+                qb.whereNull("u.shift_id");
+            } else if (isValidShiftId(shift_id)) {
+                qb.where("u.shift_id", shift_id);
+            }
+        })
+        .orderBy("u.user_name", "asc");
+
+    const users = await usersQuery;
+    const openShift = await getOpenShiftFallback(org_id);
+
+    return users.map(u => {
+        if (!u.shift_id) {
+            return {
+                ...u,
+                shift_name: openShift?.shift_name || "Open Shift",
+                policy_rules: u.policy_rules || openShift?.policy_rules || null
+            };
+        }
+        return u;
+    });
+}
 
 export const getUserById = async (userId, orgId) => {
     const user = await attendanceDB('core_users as u')

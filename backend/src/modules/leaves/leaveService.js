@@ -1150,3 +1150,61 @@ export async function assignPolicyToEmployees({ org_id, lp_id, user_ids, year })
 
     return { ok: true, results };
 }
+
+/**
+ * Fetch approved leave requests within a date range for an organization or target user
+ */
+export async function getApprovedLeaves({ org_id, startDate, endDate, targetUserId }) {
+    const query = attendanceDB("leave_request as lr")
+        .join("core_users as u", "lr.user_id", "u.user_id")
+        .leftJoin("leave_policies_rules as lpr", "lr.rule_id", "lpr.rule_id")
+        .select(
+            "lr.lr_id",
+            "lr.user_id",
+            "lr.start_date",
+            "lr.end_date",
+            "lr.total_days",
+            "lr.status",
+            "lr.pay_percentage",
+            "lr.pay_type",
+            "lr.reason",
+            attendanceDB.raw('COALESCE(lpr.name, lr.leave_type, "Leave") as leave_type')
+        )
+        .where("u.org_id", org_id)
+        .whereRaw("LOWER(lr.status) = 'approved'")
+        .whereRaw("DATE(lr.start_date) <= ?", [endDate])
+        .whereRaw("DATE(lr.end_date) >= ?", [startDate]);
+
+    if (targetUserId) {
+        query.where("lr.user_id", targetUserId);
+    }
+    return query;
+}
+
+/**
+ * Check if a date falls within a user's approved leave range
+ */
+export const isDateInApprovedLeave = (userLeaves, dateStr) => {
+    if (!userLeaves || userLeaves.length === 0) return null;
+    return userLeaves.find(l => {
+        const s = typeof l.start_date === 'string' ? l.start_date.slice(0, 10) : new Date(l.start_date).toISOString().slice(0, 10);
+        const e = typeof l.end_date === 'string' ? l.end_date.slice(0, 10) : new Date(l.end_date).toISOString().slice(0, 10);
+        return dateStr >= s && dateStr <= e;
+    });
+};
+
+/**
+ * Check if a specific user is on approved leave on a given date (YYYY-MM-DD)
+ */
+export async function getUserApprovedLeaveOnDate({ user_id, date }) {
+    const sanitizedDate = typeof date === 'string' ? date.slice(0, 10) : new Date(date).toISOString().slice(0, 10);
+    return attendanceDB("leave_request as lr")
+        .leftJoin("leave_policies_rules as lpr", "lr.rule_id", "lpr.rule_id")
+        .select("lr.*", attendanceDB.raw('COALESCE(lpr.name, lr.leave_type, "Leave") as leave_type'))
+        .where("lr.user_id", user_id)
+        .whereRaw("LOWER(lr.status) = 'approved'")
+        .where("lr.start_date", "<=", sanitizedDate)
+        .where("lr.end_date", ">=", sanitizedDate)
+        .first()
+        .catch(() => null);
+}

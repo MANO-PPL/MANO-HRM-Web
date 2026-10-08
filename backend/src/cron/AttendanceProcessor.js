@@ -3,9 +3,10 @@ import { cronOptions } from './options.js';
 import { attendanceDB } from '../config/database.js';
 import { syncDailyAttendance } from '../modules/attendance/attendanceService.js';
 import * as ShiftService from '../modules/shifts/shiftService.js';
+import { getUserApprovedLeaveOnDate } from '../modules/leaves/leaveService.js';
+import { getHolidays } from '../modules/holidays/holidayService.js';
 import { resolveNoShowStatus } from '../services/statusEvalution/statusEvaluationService.js';
 import EventBus from '../utils/EventBus.js';
-import { PayrollCalculationService } from '../modules/payroll/PayrollCalculationService.js';
 import { toMySQLDateTime, toMySQLDate } from '../utils/dateUtils.js';
 import { reconcileUserDarForDate } from '../modules/DAR/darReconciliationService.js';
 import {
@@ -273,17 +274,13 @@ async function processUserAttendanceForDate(user, dateStr) {
         // or during the day. No further action needed here for existing records.
     } else if (!hasPunchOpenSession) {
         // Missing record: determine status using the centralized no-show resolver
-        const holiday = await attendanceDB('org_holidays')
-            .where({ org_id: user.org_id, holiday_date: dateStr })
-            .first();
+        const holidays = await getHolidays(user.org_id);
+        const holiday = (holidays || []).find(h => {
+            const hDate = typeof h.holiday_date === 'string' ? h.holiday_date.slice(0, 10) : '';
+            return hDate === dateStr;
+        }) || null;
 
-        const leave = await attendanceDB('leave_request as lr')
-            .leftJoin('leave_policies_rules as lpr', 'lr.rule_id', 'lpr.rule_id')
-            .select('lr.*', 'lpr.name as leave_type')
-            .where({ 'lr.user_id': user.user_id, 'lr.status': 'Approved' })
-            .where('lr.start_date', '<=', dateStr)
-            .where('lr.end_date', '>=', dateStr)
-            .first();
+        const leave = await getUserApprovedLeaveOnDate({ user_id: user.user_id, date: dateStr });
 
         const { status, remarks } = resolveNoShowStatus({ dateStr, rules, holiday, leave });
 

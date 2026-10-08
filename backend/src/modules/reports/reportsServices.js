@@ -1,72 +1,52 @@
 import { attendanceDB } from '../../config/database.js';
 import * as S3Service from '../../services/s3/s3Service.js';
-import { getShiftRules, getDayType, getExpectedHours, getEffectiveRulesForDate, getOpenShiftFallback } from '../shifts/shiftService.js';
-import { calculateLateArrival, calculateOvertime } from '../../services/statusEvalution/statusEvaluationService.js';
-import { getOrgTodayStr } from '../../utils/timezoneUtils.js';
-import { timeToMinutes, toMySQLTime } from '../../utils/dateUtils.js';
+import { getShiftRules, getDayType, getExpectedHours } from '../shifts/shiftService.js';
+import { calculateOvertime } from '../../services/statusEvalution/statusEvaluationService.js';
+import { getUsers } from '../users/userService.js';
+import { getApprovedLeaves, isDateInApprovedLeave } from '../leaves/leaveService.js';
+import { getHolidays } from '../holidays/holidayService.js';
+import {
+    getCardRecords,
+    getAttendanceRecords,
+    aggregateDayRecords,
+    getDateRangeArray,
+    getRecordDateStr,
+    getDetailedRecords,
+    groupRecordsByUserAndDay,
+    formatLocalTimeStr,
+    safeParseRules,
+    getUserStartDate,
+    getTodayStr,
+    isValidDeptId,
+    isValidDesgId,
+    isValidShiftId
+} from '../attendance/attendanceService.js';
 
-export { getShiftRules, getDayType, getExpectedHours, calculateOvertime };
-
-const isValidDeptId = (deptId) => {
-    return deptId && deptId !== 'All' && deptId !== 'undefined' && deptId !== 'null' && String(deptId).trim() !== '';
-};
-
-const isValidDesgId = (desgId) => {
-    return desgId && desgId !== 'All' && desgId !== 'undefined' && desgId !== 'null' && String(desgId).trim() !== '';
-};
-
-const isValidShiftId = (shiftId) => {
-    return shiftId && shiftId !== 'All' && shiftId !== 'undefined' && shiftId !== 'null' && String(shiftId).trim() !== '';
-};
-
-
-export async function getTodayStr(org_id) {
-    return getOrgTodayStr(org_id, attendanceDB);
-}
-
-
-// Helper: Calculate Work Hours
-export const calculateWorkHours = (timeIn, timeOut) => {
-    if (!timeIn || !timeOut) return "0.00";
-    const start = new Date(timeIn);
-    const end = new Date(timeOut);
-    const diffMs = end - start;
-    if (diffMs < 0) return "0.00";
-    return (diffMs / (1000 * 60 * 60)).toFixed(2);
+export {
+    getShiftRules,
+    getDayType,
+    getExpectedHours,
+    calculateOvertime,
+    getCardRecords,
+    getAttendanceRecords,
+    getApprovedLeaves,
+    aggregateDayRecords,
+    getDateRangeArray,
+    getRecordDateStr,
+    isDateInApprovedLeave,
+    getDetailedRecords,
+    groupRecordsByUserAndDay,
+    formatLocalTimeStr,
+    safeParseRules,
+    getUserStartDate,
+    getUsers,
+    getTodayStr,
+    isValidDeptId,
+    isValidDesgId,
+    isValidShiftId
 };
 
 // Timezone-independent formatting helpers
-export const formatLocalTimeStr = (dateVal, includeSeconds = false) => {
-    if (!dateVal) return "-";
-    let date;
-    if (dateVal instanceof Date) {
-        date = dateVal;
-    } else {
-        const str = String(dateVal).trim();
-        if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(str)) {
-            date = new Date(str.replace(' ', 'T') + 'Z');
-        } else if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-            date = new Date(str + 'T00:00:00Z');
-        } else {
-            date = new Date(str);
-        }
-    }
-    if (isNaN(date.getTime())) return "-";
-
-    let hours = date.getUTCHours();
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12;
-    const hoursStr = String(hours).padStart(2, '0');
-
-    if (includeSeconds) {
-        return `${hoursStr}:${minutes}:${seconds} ${ampm}`;
-    }
-    return `${hoursStr}:${minutes} ${ampm}`;
-};
-
 export const formatLocalDateStr = (dateVal) => {
     if (!dateVal) return "-";
     let date;
@@ -87,202 +67,6 @@ export const formatLocalDateStr = (dateVal) => {
     const month = String(date.getUTCMonth() + 1).padStart(2, '0');
     const day = String(date.getUTCDate()).padStart(2, '0');
     return `${month}/${day}/${year}`;
-};
-
-// Safe record date string extractor (guaranteed YYYY-MM-DD, zero UTC drift)
-export const getRecordDateStr = (r) => {
-    if (!r) return "";
-    if (r.record_date) return String(r.record_date).trim();
-    const val = r.time_in;
-    if (!val) return "";
-    if (typeof val === 'string') {
-        const match = val.match(/^(\d{4}-\d{2}-\d{2})/);
-        if (match) return match[1];
-    }
-    if (val instanceof Date && !isNaN(val.getTime())) {
-        const y = val.getFullYear();
-        const m = String(val.getMonth() + 1).padStart(2, '0');
-        const d = String(val.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }
-    return "";
-};
-
-// Generate calendar dates array ['YYYY-MM-DD', ...] timezone-independently
-export const getDateRangeArray = (startDate, endDate) => {
-    const dates = [];
-    const [sY, sM, sD] = startDate.split('-').map(Number);
-    const [eY, eM, eD] = endDate.split('-').map(Number);
-    let cur = new Date(sY, sM - 1, sD);
-    const end = new Date(eY, eM - 1, eD);
-    while (cur <= end) {
-        const y = cur.getFullYear();
-        const m = String(cur.getMonth() + 1).padStart(2, '0');
-        const d = String(cur.getDate()).padStart(2, '0');
-        dates.push(`${y}-${m}-${d}`);
-        cur.setDate(cur.getDate() + 1);
-    }
-    return dates;
-};
-
-export const aggregateDayRecords = (dayRecs, userPolicyRules, customTodayStr) => {
-    if (!dayRecs || dayRecs.length === 0) {
-        return {
-            time_in: null,
-            time_out: null,
-            worked_hours: 0,
-            late_minutes: 0,
-            overtime_hours: 0,
-            status: "Absent",
-            time_in_address: "-",
-            time_out_address: "-"
-        };
-    }
-
-    const sorted = [...dayRecs].sort((a, b) => new Date(a.time_in) - new Date(b.time_in));
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-
-    const todayStr = customTodayStr || new Date().toISOString().slice(0, 10);
-    const recDate = getRecordDateStr(first);
-    const isPastDate = recDate && todayStr ? recDate < todayStr : false;
-
-    const worked_hours = sorted.reduce((sum, r) => sum + parseFloat(calculateWorkHours(r.time_in, r.time_out)), 0);
-
-    // Retain original recorded values to ensure historical status/overtime/late are never lost
-    const originalOvertime = sorted.reduce((sum, r) => Math.max(sum, parseFloat(r.overtime_hours || 0)), 0);
-    const originalHasOvertimeStatus = sorted.some(r => String(r.status || '').toUpperCase() === 'OVERTIME');
-    const originalLateMinutes = sorted.reduce((sum, r) => Math.max(sum, Number(r.late_minutes || 0)), 0);
-    const originalHasLateStatus = sorted.some(r => String(r.status || '').toUpperCase().includes('LATE'));
-
-    let effectiveLateMinutes = originalLateMinutes;
-    let overtime_hours = originalOvertime;
-
-    // Parsed once, up front, so both the Scheduled Half-Day branch below and the normal-day
-    // branch can share it (previously only parsed inside the normal-day branch).
-    const rules = userPolicyRules ? safeParseRules(userPolicyRules) : null;
-    const graceMins = Number(rules?.grace_period?.minutes || 0);
-    // Whether the shift's OT setting is CURRENTLY enabled — gates OT display live, below,
-    // regardless of what was stored historically or computed via allowHistorical.
-    const otCurrentlyEnabled = rules?.overtime?.enabled !== false;
-    const dayType = rules ? getDayType(recDate, rules.week_off_policy) : 'working';
-
-    let status = "Present";
-    const hasLeave = sorted.some(r => r.status === 'ON_LEAVE' || r.status === 'On Leave');
-    const hasHalfDay = sorted.some(r => r.status === 'HALF_DAY' || r.status === 'Half Day');
-    // Only flag missed punch if it is a past day with missing checkout or explicit MISSED_PUNCH
-    const hasMissedPunch = isPastDate && sorted.some(r => r.status === 'MISSED_PUNCH' || r.status === 'missed_punch' || r.status === 'Missed Punch' || (r.time_in && !r.time_out));
-    const hasAbsent = sorted.every(r => r.status === 'ABSENT' || r.status === 'Absent');
-
-    if (hasLeave) status = "On Leave";
-    else if (hasHalfDay) status = "Half Day";
-    else if (hasMissedPunch) status = "Missed Punch";
-    else if (hasAbsent) status = "Absent";
-    else if (rules && dayType === 'half_day') {
-        // Scheduled Half-Day — this day is one of the shift's own fixed half-day dates (e.g. 2nd/4th
-        // Saturday). Mirrors syncDailyAttendance's exact bands: too little worked (relative to the
-        // half-day's own expected hours) reads Absent; otherwise Overtime/Late/Half Day, evaluated
-        // against the half-day's own (possibly custom-timed) effective window, not the full-day one.
-        const halfDayExpectedHours = getExpectedHours(recDate, rules.week_off_policy, rules);
-        if (worked_hours < (halfDayExpectedHours * 0.5)) {
-            status = "Absent";
-        } else {
-            const effectiveRules = getEffectiveRulesForDate(recDate, rules);
-            const calculatedOT = calculateOvertime(worked_hours, rules, isPastDate);
-            overtime_hours = otCurrentlyEnabled ? Math.max(originalOvertime, calculatedOT) : 0;
-
-            if (first.time_in && effectiveRules?.shift_timing?.start_time) {
-                const lateCheck = calculateLateArrival(first.time_in, effectiveRules);
-                if (lateCheck.isLate) {
-                    effectiveLateMinutes = Math.max(effectiveLateMinutes, lateCheck.minutesLate);
-                }
-            }
-            if (!originalHasLateStatus && effectiveLateMinutes <= graceMins) {
-                effectiveLateMinutes = 0;
-            }
-
-            if (overtime_hours > 0 || (originalHasOvertimeStatus && otCurrentlyEnabled)) {
-                status = "Overtime";
-            } else if (effectiveLateMinutes > graceMins || originalHasLateStatus) {
-                status = "Late";
-            } else {
-                status = "Half Day";
-            }
-        }
-    } else {
-        if (rules) {
-            const calculatedOT = calculateOvertime(worked_hours, rules, isPastDate);
-            overtime_hours = otCurrentlyEnabled ? Math.max(originalOvertime, calculatedOT) : 0;
-
-            // If late_minutes was 0 in original record, dynamically evaluate against shift start time & grace
-            if (first.time_in && rules?.shift_timing?.start_time) {
-                const lateCheck = calculateLateArrival(first.time_in, rules);
-                if (lateCheck.isLate) {
-                    effectiveLateMinutes = Math.max(effectiveLateMinutes, lateCheck.minutesLate);
-                }
-            }
-        }
-
-        // If employee originally had LATE status, ensure effectiveLateMinutes > 0
-        if (originalHasLateStatus && effectiveLateMinutes === 0) {
-            effectiveLateMinutes = graceMins > 0 ? graceMins + 1 : 1;
-        }
-
-        // If punch was within the allowed grace period and not explicitly marked late in DB, employee is not late
-        if (!originalHasLateStatus && effectiveLateMinutes <= graceMins) {
-            effectiveLateMinutes = 0;
-        }
-
-        // Gate the "Overtime" status label the same way as the number itself — a shift with OT
-        // currently disabled must never show a leftover Overtime label, even if the original
-        // stored record (from when OT was enabled) said otherwise.
-        if (overtime_hours > 0 || (originalHasOvertimeStatus && otCurrentlyEnabled)) {
-            status = "Overtime";
-        } else if (effectiveLateMinutes > 0 || originalHasLateStatus) {
-            status = "Late";
-        }
-
-        // Half-Day Threshold — per-shift "arrival after X / leaves before Y", only ever applies on
-        // a date this shift classifies as a normal WORKING day, never stacking with Scheduled
-        // Half-Day (handled in the branch above) or a week-off. Only downgrades an otherwise
-        // unremarkable Present/Late day — never upgrades a genuine Absent, never overrides Overtime.
-        if ((status === "Present" || status === "Late") && dayType === 'working' && rules?.half_day_threshold?.enabled) {
-            const firstInMinutes = first.time_in ? timeToMinutes(toMySQLTime(first.time_in)) : null;
-            const lastOutMinutes = last.time_out ? timeToMinutes(toMySQLTime(last.time_out)) : null;
-            const lateThresholdMinutes = rules.half_day_threshold.late_after_time ? timeToMinutes(rules.half_day_threshold.late_after_time) : null;
-            const earlyThresholdMinutes = rules.half_day_threshold.early_before_time ? timeToMinutes(rules.half_day_threshold.early_before_time) : null;
-
-            const arrivedLate = lateThresholdMinutes !== null && firstInMinutes !== null && firstInMinutes > lateThresholdMinutes;
-            const leftEarly = earlyThresholdMinutes !== null && lastOutMinutes !== null && lastOutMinutes < earlyThresholdMinutes;
-
-            if (arrivedLate || leftEarly) {
-                status = "Half Day";
-            }
-        }
-    }
-
-    return {
-        time_in: first.time_in,
-        time_out: last.time_out,
-        worked_hours,
-        late_minutes: effectiveLateMinutes,
-        overtime_hours,
-        late_reason: effectiveLateMinutes > 0 ? (first.late_reason || null) : null,
-        status,
-        time_in_address: first.time_in_address || "-",
-        time_out_address: last.time_out_address || "-"
-    };
-};
-
-// Helper: Safe JSON parse policy rules
-export const safeParseRules = (policyRules) => {
-    if (!policyRules) return {};
-    if (typeof policyRules === 'object') return policyRules;
-    try {
-        return JSON.parse(policyRules);
-    } catch (e) {
-        return {};
-    }
 };
 
 // Helper: Derive Status dynamically
@@ -330,8 +114,6 @@ export const getShiftHoursForUser = (user) => {
 };
 
 // Helper: Get total required hours for a period
-// `holidayByDate` is optional (defaults to none) so any caller that hasn't been updated to pass
-// it keeps its exact previous behavior — only call sites that explicitly pass it get the fix.
 export const getRequiredHoursForPeriod = (user, dateHeaders, holidayByDate = {}) => {
     let total = 0;
     const rules = getShiftRules(user);
@@ -379,407 +161,33 @@ export const resolveDateRange = ({ type, month, date, startDate: customStart, en
     return { startDate, endDate };
 };
 
-export const getUserStartDate = (u) => {
-    if (!u) return null;
-    const val = u.joining_date || u.created_at;
-    if (!val) return null;
-    if (typeof val === 'string') return val.slice(0, 10);
-    if (val instanceof Date && !isNaN(val.getTime())) {
-        const y = val.getFullYear();
-        const m = String(val.getMonth() + 1).padStart(2, '0');
-        const d = String(val.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }
-    return null;
-};
+// Org holidays for a date range, indexed by date string, leveraging Redis-cached holidayService
+export async function getHolidaysByDate({ org_id, startDate, endDate }) {
+    const holidays = await getHolidays(org_id);
+    const byDate = {};
+    for (const h of (holidays || [])) {
+        const rawDate = h.holiday_date;
+        const d = typeof rawDate === 'string'
+            ? rawDate.slice(0, 10)
+            : (rawDate instanceof Date ? rawDate.toISOString().slice(0, 10) : '');
+        if (!d) continue;
 
-export async function getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate, include_inactive }) {
-    const usersQuery = attendanceDB("core_users as u")
-        .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
-        .leftJoin("org_designations as dg", "u.desg_id", "dg.desg_id")
-        .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
-        .select("u.user_id", "u.user_name", "u.is_active", "u.is_deleted", "u.dept_id", "u.desg_id", "u.shift_id", "d.dept_name", "dg.desg_name", "u.email", "u.phone_no", "u.user_type", "s.policy_rules", "s.shift_name", "u.created_at", "u.joining_date")
-        .where("u.org_id", org_id)
-        .modify(qb => {
-            if (targetUserId) {
-                qb.where("u.user_id", targetUserId);
-            }
-            if (include_inactive) {
-                // For employee directory / master: include all employees across all statuses (Active, Inactive, Deleted)
-            } else if (startDate && endDate) {
-                // User must have joined on/before the period's endDate 
-                // OR must have at least 1 attendance punch in that period (even if inactive/deleted/joined later).
-                qb.where(function () {
-                    this.where(function () {
-                        this.where(function () {
-                            this.where("u.is_active", 1).orWhere("u.is_active", true);
-                        }).andWhere(function () {
-                            this.whereNull("u.is_deleted").orWhere("u.is_deleted", 0).orWhere("u.is_deleted", false);
-                        }).andWhere(function () {
-                            this.whereRaw("COALESCE(DATE(u.joining_date), DATE(u.created_at)) <= ?", [endDate]);
-                        });
-                    }).orWhereExists(function () {
-                        this.select(1)
-                            .from("attn_punches as ap")
-                            .whereRaw("ap.user_id = u.user_id")
-                            .whereNull("ap.deleted_at")
-                            .whereRaw("DATE(ap.punch_time) >= ?", [startDate])
-                            .whereRaw("DATE(ap.punch_time) <= ?", [endDate]);
-                    });
-                });
-            } else {
-                qb.where(function () {
-                    this.where("u.is_active", 1).orWhere("u.is_active", true);
-                }).andWhere(function () {
-                    this.whereNull("u.is_deleted").orWhere("u.is_deleted", 0).orWhere("u.is_deleted", false);
-                });
-            }
-
-            if (isValidDeptId(dept_id)) {
-                qb.where("u.dept_id", dept_id);
-            }
-            if (isValidDesgId(desg_id)) {
-                qb.where("u.desg_id", desg_id);
-            }
-            if (shift_id === 'open_shift') {
-                qb.whereNull("u.shift_id");
-            } else if (isValidShiftId(shift_id)) {
-                qb.where("u.shift_id", shift_id);
-            }
-        })
-        .orderBy("u.user_name", "asc");
-
-    const users = await usersQuery;
-    const openShift = await getOpenShiftFallback(org_id);
-
-    return users.map(u => {
-        if (!u.shift_id) {
-            return {
-                ...u,
-                shift_name: openShift?.shift_name || "Open Shift",
-                policy_rules: u.policy_rules || openShift?.policy_rules || null
+        if ((!startDate || d >= startDate) && (!endDate || d <= endDate)) {
+            byDate[d] = {
+                ...h,
+                holiday_date: d
             };
         }
-        return u;
-    });
-}
-
-export async function getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
-    const todayStr = await getTodayStr(org_id);
-
-    const punchRows = await attendanceDB("attn_punches as ap")
-        .join("core_users as u", "ap.user_id", "u.user_id")
-        .leftJoin("org_departments as d", "u.dept_id", "d.dept_id")
-        .leftJoin("org_shifts as s", "u.shift_id", "s.shift_id")
-        .select(
-            "ap.id as attendance_id",
-            "ap.user_id",
-            "ap.punch_time",
-            "ap.punch_type",
-            "ap.location",
-            "ap.metadata",
-            "u.user_name",
-            "d.dept_name",
-            "s.shift_name",
-            "s.policy_rules",
-            attendanceDB.raw("DATE_FORMAT(ap.punch_time, '%Y-%m-%d') as record_date")
-        )
-        .where("u.org_id", org_id)
-        .whereNull("ap.deleted_at")
-        .whereIn("ap.punch_type", ["in", "out"])
-        .modify(qb => {
-            if (targetUserId) qb.where("ap.user_id", targetUserId);
-            if (isValidDeptId(dept_id)) qb.where("u.dept_id", dept_id);
-            if (isValidDesgId(desg_id)) qb.where("u.desg_id", desg_id);
-            if (shift_id === 'open_shift') qb.whereNull("u.shift_id");
-            else if (isValidShiftId(shift_id)) qb.where("u.shift_id", shift_id);
-        })
-        .whereRaw("DATE(ap.punch_time) >= ?", [startDate])
-        .whereRaw("DATE(ap.punch_time) <= DATE_ADD(?, INTERVAL 1 DAY)", [endDate])
-        .orderBy("ap.punch_time", "asc")
-        .orderBy("ap.id", "asc")
-        .catch(() => []);
-
-    const records = [];
-    if (punchRows && punchRows.length > 0) {
-        const punchesByUser = {};
-        for (const p of punchRows) {
-            if (!punchesByUser[p.user_id]) punchesByUser[p.user_id] = [];
-            punchesByUser[p.user_id].push(p);
-        }
-
-        for (const [key, userPunches] of Object.entries(punchesByUser)) {
-            let i = 0;
-            while (i < userPunches.length) {
-                const inPunch = userPunches[i];
-                if (inPunch.punch_type === 'in') {
-                    let outPunch = null;
-                    if (i + 1 < userPunches.length && userPunches[i + 1].punch_type === 'out') {
-                        outPunch = userPunches[i + 1];
-                        i += 2;
-                    } else {
-                        i += 1;
-                    }
-
-                    if (inPunch.record_date < startDate || inPunch.record_date > endDate) {
-                        continue;
-                    }
-
-                    let inLoc = {};
-                    let inMeta = {};
-                    try { inLoc = typeof inPunch.location === 'string' ? JSON.parse(inPunch.location) : (inPunch.location || {}); } catch (_) { }
-                    try { inMeta = typeof inPunch.metadata === 'string' ? JSON.parse(inPunch.metadata) : (inPunch.metadata || {}); } catch (_) { }
-
-                    let outLoc = {};
-                    let outMeta = {};
-                    if (outPunch) {
-                        try { outLoc = typeof outPunch.location === 'string' ? JSON.parse(outPunch.location) : (outPunch.location || {}); } catch (_) { }
-                        try { outMeta = typeof outPunch.metadata === 'string' ? JSON.parse(outPunch.metadata) : (outPunch.metadata || {}); } catch (_) { }
-                    }
-
-                    const isPastPunch = inPunch.record_date && todayStr && inPunch.record_date < todayStr;
-                    const defaultStatus = outPunch ? 'PRESENT' : (isPastPunch ? 'MISSED_PUNCH' : 'PRESENT');
-
-                    const workedHours = outPunch ? parseFloat(((new Date(outPunch.punch_time) - new Date(inPunch.punch_time)) / (1000 * 60 * 60)).toFixed(2)) : 0;
-                    // Shift-aware and live-gated on the shift's CURRENT overtime.enabled — not a
-                    // flat ">9h" guess that ignores per-shift OT settings entirely.
-                    const rowRules = inPunch.policy_rules ? safeParseRules(inPunch.policy_rules) : null;
-                    const overtimeHours = rowRules ? calculateOvertime(workedHours, rowRules) : 0;
-
-                    records.push({
-                        attendance_id: inPunch.attendance_id,
-                        user_id: inPunch.user_id,
-                        user_name: inPunch.user_name,
-                        dept_name: inPunch.dept_name,
-                        shift_name: inPunch.shift_name,
-                        time_in: inPunch.punch_time,
-                        time_out: outPunch ? outPunch.punch_time : null,
-                        status: inMeta.missed_punch ? 'MISSED_PUNCH' : defaultStatus,
-                        time_in_address: inLoc.address && inLoc.address !== 'Locating...' && inLoc.address !== 'Pending...' ? inLoc.address : '-',
-                        time_out_address: outLoc.address && outLoc.address !== 'Locating...' && outLoc.address !== 'Pending...' ? outLoc.address : '-',
-                        time_in_image_key: inMeta.image_key || null,
-                        time_out_image_key: outMeta.image_key || null,
-                        late_minutes: inMeta.late_minutes || 0,
-                        overtime_hours: overtimeHours,
-                        record_date: inPunch.record_date
-                    });
-                } else {
-                    i += 1;
-                }
-            }
-        }
-    }
-
-    return records;
-}
-
-export async function getApprovedLeaves({ org_id, startDate, endDate, targetUserId }) {
-    const query = attendanceDB("leave_request as lr")
-        .join("core_users as u", "lr.user_id", "u.user_id")
-        .select(
-            "lr.lr_id",
-            "lr.user_id",
-            "lr.start_date",
-            "lr.end_date",
-            "lr.total_days",
-            "lr.status",
-            "lr.pay_percentage",
-            "lr.pay_type",
-            "lr.reason"
-        )
-        .where("u.org_id", org_id)
-        .whereRaw("LOWER(lr.status) = 'approved'")
-        .whereRaw("DATE(lr.start_date) <= ?", [endDate])
-        .whereRaw("DATE(lr.end_date) >= ?", [startDate]);
-
-    if (targetUserId) {
-        query.where("lr.user_id", targetUserId);
-    }
-    return query;
-}
-
-export const isDateInApprovedLeave = (userLeaves, dateStr) => {
-    if (!userLeaves || userLeaves.length === 0) return null;
-    return userLeaves.find(l => {
-        const s = getRecordDateStr({ time_in: l.start_date }) || (typeof l.start_date === 'string' ? l.start_date.slice(0, 10) : '');
-        const e = getRecordDateStr({ time_in: l.end_date }) || (typeof l.end_date === 'string' ? l.end_date.slice(0, 10) : '');
-        return dateStr >= s && dateStr <= e;
-    });
-};
-
-// Org holidays for a date range, indexed by date string — same query shape already proven
-// correct in statusEvaluationService.js's getDailySummary. Reports rebuilds day status from raw
-// punches independently of that live-view path, and previously never consulted this table at
-// all, which is why a no-punch holiday day used to fall through to "Absent" everywhere in Reports.
-export async function getHolidaysByDate({ org_id, startDate, endDate }) {
-    const holidays = await attendanceDB('org_holidays')
-        .where('org_id', org_id)
-        .where('holiday_date', '>=', startDate)
-        .where('holiday_date', '<=', endDate);
-    const byDate = {};
-    for (const h of holidays) {
-        byDate[getRecordDateStr({ time_in: h.holiday_date })] = h;
     }
     return byDate;
 }
 
-// A no-punch day that's a declared organization holiday should show Holiday, taking priority
-// over leave/week-off/absent — matching the priority already proven correct in
-// statusEvaluationService.js's resolveNoShowStatus. Only call this for a day with NO punch
-// record at all; if the employee has any punch data, use their real computed status instead —
-// never let a holiday override an actual worked day (Present/Late/Half Day/Overtime).
+// A no-punch day that's a declared organization holiday should show Holiday
 export function getHolidayOverride(dateStr, holidayByDate) {
     const holiday = holidayByDate?.[dateStr];
     if (!holiday) return null;
     return { status: 'Holiday', reason: holiday.holiday_name || 'Organization Holiday' };
 }
-
-export async function getDetailedRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id }) {
-    return getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
-}
-
-// Groups getAttendanceRecords()'s raw per-session rows into one row per (user, day), reusing
-// aggregateDayRecords' proven day-merge (first time-in, last time-out, summed hours) and its
-// shift-aware, grace-period-checked status — instead of deriveStatus's naive per-session read of
-// possibly-stale/zero stored late_minutes. Users with no punches in range are simply omitted
-// (matches this report's existing sparse, session-log style — it has never shown absent/leave days).
-export function groupRecordsByUserAndDay(records, users, todayStr) {
-    const byUserDate = {};
-    for (const r of records) {
-        const dateKey = getRecordDateStr(r);
-        (byUserDate[r.user_id] ??= {});
-        (byUserDate[r.user_id][dateKey] ??= []).push(r);
-    }
-    const rows = [];
-    for (const u of users) {
-        const dateMap = byUserDate[u.user_id];
-        if (!dateMap) continue;
-        Object.keys(dateMap).sort().forEach(dateStr => {
-            const aggregated = aggregateDayRecords(dateMap[dateStr], u.policy_rules, todayStr);
-            rows.push({
-                user_id: u.user_id, user_name: u.user_name, dept_name: u.dept_name, shift_name: u.shift_name,
-                time_in: aggregated.time_in, time_out: aggregated.time_out, worked_hours: aggregated.worked_hours,
-                status: aggregated.status, late_minutes: aggregated.late_minutes,
-                time_in_address: aggregated.time_in_address, time_out_address: aggregated.time_out_address
-            });
-        });
-    }
-    return rows;
-}
-
-export async function getCardRecords({ org_id, targetUserId, startDate, endDate, dept_id, desg_id, shift_id }) {
-    const users = await getUsers({ org_id, targetUserId, dept_id, desg_id, shift_id, startDate, endDate });
-    const records = await getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
-    const approvedLeaves = await getApprovedLeaves({ org_id, startDate, endDate, targetUserId });
-    const holidayByDate = await getHolidaysByDate({ org_id, startDate, endDate });
-
-    const dateHeaders = getDateRangeArray(startDate, endDate);
-    const todayStr = await getTodayStr(org_id);
-
-    const list = [];
-    for (const u of users) {
-        const userRecs = records.filter(r => r.user_id === u.user_id);
-        const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
-
-        for (const dateStr of dateHeaders) {
-            const dayRecs = userRecs.filter(r => getRecordDateStr(r) === dateStr);
-            const leaveOnDate = isDateInApprovedLeave(userLeaves, dateStr);
-
-            const aggregated = aggregateDayRecords(dayRecs, u.policy_rules, todayStr);
-            const [y, m, d] = dateStr.split('-').map(Number);
-            const formattedDate = new Date(y, m - 1, d).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
-
-            let timeInImage = null;
-            let timeOutImage = null;
-
-            if (aggregated.time_in) {
-                const firstRec = [...dayRecs].sort((a, b) => new Date(a.time_in) - new Date(b.time_in))[0];
-                const lastRec = [...dayRecs].sort((a, b) => new Date(a.time_in) - new Date(b.time_in))[dayRecs.length - 1];
-
-                if (firstRec && firstRec.time_in_image_key) {
-                    try {
-                        const s3Res = await S3Service.getFileUrl({ key: firstRec.time_in_image_key });
-                        if (s3Res.success) timeInImage = s3Res.url;
-                    } catch (e) {
-                        console.error("S3 sign error", e);
-                    }
-                }
-                if (lastRec && lastRec.time_out_image_key) {
-                    try {
-                        const s3Res = await S3Service.getFileUrl({ key: lastRec.time_out_image_key });
-                        if (s3Res.success) timeOutImage = s3Res.url;
-                    } catch (e) {
-                        console.error("S3 sign error", e);
-                    }
-                }
-            }
-
-            const dayOfWeekNum = new Date(y, m - 1, d).getDay();
-            let status = aggregated.status;
-            let lateReason = aggregated.late_reason || "-";
-
-            const rules = getShiftRules(u);
-            const dayType = getDayType(dateStr, rules.week_off_policy);
-            const userStartDate = getUserStartDate(u);
-
-            const holidayOverride = !aggregated.time_in ? getHolidayOverride(dateStr, holidayByDate) : null;
-
-            if (holidayOverride) {
-                status = holidayOverride.status;
-                lateReason = holidayOverride.reason;
-            } else if (!aggregated.time_in && leaveOnDate) {
-                status = "On Leave";
-                lateReason = leaveOnDate.reason || "Approved Leave";
-            } else if (!aggregated.time_in && userStartDate && dateStr < userStartDate) {
-                status = "-";
-            } else if (dateStr > todayStr) {
-                if (dayType === 'week_off') {
-                    if (dayOfWeekNum === 0) status = "Sun";
-                    else if (dayOfWeekNum === 6) status = "Sat";
-                    else status = "WEEK_OFF";
-                } else {
-                    status = "Not Recorded";
-                }
-            } else if (!aggregated.time_in && status === "Absent") {
-                if (dayType === 'week_off') {
-                    if (dayOfWeekNum === 0) status = "Sun";
-                    else if (dayOfWeekNum === 6) status = "Sat";
-                    else status = "WEEK_OFF";
-                }
-            }
-
-            // Calculate required hours from shift policy
-            const requiredHours = getExpectedHours(dateStr, rules.week_off_policy, rules);
-
-            list.push({
-                date: formattedDate,
-                rawDate: dateStr,
-                user_id: u.user_id,
-                user_name: u.user_name,
-                designation: u.desg_name || "-",
-                department: u.dept_name || "-",
-                status: status,
-                time_in: aggregated.time_in ? formatLocalTimeStr(aggregated.time_in) : "-",
-                time_out: aggregated.time_out ? formatLocalTimeStr(aggregated.time_out) : "-",
-                worked_hours: parseFloat(aggregated.worked_hours.toFixed(2)),
-                required_hours: parseFloat(requiredHours.toFixed(2)),
-                late_minutes: aggregated.late_minutes || 0,
-                overtime_hours: aggregated.overtime_hours || 0,
-                late_reason: lateReason,
-                time_in_address: aggregated.time_in_address || "-",
-                time_out_address: aggregated.time_out_address || "-",
-                time_in_image: timeInImage,
-                time_out_image: timeOutImage
-            });
-        }
-    }
-    return list;
-}
-
 
 export async function getPreviewData({ type, org_id, month, startDate, endDate, targetUserId, columns, dept_id, desg_id, shift_id }) {
     const colsObj = typeof columns === 'string' ? JSON.parse(columns) : (columns || {});
