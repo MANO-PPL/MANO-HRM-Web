@@ -71,7 +71,7 @@ const adminOnly = [
     ['GET', () => '/labour/sites'],
     ['POST', () => '/labour/finances/payout', () => ({})],
     ['GET', () => '/payroll/runs'],
-    ['GET', () => `/payroll/employees/${ids.emp2A}/salary/history`],
+    ['GET', () => `/payroll/employees/${ids.emp2A}/projection?period_start=2026-01-01&period_end=2026-01-31`],
     ['PUT', () => `/leaves/admin/status/${ids.leave_empA}`, () => ({ status: 'approved' })],
     ['PUT', () => `/leaves/balances/${ids.lbA}`, () => ({ allocated: 99 })],
     ['GET', () => '/feedback'],
@@ -83,19 +83,18 @@ for (const [method, path, body] of adminOnly) {
 // ── Removed public S3 proxy ──────────────────────────────────────────────────
 expectStatus('image proxy removed', 'GET', () => '/attendance/image?key=attendance_images/1_in', null, 404);
 
-// ── Payroll: own record vs other employees vs other orgs ─────────────────────
-expectStatus('own salary', 'GET', () => `/payroll/employees/${ids.empA}/salary`, 'empA', 200);
-expectStatus('colleague salary', 'GET', () => `/payroll/employees/${ids.emp2A}/salary`, 'empA', 403);
-expectStatus('same-org salary', 'GET', () => `/payroll/employees/${ids.empA}/salary`, 'adminA', 200);
-expectStatus('other-org salary', 'GET', () => `/payroll/employees/${ids.empB}/salary`, 'adminA', 404);
-expectStatus('other-org salary history', 'GET', () => `/payroll/employees/${ids.empB}/salary/history`, 'adminA', 404);
-expectStatus('other-org run', 'GET', () => `/payroll/runs/${ids.runB}`, 'adminA', 404);
-expectStatus('same-org run', 'GET', () => `/payroll/runs/${ids.runA}`, 'adminA', 200);
-expectStatus('other-org mark paid', 'POST', () => `/payroll/runs/${ids.runB}/mark-paid`, 'adminA', 404);
-expectStatus('colleague payslip', 'GET', () => `/payroll/entries/${ids.entry_emp2A}/payslip`, 'empA', 403);
-expectStatus('other-org payslip', 'GET', () => `/payroll/entries/${ids.entry_empB}/payslip`, 'adminA', 404);
-expectStatus('other-org package revisions', 'GET', () => `/payroll/packages/${ids.pkgB}/revisions`, 'adminA', 404);
-expectStatus('same-org package revisions', 'GET', () => `/payroll/packages/${ids.pkgA}/revisions`, 'adminA', 200);
+// ── Payroll: admin/hr-only access with org isolation ──────────────────────────
+expectStatus('employee blocked: run details', 'GET', () => `/payroll/runs/${ids.runV1A}`, 'empA', 403);
+expectStatus('employee blocked: payslip', 'GET', () => `/payroll/runs/${ids.runV1A}/employees/${ids.emp2A}/payslip`, 'empA', 403);
+expectStatus('employee blocked: package detail', 'GET', () => `/payroll/packages/${ids.pkgV1A}`, 'empA', 403);
+expectStatus('same-org run', 'GET', () => `/payroll/runs/${ids.runV1A}`, 'adminA', 200);
+expectStatus('other-org run', 'GET', () => `/payroll/runs/${ids.runV1B}`, 'adminA', 404);
+expectStatus('same-org run status update', 'PATCH', () => `/payroll/runs/${ids.runV1A}`, 'adminA', 200, () => ({ batch_name: 'Updated batch A' }));
+expectStatus('other-org run status update', 'PATCH', () => `/payroll/runs/${ids.runV1B}`, 'adminA', 404, () => ({ batch_name: 'Not allowed' }));
+expectStatus('same-org payslip', 'GET', () => `/payroll/runs/${ids.runV1A}/employees/${ids.empA}/payslip`, 'adminA', 200);
+expectStatus('other-org payslip', 'GET', () => `/payroll/runs/${ids.runV1B}/employees/${ids.empB}/payslip`, 'adminA', 404);
+expectStatus('same-org package detail', 'GET', () => `/payroll/packages/${ids.pkgV1A}`, 'adminA', 200);
+expectStatus('other-org package detail', 'GET', () => `/payroll/packages/${ids.pkgV1B}`, 'adminA', 404);
 
 // ── Leave ────────────────────────────────────────────────────────────────────
 expectStatus('other-org leave review', 'PUT', () => `/leaves/admin/status/${ids.leave_empB}`, 'hrA', 404, () => ({ status: 'approved', pay_type: 'Paid' }));
