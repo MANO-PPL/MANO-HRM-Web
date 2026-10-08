@@ -2,6 +2,7 @@
 
 > Place this file in /docs/features/. This describes the SYSTEM, not the work.
 > This is an EXPLANATION doc (Diataxis) — business POV, plain language.
+> For full statutory compliance, gratuity, PF, ESI, and tax theory, see [Payroll Theory & Compliance Guide](./payroll-theory-and-compliance.md).
 > For technical implementation details, see [Payroll Module README](../../backend/src/modules/payroll/README.md) and [ADR-0003](../adr/0003-payroll-compensation-and-salary-calculation-engine.md).
 
 ---
