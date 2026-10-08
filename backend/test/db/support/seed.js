@@ -61,6 +61,33 @@ export async function seed(db) {
         const [pkgId] = await db('payroll_package_groups').insert({ org_id: orgId, package_name: `Package ${org}` });
         ids[`pkg${org}`] = pkgId;
 
+        // Payroll v1 (current /payroll API)
+        const [pkgV1Id] = await db('payroll_salary_packages').insert({
+            org_id: orgId,
+            name: `Package V1 ${org}`,
+            packages_rules: JSON.stringify({ currency: 'INR', pay_frequency: 'monthly' }),
+        });
+        ids[`pkgV1${org}`] = pkgV1Id;
+
+        const [runV1Id] = await db('payroll_runs_v1').insert({
+            org_id: orgId,
+            batch_name: `Run V1 ${org}`,
+            period_start: `${year}-01-01`,
+            period_end: `${year}-01-31`,
+            status: 'draft',
+        });
+        ids[`runV1${org}`] = runV1Id;
+
+        await db('payroll_lines').insert({
+            payroll_run_id: runV1Id,
+            employee_id: ids[`emp${org}`],
+            salary_package_component_id: null,
+            transaction_type: 'earning',
+            name: 'Basic',
+            amount: 50000,
+            description: 'seed',
+        });
+
         // Leave: policy, rule, balances and requests (one by HR themselves)
         const [lpId] = await db('leave_policies').insert({ org_id: orgId, name: `Policy ${org}` });
         const [ruleId] = await db('leave_policies_rules').insert({
