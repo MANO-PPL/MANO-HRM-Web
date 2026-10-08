@@ -116,4 +116,60 @@ export const getShiftDurationMinutes = (startTime, endTime) => {
     return diff;
 };
 
+/**
+ * Returns ordinal suffix for a day number: 1 -> 'st', 2 -> 'nd', 3 -> 'rd', 4 -> 'th', etc.
+ */
+export const getOrdinalSuffix = (day) => {
+    const d = parseInt(day, 10);
+    if (isNaN(d)) return '';
+    if (d > 3 && d < 21) return 'th';
+    switch (d % 10) {
+        case 1: return 'st';
+        case 2: return 'nd';
+        case 3: return 'rd';
+        default: return 'th';
+    }
+};
+
+/**
+ * Universal platform date formatter.
+ * Standard format: "22nd August 2026"
+ * Ensures exact visual consistency across the entire platform.
+ */
+export const formatPlatformDate = (dateVal) => {
+    if (!dateVal) return '';
+    let d;
+    if (dateVal instanceof Date) {
+        d = isNaN(dateVal.getTime()) ? null : dateVal;
+    } else if (typeof dateVal === 'string') {
+        const str = dateVal.trim();
+        if (!str) return '';
+        const ymdMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (ymdMatch) {
+            d = new Date(parseInt(ymdMatch[1], 10), parseInt(ymdMatch[2], 10) - 1, parseInt(ymdMatch[3], 10));
+        } else {
+            d = new Date(str);
+        }
+    } else if (typeof dateVal === 'number') {
+        d = new Date(dateVal);
+    }
+    if (!d || isNaN(d.getTime())) return String(dateVal);
+
+    const day = d.getDate();
+    const suffix = getOrdinalSuffix(day);
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+    const month = monthNames[d.getMonth()];
+    const year = d.getFullYear();
+
+    return `${day}${suffix} ${month} ${year}`;
+};
+
+/**
+ * Alias for formatPlatformDate
+ */
+export const formatDateDisplay = formatPlatformDate;
+
 

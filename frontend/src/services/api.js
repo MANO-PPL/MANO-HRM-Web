@@ -54,8 +54,8 @@ const originalAdapter = api.defaults.adapter || axios.defaults.adapter;
 
 api.defaults.adapter = async (config) => {
     const isGet = config.method?.toLowerCase() === 'get';
-    const excludeUrls = ['/auth/me', '/auth/refresh', '/auth/logout', '/payroll'];
-    const shouldCache = isGet && !excludeUrls.some(url => config.url?.includes(url));
+    const excludeUrls = ['/auth/me', '/auth/refresh', '/auth/logout', '/payroll', '/attendance'];
+    const shouldCache = isGet && !excludeUrls.some(url => config.url?.includes(url)) && !config.headers?.['x-skip-cache'] && !config.params?.force;
 
     const getResolvedAdapter = () => {
         const targetAdapter = (config.adapter && config.adapter !== api.defaults.adapter)

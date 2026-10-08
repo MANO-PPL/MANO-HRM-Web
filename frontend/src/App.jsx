@@ -79,6 +79,7 @@ import MobileReports from "./pages/reports/Reports-mv";
 import MobileNotifications from "./pages/notifications/Notifications-mv";
 import MobileFeedback from "./pages/feedback/Feedback-mv";
 import DailyActivityMobile from "./pages/dar/DailyActivity-mv";
+import DARAdminMobile from "./pages/dar/DARAdmin-mv";
 import MobileBulkHolidayImport from "./pages/holidays/BulkHolidayImport-mv";
 import MobileBulkUpload from "./pages/employees/BulkUpload-mv";
 import Payroll from "./pages/payroll/Payroll";
@@ -350,9 +351,9 @@ function App() {
                   <Route path="/employees/edit/:id" element={<ResponsiveRoute DesktopComponent={EmployeeForm} MobileComponent={MobileEmployeeForm} />} />
                   <Route path="/employees/bulk" element={<ResponsiveRoute DesktopComponent={BulkUpload} MobileComponent={MobileBulkUpload} />} />
                   <Route path="/holidays/bulk" element={<ResponsiveRoute DesktopComponent={BulkHolidayImport} MobileComponent={MobileBulkHolidayImport} />} />
-                  <Route path="/dar-admin" element={<DARAdmin />} />
+                  <Route path="/dar-admin" element={<ResponsiveRoute DesktopComponent={DARAdmin} MobileComponent={DARAdminMobile} />} />
                   <Route path="/labour-management" element={<ResponsiveRoute DesktopComponent={LabourManagement} MobileComponent={MobileLabourManagement} />} />
-                  <Route path="/payroll-dashboard" element={<ResponsiveRoute DesktopComponent={PayrollDashboard} MobileComponent={PayrollDashboard} />} />
+                  <Route path="/payroll-dashboard" element={<ResponsiveRoute DesktopComponent={PayrollDashboard} MobileComponent={MobilePayroll} />} />
                   <Route path="/payroll-packages" element={<Navigate to="/policies?tab=salary_packages" replace />} />
                 </Route>
 
