@@ -1,5 +1,6 @@
 import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
+import { requireOrgId, assertSelfOrStaffInOrg } from '../../utils/tenant.js';
 import PayrollSettingsService from './services/PayrollSettingsService.js';
 import SalaryPackageService from './services/SalaryPackageService.js';
 import SalaryAssignmentService from './services/SalaryAssignmentService.js';
@@ -98,8 +99,9 @@ export const listEmployeeAssignments = catchAsync(async (req, res) => {
 });
 
 export const getEmployeePackage = catchAsync(async (req, res) => {
-  const orgId = req.user.org_id;
-  const employeeId = req.params.employeeId || req.user.user_id;
+  const orgId = requireOrgId(req);
+  const employeeId = Number(req.params.employeeId || req.user.id || req.user.user_id);
+  await assertSelfOrStaffInOrg(req, employeeId);
   const { as_of } = req.query;
   const pkg = await SalaryAssignmentService.getEmployeeActivePackage(orgId, employeeId, as_of || new Date());
   res.status(200).json({ ok: true, data: pkg });
@@ -184,15 +186,13 @@ export const updatePayrollRunStatus = catchAsync(async (req, res) => {
 
 
 export const getEmployeePayslip = catchAsync(async (req, res) => {
-  const orgId = req.user.org_id;
+  const orgId = requireOrgId(req);
   const { runId, employeeId } = req.params;
 
   // Normal employees can only view their own payslip
-  if (req.user.user_type === 'employee' && Number(req.user.user_id) !== Number(employeeId)) {
-    throw new AppError('Unauthorized access to employee payslip.', 403);
-  }
+  await assertSelfOrStaffInOrg(req, Number(employeeId));
 
-  const payslip = await PayrollRunService.getEmployeePayslip(orgId, runId, employeeId);
+  const payslip = await PayrollRunService.getEmployeePayslip(orgId, runId, Number(employeeId));
   res.status(200).json({ ok: true, data: payslip });
 });
 
@@ -227,5 +227,6 @@ export const getEmployeeProjection = catchAsync(async (req, res) => {
     data: projection
   });
 });
+
 
 

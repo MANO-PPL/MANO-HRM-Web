@@ -33,7 +33,7 @@ router.delete('/packages/:packageId/components/:componentId', authorize('admin',
 // 3. Employee Package Assignments Endpoints
 // ==========================================
 router.get('/assignments', authorize('admin', 'hr'), payrollController.listEmployeeAssignments);
-router.get('/employees/:employeeId/package', authorize('admin', 'hr'), payrollController.getEmployeePackage);
+router.get('/employees/:employeeId/package', payrollController.getEmployeePackage);
 router.post('/employees/:employeeId/assign-package', authorize('admin', 'hr'), payrollController.assignPackageToEmployee);
 router.post('/employees/:employeeId/unassign-package', authorize('admin', 'hr'), payrollController.unassignPackageFromEmployee);
 
@@ -46,7 +46,7 @@ router.get('/runs/:runId', authorize('admin', 'hr'), payrollController.getPayrol
 router.patch('/runs/:runId', authorize('admin', 'hr'), payrollController.updatePayrollRunStatus);
 
 // Payslip & Projection
-router.get('/runs/:runId/employees/:employeeId/payslip', authorize('admin', 'hr'), payrollController.getEmployeePayslip);
+router.get('/runs/:runId/employees/:employeeId/payslip', payrollController.getEmployeePayslip);
 router.get('/employees/:employeeId/projection', authorize('admin', 'hr'), payrollController.getEmployeeProjection);
 
 export default router;

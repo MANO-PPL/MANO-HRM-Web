@@ -63,7 +63,7 @@ async function seedExtra(org) {
     const [labourId] = await db('labours').insert({ org_id: orgId, site_id: siteId, name: 'Worker', role: 'Mason', monthly_salary: 1000 });
     await db('labour_attendance').insert({ org_id: orgId, labour_id: labourId, site_id: siteId, date: today });
     await db('labour_advances').insert({ org_id: orgId, labour_id: labourId, amount: 100, date: today });
-    await db('payroll_packages').insert({ package_group_id: ids[`pkg${org}`], effective_from: today });
+    await db('payroll_packages').insert({ package_group_id: ids[`pkgGroup${org}`] || ids[`pkg${org}`], effective_from: today });
 }
 
 // Rows in `table` that belong to the given org, by whichever reference columns it has
