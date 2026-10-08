@@ -8,6 +8,7 @@
 |----|-------|--------|
 | [0001](./0001-use-bullmq-redis-for-background-jobs.md) | Use BullMQ and Redis for Background Asynchronous Processing | Accepted |
 | [0002](./0002-remove-scheduled-dar-email-reports.md) | Remove the Incomplete Scheduled DAR Email Reports Feature | Accepted |
+| [0003](./0003-payroll-compensation-and-salary-calculation-engine.md) | Multi-Tier Salary Architecture and Payroll Calculation Engine | Accepted |
 
 <!--
 Status values: Proposed / Accepted / Superseded by ADR-00XX

@@ -108,7 +108,7 @@ const SalaryPackages = ({ embedded = false }) => {
     const loadPackages = useCallback(async () => {
         setIsLoadingPackages(true);
         try {
-            const res = await payrollService.getPackageGroups();
+            const res = await payrollService.getPackages();
             if (res.status === 'success') {
                 setPackages(res.data);
                 if (!selectedPackage) {
@@ -143,7 +143,7 @@ const SalaryPackages = ({ embedded = false }) => {
     const loadEmployees = useCallback(async () => {
         setIsLoadingEmployees(true);
         try {
-            const res = await payrollService.getEmployeesWithPackages();
+            const res = await payrollService.getAssignments();
             if (res.status === 'success') {
                 setEmployees(res.data);
             }
@@ -222,7 +222,7 @@ const SalaryPackages = ({ embedded = false }) => {
                 effectiveFrom: packageForm.effectiveFrom
             };
             if (editingPackage) {
-                const res = await payrollService.updatePackageGroup(editingPackage.package_group_id, data);
+                const res = await payrollService.updatePackage(editingPackage.package_group_id, data);
                 if (res.status === 'success') {
                     toast.success('Salary package updated successfully!');
                     setShowPackageForm(false);
@@ -237,7 +237,7 @@ const SalaryPackages = ({ embedded = false }) => {
                     loadPackages();
                 }
             } else {
-                const res = await payrollService.createPackageGroup(data);
+                const res = await payrollService.createPackage(data);
                 if (res.status === 'success') {
                     toast.success('Salary package created successfully!');
                     setShowPackageForm(false);
@@ -307,12 +307,13 @@ const SalaryPackages = ({ embedded = false }) => {
 
     const handleToggleActive = async () => {
         if (!selectedPackage) return;
+        const targetId = selectedPackage.id || selectedPackage.package_group_id;
         const newStatus = selectedPackage.is_active === 1 ? 0 : 1;
         try {
-            const res = await payrollService.updatePackageGroup(selectedPackage.package_group_id, {
-                isActive: newStatus
+            const res = await payrollService.updatePackage(targetId, {
+                is_active: newStatus
             });
-            if (res.status === 'success') {
+            if (res.ok || res.status === 'success') {
                 toast.success(`Package status updated to ${newStatus ? 'Active' : 'Inactive'}`);
                 loadPackages();
             }

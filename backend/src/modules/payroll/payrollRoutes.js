@@ -7,42 +7,46 @@ const router = express.Router();
 // Apply JWT authentication to all payroll endpoints
 router.use(authenticateJWT);
 
-// Salary APIs
-router.get('/employees/:id/salary', payrollController.getEmployeeSalary);
-router.post('/employees/:id/salary', authorize('admin', 'hr'), payrollController.updateEmployeeSalary);
-router.get('/employees/:id/salary/history', authorize('admin', 'hr'), payrollController.getEmployeeSalaryHistory);
+// ==========================================
+// 1. Settings & Setup Endpoints
+// ==========================================
+router.get('/setup-status', authorize('admin', 'hr'), payrollController.getSetupStatus);
+router.get('/settings', authorize('admin', 'hr'), payrollController.getPayrollSettings);
+router.post('/settings', authorize('admin', 'hr'), payrollController.updatePayrollSettings);
+router.put('/settings', authorize('admin', 'hr'), payrollController.updatePayrollSettings);
 
-// Payroll Dashboard & Calculation APIs (restricted to admin & hr)
-router.get('/dashboard', authorize('admin', 'hr'), payrollController.getPayrollDashboard);
-router.get('/dashboard/:employeeId', authorize('admin', 'hr'), payrollController.getEmployeeProjectedDetails);
-router.post('/finalize', authorize('admin', 'hr'), payrollController.finalizePayrollRun);
-router.post('/employees/:employeeId/finalize', authorize('admin', 'hr'), payrollController.finalizeEmployeePayroll);
-router.post('/employees/:employeeId/unlock', authorize('admin', 'hr'), payrollController.unlockEmployeePayroll);
-router.post('/employees/:employeeId/pay', authorize('admin', 'hr'), payrollController.payEmployeePayroll);
-router.get('/runs', authorize('admin', 'hr'), payrollController.getPayrollRuns);
-router.get('/runs/:runId', authorize('admin', 'hr'), payrollController.getPayrollRunDetails);
-router.post('/runs/:runId/mark-paid', authorize('admin', 'hr'), payrollController.markPayrollRunAsPaid);
-router.get('/audit-logs', authorize('admin', 'hr'), payrollController.getPayrollAuditLogs);
+// ==========================================
+// 2. Salary Packages Endpoints
+// ==========================================
+router.get('/packages', authorize('admin', 'hr'), payrollController.listPackages);
+router.post('/packages', authorize('admin', 'hr'), payrollController.createPackage);
+router.get('/packages/:id', authorize('admin', 'hr'), payrollController.getPackageById);
+router.put('/packages/:id', authorize('admin', 'hr'), payrollController.updatePackage);
+router.delete('/packages/:id', authorize('admin', 'hr'), payrollController.deletePackage);
 
-// Payslip PDF Stream API (accessible by employees for their own, or admin/hr)
-router.put('/entries/:entryId/adjustments', authorize('admin', 'hr'), payrollController.updateEntryAdjustments);
-router.get('/entries/:entryId/payslip', payrollController.getPayslip);
+// Package Components
+router.post('/packages/:packageId/components', authorize('admin', 'hr'), payrollController.addPackageComponent);
+router.put('/packages/:packageId/components/:componentId', authorize('admin', 'hr'), payrollController.updatePackageComponent);
+router.delete('/packages/:packageId/components/:componentId', authorize('admin', 'hr'), payrollController.deletePackageComponent);
 
-// Package APIs
-router.get('/packages', authorize('admin', 'hr'), payrollController.getPackageGroups);
-router.post('/packages', authorize('admin', 'hr'), payrollController.createPackageGroup);
-router.get('/packages/:packageGroupId/revisions', authorize('admin', 'hr'), payrollController.getPackageRevisions);
-router.post('/packages/:packageGroupId/revisions', authorize('admin', 'hr'), payrollController.createPackageRevision);
-router.put('/packages/:packageGroupId', authorize('admin', 'hr'), payrollController.updatePackageGroup);
-router.delete('/packages/:packageGroupId', authorize('admin', 'hr'), payrollController.deletePackageGroup);
-
-// Package Assignment APIs
-router.get('/employees/packages', authorize('admin', 'hr'), payrollController.getEmployeesWithPackages);
+// ==========================================
+// 3. Employee Package Assignments Endpoints
+// ==========================================
+router.get('/assignments', authorize('admin', 'hr'), payrollController.listEmployeeAssignments);
+router.get('/employees/:employeeId/package', authorize('admin', 'hr'), payrollController.getEmployeePackage);
 router.post('/employees/:employeeId/assign-package', authorize('admin', 'hr'), payrollController.assignPackageToEmployee);
 router.post('/employees/:employeeId/unassign-package', authorize('admin', 'hr'), payrollController.unassignPackageFromEmployee);
 
-// Payroll Settings APIs
-router.get('/settings', authorize('admin', 'hr'), payrollController.getPayrollSettings);
-router.put('/settings', authorize('admin', 'hr'), payrollController.updatePayrollSettings);
+// ==========================================
+// 4. Payroll Runs & Payslips Endpoints
+// ==========================================
+router.post('/runs', authorize('admin', 'hr'), payrollController.triggerPayrollRun);
+router.get('/runs', authorize('admin', 'hr'), payrollController.listPayrollRuns);
+router.get('/runs/:runId', authorize('admin', 'hr'), payrollController.getPayrollRunDetails);
+router.patch('/runs/:runId', authorize('admin', 'hr'), payrollController.updatePayrollRunStatus);
+
+// Payslip & Projection
+router.get('/runs/:runId/employees/:employeeId/payslip', authorize('admin', 'hr'), payrollController.getEmployeePayslip);
+router.get('/employees/:employeeId/projection', authorize('admin', 'hr'), payrollController.getEmployeeProjection);
 
 export default router;

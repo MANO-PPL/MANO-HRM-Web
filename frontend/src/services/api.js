@@ -54,7 +54,7 @@ const originalAdapter = api.defaults.adapter || axios.defaults.adapter;
 
 api.defaults.adapter = async (config) => {
     const isGet = config.method?.toLowerCase() === 'get';
-    const excludeUrls = ['/auth/me', '/auth/refresh', '/auth/logout'];
+    const excludeUrls = ['/auth/me', '/auth/refresh', '/auth/logout', '/payroll'];
     const shouldCache = isGet && !excludeUrls.some(url => config.url?.includes(url));
 
     const getResolvedAdapter = () => {
