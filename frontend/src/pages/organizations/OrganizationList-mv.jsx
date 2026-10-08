@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 import { motion, AnimatePresence } from 'framer-motion';
 import PhoneInput from '../../components/PhoneInput';
 import { validatePhone, validateEmail } from '../../utils/validation';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -304,7 +305,7 @@ const OrgDetailModal = ({ org, onClose, onRefresh, listTab }) => {
               <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl border border-slate-100 dark:border-white/5 col-span-2">
                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Expiry Date</span>
                 <span className="text-xs font-bold text-slate-800 dark:text-white">
-                  {org.subscription_expiry ? new Date(org.subscription_expiry).toLocaleDateString() : 'Lifetime / Unlimited'}
+                  {org.subscription_expiry ? formatPlatformDate(org.subscription_expiry) : 'Lifetime / Unlimited'}
                 </span>
               </div>
               <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl border border-slate-100 dark:border-white/5">

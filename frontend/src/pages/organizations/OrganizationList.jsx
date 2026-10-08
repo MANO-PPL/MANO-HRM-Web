@@ -8,6 +8,7 @@ import MinimalSelect from '../../components/MinimalSelect';
 import PhoneInput from '../../components/PhoneInput';
 import { validatePhone, validateEmail } from '../../utils/validation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const OrganizationList = () => {
     const [organizations, setOrganizations] = useState([]);
@@ -1383,7 +1384,7 @@ const OrganizationList = () => {
                                             This organization will be permanently deleted on{' '}
                                             <strong>
                                                 {selectedOrg.deletion_scheduled_at
-                                                    ? new Date(selectedOrg.deletion_scheduled_at).toLocaleDateString()
+                                                    ? formatPlatformDate(selectedOrg.deletion_scheduled_at)
                                                     : 'the scheduled date'}
                                             </strong>. Recover it above if this was a mistake.
                                         </p>
@@ -1436,7 +1437,7 @@ const OrganizationList = () => {
                                         <div>
                                             <span className="block text-[10px] font-bold text-indigo-650 dark:text-indigo-400">Subscription Expiry</span>
                                             <span className="font-semibold text-slate-800 dark:text-github-dark-text">
-                                                {selectedOrg.subscription_expiry ? new Date(selectedOrg.subscription_expiry).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'Lifetime / Processing'}
+                                                {selectedOrg.subscription_expiry ? formatPlatformDate(selectedOrg.subscription_expiry) : 'Lifetime / Processing'}
                                             </span>
                                         </div>
                                         <div className="grid grid-cols-2 gap-2">
@@ -1869,8 +1870,8 @@ const OrganizationList = () => {
                                                         {visibleColumns.dates && (
                                                             <td className="px-6 py-3.5 text-slate-700 dark:text-github-dark-text text-[11px] font-semibold">
                                                                 <div>
-                                                                    <span>Start: {org.created_at ? new Date(org.created_at).toLocaleDateString() : 'N/A'}</span>
-                                                                    <span className="block mt-0.5 text-slate-500 dark:text-github-dark-muted font-normal">End: {org.subscription_expiry ? new Date(org.subscription_expiry).toLocaleDateString() : 'No expiry'}</span>
+                                                                    <span>Start: {org.created_at ? formatPlatformDate(org.created_at) : 'N/A'}</span>
+                                                                    <span className="block mt-0.5 text-slate-500 dark:text-github-dark-muted font-normal">End: {org.subscription_expiry ? formatPlatformDate(org.subscription_expiry) : 'No expiry'}</span>
                                                                 </div>
                                                             </td>
                                                         )}

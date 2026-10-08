@@ -20,6 +20,7 @@ import {
     Legend
 } from 'recharts';
 import { Clock, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
+import { formatPlatformDate } from '../utils/dateUtils';
 
 const AttendanceCharts = ({ sessions = [], date }) => {
 
@@ -234,7 +235,7 @@ const AttendanceCharts = ({ sessions = [], date }) => {
                                         </div>
                                         <div>
                                             <p className="text-sm font-semibold text-slate-700 dark:text-github-dark-text">
-                                                {new Date(session.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                {formatPlatformDate(session.created_at)}
                                             </p>
                                         </div>
                                     </div>

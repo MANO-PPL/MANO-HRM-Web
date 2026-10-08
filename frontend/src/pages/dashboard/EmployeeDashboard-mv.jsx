@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import employeeService from '../../services/employeeService';
@@ -8,74 +7,20 @@ import { parsePolicy } from '../../utils/weekOffPolicy';
 import {
     Clock,
     Calendar,
-    Briefcase,
     AlertCircle,
     CheckCircle,
     XCircle,
     TrendingUp,
     ChevronRight,
     Coffee,
-    Activity,
-    MapPin,
-    RefreshCw
+    Zap
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { toast } from 'react-toastify';
 
 const EmployeeDashboard = () => {
-    const { user, avatarTimestamp } = useAuth();
+    const { user } = useAuth();
     const navigate = useNavigate();
-
-    const [currentTime, setCurrentTime] = useState(new Date());
-    const [location, setLocation] = useState({ lat: null, lng: null, address: 'Fetching location...', error: null });
-    const [isLoadingLoc, setIsLoadingLoc] = useState(false);
-
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-        
-        let watchId;
-        const startWatch = (highAccuracy = true) => {
-            if (!navigator.geolocation) return;
-            setIsLoadingLoc(true);
-            watchId = navigator.geolocation.watchPosition(
-                async (pos) => {
-                    const { latitude, longitude } = pos.coords;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-                        const data = await res.json();
-                        setLocation({
-                            lat: latitude,
-                            lng: longitude,
-                            address: data.display_name?.split(',')[0] || 'Unknown Location',
-                            error: null
-                        });
-                    } catch (err) {
-                        setLocation({ lat: latitude, lng: longitude, address: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, error: null });
-                    } finally {
-                        setIsLoadingLoc(false);
-                    }
-                },
-                (err) => {
-                    console.warn(`watchPosition failed in dashboard:`, err);
-                    if (highAccuracy && (err.code === 3 || err.code === 1)) {
-                        if (watchId) navigator.geolocation.clearWatch(watchId);
-                        startWatch(false);
-                    } else {
-                        setLocation(prev => ({ ...prev, error: err.message, address: 'Location Access Denied' }));
-                        setIsLoadingLoc(false);
-                    }
-                },
-                { enableHighAccuracy: highAccuracy, timeout: 15000, maximumAge: 30000 }
-            );
-        };
-
-        startWatch(true);
-
-        return () => {
-            clearInterval(timer);
-            if (watchId) navigator.geolocation.clearWatch(watchId);
-        };
-    }, []);
 
     const todayDate = new Date();
     const monthKey = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}`;
@@ -118,10 +63,6 @@ const EmployeeDashboard = () => {
         }
         return [];
     });
-    const [recentActivity, setRecentActivity] = useState(() => {
-        const cached = attendanceCacheData.recentActivity[todayStr];
-        return cached?.data || [];
-    });
     const [loading, setLoading] = useState(() => {
         return !attendanceCacheData.myStats[monthKey] || !attendanceCacheData.todayStatus[todayStr];
     });
@@ -132,17 +73,30 @@ const EmployeeDashboard = () => {
 
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-    const formatTime12h = (timeStr) => {
-        if (!timeStr) return '--:--';
-        const parts = timeStr.split(':');
-        if (parts.length < 2) return timeStr;
-        let hour = parseInt(parts[0], 10);
-        const minute = parts[1];
-        const ampm = hour >= 12 ? 'PM' : 'AM';
-        hour = hour % 12;
-        hour = hour ? hour : 12; // the hour '0' should be '12'
-        const strHour = hour < 10 ? '0' + hour : hour;
-        return `${strHour}:${minute} ${ampm}`;
+    const formatTime12h = (timeVal) => {
+        if (!timeVal || timeVal === '--:--' || timeVal === '-') return '--:--';
+        try {
+            const str = String(timeVal).trim();
+            if (str.includes('T') || str.includes(' ')) {
+                const parsed = new Date(str);
+                if (!isNaN(parsed.getTime())) {
+                    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                }
+            }
+            const parts = str.split(':');
+            if (parts.length >= 2) {
+                let hour = parseInt(parts[0], 10);
+                const minute = parts[1].padStart(2, '0');
+                const ampm = hour >= 12 ? 'PM' : 'AM';
+                hour = hour % 12;
+                if (hour === 0) hour = 12;
+                const strHour = hour < 10 ? '0' + hour : hour;
+                return `${strHour}:${minute} ${ampm}`;
+            }
+            return str;
+        } catch (_) {
+            return String(timeVal);
+        }
     };
 
     const activeWorkingDays = (() => {
@@ -157,24 +111,37 @@ const EmployeeDashboard = () => {
         }
     })();
 
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return 'Good Morning';
+        if (hour < 18) return 'Good Afternoon';
+        return 'Good Evening';
+    };
+
+    const formattedDate = new Intl.DateTimeFormat('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    }).format(todayDate);
+
+    const firstName = user?.name ? user.name.trim().split(' ')[0] : 'Employee';
+
     useEffect(() => {
         fetchDashboardData();
     }, []);
 
     const fetchDashboardData = async () => {
         try {
-            const [statsRes, todayRes, holidaysRes, activityRes, shiftRes] = await Promise.allSettled([
+            const [statsRes, todayRes, holidaysRes, shiftRes] = await Promise.allSettled([
                 attendanceService.getMyStats(),
                 attendanceService.getTodayStatus(),
                 attendanceService.getUpcomingHolidays(),
-                attendanceService.getRecentActivity(),
                 employeeService.getMyShift()
             ]);
 
             if (statsRes.status === 'fulfilled' && statsRes.value?.success) setStats(statsRes.value.data);
             if (todayRes.status === 'fulfilled' && todayRes.value?.success) setTodayStatus(todayRes.value.data);
             if (holidaysRes.status === 'fulfilled' && holidaysRes.value?.success) setUpcomingHolidays(holidaysRes.value.data);
-            if (activityRes.status === 'fulfilled' && activityRes.value?.success) setRecentActivity(activityRes.value.data);
             if (shiftRes.status === 'fulfilled' && shiftRes.value && (shiftRes.value.ok || shiftRes.value.success)) {
                 setShift(shiftRes.value.shift);
             }
@@ -184,14 +151,10 @@ const EmployeeDashboard = () => {
             if (recentRes && recentRes.data && recentRes.data.length > 0) {
                 const today = new Date();
                 const todayDateStr = today.toISOString().split('T')[0];
-                
                 const todayMidnight = new Date(today);
                 todayMidnight.setHours(0, 0, 0, 0);
 
-                // Real per-shift correction window, not a hardcoded guess — matches the same
-                // deadline enforced when actually submitting a correction.
                 const correctionDeadlineDays = shiftRes.value?.shift?.rules?.correction_deadline ?? 30;
-
                 const missedDates = [];
 
                 for (const session of recentRes.data) {
@@ -202,7 +165,6 @@ const EmployeeDashboard = () => {
                         if (sessionDateStr < todayDateStr) {
                             const diffTime = todayMidnight - new Date(sessionDate).setHours(0, 0, 0, 0);
                             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
                             const isNotProcessed = !['ABSENT', 'REJECTED'].includes(session.status);
                             if (isNotProcessed && diffDays <= correctionDeadlineDays) {
                                 missedDates.push(sessionDateStr);
@@ -219,348 +181,437 @@ const EmployeeDashboard = () => {
         }
     };
 
-    const formatDashboardTime = (timeVal) => {
-        if (!timeVal || timeVal === '--:--' || timeVal === '-') return '--:--';
-        try {
-            const str = String(timeVal).trim();
-            const parts = str.split(/[- :T.]/);
-            if (parts.length >= 5) {
-                let hour = parseInt(parts[3], 10);
-                const minute = String(parts[4]).padStart(2, '0');
-                const ampm = hour >= 12 ? 'PM' : 'AM';
-                hour = hour % 12;
-                if (hour === 0) hour = 12;
-                const pad = (n) => String(n).padStart(2, '0');
-                return `${pad(hour)}:${minute} ${ampm}`;
-            }
-
-            const d = new Date(str);
-            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-        } catch (e) {
-            return String(timeVal);
-        }
-    };
-
-    const getGreeting = () => {
-        const hour = new Date().getHours();
-        if (hour < 12) return 'Good Morning';
-        if (hour < 18) return 'Good Afternoon';
-        return 'Good Evening';
-    };
+    // Session Status computation matching Flutter TodaySessionSummary
+    const hasActiveSession = Boolean(todayStatus?.time_in && !todayStatus?.time_out);
+    const isLate = Boolean(todayStatus?.is_late || todayStatus?.late_minutes > 0 || (todayStatus?.status && todayStatus.status.toUpperCase() === 'LATE'));
+    let sessionStatusLabel = 'No Session Today';
+    if (hasActiveSession) {
+        sessionStatusLabel = isLate ? 'Late Active' : 'Active Session';
+    } else if (todayStatus?.time_out) {
+        sessionStatusLabel = isLate ? 'LATE' : 'PRESENT';
+    } else if (todayStatus?.status) {
+        sessionStatusLabel = todayStatus.status;
+    }
 
     return (
-        <MobileDashboardLayout title="Employee Dashboard" hideHeader={false} hideScrollbar={true}>
-            <div className="space-y-6">
-                {/* 1. Welcome Section */}
-                <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-2xl p-5 sm:p-6 text-white border border-indigo-500/20 shadow-2xl">
-                    {/* Subtle Ambient Glows */}
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 blur-[80px] pointer-events-none" />
-                    <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-purple-500/10 blur-[70px] pointer-events-none" />
-                    {/* Animated Background Blobs */}
-                    <motion.div 
-                        animate={{ 
-                            scale: [1, 1.2, 1],
-                            rotate: [0, 90, 0],
-                        }}
-                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                        className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/15 blur-3xl rounded-full pointer-events-none"
-                    />
-                    <motion.div 
-                        animate={{ 
-                            scale: [1, 1.5, 1],
-                            x: [0, 50, 0],
-                        }}
-                        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                        className="absolute -bottom-24 -left-24 w-80 h-80 bg-purple-500/10 blur-3xl rounded-full pointer-events-none"
-                    />
+        <MobileDashboardLayout title="Employee Dashboard" hideHeader={false} contentClassName="pb-10 space-y-3">
+            {/* 1. Edge-to-Edge Welcome Banner matching Flutter's EmployeeWelcomeBanner */}
+            <div className="relative overflow-hidden w-full bg-gradient-to-br from-[#4F46E5] to-[#3730A3] dark:from-[#090A1A] dark:to-[#05060A] rounded-b-[24px] shadow-xl text-white pt-3 pb-5 px-3.5 sm:px-5">
+                {/* Ambient glowing circles */}
+                <div className="absolute -top-12 -right-10 w-48 h-48 rounded-full bg-white/[0.08] pointer-events-none" />
+                <div className="absolute -bottom-12 -left-10 w-44 h-44 rounded-full bg-purple-500/[0.12] pointer-events-none" />
 
-                    <div className="relative z-10 flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full border-2 border-white/30 bg-white/10 backdrop-blur-sm flex items-center justify-center text-2xl font-bold overflow-hidden shadow-inner shrink-0">
-                            {user?.profile_image_url ? (
-                                <img
-                                    src={`${user.profile_image_url}?t=${avatarTimestamp}`}
-                                    alt="Profile"
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                user?.name?.charAt(0) || 'U'
-                            )}
-                        </div>
-                        <div>
-                            <p className="text-indigo-200/80 text-sm font-medium">{getGreeting()},</p>
-                            <h2 className="text-2xl font-bold tracking-tight">{user?.name?.split(' ')[0]}</h2>
-                            <p className="text-xs text-indigo-300/80 mt-1 flex items-center gap-1">
-                                <Briefcase size={12} />
-                                {user?.designation || 'Employee'}
-                            </p>
-                        </div>
+                <div className="relative z-10">
+                    {/* Greeting & Date */}
+                    <h2 className="text-[21px] sm:text-[23px] font-extrabold tracking-tight leading-tight text-white truncate">
+                        {getGreeting()}, {firstName}!
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-white/85 font-medium flex-wrap">
+                        <span>{formattedDate}</span>
+                        {(user?.designation || user?.department) && (
+                            <>
+                                <span className="opacity-50">•</span>
+                                <span className="truncate max-w-[200px]">
+                                    {[user?.designation, user?.department].filter(Boolean).join(' • ')}
+                                </span>
+                            </>
+                        )}
                     </div>
 
-                    {/* Quick Action Buttons */}
-                    <div className="mt-6 flex gap-3 relative z-10">
+                    {/* Quick Action Buttons (Uniform height 36px single row) */}
+                    <div className="mt-3.5 flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
                         <button
                             onClick={() => navigate('/attendance')}
-                            className="flex-1 bg-white text-indigo-600 hover:bg-indigo-50 py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                            className="h-9 px-3.5 rounded-[10px] bg-white text-[#4F46E5] font-bold text-[11.5px] flex items-center gap-1.5 shrink-0 shadow-sm active:scale-95 transition-transform cursor-pointer"
                         >
-                            <Clock size={16} /> My Attendance
+                            <Clock size={15} />
+                            <span>My Attendance</span>
+                        </button>
+                        <button
+                            onClick={() => navigate('/holidays?tab=holidays')}
+                            className="h-9 px-3.5 rounded-[10px] bg-white/15 hover:bg-white/20 border border-white/20 text-white font-semibold text-[11.5px] flex items-center gap-1.5 shrink-0 backdrop-blur-md active:scale-95 transition-transform cursor-pointer"
+                        >
+                            <Calendar size={15} />
+                            <span>Holiday List</span>
                         </button>
                         <button
                             onClick={() => navigate('/holidays?tab=leaves&apply=true')}
-                            className="flex-1 py-2.5 px-4 bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2 backdrop-blur-md cursor-pointer"
+                            className="h-9 px-3.5 rounded-[10px] bg-white/15 hover:bg-white/20 border border-white/20 text-white font-semibold text-[11.5px] flex items-center gap-1.5 shrink-0 backdrop-blur-md active:scale-95 transition-transform cursor-pointer"
                         >
-                            <Coffee size={16} /> Apply Leave
+                            <Coffee size={15} />
+                            <span>Apply Leave</span>
                         </button>
                     </div>
 
-                    {/* Current Time / Location Widget */}
-                    <div className="mt-5 bg-white/10 dark:bg-black/30 backdrop-blur-md rounded-2xl p-4 border border-white/10 hover:border-white/20 transition-all flex items-center justify-between text-white relative z-10 shadow-lg">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 rounded-2xl flex items-center justify-center shadow-inner">
-                                <Clock size={24} />
+                    {/* Glass Cards: Today's Status & Shift Details */}
+                    <div className="mt-3.5 space-y-2.5">
+                        {/* Today's Status Glass Card */}
+                        <div className="bg-white/12 border border-white/18 backdrop-blur-md rounded-[14px] p-3 text-white">
+                            <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-6 h-6 rounded-[7px] bg-white/20 flex items-center justify-center">
+                                        <Clock size={14} className="text-white" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-white/90 tracking-wider">
+                                        TODAY'S STATUS
+                                    </span>
+                                </div>
+                                <div className={`px-2 py-0.5 rounded-[6px] text-[9.5px] font-semibold border ${
+                                    sessionStatusLabel.includes('Active')
+                                        ? 'bg-emerald-500/25 border-emerald-500/60 text-emerald-300'
+                                        : sessionStatusLabel === 'LATE' || sessionStatusLabel.includes('Late')
+                                            ? 'bg-orange-500/25 border-orange-500/60 text-orange-300'
+                                            : sessionStatusLabel === 'PRESENT'
+                                                ? 'bg-white/25 border-white/40 text-white'
+                                                : 'bg-white/10 border-white/20 text-white/80'
+                                }`}>
+                                    {sessionStatusLabel}
+                                </div>
                             </div>
-                            <div>
-                                <span className="block text-[10px] font-bold text-indigo-200 tracking-widest">Current Time</span>
-                                <span className="text-2xl font-black text-white font-mono">
-                                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-                                </span>
+
+                            <div className="text-[13px] font-bold text-white mb-2 truncate">
+                                {hasActiveSession
+                                    ? 'Current Active Session'
+                                    : todayStatus?.time_in
+                                        ? 'Daily Attendance Logged'
+                                        : 'No Active Session Today'}
+                            </div>
+
+                            {/* 3 Metric Columns */}
+                            <div className="h-[54px] bg-black/15 border border-white/10 rounded-[10px] px-2.5 py-1.5 flex items-center justify-between">
+                                <div className="flex-1 min-w-0 pr-1">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">CHECK IN</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-white mt-0.5 truncate">
+                                        {formatTime12h(todayStatus?.time_in)}
+                                    </span>
+                                </div>
+                                <div className="w-px h-[26px] bg-white/20 shrink-0" />
+                                <div className="flex-1 min-w-0 px-2">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">CHECK OUT</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-white mt-0.5 truncate">
+                                        {formatTime12h(todayStatus?.time_out)}
+                                    </span>
+                                </div>
+                                <div className="w-px h-[26px] bg-white/20 shrink-0" />
+                                <div className="flex-1 min-w-0 pl-1">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">DURATION</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-[#6EE7B7] mt-0.5 truncate">
+                                        {todayStatus?.duration || '0h'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                        <div className="text-right">
-                            <span className="block text-[10px] font-bold text-indigo-200 tracking-widest mb-1">Location</span>
-                            <div className="flex items-center gap-1.5 text-white/90 font-bold text-xs bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                                <MapPin size={12} className="text-indigo-300" />
-                                <span className="truncate max-w-[100px] inline-block align-middle" title={location.address}>
-                                    {isLoadingLoc ? 'Locating...' : location.address}
-                                </span>
+
+                        {/* Shift Details Glass Card */}
+                        <div className="bg-white/12 border border-white/18 backdrop-blur-md rounded-[14px] p-3 text-white">
+                            <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-6 h-6 rounded-[7px] bg-white/20 flex items-center justify-center">
+                                        <Calendar size={14} className="text-white" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-white/90 tracking-wider">
+                                        SHIFT DETAILS
+                                    </span>
+                                </div>
+                                <div className="px-2 py-0.5 rounded-[6px] text-[9.5px] font-semibold bg-white/15 border border-white/25 text-white">
+                                    {shift ? 'Active' : 'Regular'}
+                                </div>
+                            </div>
+
+                            <div className="text-[13px] font-bold text-white mb-2 truncate">
+                                {shift?.name || 'Regular General Shift'}
+                            </div>
+
+                            {/* 3 Metric Columns */}
+                            <div className="h-[54px] bg-black/15 border border-white/10 rounded-[10px] px-2.5 py-1.5 flex items-center justify-between">
+                                <div className="flex-1 min-w-0 pr-1">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">START TIME</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-white mt-0.5 truncate">
+                                        {formatTime12h(shift?.start_time || shift?.rules?.shift_timing?.start_time || '09:00')}
+                                    </span>
+                                </div>
+                                <div className="w-px h-[26px] bg-white/20 shrink-0" />
+                                <div className="flex-1 min-w-0 px-2">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">END TIME</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-white mt-0.5 truncate">
+                                        {formatTime12h(shift?.end_time || shift?.rules?.shift_timing?.end_time || '18:00')}
+                                    </span>
+                                </div>
+                                <div className="w-px h-[26px] bg-white/20 shrink-0" />
+                                <div className="flex-1 min-w-0 pl-1">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">WORK DAYS</span>
+                                    <div className="flex items-center gap-0.5 mt-1 overflow-hidden">
+                                        {weekdays.map(d => {
+                                            const isActive = activeWorkingDays.includes(d);
+                                            return (
+                                                <span
+                                                    key={d}
+                                                    className={`text-[8.5px] font-bold leading-none ${
+                                                        isActive ? 'text-white' : 'text-white/40'
+                                                    }`}
+                                                >
+                                                    {d[0]}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* Missed Time Out Banner */}
+            {/* Content Container matching Flutter's Padding(horizontal: 12) */}
+            <div className="px-3 space-y-3">
+                {/* 2. Missed Punch Warning Banner (if applicable) */}
                 {missedPunchWarning && (
-                    <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-4 rounded-2xl flex flex-col gap-3 justify-between animate-in fade-in slide-in-from-top-2">
-                        <div className="flex items-start gap-3">
-                            <div className="p-2.5 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-500 rounded-xl relative mt-0.5 shrink-0">
+                    <div className="p-3.5 bg-amber-50 dark:bg-[#451A03]/50 border border-amber-200 dark:border-[#B45309]/50 rounded-[14px] flex items-center justify-between gap-3 shadow-sm">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-full bg-amber-500/18 flex items-center justify-center shrink-0 text-amber-600">
                                 <AlertCircle size={20} />
-                                {missedPunchWarning.dates.length > 1 && (
-                                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
-                                        {missedPunchWarning.dates.length}
-                                    </span>
-                                )}
                             </div>
-                            <div>
-                                <p className="text-sm font-bold text-amber-800 dark:text-amber-500">Missed Time Out</p>
-                                <p className="text-xs text-amber-700/80 dark:text-amber-500/80 mt-1 leading-relaxed font-medium">
-                                    You forgot to time out on {missedPunchWarning.dates.join(', ')}. Please submit a correction request or it will be marked absent.
+                            <div className="min-w-0">
+                                <h4 className="text-[12.5px] font-bold text-amber-900 dark:text-[#FDE68A] leading-tight">
+                                    Missed Time Out
+                                </h4>
+                                <p className="text-[11px] text-amber-700/90 dark:text-[#FDE68A]/80 leading-snug mt-0.5">
+                                    Forgot to time out on {missedPunchWarning.dates.join(', ')}. Please submit a correction.
                                 </p>
                             </div>
                         </div>
                         <button
                             onClick={() => {
-                                const missedDate = missedPunchWarning && missedPunchWarning.dates && missedPunchWarning.dates.length > 0 ? missedPunchWarning.dates[0] : '';
-                                if (!missedDate) return;
-                                const deadlineDays = shift?.rules?.correction_deadline ?? 30;
-                                const cutoff = new Date();
-                                cutoff.setDate(cutoff.getDate() - deadlineDays);
-                                const cutoffStr = cutoff.toISOString().split('T')[0];
-                                if (missedDate < cutoffStr) {
-                                    toast.error(`Correction window of ${deadlineDays} days has expired for ${missedDate}.`);
-                                    return;
-                                }
+                                const missedDate = missedPunchWarning.dates[0];
                                 navigate(`/attendance?tab=my_attendance&subTab=correction&openDrawer=true${missedDate ? `&date=${missedDate}` : ''}`);
                             }}
-                            className="w-full py-3 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white text-xs font-bold rounded-xl transition-all shadow-md text-center cursor-pointer"
+                            className="px-3 py-1.5 bg-[#D97706] hover:bg-amber-600 active:scale-95 text-white font-bold text-[11px] rounded-[8px] shrink-0 shadow-sm transition-transform cursor-pointer"
                         >
                             Fix Now
                         </button>
                     </div>
                 )}
 
-                {/* Shift Details Card */}
-                {shift ? (
-                    <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border animate-fade-in">
-                        <h3 className="text-sm font-bold text-amber-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-                            <Calendar size={14} className="text-amber-500" /> Shift Details
-                        </h3>
-                        <div className="space-y-4">
-                            <div>
-                                <span className="block text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Shift Name</span>
-                                <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text mt-1 block">{shift.name}</span>
+                {/* 3. Quick Stats Grid (4 Dynamic Cards matching Flutter: Present, Late, Absent, Avg Hours) */}
+                <div className="grid grid-cols-2 gap-2.5">
+                    {/* Present Days */}
+                    <div className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="w-8 h-8 rounded-[9px] bg-emerald-500/12 flex items-center justify-center text-[#10B981]">
+                                <CheckCircle size={18} />
                             </div>
-                            <div className="h-px bg-slate-100 dark:bg-slate-800"></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <span className="block text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Start Time</span>
-                                    <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text font-mono mt-1 block">{formatTime12h(shift.start_time || shift.rules?.shift_timing?.start_time)}</span>
-                                </div>
-                                <div>
-                                    <span className="block text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">End Time</span>
-                                    <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text font-mono mt-1 block">{formatTime12h(shift.end_time || shift.rules?.shift_timing?.end_time)}</span>
-                                </div>
+                            <span className="text-[8.5px] font-semibold text-[#64748B] dark:text-gray-400 bg-slate-100 dark:bg-[#21262D] px-2 py-0.5 rounded-[6px]">
+                                This Month
+                            </span>
+                        </div>
+                        <div>
+                            <div className="text-[22px] font-extrabold text-[#0F172A] dark:text-white leading-none tracking-tight">
+                                {stats.daysPresent}
                             </div>
-                            <div className="h-px bg-slate-100 dark:bg-slate-800"></div>
-                            <div>
-                                <span className="block text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider mb-2">Working Days</span>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {weekdays.map(day => {
-                                        const active = activeWorkingDays.includes(day);
-                                        return (
-                                            <span
-                                                key={day}
-                                                className={`px-2.5 py-1 text-xs font-bold rounded-lg ${
-                                                    active 
-                                                        ? 'bg-indigo-600 text-white dark:bg-indigo-650/40 dark:text-indigo-200' 
-                                                        : 'bg-slate-100 text-slate-400 dark:bg-slate-800/80 dark:text-slate-500'
-                                                }`}
-                                            >
-                                                {day}
-                                            </span>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                            <span className="text-[11px] font-semibold text-[#64748B] dark:text-gray-400 mt-1 block">
+                                Present Days
+                            </span>
                         </div>
                     </div>
-                ) : (
-                    <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border animate-fade-in">
-                        <h3 className="text-sm font-bold text-indigo-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-                            <Calendar size={14} className="text-indigo-500" /> Shift Details
-                        </h3>
-                        <div className="flex flex-col items-center justify-center text-center py-6">
-                            <div className="relative w-14 h-14 rounded-full border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-3 bg-slate-50/50 dark:bg-slate-800/20">
-                                <Calendar className="text-slate-400 dark:text-slate-500" size={20} />
-                                <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white dark:bg-dark-card border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-sm">
-                                    <Clock className="text-slate-400 dark:text-slate-500" size={10} />
-                                </div>
-                            </div>
-                            <h4 className="text-sm font-extrabold text-slate-800 dark:text-github-dark-text mb-1">No Shift Assigned</h4>
-                            <p className="text-xs text-slate-500 dark:text-github-dark-muted leading-relaxed max-w-[220px]">
-                                Your shift details will appear here once your administrator assigns a shift.
-                            </p>
-                        </div>
-                    </div>
-                )}
 
-                {/* 2. Today's Status Card */}
-                <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border">
-                    <h3 className="text-sm font-bold text-slate-500 dark:text-github-dark-muted uppercase tracking-wider mb-4 flex items-center gap-2">
-                        <Clock size={14} /> Today's Status
-                    </h3>
-                    <div className="flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
-                            <span className="text-xs text-slate-400 font-medium uppercase">Check In</span>
-                            <span className={`text-xl font-bold font-mono ${todayStatus?.time_in ? 'text-slate-800 dark:text-github-dark-text' : 'text-slate-300 dark:text-slate-600'}`}>
-                                {formatDashboardTime(todayStatus?.time_in)}
+                    {/* Late Arrivals */}
+                    <div className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="w-8 h-8 rounded-[9px] bg-amber-500/12 flex items-center justify-center text-[#F59E0B]">
+                                <Clock size={18} />
+                            </div>
+                            <span className="text-[8.5px] font-semibold text-[#64748B] dark:text-gray-400 bg-slate-100 dark:bg-[#21262D] px-2 py-0.5 rounded-[6px]">
+                                This Month
                             </span>
                         </div>
-                        <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>
-                        <div className="flex flex-col gap-1">
-                            <span className="text-xs text-slate-400 font-medium uppercase">Check Out</span>
-                            <span className={`text-xl font-bold font-mono ${todayStatus?.time_out ? 'text-slate-800 dark:text-github-dark-text' : 'text-slate-300 dark:text-slate-600'}`}>
-                                {formatDashboardTime(todayStatus?.time_out)}
+                        <div>
+                            <div className="text-[22px] font-extrabold text-[#0F172A] dark:text-white leading-none tracking-tight">
+                                {stats.lateDays}
+                            </div>
+                            <span className="text-[11px] font-semibold text-[#64748B] dark:text-gray-400 mt-1 block">
+                                Late Arrivals
                             </span>
                         </div>
-                        <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>
-                        <div className="flex flex-col gap-1">
-                            <span className="text-xs text-slate-400 font-medium uppercase">Duration</span>
-                            <span className={`text-xl font-bold font-mono ${todayStatus?.duration ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600'}`}>
+                    </div>
+
+                    {/* Absent Days */}
+                    <div className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="w-8 h-8 rounded-[9px] bg-red-500/12 flex items-center justify-center text-[#EF4444]">
+                                <XCircle size={18} />
+                            </div>
+                            <span className="text-[8.5px] font-semibold text-[#64748B] dark:text-gray-400 bg-slate-100 dark:bg-[#21262D] px-2 py-0.5 rounded-[6px]">
+                                This Month
+                            </span>
+                        </div>
+                        <div>
+                            <div className="text-[22px] font-extrabold text-[#0F172A] dark:text-white leading-none tracking-tight">
+                                {stats.daysAbsent}
+                            </div>
+                            <span className="text-[11px] font-semibold text-[#64748B] dark:text-gray-400 mt-1 block">
+                                Absent Days
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Avg Work Hours */}
+                    <div className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="w-8 h-8 rounded-[9px] bg-indigo-500/12 flex items-center justify-center text-[#6366F1]">
+                                <TrendingUp size={18} />
+                            </div>
+                            <span className="text-[8.5px] font-semibold text-[#64748B] dark:text-gray-400 bg-slate-100 dark:bg-[#21262D] px-2 py-0.5 rounded-[6px]">
+                                This Month
+                            </span>
+                        </div>
+                        <div>
+                            <div className="text-[22px] font-extrabold text-[#0F172A] dark:text-white leading-none tracking-tight">
+                                {typeof stats.avgHours === 'number' ? stats.avgHours.toFixed(1) : stats.avgHours}h
+                            </div>
+                            <span className="text-[11px] font-semibold text-[#64748B] dark:text-gray-400 mt-1 block">
+                                Avg Work Hours
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 4. Recent Activity Card matching Flutter EmployeeRecentActivityCard */}
+                <div className="p-4 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[16px] shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Zap size={18} className="text-[#10B981]" />
+                        <h3 className="text-[14px] font-bold text-[#0F172A] dark:text-white">
+                            Recent Activity
+                        </h3>
+                    </div>
+
+                    <div className="space-y-2">
+                        {/* Checked In */}
+                        <div className="p-2.5 rounded-[10px] bg-slate-50 dark:bg-[#21262D]/50 border border-slate-200/70 dark:border-[#30363D]/40 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-indigo-500/12 flex items-center justify-center text-[#6366F1]">
+                                    <Clock size={15} />
+                                </div>
+                                <span className="text-[12.5px] font-semibold text-[#1E293B] dark:text-white">Checked In</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="font-mono text-[12.5px] font-semibold text-slate-700 dark:text-gray-300">
+                                    {formatTime12h(todayStatus?.time_in)}
+                                </span>
+                                {todayStatus?.time_in && (
+                                    <span className={`px-1.5 py-0.5 rounded-[6px] text-[9px] font-bold ${
+                                        isLate ? 'bg-amber-500/15 text-[#F59E0B]' : 'bg-emerald-500/15 text-[#10B981]'
+                                    }`}>
+                                        {isLate ? 'LATE' : 'PRESENT'}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Checked Out */}
+                        <div className="p-2.5 rounded-[10px] bg-slate-50 dark:bg-[#21262D]/50 border border-slate-200/70 dark:border-[#30363D]/40 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-indigo-500/12 flex items-center justify-center text-[#6366F1]">
+                                    <Clock size={15} />
+                                </div>
+                                <span className="text-[12.5px] font-semibold text-[#1E293B] dark:text-white">Checked Out</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="font-mono text-[12.5px] font-semibold text-slate-700 dark:text-gray-300">
+                                    {formatTime12h(todayStatus?.time_out)}
+                                </span>
+                                {todayStatus?.time_out && (
+                                    <span className="px-1.5 py-0.5 rounded-[6px] text-[9px] font-bold bg-indigo-500/15 text-[#6366F1]">
+                                        COMPLETED
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Total Work Hours */}
+                        <div className="p-2.5 rounded-[10px] bg-slate-50 dark:bg-[#21262D]/50 border border-slate-200/70 dark:border-[#30363D]/40 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-indigo-500/12 flex items-center justify-center text-[#6366F1]">
+                                    <Clock size={15} />
+                                </div>
+                                <span className="text-[12.5px] font-semibold text-[#1E293B] dark:text-white">Total Work Hours</span>
+                            </div>
+                            <span className="font-mono text-[12.5px] font-semibold text-slate-700 dark:text-gray-300">
                                 {todayStatus?.duration || '0h'}
                             </span>
                         </div>
-                    </div>
-                </div>
 
-                {/* 3. Monthly Stats Grid */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white dark:bg-dark-card p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
-                        <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2">
-                            <CheckCircle size={18} />
-                        </div>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.daysPresent}</span>
-                        <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">Present Days</span>
-                    </div>
-
-                    <div className="bg-white dark:bg-dark-card p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
-                        <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-2">
-                            <AlertCircle size={18} />
-                        </div>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.lateDays}</span>
-                        <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">Late Check-ins</span>
-                    </div>
-
-                    <div className="bg-white dark:bg-dark-card p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
-                        <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center justify-center mb-2">
-                            <XCircle size={18} />
-                        </div>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.daysAbsent}</span>
-                        <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">Absents</span>
-                    </div>
-
-                    <div className="bg-white dark:bg-dark-card p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
-                        <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2">
-                            <TrendingUp size={18} />
-                        </div>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-github-dark-text">{stats.avgHours}h</span>
-                        <span className="text-xs text-slate-500 dark:text-github-dark-muted font-medium">Avg Hours</span>
-                    </div>
-                </div>
-
-                {/* 4. Recent Activity */}
-                <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border">
-                    <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text flex items-center gap-2 mb-4">
-                        <Activity size={16} className="text-emerald-500" /> Recent Activity
-                    </h3>
-                    <div className="space-y-4">
-                        {recentActivity.length > 0 ? (
-                            recentActivity.slice(0, 5).map((activity, index) => (
-                                <div key={index} className="flex items-start gap-3">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                                        activity.action.toLowerCase().includes('in') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                                    }`}>
-                                        <Clock size={14} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-slate-800 dark:text-github-dark-text truncate">{activity.action}</p>
-                                        <p className="text-xs text-slate-500 dark:text-github-dark-muted">{activity.time || activity.date}</p>
-                                    </div>
+                        {/* Status */}
+                        <div className="p-2.5 rounded-[10px] bg-slate-50 dark:bg-[#21262D]/50 border border-slate-200/70 dark:border-[#30363D]/40 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-indigo-500/12 flex items-center justify-center text-[#6366F1]">
+                                    <Clock size={15} />
                                 </div>
-                            ))
-                        ) : (
-                            <div className="text-center py-4 text-sm text-slate-400 italic">No recent activity</div>
-                        )}
+                                <span className="text-[12.5px] font-semibold text-[#1E293B] dark:text-white">Status</span>
+                            </div>
+                            <span className="font-mono text-[12.5px] font-semibold text-slate-700 dark:text-gray-300">
+                                {sessionStatusLabel}
+                            </span>
+                        </div>
                     </div>
                 </div>
 
-                {/* 5. Upcoming Holidays */}
-                <div className="bg-white dark:bg-dark-card rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-github-dark-border">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-bold text-slate-800 dark:text-github-dark-text flex items-center gap-2">
-                            <Calendar size={14} className="text-indigo-500" /> Upcoming Holidays
-                        </h3>
-                        <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium cursor-pointer hover:underline" onClick={() => navigate('/holidays')}>View All</span>
+                {/* 5. Upcoming Holidays Card matching Flutter EmployeeUpcomingHolidaysCard */}
+                <div className="p-4 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[16px] shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <Calendar size={18} className="text-[#6366F1]" />
+                            <h3 className="text-[14px] font-bold text-[#0F172A] dark:text-white">
+                                Upcoming Holidays
+                            </h3>
+                        </div>
+                        <button
+                            onClick={() => navigate('/holidays?tab=holidays')}
+                            className="inline-flex items-center gap-0.5 text-[12px] font-bold text-[#6366F1] hover:underline cursor-pointer"
+                        >
+                            <span>View All</span>
+                            <ChevronRight size={14} />
+                        </button>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                         {upcomingHolidays.length > 0 ? (
-                            upcomingHolidays.slice(0, 3).map((holiday, index) => (
-                                <div key={index} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-github-dark-subtle/50 rounded-xl border border-slate-100 dark:border-github-dark-border">
-                                    <div className="flex flex-col items-center justify-center w-10 h-10 bg-white dark:bg-slate-700 rounded-lg shadow-sm text-center border border-slate-200 dark:border-github-dark-border">
-                                        <span className="text-[10px] text-slate-500 font-bold uppercase">{attendanceService.safeParseDate(holiday.date).toLocaleString('default', { month: 'short' })}</span>
-                                        <span className="text-sm font-bold text-slate-800 dark:text-github-dark-text">{attendanceService.safeParseDate(holiday.date).getDate()}</span>
+                            upcomingHolidays.slice(0, 3).map((holiday, idx) => {
+                                const dateObj = attendanceService.safeParseDate(holiday.date);
+                                const monthStr = dateObj ? dateObj.toLocaleString('en-US', { month: 'short' }).toUpperCase() : 'HOL';
+                                const dayStr = dateObj ? String(dateObj.getDate()).padStart(2, '0') : '--';
+                                const dayName = dateObj ? dateObj.toLocaleDateString('en-US', { weekday: 'long' }) : '';
+
+                                return (
+                                    <div
+                                        key={holiday.id || idx}
+                                        className="p-2.5 rounded-[12px] bg-slate-50 dark:bg-[#21262D]/50 border border-slate-200/70 dark:border-[#30363D]/40 flex items-center gap-3"
+                                    >
+                                        <div className="w-11 py-1 rounded-[8px] bg-indigo-500/12 border border-indigo-500/25 flex flex-col items-center justify-center text-center shrink-0">
+                                            <span className="text-[9px] font-extrabold text-[#6366F1] uppercase tracking-wider leading-none">
+                                                {monthStr}
+                                            </span>
+                                            <span className="text-[14px] font-extrabold text-[#0F172A] dark:text-white leading-tight mt-0.5">
+                                                {dayStr}
+                                            </span>
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <h4 className="text-[12.5px] font-bold text-[#0F172A] dark:text-white truncate">
+                                                {holiday.name}
+                                            </h4>
+                                            <p className="text-[10.5px] text-slate-500 dark:text-gray-400 mt-0.5">
+                                                {dayName}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div className="flex-1">
-                                        <h4 className="text-sm font-semibold text-slate-800 dark:text-github-dark-text">{holiday.name}</h4>
-                                        <p className="text-xs text-slate-500 dark:text-github-dark-muted">{attendanceService.safeParseDate(holiday.date).toLocaleDateString(undefined, { weekday: 'long' })}</p>
-                                    </div>
-                                </div>
-                            ))
+                                );
+                            })
                         ) : (
-                            <div className="text-center py-4 text-sm text-slate-400 italic">No upcoming holidays</div>
+                            <div className="text-center py-5 text-xs text-slate-400 dark:text-gray-500 italic">
+                                No upcoming holidays
+                            </div>
                         )}
                     </div>
                 </div>
-
             </div>
         </MobileDashboardLayout>
     );

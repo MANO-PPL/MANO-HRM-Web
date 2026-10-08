@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { formatPlatformDate } from '../utils/dateUtils';
 
 const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate, compact = false, clearable = false, align = "left", className = "", triggerClassName = "" }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -100,10 +101,7 @@ const DatePicker = ({ label, value, onChange, placeholder = "Select date", minDa
     };
 
     const formatDateDisplay = (dateStr) => {
-        if (!dateStr) return '';
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return dateStr;
-        return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+        return formatPlatformDate(dateStr);
     };
 
     const renderCalendar = () => {

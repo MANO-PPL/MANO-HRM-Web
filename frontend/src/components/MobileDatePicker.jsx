@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react';
+import { formatPlatformDate } from '../utils/dateUtils';
 
 const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date", minDate, maxDate }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -57,9 +58,7 @@ const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date",
     };
 
     const formatDateDisplay = (dateStr) => {
-        if (!dateStr) return '';
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+        return formatPlatformDate(dateStr);
     };
 
     const renderCalendar = () => {
@@ -85,11 +84,11 @@ const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date",
                     key={i}
                     onClick={() => !isDisabled && handleDayClick(i)}
                     disabled={isDisabled}
-                    className={`h-8 w-8 rounded-lg flex items-center justify-center text-[10px] font-black transition-all
+                    className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all
                         ${isDisabled
                             ? 'opacity-20 cursor-not-allowed text-slate-350 dark:text-slate-650'
                             : isSelected(i)
-                                ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 font-semibold'
                                 : isToday(i)
                                     ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20'
                                     : 'hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300'
@@ -150,26 +149,26 @@ const MobileDatePicker = ({ label, value, onChange, placeholder = "Select date",
     return (
         <div className="relative" ref={containerRef}>
             {label && (
-                <label className="block text-[8px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider mb-1 px-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 px-0.5">
                     {label}
                 </label>
             )}
 
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full py-1.5 px-2.5 rounded-lg border flex items-center justify-between gap-1.5 cursor-pointer transition-all ${
+                className={`w-full py-2 px-3 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition-all ${
                     isOpen 
                         ? 'border-indigo-500 ring-2 ring-indigo-500/10 bg-white dark:bg-dark-card' 
-                        : 'border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-white/5'
+                        : 'border-slate-200 dark:border-github-dark-border bg-slate-50/50 dark:bg-white/5 hover:border-slate-300'
                 }`}
             >
-                <div className="flex items-center gap-1.5 overflow-hidden">
-                    <Calendar size={12} className="text-indigo-500 shrink-0" />
-                    <span className={`text-[10px] font-bold truncate ${value ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'}`}>
+                <div className="flex items-center gap-2 overflow-hidden">
+                    <Calendar size={14} className="text-indigo-500 shrink-0" />
+                    <span className={`text-xs font-medium truncate ${value ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'}`}>
                         {value ? formatDateDisplay(value) : placeholder}
                     </span>
                 </div>
-                <ChevronDown size={11} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180 text-indigo-500' : ''}`} />
+                <ChevronDown size={13} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180 text-indigo-500' : ''}`} />
             </div>
 
             {isOpen && (
