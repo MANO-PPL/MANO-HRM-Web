@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
 import { toast } from 'react-toastify';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 // ─── Per-Page Tour Steps ───────────────────────────────────────────────────
 const PAGE_KEY = 'emp_dashboard';
@@ -314,7 +315,7 @@ const EmployeeDashboard = () => {
                                 {getGreeting()}, {user?.user_name || user?.name || 'Employee'}!
                             </h1>
                             <p className="text-indigo-200/80 text-base font-medium mt-2">
-                                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                {formatPlatformDate(new Date())}
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-4 mt-2">

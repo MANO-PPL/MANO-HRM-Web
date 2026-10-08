@@ -1,110 +1,56 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import MobileDashboardLayout from '../../components/MobileDashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import {
     Users,
     TrendingUp,
-    AlertTriangle,
     Clock,
     CheckCircle,
     XCircle,
     Calendar,
-    FileText,
-    UserPlus,
-    UserCheck,
     Briefcase,
     RefreshCw,
     Activity,
-    MapPin
+    MapPin,
+    UserPlus,
+    FileText,
+    ChevronRight,
+    Coffee,
+    AlertCircle
 } from 'lucide-react';
 import {
-    LineChart,
-    Line,
     AreaChart,
     Area,
-    BarChart,
-    Bar,
     XAxis,
     YAxis,
-    CartesianGrid,
     Tooltip,
-    Legend,
     ResponsiveContainer
 } from 'recharts';
 import { adminService, adminCacheData } from '../../services/adminService';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
+import employeeService from '../../services/employeeService';
+import { parsePolicy } from '../../utils/weekOffPolicy';
 import { toast } from 'react-toastify';
 
 const AdminDashboard = () => {
     const navigate = useNavigate();
     const { user, avatarTimestamp } = useAuth();
+    const isHr = Boolean(user?.role === 'hr' || user?.isHr || (user?.designation && user.designation.toLowerCase().includes('hr')));
 
-    const [currentTime, setCurrentTime] = React.useState(new Date());
-    const [location, setLocation] = React.useState({ lat: null, lng: null, address: 'Fetching location...', error: null });
-    const [isLoadingLoc, setIsLoadingLoc] = React.useState(false);
-
-    React.useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-        
-        let watchId;
-        const startWatch = (highAccuracy = true) => {
-            if (!navigator.geolocation) return;
-            setIsLoadingLoc(true);
-            watchId = navigator.geolocation.watchPosition(
-                async (pos) => {
-                    const { latitude, longitude } = pos.coords;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-                        const data = await res.json();
-                        setLocation({
-                            lat: latitude,
-                            lng: longitude,
-                            address: data.display_name?.split(',')[0] || 'Unknown Location',
-                            error: null
-                        });
-                    } catch (err) {
-                        setLocation({ lat: latitude, lng: longitude, address: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, error: null });
-                    } finally {
-                        setIsLoadingLoc(false);
-                    }
-                },
-                (err) => {
-                    console.warn(`watchPosition failed in admin:`, err);
-                    if (highAccuracy && (err.code === 3 || err.code === 1)) {
-                        if (watchId) navigator.geolocation.clearWatch(watchId);
-                        startWatch(false);
-                    } else {
-                        setLocation(prev => ({ ...prev, error: err.message, address: 'Location Access Denied' }));
-                        setIsLoadingLoc(false);
-                    }
-                },
-                { enableHighAccuracy: highAccuracy, timeout: 15000, maximumAge: 30000 }
-            );
-        };
-
-        startWatch(true);
-
-        return () => {
-            clearInterval(timer);
-            if (watchId) navigator.geolocation.clearWatch(watchId);
-        };
-    }, []);
-
-    const targetDate = new Date().toISOString().split('T')[0];
     const defaultCacheKey = 'weekly_null_null';
 
-    const [stats, setStats] = React.useState(() => {
+    const [stats, setStats] = useState(() => {
         const cached = adminCacheData.dashboardStats[defaultCacheKey];
         return cached?.stats || {
             presentToday: 0,
             totalEmployees: 0,
             absentToday: 0,
-            lateCheckins: 0
+            lateCheckins: 0,
+            onLeave: 0
         };
     });
-    const [trends, setTrends] = React.useState(() => {
+    const [trends, setTrends] = useState(() => {
         const cached = adminCacheData.dashboardStats[defaultCacheKey];
         return cached?.trends || {
             present: '0%',
@@ -112,117 +58,121 @@ const AdminDashboard = () => {
             late: '0%'
         };
     });
-    const [chartData, setChartData] = React.useState(() => {
+    const [chartData, setChartData] = useState(() => {
         const cached = adminCacheData.dashboardStats[defaultCacheKey];
         return cached?.chartData || [];
     });
-    const [activities, setActivities] = React.useState(() => {
+    const [activities, setActivities] = useState(() => {
         const cached = adminCacheData.dashboardStats[defaultCacheKey];
-        if (cached?.activities) return cached.activities;
-        const fallback = attendanceCacheData.realTimeAttendance[targetDate];
-        if (fallback?.data) {
-            return fallback.data.map(record => ({
-                id: `att-${record.attendance_id || record.acr_id || record.id || Math.random()}`,
-                user: record.user_name,
-                action: record.time_out ? 'Checked Out' : 'Checked In',
-                time: (() => {
-                    const rawTime = record.time_out || record.time_in;
-                    if (!rawTime) return '';
-                    const parsed = new Date(rawTime);
-                    if (isNaN(parsed.getTime())) {
-                        const cleaned = String(rawTime).replace(' ', 'T');
-                        const p2 = new Date(cleaned);
-                        if (!isNaN(p2.getTime())) {
-                            return p2.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
-                        }
-                        return String(rawTime);
-                    }
-                    return parsed.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
-                })(),
-                profile_image_url: record.profile_image_url,
-                role: record.designation || 'Staff'
-            })).slice(0, 10);
-        }
-        return [];
+        return cached?.activities || [];
     });
-    const [isLoading, setIsLoading] = React.useState(() => {
-        return !adminCacheData.dashboardStats[defaultCacheKey];
-    });
-    const [activeRange, setActiveRange] = React.useState('weekly');
-    const [viewMode, setViewMode] = React.useState('range'); // 'range' or 'calendar'
-    const [selectedMonth, setSelectedMonth] = React.useState(new Date().getMonth() + 1);
-    const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear());
-    const [isFeedExpanded, setIsFeedExpanded] = React.useState(false);
-    const [todayStatus, setTodayStatus] = React.useState(null);
+    const [isLoading, setIsLoading] = useState(() => !adminCacheData.dashboardStats[defaultCacheKey]);
 
-    const formatDashboardTime = (timeVal) => {
+    const [todayStatus, setTodayStatus] = useState(null);
+    const [shift, setShift] = useState(null);
+    const [missedPunchWarning, setMissedPunchWarning] = useState(null);
+
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    const formatTime12h = (timeVal) => {
         if (!timeVal || timeVal === '--:--' || timeVal === '-') return '--:--';
         try {
             const str = String(timeVal).trim();
-            const parts = str.split(/[- :T.]/);
-            if (parts.length >= 5) {
-                let hour = parseInt(parts[3], 10);
-                const minute = String(parts[4]).padStart(2, '0');
+            if (str.includes('T') || str.includes(' ')) {
+                const parsed = new Date(str);
+                if (!isNaN(parsed.getTime())) {
+                    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                }
+            }
+            const parts = str.split(':');
+            if (parts.length >= 2) {
+                let hour = parseInt(parts[0], 10);
+                const minute = parts[1].padStart(2, '0');
                 const ampm = hour >= 12 ? 'PM' : 'AM';
                 hour = hour % 12;
                 if (hour === 0) hour = 12;
-                const pad = (n) => String(n).padStart(2, '0');
-                return `${pad(hour)}:${minute} ${ampm}`;
+                const strHour = hour < 10 ? '0' + hour : hour;
+                return `${strHour}:${minute} ${ampm}`;
             }
-
-            const d = new Date(str);
-            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-        } catch (e) {
+            return str;
+        } catch (_) {
             return String(timeVal);
         }
     };
 
-    React.useEffect(() => {
-        const fetchStatus = async () => {
-            try {
-                const res = await attendanceService.getTodayStatus();
-                if (res.success) {
-                    setTodayStatus(res.data);
-                }
-            } catch (err) {
-                console.error("Failed to fetch admin today status:", err);
-            }
-        };
-        fetchStatus();
-    }, [user]);
-
-    React.useEffect(() => {
-        const cacheKey = viewMode === 'range'
-            ? `${activeRange}_null_null`
-            : `custom_${selectedMonth}_${selectedYear}`;
-
-        const cached = adminCacheData.dashboardStats[cacheKey];
-        if (cached) {
-            setStats(cached.stats);
-            setTrends(cached.trends);
-            setChartData(cached.chartData);
-            setActivities(cached.activities);
-            setIsLoading(false);
-        }
-
-        if (viewMode === 'range') {
-            fetchDashboardData(activeRange);
-        } else {
-            fetchDashboardData('custom', selectedMonth, selectedYear);
-        }
-    }, [activeRange, viewMode, selectedMonth, selectedYear]);
-
-    const fetchDashboardData = async (range, month = null, year = null, forceRefresh = false) => {
-        const cacheKey = `${range}_${month || 'null'}_${year || 'null'}`;
-
+    const activeWorkingDays = (() => {
+        const policy = shift?.rules?.week_off_policy;
+        if (!policy) return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
         try {
-            if (!adminCacheData.dashboardStats[cacheKey]) {
+            const parsed = parsePolicy(policy);
+            return parsed.workingDays || [];
+        } catch (e) {
+            return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+        }
+    })();
+
+    const todayDate = new Date();
+    const formattedDate = new Intl.DateTimeFormat('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    }).format(todayDate);
+
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return 'Good Morning';
+        if (hour < 18) return 'Good Afternoon';
+        return 'Good Evening';
+    };
+
+    const firstName = user?.user_name?.split(' ')[0] || user?.name?.split(' ')[0] || (isHr ? 'HR Manager' : 'Admin');
+
+    useEffect(() => {
+        fetchDashboardData(false);
+        fetchPersonalStatus();
+    }, []);
+
+    const fetchPersonalStatus = async () => {
+        try {
+            const [statusRes, shiftRes, recentRes] = await Promise.allSettled([
+                attendanceService.getTodayStatus(),
+                employeeService.getMyShift(),
+                attendanceService.getMyRecords()
+            ]);
+
+            if (statusRes.status === 'fulfilled' && statusRes.value?.success) {
+                setTodayStatus(statusRes.value.data);
+            }
+            if (shiftRes.status === 'fulfilled' && shiftRes.value && (shiftRes.value.ok || shiftRes.value.success)) {
+                setShift(shiftRes.value.shift);
+            }
+
+            if (recentRes.status === 'fulfilled' && recentRes.value?.data?.length > 0) {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const missed = [];
+                for (const session of recentRes.value.data) {
+                    if (!session.time_out && session.time_in) {
+                        const sDate = new Date(session.time_in).toISOString().split('T')[0];
+                        if (sDate < todayStr && !['ABSENT', 'REJECTED'].includes(session.status)) {
+                            missed.push(sDate);
+                        }
+                    }
+                }
+                setMissedPunchWarning(missed.length > 0 ? [...new Set(missed)] : null);
+            }
+        } catch (err) {
+            console.error("Failed to fetch admin personal attendance info:", err);
+        }
+    };
+
+    const fetchDashboardData = async (forceRefresh = false) => {
+        try {
+            if (!adminCacheData.dashboardStats[defaultCacheKey] || forceRefresh) {
                 setIsLoading(true);
             }
-            const res = await adminService.getDashboardStats(range, month, year, forceRefresh);
+            const res = await adminService.getDashboardStats('weekly', null, null, forceRefresh);
             if (res.success) {
                 let finalActivities = res.activities || [];
-                
                 if (finalActivities.length === 0) {
                     try {
                         const attendanceRes = await attendanceService.getRealTimeAttendance(null, forceRefresh);
@@ -232,26 +182,16 @@ const AdminDashboard = () => {
                                 user: record.user_name,
                                 action: record.time_out ? 'Checked Out' : 'Checked In',
                                 time: (() => {
-                                    const rawTime = record.time_out || record.time_in;
-                                    if (!rawTime) return '';
-                                    const parsed = new Date(rawTime);
-                                    if (isNaN(parsed.getTime())) {
-                                        const cleaned = String(rawTime).replace(' ', 'T');
-                                        const p2 = new Date(cleaned);
-                                        if (!isNaN(p2.getTime())) {
-                                            return p2.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
-                                        }
-                                        return String(rawTime);
-                                    }
-                                    return parsed.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
+                                    const raw = record.time_out || record.time_in;
+                                    if (!raw) return '';
+                                    const d = new Date(raw);
+                                    return isNaN(d.getTime()) ? String(raw) : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
                                 })(),
                                 profile_image_url: record.profile_image_url,
                                 role: record.designation || 'Staff'
                             })).slice(0, 10);
                         }
-                    } catch (attError) {
-                        console.error("Failed to fetch fallback activities", attError);
-                    }
+                    } catch (_) {}
                 }
 
                 setStats(res.stats);
@@ -259,7 +199,7 @@ const AdminDashboard = () => {
                 setChartData(res.chartData);
                 setActivities(finalActivities);
 
-                adminCacheData.dashboardStats[cacheKey] = {
+                adminCacheData.dashboardStats[defaultCacheKey] = {
                     success: true,
                     stats: res.stats,
                     trends: res.trends,
@@ -276,322 +216,477 @@ const AdminDashboard = () => {
     };
 
     const handleRefresh = () => {
-        if (viewMode === 'range') {
-            fetchDashboardData(activeRange, null, null, true);
-        } else {
-            fetchDashboardData('custom', selectedMonth, selectedYear, true);
-        }
+        fetchDashboardData(true);
+        fetchPersonalStatus();
     };
-
-    const alerts = [
-        { id: 1, type: 'warning', message: 'High absence rate in Sales Dept.' },
-        { id: 2, type: 'error', message: '3 Unapproved Overtime requests.' },
-    ];
 
     const refreshButton = (
         <button
             onClick={handleRefresh}
-            className="text-slate-500 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+            className="p-1 text-slate-500 dark:text-slate-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+            title="Refresh Dashboard"
         >
-            <RefreshCw size={16} className={`${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw size={17} className={isLoading ? 'animate-spin' : ''} />
         </button>
     );
 
+    // Personal Session Status computation
+    const hasActiveSession = Boolean(todayStatus?.time_in && !todayStatus?.time_out);
+    const isLate = Boolean(todayStatus?.is_late || todayStatus?.late_minutes > 0 || (todayStatus?.status && todayStatus.status.toUpperCase() === 'LATE'));
+    let sessionStatusLabel = 'No Session Today';
+    if (hasActiveSession) {
+        sessionStatusLabel = isLate ? 'Late Active' : 'Active Session';
+    } else if (todayStatus?.time_out) {
+        sessionStatusLabel = isLate ? 'LATE' : 'PRESENT';
+    } else if (todayStatus?.status) {
+        sessionStatusLabel = todayStatus.status;
+    }
+
+    // Quick Action Definitions matching Flutter MobileAdminDashboardContent & MobileHrDashboardContent
+    const quickActions = isHr ? [
+        { title: 'Mark Attendance', icon: CheckCircle, color: '#10B981', path: '/attendance' },
+        { title: 'Add Employee', icon: UserPlus, color: '#6366F1', path: '/employees' },
+        { title: 'Live Monitor', icon: Activity, color: '#EF4444', path: '/attendance-monitoring' },
+        { title: 'Generate Report', icon: FileText, color: '#10B981', path: '/reports' }
+    ] : [
+        { title: 'Mark Attendance', icon: CheckCircle, color: '#10B981', path: '/attendance' },
+        { title: 'Manage Shifts', icon: Briefcase, color: '#8B5CF6', path: '/shifts' },
+        { title: 'Geo Fencing', icon: MapPin, color: '#E11D48', path: '/geo-fencing' },
+        { title: 'Add Employee', icon: UserPlus, color: '#6366F1', path: '/employees' }
+    ];
+
     return (
-        <MobileDashboardLayout title="Dashboard" hideHeader={false} headerAction={refreshButton} hideScrollbar={true}>
-            <div className="pb-24 space-y-6 animate-fade-in px-1">
-                {/* Premium Greetings Card */}
-                <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-2xl p-5 sm:p-6 text-white border border-indigo-500/20 shadow-2xl">
-                    {/* Subtle Ambient Glows */}
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 blur-[80px] pointer-events-none" />
-                    <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-purple-500/10 blur-[70px] pointer-events-none" />
-                    {/* Animated Background Blobs */}
-                    <motion.div 
-                        animate={{ 
-                            scale: [1, 1.2, 1],
-                            rotate: [0, 90, 0],
-                        }}
-                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                        className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/15 blur-3xl rounded-full pointer-events-none"
-                    />
-                    <motion.div 
-                        animate={{ 
-                            scale: [1, 1.5, 1],
-                            x: [0, 50, 0],
-                        }}
-                        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                        className="absolute -bottom-24 -left-24 w-80 h-80 bg-purple-500/10 blur-3xl rounded-full pointer-events-none"
-                    />
+        <MobileDashboardLayout title="Dashboard" hideHeader={false} headerAction={refreshButton} contentClassName="pb-10 space-y-3">
+            {/* 1. Flush Edge-to-Edge Welcome Header matching Flutter's EmployeeHeaderStack */}
+            <div className="relative overflow-hidden w-full bg-gradient-to-br from-[#4F46E5] to-[#3730A3] dark:from-[#090A1A] dark:to-[#05060A] rounded-b-[24px] shadow-xl text-white pt-3 pb-5 px-3.5 sm:px-5">
+                <div className="absolute -top-12 -right-10 w-48 h-48 rounded-full bg-white/[0.08] pointer-events-none" />
+                <div className="absolute -bottom-12 -left-10 w-44 h-44 rounded-full bg-purple-500/[0.12] pointer-events-none" />
 
-                    <div className="relative z-10 flex items-center gap-4 mb-4">
-                        <div className="w-16 h-16 rounded-full border-2 border-white/30 bg-white/10 backdrop-blur-sm flex items-center justify-center text-2xl font-bold overflow-hidden shadow-inner shrink-0">
-                            {user?.profile_image_url ? (
-                                <img
-                                    src={`${user.profile_image_url}?t=${avatarTimestamp}`}
-                                    alt="Profile"
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                user?.name?.charAt(0) || 'A'
-                            )}
-                        </div>
-                        <div>
-                            <p className="text-indigo-200/80 text-sm font-medium">
-                                Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'},
-                            </p>
-                            <h2 className="text-2xl font-bold tracking-tight">{user?.user_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Admin'}</h2>
-                            <p className="text-xs text-indigo-300/80 mt-1 flex items-center gap-1">
-                                <Briefcase size={12} />
-                                {user?.designation || 'Administrator'}
-                            </p>
-                        </div>
+                <div className="relative z-10">
+                    <h2 className="text-[21px] sm:text-[23px] font-extrabold tracking-tight leading-tight text-white truncate">
+                        {getGreeting()}, {firstName}!
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-white/85 font-medium flex-wrap">
+                        <span>{formattedDate}</span>
+                        <span className="opacity-50">•</span>
+                        <span className="truncate max-w-[200px]">
+                            {user?.designation || (isHr ? 'HR Manager' : 'Administrator')}
+                        </span>
                     </div>
 
-                    {/* Current Time / Location Widget */}
-                    <div className="mt-5 bg-white/10 dark:bg-black/30 backdrop-blur-md rounded-2xl p-4 border border-white/10 hover:border-white/20 transition-all flex items-center justify-between text-white relative z-10 shadow-lg">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 rounded-2xl flex items-center justify-center shadow-inner">
-                                <Clock size={24} />
-                            </div>
-                            <div>
-                                <span className="block text-[10px] font-bold text-indigo-200 tracking-widest">Current Time</span>
-                                <span className="text-2xl font-black text-white font-mono">
-                                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <span className="block text-[10px] font-bold text-indigo-200 tracking-widest mb-1">Location</span>
-                            <div className="flex items-center gap-1.5 text-white/90 font-bold text-xs bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                                <MapPin size={12} className="text-indigo-300" />
-                                <span className="truncate max-w-[100px] inline-block align-middle" title={location.address}>
-                                    {isLoadingLoc ? 'Locating...' : location.address}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Compact 2x2 Stats Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                    <StatCard
-                        title="Present"
-                        value={`${stats.presentToday}`}
-                        total={`/ ${stats.totalEmployees}`}
-                        trend={trends.present}
-                        trendUp={parseFloat(trends.present) >= 0}
-                        icon={<CheckCircle size={16} />}
-                        color="emerald"
-                        loading={isLoading}
-                    />
-                    <StatCard
-                        title="Absent"
-                        value={`${stats.absentToday}`}
-                        trend={trends.absent}
-                        trendUp={parseFloat(trends.absent) < 0}
-                        icon={<XCircle size={16} />}
-                        color="rose"
-                        loading={isLoading}
-                    />
-                    <StatCard
-                        title="Late"
-                        value={`${stats.lateCheckins}`}
-                        trend={trends.late}
-                        trendUp={parseFloat(trends.late) < 0}
-                        icon={<Clock size={16} />}
-                        color="amber"
-                        loading={isLoading}
-                    />
-                    <StatCard
-                        title="Leave"
-                        value={`${stats.onLeave || 0}`}
-                        icon={<Calendar size={16} />}
-                        color="indigo"
-                        loading={isLoading}
-                    />
-                </div>
-
-                {/* Quick Actions Grid - Horizontal & Compact */}
-                <div>
-                    <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Management</h3>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                        <QuickAction
-                            onClick={() => navigate('/employees')}
-                            icon={<UserPlus size={16} />}
-                            label="Add Staff"
-                            color="indigo"
-                        />
-                        <QuickAction
-                            onClick={() => navigate('/attendance-monitoring')}
-                            icon={<Activity size={16} />}
-                            label="Monitor"
-                            color="rose"
-                        />
-                        <QuickAction
-                            onClick={() => navigate('/shifts')}
-                            icon={<Briefcase size={16} />}
-                            label="Shifts"
-                            color="purple"
-                        />
-                    </div>
-                </div>
-
-                {/* Analytics Segment - Glassmorphism */}
-                <div className="bg-white/60 dark:bg-[#0d1117]/60 backdrop-blur-xl rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-white/5">
-                    <div className="flex items-center justify-between mb-4">
-                        <div>
-                            <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">Analytics</h4>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold uppercase tracking-widest mt-0.5">Weekly Trends</p>
-                        </div>
-                        <TrendingUp size={14} className="text-indigo-500" />
+                    {/* Quick Navigation Row */}
+                    <div className="mt-3.5 flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+                        <button
+                            onClick={() => navigate('/attendance')}
+                            className="h-9 px-3.5 rounded-[10px] bg-white text-[#4F46E5] font-bold text-[11.5px] flex items-center gap-1.5 shrink-0 shadow-sm active:scale-95 transition-transform cursor-pointer"
+                        >
+                            <Clock size={15} />
+                            <span>My Attendance</span>
+                        </button>
+                        <button
+                            onClick={() => navigate('/holidays?tab=holidays')}
+                            className="h-9 px-3.5 rounded-[10px] bg-white/15 hover:bg-white/20 border border-white/20 text-white font-semibold text-[11.5px] flex items-center gap-1.5 shrink-0 backdrop-blur-md active:scale-95 transition-transform cursor-pointer"
+                        >
+                            <Calendar size={15} />
+                            <span>Holiday List</span>
+                        </button>
+                        <button
+                            onClick={() => navigate('/holidays?tab=leaves&apply=true')}
+                            className="h-9 px-3.5 rounded-[10px] bg-white/15 hover:bg-white/20 border border-white/20 text-white font-semibold text-[11.5px] flex items-center gap-1.5 shrink-0 backdrop-blur-md active:scale-95 transition-transform cursor-pointer"
+                        >
+                            <Coffee size={15} />
+                            <span>Apply Leave</span>
+                        </button>
                     </div>
 
-                    <div className="h-48">
-                        {isLoading ? (
-                            <div className="w-full h-full animate-pulse bg-slate-100 dark:bg-white/5 rounded-xl"></div>
-                        ) : (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                                    <defs>
-                                        <linearGradient id="colorPresent" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                                        </linearGradient>
-                                    </defs>
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 9, fontWeight: 700 }} dy={10} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 9, fontWeight: 700 }} />
-                                    <Tooltip
-                                        contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '10px' }}
-                                    />
-                                    <Area type="monotone" dataKey="present" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorPresent)" name="Present" />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        )}
-                    </div>
-                </div>
-
-                {/* Live Activity - Compact List */}
-                <div className="bg-white/60 dark:bg-[#0d1117]/60 backdrop-blur-xl rounded-2xl shadow-sm border border-slate-100 dark:border-white/5 overflow-hidden">
-                    <div className="px-4 py-3 flex items-center justify-between border-b border-slate-50 dark:border-white/5">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">Recent Activity</h3>
-                        <div className="flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live</span>
-                        </div>
-                    </div>
-
-                    <div className="divide-y divide-slate-50 dark:divide-white/5 max-h-[320px] overflow-y-auto no-scrollbar">
-                        {isLoading ? (
-                            <div className="p-4 space-y-4">
-                                {[1, 2, 3].map(i => (
-                                    <div key={i} className="flex items-center gap-3 animate-pulse">
-                                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5"></div>
-                                        <div className="flex-1 space-y-2">
-                                            <div className="h-2.5 bg-slate-100 dark:bg-white/5 rounded w-1/3"></div>
-                                            <div className="h-2 bg-slate-100 dark:bg-white/5 rounded w-1/2"></div>
-                                        </div>
+                    {/* Glass Cards: Today's Status & Shift Details */}
+                    <div className="mt-3.5 space-y-2.5">
+                        {/* Today's Status */}
+                        <div className="bg-white/12 border border-white/18 backdrop-blur-md rounded-[14px] p-3 text-white">
+                            <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-6 h-6 rounded-[7px] bg-white/20 flex items-center justify-center">
+                                        <Clock size={14} className="text-white" />
                                     </div>
-                                ))}
+                                    <span className="text-[10px] font-bold text-white/90 tracking-wider">
+                                        TODAY'S STATUS
+                                    </span>
+                                </div>
+                                <div className={`px-2 py-0.5 rounded-[6px] text-[9.5px] font-semibold border ${
+                                    sessionStatusLabel.includes('Active')
+                                        ? 'bg-emerald-500/25 border-emerald-500/60 text-emerald-300'
+                                        : sessionStatusLabel === 'LATE' || sessionStatusLabel.includes('Late')
+                                            ? 'bg-orange-500/25 border-orange-500/60 text-orange-300'
+                                            : sessionStatusLabel === 'PRESENT'
+                                                ? 'bg-white/25 border-white/40 text-white'
+                                                : 'bg-white/10 border-white/20 text-white/80'
+                                }`}>
+                                    {sessionStatusLabel}
+                                </div>
                             </div>
-                        ) : (activities && activities.length > 0) ? (
-                            activities.map((activity, idx) => (
-                                <div key={`act-${activity.id ?? 'item'}-${idx}`} className="flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-white/5 transition-colors">
-                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-100 dark:bg-[#1a1f2e] text-indigo-500 font-black text-sm shrink-0 overflow-hidden shadow-sm border border-white dark:border-white/5">
-                                        {activity.profile_image_url ? (
-                                            <img src={`${activity.profile_image_url}?t=${avatarTimestamp}`} alt={activity.user} className="w-full h-full object-cover" />
-                                        ) : (
-                                            activity.user?.charAt(0) || '?'
-                                        )}
-                                    </div>
 
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[13px] font-black text-slate-900 dark:text-white truncate uppercase tracking-tight">{activity.user || 'Unknown User'}</p>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-500 uppercase tracking-tighter truncate">{activity.role || 'Staff'}</span>
-                                            <span className="w-1 h-1 bg-slate-300 dark:bg-slate-700 rounded-full"></span>
-                                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter truncate">{activity.action}</span>
-                                        </div>
-                                    </div>
+                            <div className="text-[13px] font-bold text-white mb-2 truncate">
+                                {hasActiveSession
+                                    ? 'Current Active Session'
+                                    : todayStatus?.time_in
+                                        ? 'Daily Attendance Logged'
+                                        : 'No Active Session Today'}
+                            </div>
 
-                                    <div className="shrink-0 text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tabular-nums">
-                                        {activity.time || 'Now'}
+                            <div className="h-[54px] bg-black/15 border border-white/10 rounded-[10px] px-2.5 py-1.5 flex items-center justify-between">
+                                <div className="flex-1 min-w-0 pr-1">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">CHECK IN</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-white mt-0.5 truncate">
+                                        {formatTime12h(todayStatus?.time_in)}
+                                    </span>
+                                </div>
+                                <div className="w-px h-[26px] bg-white/20 shrink-0" />
+                                <div className="flex-1 min-w-0 px-2">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">CHECK OUT</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-white mt-0.5 truncate">
+                                        {formatTime12h(todayStatus?.time_out)}
+                                    </span>
+                                </div>
+                                <div className="w-px h-[26px] bg-white/20 shrink-0" />
+                                <div className="flex-1 min-w-0 pl-1">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">DURATION</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-[#6EE7B7] mt-0.5 truncate">
+                                        {todayStatus?.duration || '0h'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Shift Details */}
+                        <div className="bg-white/12 border border-white/18 backdrop-blur-md rounded-[14px] p-3 text-white">
+                            <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-6 h-6 rounded-[7px] bg-white/20 flex items-center justify-center">
+                                        <Calendar size={14} className="text-white" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-white/90 tracking-wider">
+                                        SHIFT DETAILS
+                                    </span>
+                                </div>
+                                <div className="px-2 py-0.5 rounded-[6px] text-[9.5px] font-semibold bg-white/15 border border-white/25 text-white">
+                                    {shift ? 'Active' : 'Regular'}
+                                </div>
+                            </div>
+
+                            <div className="text-[13px] font-bold text-white mb-2 truncate">
+                                {shift?.name || 'Regular General Shift'}
+                            </div>
+
+                            <div className="h-[54px] bg-black/15 border border-white/10 rounded-[10px] px-2.5 py-1.5 flex items-center justify-between">
+                                <div className="flex-1 min-w-0 pr-1">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">START TIME</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-white mt-0.5 truncate">
+                                        {formatTime12h(shift?.start_time || shift?.rules?.shift_timing?.start_time || '09:00')}
+                                    </span>
+                                </div>
+                                <div className="w-px h-[26px] bg-white/20 shrink-0" />
+                                <div className="flex-1 min-w-0 px-2">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">END TIME</span>
+                                    <span className="block text-[12.5px] font-bold font-mono text-white mt-0.5 truncate">
+                                        {formatTime12h(shift?.end_time || shift?.rules?.shift_timing?.end_time || '18:00')}
+                                    </span>
+                                </div>
+                                <div className="w-px h-[26px] bg-white/20 shrink-0" />
+                                <div className="flex-1 min-w-0 pl-1">
+                                    <span className="block text-[9px] font-bold text-white/75 tracking-wider truncate">WORK DAYS</span>
+                                    <div className="flex items-center gap-0.5 mt-1 overflow-hidden">
+                                        {weekdays.map(d => {
+                                            const isActive = activeWorkingDays.includes(d);
+                                            return (
+                                                <span
+                                                    key={d}
+                                                    className={`text-[8.5px] font-bold leading-none ${
+                                                        isActive ? 'text-white' : 'text-white/40'
+                                                    }`}
+                                                >
+                                                    {d[0]}
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                 </div>
-                            ))
-                        ) : (
-                            <div className="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
-                                No activity recorded
                             </div>
-                        )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Content Container */}
+            <div className="px-3 space-y-3">
+                {/* Missed Punch Banner (if applicable) */}
+                {missedPunchWarning && (
+                    <div className="p-3.5 bg-amber-50 dark:bg-[#451A03]/50 border border-amber-200 dark:border-[#B45309]/50 rounded-[14px] flex items-center justify-between gap-3 shadow-sm">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-full bg-amber-500/18 flex items-center justify-center shrink-0 text-amber-600">
+                                <AlertCircle size={20} />
+                            </div>
+                            <div className="min-w-0">
+                                <h4 className="text-[12.5px] font-bold text-amber-900 dark:text-[#FDE68A] leading-tight">
+                                    Missed Time Out
+                                </h4>
+                                <p className="text-[11px] text-amber-700/90 dark:text-[#FDE68A]/80 leading-snug mt-0.5">
+                                    Forgot to time out on {missedPunchWarning.join(', ')}. Please submit a correction.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => navigate(`/attendance?tab=my_attendance&subTab=correction&openDrawer=true`)}
+                            className="px-3 py-1.5 bg-[#D97706] hover:bg-amber-600 active:scale-95 text-white font-bold text-[11px] rounded-[8px] shrink-0 shadow-sm transition-transform cursor-pointer"
+                        >
+                            Fix Now
+                        </button>
+                    </div>
+                )}
+
+                {/* 2. KPI Section Grid (Present, Absent, Late, On Leave) */}
+                <div className="grid grid-cols-2 gap-2.5">
+                    {/* Present Today */}
+                    <div className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="w-8 h-8 rounded-[9px] bg-emerald-500/12 flex items-center justify-center text-[#10B981]">
+                                <CheckCircle size={18} />
+                            </div>
+                            <span className="text-[8.5px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded-[6px]">
+                                {trends.present?.startsWith('-') ? trends.present : `+${trends.present || '0%'}`}
+                            </span>
+                        </div>
+                        <div>
+                            <div className="flex items-baseline gap-1">
+                                <span className="text-[22px] font-extrabold text-[#0F172A] dark:text-white leading-none tracking-tight">
+                                    {stats.presentToday}
+                                </span>
+                                <span className="text-[11px] font-semibold text-slate-400 dark:text-gray-500">
+                                    / {stats.totalEmployees}
+                                </span>
+                            </div>
+                            <span className="text-[11px] font-semibold text-[#64748B] dark:text-gray-400 mt-1 block">
+                                Present Today
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Absent Today */}
+                    <div className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="w-8 h-8 rounded-[9px] bg-red-500/12 flex items-center justify-center text-[#EF4444]">
+                                <XCircle size={18} />
+                            </div>
+                            <span className="text-[8.5px] font-semibold text-[#64748B] dark:text-gray-400 bg-slate-100 dark:bg-[#21262D] px-1.5 py-0.5 rounded-[6px]">
+                                {trends.absent || '0%'}
+                            </span>
+                        </div>
+                        <div>
+                            <div className="text-[22px] font-extrabold text-[#0F172A] dark:text-white leading-none tracking-tight">
+                                {stats.absentToday}
+                            </div>
+                            <span className="text-[11px] font-semibold text-[#64748B] dark:text-gray-400 mt-1 block">
+                                Absent Today
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Late Check-ins */}
+                    <div className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="w-8 h-8 rounded-[9px] bg-amber-500/12 flex items-center justify-center text-[#F59E0B]">
+                                <Clock size={18} />
+                            </div>
+                            <span className="text-[8.5px] font-semibold text-[#64748B] dark:text-gray-400 bg-slate-100 dark:bg-[#21262D] px-1.5 py-0.5 rounded-[6px]">
+                                {trends.late || '0%'}
+                            </span>
+                        </div>
+                        <div>
+                            <div className="text-[22px] font-extrabold text-[#0F172A] dark:text-white leading-none tracking-tight">
+                                {stats.lateCheckins}
+                            </div>
+                            <span className="text-[11px] font-semibold text-[#64748B] dark:text-gray-400 mt-1 block">
+                                Late Check-ins
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* On Leave */}
+                    <div className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="w-8 h-8 rounded-[9px] bg-indigo-500/12 flex items-center justify-center text-[#6366F1]">
+                                <Calendar size={18} />
+                            </div>
+                            <span className="text-[8.5px] font-semibold text-[#64748B] dark:text-gray-400 bg-slate-100 dark:bg-[#21262D] px-1.5 py-0.5 rounded-[6px]">
+                                Monthly
+                            </span>
+                        </div>
+                        <div>
+                            <div className="text-[22px] font-extrabold text-[#0F172A] dark:text-white leading-none tracking-tight">
+                                {stats.onLeave || 0}
+                            </div>
+                            <span className="text-[11px] font-semibold text-[#64748B] dark:text-gray-400 mt-1 block">
+                                On Leave
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Quick Actions matching Flutter's adminQuickActions / hrQuickActions */}
+                <div>
+                    <h3 className="text-[12px] font-semibold text-slate-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-0.5">
+                        Quick Actions
+                    </h3>
+                    <div className="space-y-1.5">
+                        {quickActions.map(action => {
+                            const IconComponent = action.icon;
+                            return (
+                                <div
+                                    key={action.title}
+                                    onClick={() => navigate(action.path)}
+                                    className="p-3 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[14px] shadow-sm flex items-center justify-between active:scale-[0.99] transition-transform cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div
+                                            className="w-8 h-8 rounded-full flex items-center justify-center"
+                                            style={{ backgroundColor: `${action.color}1F`, color: action.color }}
+                                        >
+                                            <IconComponent size={18} />
+                                        </div>
+                                        <span className="text-[13.5px] font-semibold text-[#0F172A] dark:text-white">
+                                            {action.title}
+                                        </span>
+                                    </div>
+                                    <ChevronRight size={16} className="text-slate-400 dark:text-gray-500" />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* 4. Analytics Section (Trends Chart & Activity Feed) */}
+                <div>
+                    <h3 className="text-[12px] font-semibold text-slate-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-0.5">
+                        Analytics
+                    </h3>
+
+                    {/* Chart Container */}
+                    <div className="p-3.5 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[16px] shadow-sm mb-3">
+                        <div className="flex items-center justify-between mb-3">
+                            <div>
+                                <span className="text-[13px] font-bold text-[#0F172A] dark:text-white block">
+                                    Attendance Trends
+                                </span>
+                                <span className="text-[10px] text-slate-400 dark:text-gray-500 font-medium">
+                                    Weekly check-in pattern
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+                                <TrendingUp size={15} />
+                                <span>{trends.present || '+0%'}</span>
+                            </div>
+                        </div>
+
+                        <div className="h-[200px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorAdminPresent" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10B981" stopOpacity={0.25} />
+                                            <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <XAxis
+                                        dataKey="name"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 600 }}
+                                    />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#94A3B8', fontSize: 10, fontWeight: 600 }}
+                                    />
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: '#0F172A',
+                                            borderRadius: '12px',
+                                            border: 'none',
+                                            color: '#fff',
+                                            fontSize: '11px',
+                                            boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)'
+                                        }}
+                                    />
+                                    <Area
+                                        type="monotone"
+                                        dataKey="present"
+                                        stroke="#10B981"
+                                        strokeWidth={2.5}
+                                        fillOpacity={1}
+                                        fill="url(#colorAdminPresent)"
+                                        name="Present"
+                                    />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* Live Activity Feed */}
+                    <div className="p-3.5 bg-white dark:bg-[#161B22] border border-[#E2E8F0] dark:border-[#30363D] rounded-[16px] shadow-sm">
+                        <div className="flex items-center justify-between mb-3 px-0.5">
+                            <h4 className="text-[13px] font-bold text-[#0F172A] dark:text-white">
+                                Activity Feed
+                            </h4>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[10px] font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider">
+                                    LIVE
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {activities.length > 0 ? (
+                                activities.slice(0, 5).map((item, idx) => (
+                                    <div
+                                        key={item.id || idx}
+                                        className="p-2.5 rounded-[12px] bg-slate-50 dark:bg-[#21262D]/50 border border-slate-200/60 dark:border-[#30363D]/40 flex items-center justify-between gap-3"
+                                    >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className="w-8 h-8 rounded-full bg-indigo-500/15 border border-indigo-500/20 text-[#6366F1] font-bold text-xs flex items-center justify-center shrink-0 overflow-hidden">
+                                                {item.profile_image_url ? (
+                                                    <img
+                                                        src={`${item.profile_image_url}?t=${avatarTimestamp}`}
+                                                        alt={item.user}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    item.user?.charAt(0) || 'U'
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="text-[12.5px] font-bold text-[#0F172A] dark:text-white truncate">
+                                                    {item.user}
+                                                </div>
+                                                <span className="text-[10px] text-slate-500 dark:text-gray-400 truncate block">
+                                                    {item.role || 'Staff'} • {item.action}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <span className="font-mono text-[10.5px] font-semibold text-slate-500 dark:text-gray-400 shrink-0">
+                                            {item.time || 'Now'}
+                                        </span>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-center py-5 text-xs text-slate-400 dark:text-gray-500 italic">
+                                    No activity records today
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
         </MobileDashboardLayout>
-    );
-};
-
-const StatCard = ({ title, value, total, icon, trend, trendUp, color, loading }) => {
-    const colors = {
-        emerald: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/10',
-        rose: 'text-rose-500 bg-rose-500/10 border-rose-500/10',
-        amber: 'text-amber-500 bg-amber-500/10 border-amber-500/10',
-        indigo: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/10'
-    };
-
-    return (
-        <div className="bg-white dark:bg-[#0d1117] p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-white/5 relative overflow-hidden group">
-            {loading ? (
-                <div className="animate-pulse space-y-3">
-                    <div className="h-2.5 bg-slate-100 dark:bg-white/5 rounded w-1/2"></div>
-                    <div className="h-6 bg-slate-100 dark:bg-white/5 rounded w-2/3"></div>
-                </div>
-            ) : (
-                <>
-                    <div className="flex items-center gap-2 mb-2">
-                        <div className={`p-1.5 rounded-lg border ${colors[color]}`}>
-                            {icon}
-                        </div>
-                        <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest">{title}</p>
-                    </div>
-
-                    <div className="flex items-baseline gap-1">
-                        <h4 className="text-2xl font-black text-slate-900 dark:text-white tracking-tighter">
-                            {value}
-                        </h4>
-                        {total && <span className="text-[10px] font-bold text-slate-400 tracking-tighter">{total}</span>}
-                    </div>
-
-                    {trend && (
-                        <div className={`text-[9px] mt-1.5 font-black uppercase tracking-tighter flex items-center gap-1 ${trendUp ? 'text-emerald-500' : 'text-rose-500'}`}>
-                            {trendUp ? '↑' : '↓'} {trend}
-                            <span className="text-slate-400 dark:text-slate-600">vs prev</span>
-                        </div>
-                    )}
-                </>
-            )}
-        </div>
-    );
-};
-
-const QuickAction = ({ icon, label, onClick, color }) => {
-    const colors = {
-        indigo: 'text-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10 border-indigo-500/10',
-        rose: 'text-rose-500 bg-rose-500/5 hover:bg-rose-500/10 border-rose-500/10',
-        purple: 'text-purple-500 bg-purple-500/5 hover:bg-purple-500/10 border-purple-500/10'
-    };
-
-    return (
-        <button
-            onClick={onClick}
-            className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all active:scale-95 space-y-2 ${colors[color]}`}
-        >
-            <div className="p-2 rounded-xl bg-white dark:bg-[#0d1117] shadow-sm">
-                {icon}
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-tighter text-slate-700 dark:text-slate-300">{label}</span>
-        </button>
     );
 };
 

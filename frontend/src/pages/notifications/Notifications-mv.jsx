@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
+import { formatPlatformDate } from '../../utils/dateUtils';
 
 const Notifications = () => {
     const navigate = useNavigate();
@@ -90,7 +91,7 @@ const Notifications = () => {
         if (diffHours < 24) return `${diffHours}h ago`;
         if (diffDays === 1) return 'Yesterday';
         if (diffDays < 7) return `${diffDays}d ago`;
-        return past.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return formatPlatformDate(past);
     };
 
     const getIcon = (type) => {

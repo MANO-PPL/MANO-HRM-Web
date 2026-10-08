@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Bell, Check, Clock, AlertTriangle, Info, CheckCircle, XCircle, Volume2 } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
+import { formatPlatformDate } from '../utils/dateUtils';
 
 const NotificationDropdown = ({ isOpen, onClose }) => {
     const { notifications, unreadCount, markAsRead, markAllAsRead, triggerMockNotification, navigateToNotification } = useNotification();
@@ -42,7 +43,7 @@ const NotificationDropdown = ({ isOpen, onClose }) => {
         if (diffInSeconds < 60) return 'Just now';
         if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
         if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-        return date.toLocaleDateString();
+        return formatPlatformDate(date);
     };
 
     return (

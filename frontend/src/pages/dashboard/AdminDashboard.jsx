@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import employeeService from '../../services/employeeService';
 import { parsePolicy } from '../../utils/weekOffPolicy';
+import { formatPlatformDate } from '../../utils/dateUtils';
 import {
     LineChart,
     Line,
@@ -377,7 +378,7 @@ const AdminDashboard = () => {
                                 Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}, {user?.user_name || user?.name || 'Admin'}!
                             </h1>
                             <p className="text-indigo-200/80 text-base font-medium mt-2">
-                                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                {formatPlatformDate(new Date())}
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-4 mt-2">

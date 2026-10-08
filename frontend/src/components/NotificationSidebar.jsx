@@ -11,23 +11,10 @@ import {
 } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { formatPlatformDate } from '../utils/dateUtils';
 
 const formatDateToCustom = (date) => {
-    if (!date || isNaN(date.getTime())) return null;
-    const day = date.getDate();
-    const monthNames = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-    ];
-    const month = monthNames[date.getMonth()];
-    const year = date.getFullYear();
-    
-    let suffix = 'th';
-    if (day === 1 || day === 21 || day === 31) suffix = 'st';
-    else if (day === 2 || day === 22) suffix = 'nd';
-    else if (day === 3 || day === 23) suffix = 'rd';
-    
-    return `${day}${suffix} ${month} ${year}`;
+    return formatPlatformDate(date);
 };
 
 const formatYmdToCustom = (yearStr, monthStr, dayStr) => {
