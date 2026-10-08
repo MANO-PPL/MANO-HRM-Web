@@ -6,6 +6,11 @@
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import * as reportsService from './reportsServices.js';
+import * as AttendanceService from '../attendance/attendanceService.js';
+import * as ShiftService from '../shifts/shiftService.js';
+import * as UserService from '../users/userService.js';
+import * as LeaveService from '../leaves/leaveService.js';
+import { calculateOvertime } from '../../services/statusEvalution/statusEvaluationService.js';
 import { attendanceDB } from '../../config/database.js';
 
 // Helper: Generate PDF using PDFKit with a professional grid/table design
@@ -204,7 +209,7 @@ const setTimeCellValue = (cell, dateVal, format, includeSeconds = false) => {
         }
         cell.numFmt = 'h:mm AM/PM';
     } else {
-        cell.value = reportsService.formatLocalTimeStr(dateVal, includeSeconds);
+        cell.value = AttendanceService.formatLocalTimeStr(dateVal, includeSeconds);
     }
 };
 
@@ -415,9 +420,9 @@ export const styleExcelWorksheet = (worksheet, type) => {
 export const compileReportBuffer = async ({ org_id, targetUserId, month, date, type, format, startDate: queryStart, endDate: queryEnd, columns, dept_id, desg_id, shift_id }) => {
     const colsObj = typeof columns === 'string' ? JSON.parse(columns) : (columns || {});
     const { startDate, endDate } = reportsService.resolveDateRange({ type, month, date, startDate: queryStart, endDate: queryEnd });
-    const todayStr = await reportsService.getTodayStr(org_id);
+    const todayStr = await AttendanceService.getTodayStr(org_id);
 
-    const users = await reportsService.getUsers({
+    const users = await UserService.getUsers({
         org_id,
         targetUserId,
         dept_id,
@@ -431,8 +436,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
     let approvedLeaves = [];
     let holidayByDate = {};
     if (type !== "employee_master") {
-        records = await reportsService.getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
-        approvedLeaves = await reportsService.getApprovedLeaves({ org_id, startDate, endDate, targetUserId });
+        records = await AttendanceService.getAttendanceRecords({ org_id, startDate, endDate, targetUserId, dept_id, desg_id, shift_id });
+        approvedLeaves = await LeaveService.getApprovedLeaves({ org_id, startDate, endDate, targetUserId });
         holidayByDate = await reportsService.getHolidaysByDate({ org_id, startDate, endDate });
     }
 
@@ -441,7 +446,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         let pdfCols, pdfRows;
 
         if (type === "attendance_detailed") {
-            const dayRows = reportsService.groupRecordsByUserAndDay(records, users, todayStr);
+            const dayRows = AttendanceService.groupRecordsByUserAndDay(records, users, todayStr);
             pdfCols = ["Date", "Name", "Dept"];
             const pdfColIndices = [];
 
@@ -466,8 +471,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     r.user_name,
                     r.dept_name || "-",
                     r.shift_name || "-",
-                    reportsService.formatLocalTimeStr(r.time_in, true),
-                    reportsService.formatLocalTimeStr(r.time_out, true),
+                    AttendanceService.formatLocalTimeStr(r.time_in, true),
+                    AttendanceService.formatLocalTimeStr(r.time_out, true),
                     r.worked_hours.toFixed(2),
                     r.status,
                     r.time_in_address || "-",
@@ -500,13 +505,13 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
             pdfRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
-                const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
+                const aggregated = AttendanceService.aggregateDayRecords(userRecs, u.policy_rules);
                 const holidayOverride = !aggregated.time_in ? reportsService.getHolidayOverride(startDate, holidayByDate) : null;
                 const fullRow = [
                     u.user_name,
                     u.desg_name || "-",
-                    reportsService.formatLocalTimeStr(aggregated.time_in),
-                    reportsService.formatLocalTimeStr(aggregated.time_out),
+                    AttendanceService.formatLocalTimeStr(aggregated.time_in),
+                    AttendanceService.formatLocalTimeStr(aggregated.time_out),
                     aggregated.worked_hours.toFixed(2),
                     holidayOverride ? holidayOverride.status : aggregated.status,
                     aggregated.late_minutes || 0
@@ -537,7 +542,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             pushPdfCol("Present Days", "attendanceDays", 4);
             pushPdfCol("Absent Days", "attendanceDays", 5);
 
-            const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+            const dateStrings = AttendanceService.getDateRangeArray(startDate, endDate);
             const dateHeaders = dateStrings.map(dateStr => {
                 const [y, m, d] = dateStr.split('-').map(Number);
                 return new Date(y, m - 1, d);
@@ -550,8 +555,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 let presentDays = 0;
                 dateHeaders.forEach((d, dIdx) => {
                     const dateStr = dateStrings[dIdx];
-                    const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
-                    const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
+                    const dayRecs = userRecs.filter(r => AttendanceService.getRecordDateStr(r) === dateStr);
+                    const aggregated = AttendanceService.aggregateDayRecords(dayRecs, u.policy_rules);
                     if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
                         presentDays++;
                         totalWorkedHrs += aggregated.worked_hours;
@@ -565,13 +570,13 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 let calculatedAbsentDays = 0;
                 dateHeaders.forEach((d, dIdx) => {
                     const dateStr = dateStrings[dIdx];
-                    const userStartDate = reportsService.getUserStartDate(u);
+                    const userStartDate = AttendanceService.getUserStartDate(u);
                     if (userStartDate && dateStr < userStartDate) return;
-                    const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
-                    const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
-                    const rules = reportsService.getShiftRules(u);
-                    const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
-                    const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
+                    const dayRecs = userRecs.filter(r => AttendanceService.getRecordDateStr(r) === dateStr);
+                    const aggregated = AttendanceService.aggregateDayRecords(dayRecs, u.policy_rules);
+                    const rules = ShiftService.getShiftRules(u);
+                    const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
+                    const leaveOnDate = LeaveService.isDateInApprovedLeave(userLeaves, dateStr);
                     const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave';
                     const isHoliday = !aggregated.time_in && !!reportsService.getHolidayOverride(dateStr, holidayByDate);
                     if (!isPresent && !isHoliday && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
@@ -637,7 +642,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const totalDaysInMonth = new Date(year, monthNum, 0).getDate();
 
             // Generate calendar day dates for this month timezone-independently
-            const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+            const dateStrings = AttendanceService.getDateRangeArray(startDate, endDate);
 
             const baseRows = users.map(u => {
                 const userRecs = records.filter(r => r.user_id === u.user_id);
@@ -654,11 +659,11 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                 let totalHrs = 0;
 
                 dateStrings.forEach(dateStr => {
-                    const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
-                    const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
+                    const dayRecs = userRecs.filter(r => AttendanceService.getRecordDateStr(r) === dateStr);
+                    const leaveOnDate = LeaveService.isDateInApprovedLeave(userLeaves, dateStr);
 
                     if (dayRecs.length > 0) {
-                        const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
+                        const aggregated = AttendanceService.aggregateDayRecords(dayRecs, u.policy_rules);
 
                         if (aggregated.status === "On Leave" || leaveOnDate) {
                             leaveCount++;
@@ -690,8 +695,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
                         let overtime_hours = 0;
                         if (u.policy_rules) {
-                            const rules = reportsService.safeParseRules(u.policy_rules);
-                            overtime_hours = reportsService.calculateOvertime(aggregated.worked_hours, rules);
+                            const rules = AttendanceService.safeParseRules(u.policy_rules);
+                            overtime_hours = calculateOvertime(aggregated.worked_hours, rules);
                         } else {
                             overtime_hours = dayRecs.reduce((sum, r) => sum + parseFloat(r.overtime_hours || 0), 0);
                         }
@@ -703,9 +708,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         } else if (leaveOnDate) {
                             leaveCount++;
                         } else {
-                            const rules = reportsService.getShiftRules(u);
-                            const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
-                            const userStartDate = reportsService.getUserStartDate(u);
+                            const rules = ShiftService.getShiftRules(u);
+                            const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
+                            const userStartDate = AttendanceService.getUserStartDate(u);
                             if (dateStr <= todayStr && dayType !== 'week_off' && (!userStartDate || dateStr >= userStartDate)) {
                                 absentDays++;
                             }
@@ -836,7 +841,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
         users.forEach(u => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
-            const aggregated = reportsService.aggregateDayRecords(userRecs, u.policy_rules);
+            const aggregated = AttendanceService.aggregateDayRecords(userRecs, u.policy_rules);
             const holidayOverride = !aggregated.time_in ? reportsService.getHolidayOverride(startDate, holidayByDate) : null;
 
             const workedHours = parseFloat(aggregated.worked_hours.toFixed(2));
@@ -850,7 +855,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             };
             if (colsObj.status !== false) rowData.status = holidayOverride ? holidayOverride.status : aggregated.status;
             if (canLiveLateMins) {
-                const rules = reportsService.getShiftRules(u);
+                const rules = ShiftService.getShiftRules(u);
                 const [startH, startM] = (rules.shift_timing?.start_time || "09:00:00").split(':').map(Number);
                 rowData.shift_start_hrs = startH + (startM / 60);
                 rowData.grace_mins = Number(rules.grace_period?.minutes || 0);
@@ -890,7 +895,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             worksheet.addRow(totalsRowData);
         }
     } else if (type === "attendance_matrix_weekly" || type === "attendance_matrix_monthly") {
-        const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+        const dateStrings = AttendanceService.getDateRangeArray(startDate, endDate);
         const dateHeaders = dateStrings.map(dateStr => {
             const [y, m, d] = dateStr.split('-').map(Number);
             return new Date(y, m - 1, d);
@@ -960,12 +965,12 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             const dateCells = [];
             dateHeaders.forEach((d, dIdx) => {
                 const dateStr = dateStrings[dIdx];
-                const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
-                const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
-                const rules = reportsService.getShiftRules(u);
-                const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
+                const dayRecs = userRecs.filter(r => AttendanceService.getRecordDateStr(r) === dateStr);
+                const aggregated = AttendanceService.aggregateDayRecords(dayRecs, u.policy_rules);
+                const rules = ShiftService.getShiftRules(u);
+                const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
                 const dayOfWeek = d.getDay();
-                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
+                const leaveOnDate = LeaveService.isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave') {
                     dateCells.push(aggregated.status === 'Half Day' ? "Half Day" : "1.0");
@@ -1001,13 +1006,13 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let calculatedAbsentDays = 0;
             dateHeaders.forEach((d, dIdx) => {
                 const dateStr = dateStrings[dIdx];
-                const userStartDate = reportsService.getUserStartDate(u);
+                const userStartDate = AttendanceService.getUserStartDate(u);
                 if (userStartDate && dateStr < userStartDate) return;
-                const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
-                const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
-                const rules = reportsService.getShiftRules(u);
-                const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
-                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
+                const dayRecs = userRecs.filter(r => AttendanceService.getRecordDateStr(r) === dateStr);
+                const aggregated = AttendanceService.aggregateDayRecords(dayRecs, u.policy_rules);
+                const rules = ShiftService.getShiftRules(u);
+                const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
+                const leaveOnDate = LeaveService.isDateInApprovedLeave(userLeaves, dateStr);
                 const isPresent = aggregated.time_in && aggregated.status !== 'Absent' && aggregated.status !== 'On Leave';
                 const isHoliday = !aggregated.time_in && !!reportsService.getHolidayOverride(dateStr, holidayByDate);
                 if (!isPresent && !isHoliday && !leaveOnDate && dateStr <= todayStr && dayType !== 'week_off') {
@@ -1129,7 +1134,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
         let totalWorkHrs = 0;
 
-        const dayRows = reportsService.groupRecordsByUserAndDay(records, users, todayStr);
+        const dayRows = AttendanceService.groupRecordsByUserAndDay(records, users, todayStr);
         dayRows.forEach(r => {
             const rowData = {
                 date: reportsService.formatLocalDateStr(r.time_in),
@@ -1208,7 +1213,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         const [year, monthNum] = month.split("-").map(Number);
         const totalDaysInMonth = new Date(year, monthNum, 0).getDate();
         // Generate calendar day dates for this month timezone-independently
-        const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+        const dateStrings = AttendanceService.getDateRangeArray(startDate, endDate);
 
         // Live-formula groundwork. This report has no daily breakdown on the sheet at all (one
         // row per employee per month) — Present/Absent/Half Day/On Leave/etc. are rolled up
@@ -1244,11 +1249,11 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
             let totalHrs = 0;
 
             dateStrings.forEach(dateStr => {
-                const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
-                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
+                const dayRecs = userRecs.filter(r => AttendanceService.getRecordDateStr(r) === dateStr);
+                const leaveOnDate = LeaveService.isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (dayRecs.length > 0) {
-                    const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
+                    const aggregated = AttendanceService.aggregateDayRecords(dayRecs, u.policy_rules);
 
                     if (aggregated.status === "On Leave" || leaveOnDate) {
                         leaveCount++;
@@ -1280,8 +1285,8 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
                     let overtime_hours = 0;
                     if (u.policy_rules) {
-                        const rules = reportsService.safeParseRules(u.policy_rules);
-                        overtime_hours = reportsService.calculateOvertime(aggregated.worked_hours, rules);
+                        const rules = AttendanceService.safeParseRules(u.policy_rules);
+                        overtime_hours = calculateOvertime(aggregated.worked_hours, rules);
                     } else {
                         overtime_hours = dayRecs.reduce((sum, r) => sum + parseFloat(r.overtime_hours || 0), 0);
                     }
@@ -1293,9 +1298,9 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     } else if (leaveOnDate) {
                         leaveCount++;
                     } else {
-                        const rules = reportsService.getShiftRules(u);
-                        const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
-                        const userStartDate = reportsService.getUserStartDate(u);
+                        const rules = ShiftService.getShiftRules(u);
+                        const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
+                        const userStartDate = AttendanceService.getUserStartDate(u);
                         if (dateStr <= todayStr && dayType !== 'week_off' && (!userStartDate || dateStr >= userStartDate)) {
                             absentDays++;
                         }
@@ -1397,7 +1402,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         });
     } else {
         // Multi-day Matrix
-        const dateStrings = reportsService.getDateRangeArray(startDate, endDate);
+        const dateStrings = AttendanceService.getDateRangeArray(startDate, endDate);
         const dateHeaders = dateStrings.map(dateStr => {
             const [y, m, d] = dateStr.split('-').map(Number);
             return new Date(y, m - 1, d);
@@ -1549,7 +1554,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
         users.forEach((u, index) => {
             const userRecs = records.filter(r => r.user_id === u.user_id);
             const userLeaves = approvedLeaves.filter(l => l.user_id === u.user_id);
-            const rules = reportsService.getShiftRules(u);
+            const rules = ShiftService.getShiftRules(u);
             const userRow = [index + 1, u.user_name, u.desg_name || "-", u.dept_name || "-"];
             if (colsObj.shift !== false) {
                 userRow.push(u.shift_name || "-");
@@ -1563,11 +1568,11 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
 
             dateHeaders.forEach((d, dIdx) => {
                 const dateStr = dateStrings[dIdx];
-                const dayRecs = userRecs.filter(r => reportsService.getRecordDateStr(r) === dateStr);
-                const aggregated = reportsService.aggregateDayRecords(dayRecs, u.policy_rules);
-                const dayType = reportsService.getDayType(dateStr, rules.week_off_policy);
+                const dayRecs = userRecs.filter(r => AttendanceService.getRecordDateStr(r) === dateStr);
+                const aggregated = AttendanceService.aggregateDayRecords(dayRecs, u.policy_rules);
+                const dayType = ShiftService.getDayType(dateStr, rules.week_off_policy);
                 const dayOfWeek = d.getUTCDay();
-                const leaveOnDate = reportsService.isDateInApprovedLeave(userLeaves, dateStr);
+                const leaveOnDate = LeaveService.isDateInApprovedLeave(userLeaves, dateStr);
 
                 if (aggregated.time_in) {
                     const workedHoursForDay = parseFloat(aggregated.worked_hours.toFixed(2));
@@ -1577,7 +1582,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                         else if (sc.label === "Out Time") userRow.push(null); // live value set after addRow
                         else if (sc.label === "Work Hrs") userRow.push(canLiveWorkHrs ? null : workedHoursForDay);
                         else if (sc.label === "Req Hrs") {
-                            const req = reportsService.getHolidayOverride(dateStr, holidayByDate) ? 0 : reportsService.getExpectedHours(dateStr, rules.week_off_policy, rules);
+                            const req = reportsService.getHolidayOverride(dateStr, holidayByDate) ? 0 : ShiftService.getExpectedHours(dateStr, rules.week_off_policy, rules);
                             userRow.push(parseFloat(req.toFixed(2)));
                         }
                         else if (sc.label === "Late Mins") userRow.push(canLiveLateMins ? null : aggregated.late_minutes);
@@ -1616,7 +1621,7 @@ export const compileReportBuffer = async ({ org_id, targetUserId, month, date, t
                     subCols.forEach((sc) => {
                         if (sc.label === "Status") userRow.push(statusStr);
                         else if (sc.label === "Req Hrs") {
-                            const req = reportsService.getHolidayOverride(dateStr, holidayByDate) ? 0 : reportsService.getExpectedHours(dateStr, rules.week_off_policy, rules);
+                            const req = reportsService.getHolidayOverride(dateStr, holidayByDate) ? 0 : ShiftService.getExpectedHours(dateStr, rules.week_off_policy, rules);
                             userRow.push(parseFloat(req.toFixed(2)));
                         }
                         else userRow.push("-");
