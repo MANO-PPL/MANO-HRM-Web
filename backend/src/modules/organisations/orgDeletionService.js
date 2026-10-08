@@ -96,6 +96,14 @@ function deletionPlan(s) {
         ['labour_sites', s.byOrg],
 
         // Payroll (entries/history reference users with RESTRICT: before core_users)
+        ['payroll_lines', s.byUser('employee_id')],
+        ['payroll_lines', s.byParent('payroll_run_id', s.orgRows('payroll_runs_v1', 'id'))],
+        ['payroll_employee_salary_assignments', s.byUser('employee_id')],
+        ['payroll_employee_salary_assignments', s.byParent('package_id', s.orgRows('payroll_salary_packages', 'id'))],
+        ['payroll_salary_package_components', s.byParent('package_id', s.orgRows('payroll_salary_packages', 'id'))],
+        ['payroll_salary_packages', s.byOrg],
+        ['payroll_runs_v1', s.byOrg],
+        ['payroll_settings_v1', s.byOrg],
         ['payroll_entries', s.byUser('employee_id')],
         ['payroll_entries', s.byParent('run_id', s.orgRows('payroll_runs', 'run_id'))],
         ['payroll_audit_logs', s.byUser('employee_id')],
