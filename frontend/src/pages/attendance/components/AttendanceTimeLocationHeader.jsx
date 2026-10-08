@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Clock, MapPin, ExternalLink, RefreshCw, Briefcase } from 'lucide-react';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const AttendanceTimeLocationHeader = ({
     user,
-    currentTime,
+    currentTime: initialTime,
     location,
     isLoadingLoc,
     onRefreshLocation,
@@ -12,6 +13,13 @@ const AttendanceTimeLocationHeader = ({
     onOpenCheckpointModal,
     isCheckpointAllowed = true
 }) => {
+    const [currentTime, setCurrentTime] = useState(() => initialTime || new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
     const hours = currentTime.getHours();
     const greeting = hours < 12 ? 'Morning' : hours < 17 ? 'Afternoon' : 'Evening';
     const userName = user?.user_name?.split(' ')[0] || 'User';
@@ -35,7 +43,7 @@ const AttendanceTimeLocationHeader = ({
                         Good {greeting}, {userName}!
                     </h1>
                     <p className="text-indigo-200/80 text-xs sm:text-sm font-medium mt-0.5">
-                        {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                        {formatPlatformDate(currentTime)}
                     </p>
                 </div>
 
@@ -87,7 +95,7 @@ const AttendanceTimeLocationHeader = ({
                             </div>
                         </div>
 
-                        {onOpenCheckpointModal && isCheckpointAllowed && (
+                        {onOpenCheckpointModal && (
                             <button
                                 type="button"
                                 onClick={onOpenCheckpointModal}

@@ -13,7 +13,7 @@ const SessionCheckpointsTimeline = ({
     const hasCheckpoints = Array.isArray(session?.checkpoints) && session.checkpoints.length > 0;
     const isSessionOpen = !session?.time_out;
 
-    if (!hasCheckpoints && (!isSessionOpen || !isCheckpointAllowed)) return null;
+    if (!hasCheckpoints && !isSessionOpen) return null;
 
     if (hasCheckpoints) {
         return (
@@ -25,7 +25,7 @@ const SessionCheckpointsTimeline = ({
                             Session Checkpoints ({session.checkpoints.length})
                         </h4>
                     </div>
-                    {isSessionOpen && isCurrentDate && isCheckpointAllowed && (
+                    {isSessionOpen && isCurrentDate && (
                         <button
                             onClick={onOpenCheckpointModal}
                             className="text-[10px] font-black text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
@@ -113,8 +113,6 @@ const SessionCheckpointsTimeline = ({
     }
 
     // Active session with 0 checkpoints yet
-    if (!isCheckpointAllowed) return null;
-
     return (
         <div className="pt-3 border-t border-slate-100 dark:border-white/5 flex items-center justify-between p-3 bg-amber-50/30 dark:bg-amber-500/5 rounded-xl border border-dashed border-amber-200/50 dark:border-amber-500/20">
             <div className="flex items-center gap-2">

@@ -13,6 +13,7 @@ import {
     AlertCircle,
     X,
     CheckCircle,
+    Check,
     RefreshCw,
     Download,
     ChevronRight,
@@ -38,10 +39,14 @@ import {
     DownloadCloud,
     Table,
     ChevronDown,
-    ExternalLink
+    ExternalLink,
+    Loader2,
+    Trash2,
+    RotateCcw,
+    Edit3
 } from 'lucide-react';
 import { attendanceService, attendanceCacheData } from '../../services/attendanceService';
-import { getLocalDateString } from '../../utils/dateUtils';
+import { getLocalDateString, formatLocalTimeString, formatPlatformDate } from '../../utils/dateUtils';
 import { toast } from 'react-toastify';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import AttendancePermissionsBanner from './components/AttendancePermissionsBanner';
@@ -67,7 +72,76 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
-import { injectAbsentDaysIntoHistory } from '../../utils/attendanceStatus';
+import { injectAbsentDaysIntoHistory, isCheckpointRecord, normalizeDailySessionsWithCheckpoints, parseCorrectionDetails } from '../../utils/attendanceStatus';
+
+const ThemedSelect = ({ label, value, options, onChange, className = '', labelClassName = '', buttonClassName = '' }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (containerRef.current && !containerRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const selectedOption = options.find(opt => opt.value === value) || options[0];
+
+    return (
+        <div className={`space-y-1.5 ${className}`} ref={containerRef}>
+            {label && (
+                <label className={labelClassName || "block text-xs font-bold text-slate-800 dark:text-slate-100"}>
+                    {label}
+                </label>
+            )}
+            <div className="relative">
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(!isOpen)}
+                    className={buttonClassName || "w-full h-10 px-3 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl flex items-center justify-between text-slate-800 dark:text-slate-100 text-xs font-medium transition-all hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-[0.99] shadow-2xs select-none cursor-pointer group"}
+                >
+                    <span className="truncate">{selectedOption ? selectedOption.label : 'Select...'}</span>
+                    <ChevronDown size={15} className={`text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`} />
+                </button>
+
+                <AnimatePresence>
+                    {isOpen && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute top-full left-0 right-0 mt-1.5 z-[150] bg-white dark:bg-github-dark-subtle border border-slate-200 dark:border-github-dark-border rounded-xl shadow-xl overflow-hidden"
+                        >
+                            <div className="p-1.5 max-h-72 overflow-y-auto no-scrollbar">
+                                {options.map((opt) => (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(opt.value);
+                                            setIsOpen(false);
+                                        }}
+                                        className={`w-full px-3 py-2 rounded-lg text-left text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${value === opt.value
+                                            ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold'
+                                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-github-dark-bg'
+                                            }`}
+                                    >
+                                        <span>{opt.label}</span>
+                                        {value === opt.value && <CheckCircle size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                                    </button>
+                                ))}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+        </div>
+    );
+};
 
 const getAlignmentClass = (colHeader) => {
     if (!colHeader) return 'center';
@@ -251,6 +325,7 @@ const MobileAttendancePage = () => {
 
     const [correctionForm, setCorrectionForm] = useState({
         type: 'Missed Punch',
+        otherType: '',
         date: getLocalDateString(),
         in_time: '',
         out_time: '',
@@ -258,8 +333,17 @@ const MobileAttendancePage = () => {
         document: null
     });
 
+    const [pendingRequestId, setPendingRequestId] = useState(null);
+    const [existingAttachmentUrl, setExistingAttachmentUrl] = useState(null);
+    const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+    const [isDraggingFile, setIsDraggingFile] = useState(false);
+
     const [originalSessions, setOriginalSessions] = useState([]);
-    const [showMobileAdvanced, setShowMobileAdvanced] = useState(false);
+    const [corrSessions, setCorrSessions] = useState([]);
+    const [timelineHasIncomplete, setTimelineHasIncomplete] = useState(false);
+    const [corrAttachment, setCorrAttachment] = useState(null);
+    const [corrAttachmentPreview, setCorrAttachmentPreview] = useState(null);
+    const corrFileInputRef = useRef(null);
 
 
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -271,6 +355,7 @@ const MobileAttendancePage = () => {
     const [cameraMode, setCameraMode] = useState(null); // 'IN' or 'OUT'
     const [imgSrc, setImgSrc] = useState(null);
     const webcamRef = useRef(null);
+    const lastCoordsRef = useRef({ lat: null, lng: null });
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [cameraError, setCameraError] = useState(null);
     const [isRequestingCam, setIsRequestingCam] = useState(false);
@@ -291,6 +376,19 @@ const MobileAttendancePage = () => {
     const [requireLateReason, setRequireLateReason] = useState(false);
     const [lateReasonMessage, setLateReasonMessage] = useState('');
     const [lateReasonText, setLateReasonText] = useState('');
+    const [showLateReasonModal, setShowLateReasonModal] = useState(false);
+    const [optimisticSelfies, setOptimisticSelfies] = useState({});
+
+    // Image URL resolver helper
+    const resolveImageUrl = (raw) => {
+        if (!raw) return null;
+        const str = String(raw).trim();
+        if (!str || str === 'null' || str === 'undefined') return null;
+        if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:')) {
+            return str;
+        }
+        return null;
+    };
 
     // Checkpoint State
     const [showCheckpointModal, setShowCheckpointModal] = useState(false);
@@ -345,6 +443,173 @@ const MobileAttendancePage = () => {
     const maxAllowedCorrectionDate = useMemo(() => {
         return getLocalDateString();
     }, []);
+
+    const extractHHMM = useCallback((val) => {
+        if (!val) return '';
+        if (val instanceof Date) {
+            const h = String(val.getHours()).padStart(2, '0');
+            const m = String(val.getMinutes()).padStart(2, '0');
+            return `${h}:${m}`;
+        }
+        const raw = String(val).trim();
+        if (raw.includes('T')) {
+            const timePart = raw.split('T')[1];
+            return timePart.slice(0, 5);
+        }
+        if (raw.includes(' ')) {
+            const timePart = raw.split(' ')[1];
+            return timePart.slice(0, 5);
+        }
+        return raw.slice(0, 5);
+    }, []);
+
+    const calculateSessionDurationHours = useCallback((startStr, endStr) => {
+        if (!startStr || !endStr) return 0;
+        const [sH, sM] = startStr.split(':').map(Number);
+        const [eH, eM] = endStr.split(':').map(Number);
+        if (isNaN(sH) || isNaN(sM) || isNaN(eH) || isNaN(eM)) return 0;
+        let startMins = sH * 60 + sM;
+        let endMins = eH * 60 + eM;
+        if (endMins < startMins) {
+            endMins += 24 * 60; // Overnight
+        }
+        return (endMins - startMins) / 60;
+    }, []);
+
+    const totalProposedHours = useMemo(() => {
+        const valid = corrSessions.filter(s => s.time_in && s.time_out);
+        return valid.reduce((acc, s) => acc + calculateSessionDurationHours(s.time_in, s.time_out), 0);
+    }, [corrSessions, calculateSessionDurationHours]);
+
+    const hasIncompleteSession = useMemo(() => {
+        if (!showAdvancedOptions) return false;
+        const hasIncompleteInCorr = corrSessions.some(s => {
+            if (isCheckpointRecord(s) || s.punch_type === 'normal') return false;
+            const hasIn = Boolean(s.time_in && String(s.time_in).trim());
+            const hasOut = Boolean(s.time_out && String(s.time_out).trim());
+            return (hasIn && !hasOut) || (!hasIn && hasOut);
+        });
+        return Boolean(hasIncompleteInCorr || timelineHasIncomplete);
+    }, [showAdvancedOptions, corrSessions, timelineHasIncomplete]);
+
+    // Check if user has already raised a correction request for the selected date
+    const existingRequestForCorrDate = useMemo(() => {
+        const targetDate = correctionForm.date;
+        if (!targetDate) return null;
+        if (Array.isArray(correctionHistory)) {
+            const found = correctionHistory.find(req => {
+                if (!req.request_date) return false;
+                const dStr = String(req.request_date).split('T')[0];
+                return dStr === targetDate;
+            });
+            if (found) return found;
+        }
+        if (pendingRequestId) {
+            return {
+                id: pendingRequestId,
+                status: 'pending',
+                request_date: targetDate,
+                reason: correctionForm.reason
+            };
+        }
+        return null;
+    }, [correctionForm.date, correctionHistory, pendingRequestId, correctionForm.reason]);
+
+    const handleResetCorrectionToOriginal = useCallback(() => {
+        if (originalSessions.length > 0) {
+            const resetList = [];
+            originalSessions.forEach((s, idx) => {
+                if (isCheckpointRecord(s) || s.punch_type === 'normal') {
+                    resetList.push({
+                        id: `chk-${Date.now()}-${idx}`,
+                        time_in: s.time_in || '',
+                        time_out: '',
+                        punch_type: 'normal',
+                        address: s.address || ''
+                    });
+                } else {
+                    resetList.push({
+                        id: `sess-${Date.now()}-${idx}`,
+                        time_in: s.time_in || '',
+                        time_out: s.time_out || '',
+                        punch_type: s.punch_type || 'regular',
+                        address: s.address || ''
+                    });
+                    const chkList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
+                    chkList.forEach((chk, cIdx) => {
+                        const chkTime = extractHHMM(chk.punch_time || chk.time || chk.time_in);
+                        if (chkTime) {
+                            resetList.push({
+                                id: `chk-${Date.now()}-${idx}-${cIdx}`,
+                                time_in: chkTime,
+                                time_out: '',
+                                punch_type: 'normal',
+                                address: chk.address || ''
+                            });
+                        }
+                    });
+                }
+            });
+            setCorrSessions(resetList);
+            toast.info("Reset to originally recorded punches");
+        } else {
+            setCorrSessions([]);
+            toast.info("Cleared sessions (no original punches recorded for this date)");
+        }
+    }, [originalSessions, extractHHMM]);
+
+    const handleUpdateTime = useCallback((id, field, val) => {
+        setCorrSessions(prev => prev.map(s => {
+            if (s.id === id) {
+                return { ...s, [field]: val };
+            }
+            return s;
+        }));
+    }, []);
+
+    const handleRemoveSession = useCallback((id) => {
+        setCorrSessions(prev => prev.filter(s => s.id !== id));
+    }, []);
+
+    const handleAddSession = useCallback(() => {
+        const shiftIn = myShift?.start_time?.slice(0, 5) || myShift?.startTime?.slice(0, 5) || '09:00';
+        const shiftOut = myShift?.end_time?.slice(0, 5) || myShift?.endTime?.slice(0, 5) || '18:00';
+        setCorrSessions(prev => {
+            const workSessions = prev.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal');
+            if (workSessions.length === 0) {
+                return [
+                    ...prev,
+                    {
+                        id: `sess-${Date.now()}-${prev.length}`,
+                        time_in: shiftIn,
+                        time_out: shiftOut,
+                        punch_type: 'regular'
+                    }
+                ];
+            }
+            const lastSession = workSessions[workSessions.length - 1];
+            let nextIn = '';
+            let nextOut = '';
+            if (lastSession.time_out) {
+                const [lH, lM] = lastSession.time_out.split(':').map(Number);
+                if (!isNaN(lH)) {
+                    const nextH = Math.min(23, lH + 1);
+                    const nextEndH = Math.min(23, nextH + 2);
+                    nextIn = `${String(nextH).padStart(2, '0')}:${String(lM || 0).padStart(2, '0')}`;
+                    nextOut = `${String(nextEndH).padStart(2, '0')}:${String(lM || 0).padStart(2, '0')}`;
+                }
+            }
+            return [
+                ...prev,
+                {
+                    id: `sess-${Date.now()}-${prev.length}`,
+                    time_in: nextIn,
+                    time_out: nextOut,
+                    punch_type: 'regular'
+                }
+            ];
+        });
+    }, [myShift]);
 
     // Dates
     const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
@@ -563,6 +828,16 @@ const MobileAttendancePage = () => {
             watchId = navigator.geolocation.watchPosition(
                 async (pos) => {
                     const { latitude, longitude } = pos.coords;
+                    const prevCoords = lastCoordsRef.current;
+                    if (prevCoords.lat && prevCoords.lng) {
+                        const dLat = Math.abs(prevCoords.lat - latitude);
+                        const dLng = Math.abs(prevCoords.lng - longitude);
+                        // Avoid spamming reverse-geocoding if moved less than ~20 meters
+                        if (dLat < 0.0002 && dLng < 0.0002) {
+                            return;
+                        }
+                    }
+                    lastCoordsRef.current = { lat: latitude, lng: longitude };
                     try {
                         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
                         const data = await res.json();
@@ -625,53 +900,165 @@ const MobileAttendancePage = () => {
         fetchMonthlyRecords();
     }, [reportMonth]);
 
-    useEffect(() => {
-        if (!correctionForm.date) {
+    const loadCorrectionDataForDate = useCallback(async (targetDate) => {
+        if (!targetDate) {
             setOriginalSessions([]);
+            setCorrSessions([]);
+            setPendingRequestId(null);
+            setCorrAttachment(null);
+            setCorrAttachmentPreview(null);
+            setExistingAttachmentUrl(null);
+            setCorrectionForm(prev => ({ ...prev, reason: '', type: 'Missed Punch', otherType: '' }));
             return;
         }
 
-        const fetchRecord = async () => {
+        try {
+            // Check if there is an active PENDING correction request for this date
+            let pendingReq = null;
             try {
-                const res = await attendanceService.getMyRecords(correctionForm.date, correctionForm.date);
-                if (res?.data && res.data.length > 0) {
-                    const userSessions = res.data;
-                    const loadedSessions = userSessions.map((s, i) => {
-                        let time_in_str = '';
-                        let time_out_str = '';
-                        if (s.time_in) {
-                            time_in_str = new Date(s.time_in).toTimeString().slice(0, 5);
-                        }
-                        if (s.time_out) {
-                            time_out_str = new Date(s.time_out).toTimeString().slice(0, 5);
-                        }
-                        return { in: time_in_str, out: time_out_str, isExisting: true };
-                    });
-
-                    setOriginalSessions(loadedSessions.map(s => ({ time_in: s.in, time_out: s.out })));
-                    setCorrectionForm(prev => ({
-                        ...prev,
-                        sessions: []
-                    }));
-                } else {
-                    setOriginalSessions([]);
-                    setCorrectionForm(prev => ({
-                        ...prev,
-                        sessions: []
-                    }));
+                const pendingRes = await attendanceService.getCorrectionRequests({ date: targetDate, my_requests: 'true', status: 'pending' });
+                const pendingList = Array.isArray(pendingRes?.data) ? pendingRes.data : [];
+                if (pendingList.length > 0) {
+                    pendingReq = pendingList[0];
                 }
-            } catch (error) {
-                console.error("Failed to fetch existing record", error);
-                setOriginalSessions([]);
+            } catch (e) {
+                console.warn("Could not check pending correction requests", e);
+            }
+
+            if (pendingReq) {
+                setPendingRequestId(pendingReq.id || pendingReq.acr_id);
+                const { category: parsedCat, cleanReason } = parseCorrectionDetails(pendingReq);
+                const standardTypes = ['Missed Punch', 'Missed Day', 'Late Arrival', 'Early Departure', 'Biometric Issue', 'Overtime'];
+                let nextType = 'Missed Punch';
+                let nextOther = '';
+                if (standardTypes.includes(parsedCat)) {
+                    nextType = parsedCat;
+                } else if (pendingReq.correction_type === 'summary') {
+                    nextType = 'Other';
+                    nextOther = 'Summary Adjustment';
+                } else if (parsedCat) {
+                    nextType = 'Other';
+                    nextOther = parsedCat;
+                }
                 setCorrectionForm(prev => ({
                     ...prev,
-                    sessions: []
+                    reason: cleanReason || pendingReq.reason || '',
+                    type: nextType,
+                    otherType: nextOther
                 }));
-            }
-        };
+                setExistingAttachmentUrl(pendingReq.attachment_url || null);
+                setCorrAttachment(null);
+                setCorrAttachmentPreview(null);
 
-        fetchRecord();
-    }, [correctionForm.date]);
+                const proposedList = Array.isArray(pendingReq.proposed_data) ? pendingReq.proposed_data : [];
+                const originalList = Array.isArray(pendingReq.original_data) ? pendingReq.original_data : [];
+
+                setOriginalSessions(originalList);
+                if (proposedList.length > 0) {
+                    setCorrSessions(proposedList.map((s, i) => {
+                        const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                        return {
+                            id: s.id || Date.now() + i,
+                            time_in: s.time_in ? String(s.time_in).slice(0, 5) : (s.punch_time ? String(s.punch_time).slice(11, 16) : ''),
+                            time_out: isChk ? '' : (s.time_out ? String(s.time_out).slice(0, 5) : ''),
+                            punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                            address: s.address || ''
+                        };
+                    }));
+                }
+                return;
+            }
+
+            // No pending request: Fresh submission state
+            setPendingRequestId(null);
+            setCorrAttachment(null);
+            setCorrAttachmentPreview(null);
+            setExistingAttachmentUrl(null);
+
+            const res = await attendanceService.getMyRecords(targetDate, targetDate);
+            const rawList = Array.isArray(res)
+                ? res
+                : (Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.data) ? res.data.data : []));
+
+            if (rawList && rawList.length > 0) {
+                const normalizedRaw = normalizeDailySessionsWithCheckpoints(rawList);
+
+                const loadedSessions = normalizedRaw.map((s, i) => {
+                    const isChk = isCheckpointRecord(s);
+                    const time_in_str = extractHHMM(s.time_in || s.time_in_ts || s.punch_time);
+                    const time_out_str = isChk ? '' : extractHHMM(s.time_out || s.time_out_ts);
+                    return {
+                        id: Date.now() + i,
+                        time_in: time_in_str,
+                        time_out: time_out_str,
+                        punch_type: isChk ? 'normal' : 'regular',
+                        checkpoints: Array.isArray(s.checkpoints) ? s.checkpoints : (Array.isArray(s.raw_checkpoints) ? s.raw_checkpoints : []),
+                        address: s.address || s.time_in_address || '',
+                        status: s.status,
+                        raw_session: s
+                    };
+                });
+
+                // Frozen snapshot for original_data reference
+                setOriginalSessions(loadedSessions.map(s => ({
+                    time_in: s.time_in,
+                    time_out: s.time_out,
+                    punch_type: s.punch_type,
+                    checkpoints: s.checkpoints,
+                    address: s.address,
+                    status: s.status,
+                    raw_session: s.raw_session
+                })));
+
+                // Pre-populate proposed sessions with existing logged sessions & checkpoints for timeline editing
+                const initialCorr = [];
+                loadedSessions.forEach((s, idx) => {
+                    if (s.punch_type === 'normal') {
+                        initialCorr.push({
+                            id: `chk-${Date.now()}-${idx}`,
+                            time_in: s.time_in || '',
+                            time_out: '',
+                            punch_type: 'normal',
+                            address: s.address || ''
+                        });
+                    } else {
+                        initialCorr.push({
+                            id: `sess-${Date.now()}-${idx}`,
+                            time_in: s.time_in || '',
+                            time_out: s.time_out || '',
+                            punch_type: s.punch_type || 'regular',
+                            address: s.address || ''
+                        });
+                        const chkList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
+                        chkList.forEach((chk, cIdx) => {
+                            const chkTime = extractHHMM(chk.punch_time || chk.time || chk.time_in);
+                            if (chkTime) {
+                                initialCorr.push({
+                                    id: `chk-${Date.now()}-${idx}-${cIdx}`,
+                                    time_in: chkTime,
+                                    time_out: '',
+                                    punch_type: 'normal',
+                                    address: chk.address || ''
+                                });
+                            }
+                        });
+                    }
+                });
+                setCorrSessions(initialCorr);
+            } else {
+                setOriginalSessions([]);
+                setCorrSessions([]);
+            }
+        } catch (error) {
+            console.error("Failed to fetch existing record for correction", error);
+            setOriginalSessions([]);
+            setCorrSessions([]);
+        }
+    }, [extractHHMM]);
+
+    useEffect(() => {
+        loadCorrectionDataForDate(correctionForm.date);
+    }, [correctionForm.date, loadCorrectionDataForDate]);
 
     // --- ACTIONS ---
 
@@ -689,8 +1076,8 @@ const MobileAttendancePage = () => {
 
     const handlePunchClick = async (mode) => {
         const isSelfieRequired = mode === 'IN'
-            ? (myShift?.rules?.entry_requirements?.selfie ?? true)
-            : (myShift?.rules?.exit_requirements?.selfie ?? false);
+            ? Boolean(myShift?.rules?.entry_requirements?.selfie)
+            : Boolean(myShift?.rules?.exit_requirements?.selfie);
 
         if (isSelfieRequired) {
             openCamera(mode);
@@ -832,7 +1219,79 @@ const MobileAttendancePage = () => {
         }
     };
 
-    const executeDirectPunch = async (mode) => {
+    const executeDirectCheckpoint = async () => {
+        setIsMarkingCheckpoint(true);
+        try {
+            let lat = location.lat;
+            let lng = location.lng;
+            let accuracy = location.lat ? 10 : null;
+            let address = location.address || null;
+
+            if (!lat || !lng) {
+                if (navigator.geolocation) {
+                    try {
+                        const pos = await new Promise((resolve, reject) => {
+                            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                                enableHighAccuracy: true,
+                                timeout: 10000,
+                                maximumAge: 0
+                            });
+                        });
+                        lat = pos.coords.latitude;
+                        lng = pos.coords.longitude;
+                        accuracy = pos.coords.accuracy;
+                        address = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                    } catch (geoErr) {
+                        console.warn("Direct checkpoint geolocation error:", geoErr);
+                    }
+                }
+            }
+
+            if (!lat || !lng) {
+                toast.error("Valid GPS coordinates are required to mark a checkpoint.");
+                return;
+            }
+
+            const payload = {
+                latitude: lat,
+                longitude: lng,
+                accuracy: accuracy || 10,
+                address: address || `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                is_geofence_violation: false
+            };
+
+            const res = await attendanceService.markCheckpoint(payload);
+            toast.success(res?.message || "Checkpoint marked successfully!");
+            await fetchDailyRecords(true);
+            await fetchMonthlyRecords(true);
+            setTimeout(() => fetchDailyRecords(true), 2500);
+            setTimeout(() => fetchDailyRecords(true), 6000);
+        } catch (err) {
+            console.error("Direct checkpoint error:", err);
+            toast.error(err.message || "Failed to record checkpoint");
+        } finally {
+            setIsMarkingCheckpoint(false);
+        }
+    };
+
+    const handleCheckpointClick = async () => {
+        if (!isCheckpointAllowed) {
+            toast.error("Checkpoints are disabled by your assigned shift policy.");
+            return;
+        }
+        if (!hasActiveSession) {
+            toast.warning("You must Clock IN before marking a checkpoint.");
+            return;
+        }
+
+        if (isCheckpointSelfieRequired) {
+            handleOpenCheckpointModal();
+        } else {
+            await executeDirectCheckpoint();
+        }
+    };
+
+    const executeDirectPunch = async (mode, explicitLateReason = null) => {
         const isGeoRequired = mode === 'IN'
             ? (myShift?.rules?.entry_requirements?.geofence ?? false)
             : (myShift?.rules?.exit_requirements?.geofence ?? false);
@@ -841,6 +1300,8 @@ const MobileAttendancePage = () => {
             toast.error("Location not found");
             return;
         }
+
+        const reason = explicitLateReason !== null ? explicitLateReason : (requireLateReason ? lateReasonText.trim() : null);
 
         setIsSubmitting(true);
         setCameraMode(mode);
@@ -852,8 +1313,8 @@ const MobileAttendancePage = () => {
                 address: location.address || null
             };
 
-            if (requireLateReason && lateReasonText.trim()) {
-                payload.late_reason = lateReasonText.trim();
+            if (reason) {
+                payload.late_reason = reason;
             }
 
             if (mode === 'IN') {
@@ -865,6 +1326,7 @@ const MobileAttendancePage = () => {
             }
 
             closeCamera();
+            setShowLateReasonModal(false);
 
             try {
                 await fetchDailyRecords(true);
@@ -876,7 +1338,6 @@ const MobileAttendancePage = () => {
                 console.error("Failed to refresh records after punch:", refErr);
             }
         } catch (error) {
-            console.error(error);
             const errorMsg = error.message || "Attendance failed";
             const errorLower = errorMsg.toLowerCase();
 
@@ -885,11 +1346,11 @@ const MobileAttendancePage = () => {
                 setImgSrc(null);
                 setRequireLateReason(true);
                 setLateReasonMessage(errorMsg);
-                setLateReasonText("");
-                setShowCamera(true);
+                setShowLateReasonModal(true);
                 toast.warning(errorMsg);
             } else {
                 closeCamera();
+                setShowLateReasonModal(false);
                 toast.error(errorMsg);
             }
         } finally {
@@ -905,6 +1366,7 @@ const MobileAttendancePage = () => {
         setRequireLateReason(false);
         setLateReasonMessage('');
         setLateReasonText('');
+        setShowLateReasonModal(false);
     };
 
     const capture = useCallback(() => {
@@ -918,8 +1380,8 @@ const MobileAttendancePage = () => {
 
     const confirmAttendance = async () => {
         const isSelfieRequired = cameraMode === 'IN'
-            ? (myShift?.rules?.entry_requirements?.selfie ?? false)
-            : (myShift?.rules?.exit_requirements?.selfie ?? false);
+            ? Boolean(myShift?.rules?.entry_requirements?.selfie)
+            : Boolean(myShift?.rules?.exit_requirements?.selfie);
 
         const isGeoRequired = cameraMode === 'IN'
             ? (myShift?.rules?.entry_requirements?.geofence ?? false)
@@ -955,9 +1417,15 @@ const MobileAttendancePage = () => {
 
             if (cameraMode === 'IN') {
                 await attendanceService.timeIn(payload);
+                if (imgSrc) {
+                    setOptimisticSelfies(prev => ({ ...prev, [selectedDate + '_in']: imgSrc }));
+                }
                 toast.success("Checked In Successfully!");
             } else {
                 await attendanceService.timeOut(payload);
+                if (imgSrc) {
+                    setOptimisticSelfies(prev => ({ ...prev, [selectedDate + '_out']: imgSrc }));
+                }
                 toast.success("Checked Out Successfully!");
             }
 
@@ -973,7 +1441,6 @@ const MobileAttendancePage = () => {
                 console.error("Failed to refresh records after punch:", refErr);
             }
         } catch (error) {
-            console.error(error);
             const errorMsg = error.message || "Attendance failed";
             const errorLower = errorMsg.toLowerCase();
 
@@ -1044,61 +1511,127 @@ const MobileAttendancePage = () => {
         }
     };
 
-    const handleCorrectionSubmit = async () => {
-        if (!correctionForm.reason) {
-            toast.error("Reason is required");
+    const handleSubmitCorrection = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!correctionForm.date || !correctionForm.reason || !correctionForm.reason.trim()) {
+            toast.error("Adjustment Date and Reason are required");
             return;
         }
 
-        // Client-side pre-check only (UX convenience) — the backend's own check in
-        // correctionsService.js is the real gate.
+        if (hasIncompleteSession) {
+            toast.error("Cannot submit request with incomplete sessions. Please complete or remove all unmatched punch times.");
+            return;
+        }
+
+        const deadlineDays = myShift?.rules?.correction_deadline ?? 30;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const reqDate = new Date(correctionForm.date);
         reqDate.setHours(0, 0, 0, 0);
         const diffDays = Math.ceil((today - reqDate) / (1000 * 60 * 60 * 24));
 
-        if (diffDays > correctionDeadlineDays) {
-            toast.error(`Correction requests can only be submitted within ${correctionDeadlineDays} days of the attendance date.`);
+        if ((minAllowedCorrectionDate && correctionForm.date < minAllowedCorrectionDate) || diffDays > deadlineDays) {
+            toast.error(`Correction requests can only be submitted within ${deadlineDays} days of the attendance date.`);
             return;
+        }
+
+        // Validation for session overlaps (only if user customized punches on advanced timeline)
+        if (showAdvancedOptions) {
+            let validSessions = corrSessions.filter(s => s.time_in || s.time_out);
+
+            for (let i = 0; i < validSessions.length; i++) {
+                const sessionA = validSessions[i];
+                if (isCheckpointRecord(sessionA) || sessionA.punch_type === 'normal') continue;
+                const isOvernightA = Boolean(sessionA.time_in && sessionA.time_out && sessionA.time_in >= sessionA.time_out);
+
+                for (let j = i + 1; j < validSessions.length; j++) {
+                    const sessionB = validSessions[j];
+                    if (isCheckpointRecord(sessionB) || sessionB.punch_type === 'normal') continue;
+                    const isOvernightB = Boolean(sessionB.time_in && sessionB.time_out && sessionB.time_in >= sessionB.time_out);
+                    if (sessionA.time_in && sessionA.time_out && sessionB.time_in && sessionB.time_out) {
+                        if (!isOvernightA && !isOvernightB && sessionA.time_in < sessionB.time_out && sessionA.time_out > sessionB.time_in) {
+                            toast.error(`Sessions cannot overlap: ${sessionA.time_in} to ${sessionA.time_out} with ${sessionB.time_in} to ${sessionB.time_out}`);
+                            return;
+                        }
+                    }
+                }
+            }
         }
 
         setShowConfirmSubmit(true);
     };
 
-    const handleConfirmSubmitMobile = async () => {
+    const handleConfirmSubmit = async () => {
         setSubmitLoading(true);
         try {
-            const original_data = originalSessions;
+            const original_data = originalSessions || [];
+            let validSessions = corrSessions.filter(s => s.time_in || s.time_out);
             let proposed_data = [];
-            if (validSessions.length > 0) {
+
+            if (showAdvancedOptions && validSessions.length > 0) {
                 proposed_data = validSessions.map(s => {
-                    const isOvernight = Boolean(s.in && s.out && s.in >= s.out);
+                    const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                    const isOvernight = Boolean(!isChk && s.time_in && s.time_out && s.time_in >= s.time_out);
                     return {
-                        time_in: s.in,
-                        time_out: s.out,
-                        is_overnight: isOvernight
+                        ...(s.time_in ? { time_in: s.time_in } : {}),
+                        ...(s.time_out && !isChk ? { time_out: s.time_out } : {}),
+                        punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                        is_overnight: isOvernight,
+                        ...(s.address ? { address: s.address } : {})
+                    };
+                });
+            } else if (original_data && original_data.length > 0) {
+                // If user didn't customize punches, preserve originally recorded punches as starting punch baseline
+                proposed_data = original_data.map(s => {
+                    const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                    return {
+                        ...(s.time_in ? { time_in: s.time_in } : {}),
+                        ...(s.time_out && !isChk ? { time_out: s.time_out } : {}),
+                        punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                        ...(s.address ? { address: s.address } : {})
                     };
                 });
             } else {
                 proposed_data = [];
             }
 
-            const payload = {
-                request_date: correctionForm.date,
-                correction_type: correctionForm.type || 'Correction',
-                reason: correctionForm.reason,
-                original_data,
-                proposed_data
-            };
+            const formData = new FormData();
+            formData.append('correction_type', correctionForm.type === 'summary' ? 'summary' : 'punch');
+            formData.append('request_date', correctionForm.date);
 
-            await attendanceService.submitCorrectionRequest(payload);
-            toast.success("Adjustment request submitted successfully!");
+            const categoryTag = correctionForm.type === 'Other' && correctionForm.otherType ? correctionForm.otherType.trim() : correctionForm.type;
+            const formattedReason = categoryTag ? `[${categoryTag}] ${correctionForm.reason.trim()}` : correctionForm.reason.trim();
+            formData.append('reason', formattedReason);
+            formData.append('original_data', JSON.stringify(original_data));
+            formData.append('proposed_data', JSON.stringify(proposed_data));
+
+            if (pendingRequestId) {
+                formData.append('existing_request_id', pendingRequestId);
+            }
+            if (corrAttachment) {
+                formData.append('attachment', corrAttachment);
+            } else if (existingAttachmentUrl) {
+                formData.append('attachment_url', existingAttachmentUrl);
+            }
+
+            const res = await attendanceService.submitCorrectionRequest(formData);
+            if (res?.is_updated || pendingRequestId) {
+                toast.success("Pending correction request updated successfully!");
+            } else {
+                toast.success("Adjustment request submitted successfully!");
+            }
+
             setShowConfirmSubmit(false);
             setIsCorrectionOpen(false);
-            setShowMobileAdvanced(false);
-            setCorrectionForm({ ...correctionForm, sessions: [{ in: '', out: '' }], reason: '' });
+            setCorrAttachment(null);
+            setCorrAttachmentPreview(null);
+            setExistingAttachmentUrl(null);
+            setPendingRequestId(null);
+            setShowAdvancedOptions(false);
+            setCorrectionForm({ type: 'Missed Punch', otherType: '', date: getLocalDateString(), reason: '', in_time: '', out_time: '', document: null });
             fetchCorrectionHistory();
+            fetchDailyRecords(true);
+            fetchMonthlyRecords(true);
         } catch (error) {
             console.error("Correction submit failed", error);
             toast.error(error.message || "Failed to submit correction");
@@ -1131,26 +1664,6 @@ const MobileAttendancePage = () => {
         }
     }, [window.location.search]);
 
-    const addSession = () => {
-        setCorrectionForm({
-            ...correctionForm,
-            sessions: [...correctionForm.sessions, { in: '', out: '' }]
-        });
-    };
-
-    const removeSession = (index) => {
-        if (correctionForm.sessions.length > 1) {
-            const newSessions = [...correctionForm.sessions];
-            newSessions.splice(index, 1);
-            setCorrectionForm({ ...correctionForm, sessions: newSessions });
-        }
-    };
-
-    const updateSession = (index, field, value) => {
-        const newSessions = [...correctionForm.sessions];
-        newSessions[index][field] = value;
-        setCorrectionForm({ ...correctionForm, sessions: newSessions });
-    };
 
     const handleMainTabChange = (newTab) => {
         const newIndex = mainTabs.indexOf(newTab);
@@ -1195,15 +1708,7 @@ const MobileAttendancePage = () => {
     // --- HELPERS ---
 
     const formatCorrectionDate = (dateStr) => {
-        if (!dateStr) return 'Unknown Date';
-        try {
-            const cleanStr = (dateStr.length === 10 && !dateStr.includes('T')) ? dateStr + 'T00:00:00' : dateStr;
-            const d = new Date(cleanStr);
-            if (isNaN(d.getTime())) return dateStr;
-            return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        } catch (e) {
-            return dateStr;
-        }
+        return formatPlatformDate(dateStr) || 'Unknown Date';
     };
 
     const formatTime = (timeVal, sessionRecord = null, isOut = false) => {
@@ -1447,10 +1952,10 @@ const MobileAttendancePage = () => {
     const hasActiveSession = dailySessions.some(s => !s.time_out);
 
     return (
-        <MobileDashboardLayout title="Attendance" hideScrollbar={true}>
-            <div className="pb-24 no-scrollbar" style={{ zoom: 0.8 }}>
+        <MobileDashboardLayout title="Attendance" hideScrollbar={true} contentClassName="p-0 space-y-0">
+            <div className="pb-24 no-scrollbar w-full">
                 {/* Premium Header / Greeting */}
-                <div className="px-5 pt-8 pb-12 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-b-[2.5rem] border-b border-indigo-500/20 shadow-xl relative overflow-hidden">
+                <div className="w-full px-4 sm:px-5 pt-4 pb-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-[#0a0d14] dark:via-[#0e1320] dark:to-[#0a0d14] rounded-b-2xl border-b border-indigo-500/20 shadow-xl relative overflow-hidden">
                     {/* Animated Background Blobs */}
                     <motion.div 
                         animate={{ 
@@ -1469,7 +1974,7 @@ const MobileAttendancePage = () => {
                         className="absolute -bottom-24 -left-24 w-80 h-80 bg-purple-500/10 blur-3xl rounded-full"
                     />
 
-                    <div className="relative z-10 space-y-4">
+                    <div className="relative z-10 space-y-3.5">
                         <AttendancePermissionsBanner
                             onPermissionsUpdated={(permStatus) => {
                                 if (permStatus.location === 'granted' && (location.error || location.address?.includes('Denied'))) {
@@ -1477,36 +1982,36 @@ const MobileAttendancePage = () => {
                                 }
                             }}
                         />
-                        <div className="flex justify-between items-start mb-6">
+                        <div className="flex justify-between items-start mb-3">
                             <div>
-                                <h1 className="text-2xl font-black text-white tracking-tight">
+                                <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">
                                     Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.user_name?.split(' ')[0] || 'User'}!
                                 </h1>
-                                <p className="text-indigo-200/80 text-sm font-medium mt-1">
-                                    {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                <p className="text-indigo-200/80 text-xs font-normal mt-0.5">
+                                    {formatPlatformDate(currentTime)}
                                 </p>
                             </div>
 
                         </div>
 
                         {/* Current Time Widget */}
-                        <div className="bg-white/10 backdrop-blur-md rounded-3xl p-5 border border-white/10 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-indigo-500/30 rounded-2xl flex items-center justify-center text-white">
-                                    <Clock size={24} />
+                        <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 sm:p-3.5 border border-white/10 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 bg-indigo-500/30 rounded-xl flex items-center justify-center text-white shrink-0">
+                                    <Clock size={18} />
                                 </div>
                                 <div>
-                                    <span className="block text-[10px] font-bold text-indigo-200 tracking-widest">Current Time</span>
-                                    <span className="text-2xl font-black text-white font-mono">
+                                    <span className="block text-[9px] font-bold text-indigo-200 tracking-wider">Current Time</span>
+                                    <span className="text-lg sm:text-xl font-bold text-white font-mono">
                                         {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
                                     </span>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <span className="block text-[10px] font-bold text-indigo-200 tracking-widest mb-1">Location</span>
-                                <div className="flex items-center gap-1.5 text-white/90 font-bold text-xs bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                                    <MapPin size={12} className="text-indigo-300" />
-                                    {isLoadingLoc ? 'Locating...' : location.address}
+                                <span className="block text-[9px] font-bold text-indigo-200 tracking-wider mb-0.5">Location</span>
+                                <div className="flex items-center gap-1.5 text-white/90 font-semibold text-[11px] bg-white/5 px-2.5 py-1 rounded-full border border-white/5 max-w-[150px] truncate">
+                                    <MapPin size={11} className="text-indigo-300 shrink-0" />
+                                    <span className="truncate">{isLoadingLoc ? 'Locating...' : location.address}</span>
                                 </div>
                             </div>
                         </div>
@@ -1514,35 +2019,35 @@ const MobileAttendancePage = () => {
                 </div>
 
                 {/* Tab Switcher - Floating Style - Standardized */}
-                <div className="px-5 -mt-6 relative z-20">
-                    <div className="bg-slate-200/50 dark:bg-github-dark-border/50 p-1.5 flex rounded-2xl backdrop-blur-md border border-white/20 dark:border-white/5 shadow-xl">
+                <div className="px-3.5 sm:px-4 -mt-4 relative z-20">
+                    <div className="bg-slate-200/50 dark:bg-github-dark-border/50 p-1 flex rounded-xl backdrop-blur-md border border-white/20 dark:border-white/5 shadow-md">
                         <button
                             onClick={() => handleMainTabChange('attendance')}
-                            className={`flex-1 py-2.5 text-[11px] font-normal rounded-xl transition-all flex items-center justify-center gap-2 ${
+                            className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                                 mainTab === 'attendance'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-md transform scale-[1.02]'
+                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
                                     : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
                             }`}
                         >
-                            <User size={14} />
+                            <User size={13} />
                             Attendance
                         </button>
                         <button
                             onClick={() => handleMainTabChange('my_attendance')}
-                            className={`flex-1 py-2.5 text-[11px] font-normal rounded-xl transition-all flex items-center justify-center gap-2 ${
+                            className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                                 mainTab === 'my_attendance'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-md transform scale-[1.02]'
+                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
                                     : 'text-slate-500 dark:text-github-dark-muted hover:bg-white/50 dark:hover:bg-slate-800/50'
                             }`}
                         >
-                            <History size={14} />
+                            <History size={13} />
                             My Attendance
                         </button>
                     </div>
                 </div>
 
                 {/* Content Area */}
-                <div className="px-5 pt-8">
+                <div className="px-3.5 sm:px-4 pt-3.5">
                     <AnimatePresence mode="wait">
                         {mainTab === 'attendance' ? (
                             <motion.div
@@ -1551,7 +2056,7 @@ const MobileAttendancePage = () => {
                                 variants={{
                                     enter: (direction) => ({ x: direction > 0 ? 50 : -50, opacity: 0 }),
                                     center: { x: 0, opacity: 1 },
-                                    exit: (direction) => ({ x: direction < 0 ? 50 : -50, opacity: 0, position: 'absolute', width: 'calc(100% - 40px)' })
+                                    exit: (direction) => ({ x: direction < 0 ? 50 : -50, opacity: 0, position: 'absolute', width: '100%' })
                                 }}
                                 initial="enter"
                                 animate="center"
@@ -1567,29 +2072,29 @@ const MobileAttendancePage = () => {
                                 }}
                             >
                                 {/* Punch Cards - Redesigned to match image */}
-                                <div className="grid grid-cols-1 gap-4">
+                                <div className="grid grid-cols-1 gap-2.5">
                                     <button
                                         onClick={() => !hasActiveSession && !isSubmitting && handlePunchClick('IN')}
                                         disabled={hasActiveSession || isSubmitting}
-                                        className={`group relative p-4 rounded-[2rem] flex items-center justify-between transition-all duration-300 overflow-hidden border ${
+                                        className={`group relative p-3 sm:p-3.5 rounded-xl flex items-center justify-between transition-all duration-300 overflow-hidden border ${
                                             hasActiveSession
                                                 ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
-                                                : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-lg dark:shadow-2xl active:scale-[0.98]'
+                                                : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-2xs active:scale-[0.99]'
                                         }`}
                                     >
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
                                                 hasActiveSession 
                                                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600' 
                                                     : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20'
                                             }`}>
-                                                <ArrowRight size={22} strokeWidth={2.5} />
+                                                <ArrowRight size={18} strokeWidth={2.5} />
                                             </div>
                                             <div className="text-left">
-                                                <h3 className={`text-base font-bold tracking-tight ${hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                                                <h3 className={`text-sm font-bold tracking-tight ${hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
                                                     {isSubmitting && cameraMode === 'IN' && !showCamera ? 'Processing...' : 'Time In'}
                                                 </h3>
-                                                <p className="text-slate-400 dark:text-slate-500 text-[11px] font-medium mt-0.5">
+                                                <p className="text-slate-400 dark:text-slate-500 text-[10px] font-medium mt-0.5">
                                                     {hasActiveSession ? 'Session active' : 'Start shift for today'}
                                                 </p>
                                             </div>
@@ -1597,64 +2102,62 @@ const MobileAttendancePage = () => {
                                     </button>
 
                                     {/* Mark Checkpoint Button */}
-                                    {isCheckpointAllowed && (
-                                        <button
-                                            onClick={() => hasActiveSession && !isSubmitting && !isMarkingCheckpoint && handleOpenCheckpointModal()}
-                                            disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
-                                            className={`group relative p-4 rounded-[2rem] flex items-center justify-between transition-all duration-300 overflow-hidden border ${
-                                                !hasActiveSession
-                                                    ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
-                                                    : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-lg dark:shadow-2xl active:scale-[0.98]'
-                                            }`}
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center relative ${
-                                                    !hasActiveSession 
-                                                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600' 
-                                                        : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20'
-                                                }`}>
-                                                    <MapPin size={22} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
-                                                    {hasActiveSession && (
-                                                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-left">
-                                                    <h3 className={`text-base font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
-                                                        {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
-                                                    </h3>
-                                                    <p className="text-slate-400 dark:text-slate-500 text-[11px] font-medium mt-0.5">
-                                                        {!hasActiveSession ? 'Requires active session' : 'Record mid-shift location'}
-                                                    </p>
-                                                </div>
+                                    <button
+                                        onClick={() => hasActiveSession && !isSubmitting && !isMarkingCheckpoint && handleCheckpointClick()}
+                                        disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
+                                        className={`group relative p-3 sm:p-3.5 rounded-xl flex items-center justify-between transition-all duration-300 overflow-hidden border ${
+                                            !hasActiveSession
+                                                ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
+                                                : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-2xs active:scale-[0.99]'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center relative ${
+                                                !hasActiveSession 
+                                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600' 
+                                                    : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20'
+                                            }`}>
+                                                <MapPin size={18} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
+                                                {hasActiveSession && (
+                                                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                                    </span>
+                                                )}
                                             </div>
-                                        </button>
-                                    )}
+                                            <div className="text-left">
+                                                <h3 className={`text-sm font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                                                    {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
+                                                </h3>
+                                                <p className="text-slate-400 dark:text-slate-500 text-[10px] font-medium mt-0.5">
+                                                    {!hasActiveSession ? 'Requires active session' : 'Record mid-shift location'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </button>
 
                                     <button
                                         onClick={() => hasActiveSession && !isSubmitting && handlePunchClick('OUT')}
                                         disabled={!hasActiveSession || isSubmitting}
-                                        className={`group relative p-4 rounded-[2rem] flex items-center justify-between transition-all duration-300 overflow-hidden border ${
+                                        className={`group relative p-3 sm:p-3.5 rounded-xl flex items-center justify-between transition-all duration-300 overflow-hidden border ${
                                             !hasActiveSession
                                                 ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-100 dark:border-white/5 opacity-40'
-                                                : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-lg dark:shadow-2xl active:scale-[0.98]'
+                                                : 'bg-white dark:bg-[#000000] border-slate-100 dark:border-white/10 shadow-2xs active:scale-[0.99]'
                                         }`}
                                     >
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
                                                 !hasActiveSession 
                                                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600' 
                                                     : 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-500/20'
                                             }`}>
-                                                <LogOut size={22} strokeWidth={2.5} />
+                                                <LogOut size={18} strokeWidth={2.5} />
                                             </div>
                                             <div className="text-left">
-                                                <h3 className={`text-base font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                                                <h3 className={`text-sm font-bold tracking-tight ${!hasActiveSession ? 'text-slate-300 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
                                                     {isSubmitting && cameraMode === 'OUT' && !showCamera ? 'Processing...' : 'Time Out'}
                                                 </h3>
-                                                <p className="text-slate-400 dark:text-slate-500 text-[11px] font-medium mt-0.5">
+                                                <p className="text-slate-400 dark:text-slate-500 text-[10px] font-medium mt-0.5">
                                                     {!hasActiveSession ? 'No active session' : 'End your day'}
                                                 </p>
                                             </div>
@@ -1714,7 +2217,7 @@ const MobileAttendancePage = () => {
                                         </div>
                                     )}
 
-                                    <div className="flex gap-3 overflow-x-auto py-5 px-1 no-scrollbar scroll-smooth">
+                                    <div className="flex gap-2 overflow-x-auto py-2.5 px-0.5 no-scrollbar scroll-smooth">
                                         {scrollerDates.map((date) => {
                                             const dateStr = getLocalDateString(date);
                                             const isSelected = dateStr === selectedDate;
@@ -1726,17 +2229,17 @@ const MobileAttendancePage = () => {
                                                     key={dateStr}
                                                     id={isSelected ? "selected-date-btn" : undefined}
                                                     onClick={() => setSelectedDate(dateStr)}
-                                                    className={`flex flex-col items-center justify-center min-w-[60px] h-20 rounded-[1.8rem] transition-all duration-300 ${
+                                                    className={`flex flex-col items-center justify-center min-w-[48px] h-14 rounded-xl transition-all duration-200 ${
                                                         isSelected 
-                                                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/40 transform scale-105' 
+                                                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30 font-bold' 
                                                             : 'bg-white dark:bg-github-dark-subtle text-slate-400 dark:text-github-dark-muted border border-slate-100 dark:border-github-dark-border'
                                                     }`}
                                                 >
-                                                    <span className="text-[9px] font-black uppercase tracking-tighter mb-1 opacity-70">
+                                                    <span className="text-[9px] font-bold uppercase tracking-tighter opacity-70">
                                                         {dayName}
                                                     </span>
-                                                    <span className="text-lg font-black">{date.getDate()}</span>
-                                                    {isToday && !isSelected && <div className="w-1 h-1 bg-indigo-500 rounded-full mt-1"></div>}
+                                                    <span className="text-sm font-bold mt-0.5">{date.getDate()}</span>
+                                                    {isToday && !isSelected && <div className="w-1 h-1 bg-indigo-500 rounded-full mt-0.5"></div>}
                                                 </button>
                                             );
                                         })}
@@ -1744,85 +2247,130 @@ const MobileAttendancePage = () => {
                                 </div>
 
                                 {/* Today's Activity */}
-                                <div className="pt-4">
-                                    <div className="flex items-center justify-between mb-4 px-1">
-                                        <h3 className="text-lg font-black text-slate-800 dark:text-github-dark-text tracking-tight">
-                                            {selectedDate === getLocalDateString() ? "Today's Logs" : `Logs for ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                                <div className="pt-3">
+                                    <div className="flex items-center justify-between mb-2.5 px-0.5">
+                                        <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-github-dark-text tracking-tight">
+                                            {selectedDate === getLocalDateString() ? "Today's Logs" : `Logs for ${formatPlatformDate(selectedDate)}`}
                                         </h3>
-                                        <button onClick={() => setIsCorrectionOpen(true)} className="flex items-center gap-1.5 text-indigo-600 font-black text-xs tracking-widest bg-indigo-50 px-4 py-2 rounded-full active:scale-95 transition-all">
-                                            <Plus size={14} strokeWidth={3} /> Correction
+                                        <button 
+                                            onClick={() => {
+                                                const targetDate = selectedDate || getLocalDateString();
+                                                setCorrectionForm(prev => ({ ...prev, date: targetDate }));
+                                                loadCorrectionDataForDate(targetDate);
+                                                setIsCorrectionOpen(true);
+                                            }} 
+                                            className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-semibold text-xs bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 px-2.5 py-1 rounded-full active:scale-95 transition-all cursor-pointer shadow-2xs"
+                                        >
+                                            <Plus size={13} /> Correction
                                         </button>
                                     </div>
 
-                                    <div className="space-y-4">
-                                        {dailySessions.length > 0 ? dailySessions.map((s, idx) => (
-                                            <div key={s.acr_id || s.id || s.time_in} className="bg-white dark:bg-github-dark-subtle p-6 rounded-[2.5rem] border border-slate-100 dark:border-github-dark-border shadow-sm space-y-5 transition-all active:scale-[0.98]">
-                                                {/* Session Header */}
-                                                <div className="flex justify-between items-center pb-2 border-b border-slate-50 dark:border-github-dark-border/10">
-                                                    <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest flex items-center gap-2">
-                                                        <Clock size={12} /> Session #{dailySessions.length - idx}
-                                                    </span>
-                                                    <span className={`text-[9px] font-black px-2.5 py-1 rounded-full ${s.late_minutes > 0 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                    <div className="space-y-2.5">
+                                        {(() => {
+                                            const rawWorkSessions = Array.isArray(dailySessions) ? dailySessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal') : [];
+                                            if (rawWorkSessions.length === 0) {
+                                                return (
+                                                    <div className="py-8 bg-white dark:bg-github-dark-subtle rounded-xl border-2 border-dashed border-slate-200 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
+                                                        <div className="w-12 h-12 bg-slate-50 dark:bg-github-dark-border/50 rounded-full flex items-center justify-center text-slate-300 mb-3">
+                                                            <Calendar size={24} />
+                                                        </div>
+                                                        <p className="text-slate-400 text-xs font-semibold">No records found for today</p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            // 1. Sort chronologically (earliest first) to determine natural Session #1, #2...
+                                            const sortedChronological = [...rawWorkSessions].sort((a, b) => {
+                                                const tA = new Date(a.time_in || 0).getTime();
+                                                const tB = new Date(b.time_in || 0).getTime();
+                                                return tA - tB;
+                                            });
+
+                                            // 2. Attach sequential session number (Session #1 for day's first punch, etc.)
+                                            const numberedSessions = sortedChronological.map((s, idx) => ({
+                                                ...s,
+                                                sessionNumber: idx + 1
+                                            }));
+
+                                            // 3. Stack format: The day's last session is at the top of the page,
+                                            // and the day's first session (Session #1) is at the bottom of the page.
+                                            const stackedSessions = [...numberedSessions].reverse();
+
+                                            return stackedSessions.map((s, idx) => {
+                                                const isLatestSession = idx === 0;
+                                                const timeInImg = resolveImageUrl(s.time_in_image || s.time_in_image_url || s.time_in_photo || s.timeInImage)
+                                                    || (isLatestSession ? optimisticSelfies[selectedDate + '_in'] : null);
+                                                const timeOutImg = resolveImageUrl(s.time_out_image || s.time_out_image_url || s.time_out_photo || s.timeOutImage)
+                                                    || (isLatestSession ? optimisticSelfies[selectedDate + '_out'] : null);
+
+                                                return (
+                                                <div key={s.acr_id || s.id || s.time_in || `session-${s.sessionNumber}`} className="bg-white dark:bg-github-dark-subtle p-3 rounded-xl border border-slate-100 dark:border-github-dark-border shadow-2xs space-y-2.5 transition-all active:scale-[0.99]">
+                                                    {/* Session Header */}
+                                                    <div className="flex justify-between items-center pb-1.5 border-b border-slate-50 dark:border-github-dark-border/10">
+                                                        <span className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted tracking-wider flex items-center gap-1.5">
+                                                            <Clock size={11} /> Session #{s.sessionNumber}
+                                                        </span>
+                                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${s.late_minutes > 0 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
                                                         {s.late_minutes > 0 ? 'Late' : 'On Time'}
                                                     </span>
                                                 </div>
 
                                                 {/* IN/OUT Sections Grid */}
-                                                <div className="grid grid-cols-2 gap-5">
+                                                <div className="grid grid-cols-2 gap-2.5">
                                                     {/* Time In Section */}
-                                                    <div className="space-y-3">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600">
-                                                                <ArrowUpRight size={16} strokeWidth={3} />
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0">
+                                                                <ArrowUpRight size={14} strokeWidth={2.5} />
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <span className="block text-[9px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest leading-none mb-1">Time In</span>
-                                                                <span className="text-sm font-black text-slate-800 dark:text-github-dark-text truncate block">{formatTime(s.time_in, s, false)}</span>
+                                                                <span className="block text-[9px] font-bold text-slate-400 dark:text-github-dark-muted tracking-wider leading-none mb-0.5">Time In</span>
+                                                                <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text font-mono truncate block">{formatTime(s.time_in, s, false)}</span>
                                                             </div>
                                                         </div>
-                                                        {s.time_in_image ? (
+                                                        {timeInImg && (
                                                             <div 
-                                                                onClick={() => setPreviewImage(s.time_in_image)}
-                                                                className="w-full flex justify-center cursor-pointer relative group active:scale-95 transition-all"
+                                                                onClick={() => setPreviewImage(timeInImg)}
+                                                                className="w-full flex justify-center cursor-pointer relative group active:scale-95 transition-all mt-1"
                                                             >
-                                                                <img src={s.time_in_image} alt="In" className="w-auto h-auto max-h-56 max-w-full block rounded-2xl shadow-md object-contain" />
-                                                                <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all rounded-2xl">
-                                                                    <Eye size={20} className="text-white" />
+                                                                <img 
+                                                                    src={timeInImg} 
+                                                                    alt="Time In Selfie" 
+                                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                                    className="w-full h-20 rounded-xl shadow-xs object-cover border border-slate-100 dark:border-github-dark-border" 
+                                                                />
+                                                                <div className="absolute inset-0 bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
+                                                                    <Eye size={16} className="text-white drop-shadow-md" />
                                                                 </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="w-full h-32 rounded-2xl bg-slate-50 dark:bg-github-dark-border/30 border border-dashed border-slate-200 dark:border-github-dark-border flex flex-col items-center justify-center text-slate-300">
-                                                                <ImageIcon size={20} />
-                                                                <span className="text-[8px] font-bold mt-1 tracking-tighter">No Photo</span>
                                                             </div>
                                                         )}
                                                     </div>
 
                                                     {/* Time Out Section */}
-                                                    <div className="space-y-3">
-                                                        <div className="flex items-center gap-2.5">
-                                                            <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center text-rose-600">
-                                                                <ArrowDownRight size={16} strokeWidth={3} />
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center text-rose-600 shrink-0">
+                                                                <ArrowDownRight size={14} strokeWidth={2.5} />
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <span className="block text-[9px] font-black text-slate-400 dark:text-github-dark-muted tracking-widest leading-none mb-1">Time Out</span>
-                                                                <span className="text-sm font-black text-slate-800 dark:text-github-dark-text truncate block">{s.time_out ? formatTime(s.time_out, s, true) : '--:--'}</span>
+                                                                <span className="block text-[9px] font-bold text-slate-400 dark:text-github-dark-muted tracking-wider leading-none mb-0.5">Time Out</span>
+                                                                <span className="text-xs font-bold text-slate-800 dark:text-github-dark-text font-mono truncate block">{formatTime(s.time_out, s, true)}</span>
                                                             </div>
                                                         </div>
-                                                        {s.time_out_image ? (
+                                                        {timeOutImg && (
                                                             <div 
-                                                                onClick={() => setPreviewImage(s.time_out_image)}
-                                                                className="w-full flex justify-center cursor-pointer relative group active:scale-95 transition-all"
+                                                                onClick={() => setPreviewImage(timeOutImg)}
+                                                                className="w-full flex justify-center cursor-pointer relative group active:scale-95 transition-all mt-1"
                                                             >
-                                                                <img src={s.time_out_image} alt="Out" className="w-auto h-auto max-h-56 max-w-full block rounded-2xl shadow-md object-contain" />
-                                                                <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all rounded-2xl">
-                                                                    <Eye size={20} className="text-white" />
+                                                                <img 
+                                                                    src={timeOutImg} 
+                                                                    alt="Time Out Selfie" 
+                                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                                    className="w-full h-20 rounded-xl shadow-xs object-cover border border-slate-100 dark:border-github-dark-border" 
+                                                                />
+                                                                <div className="absolute inset-0 bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
+                                                                    <Eye size={16} className="text-white drop-shadow-md" />
                                                                 </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="w-full h-32 rounded-2xl bg-slate-50 dark:bg-github-dark-border/30 border border-dashed border-slate-200 dark:border-github-dark-border flex flex-col items-center justify-center text-slate-300">
-                                                                <ImageIcon size={20} />
-                                                                <span className="text-[8px] font-bold mt-1 uppercase tracking-tighter">No Photo</span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -1863,11 +2411,12 @@ const MobileAttendancePage = () => {
                                                                     Checkpoints ({s.checkpoints.length})
                                                                 </span>
                                                             </div>
-                                                            {!s.time_out && isCheckpointAllowed && (
+                                                            {!s.time_out && (
                                                                 <button
                                                                     type="button"
-                                                                    onClick={handleOpenCheckpointModal}
-                                                                    className="text-[9px] font-black text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 active:scale-95 transition-all cursor-pointer"
+                                                                    onClick={handleCheckpointClick}
+                                                                    disabled={isMarkingCheckpoint}
+                                                                    className="text-[9px] font-black text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                                                                 >
                                                                     <Plus size={10} strokeWidth={3} /> Add Checkpoint
                                                                 </button>
@@ -1905,15 +2454,7 @@ const MobileAttendancePage = () => {
                                                                                         <Camera size={9} />
                                                                                     </div>
                                                                                 </div>
-                                                                            ) : (
-                                                                                <div
-                                                                                    className="w-12 h-12 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 flex flex-col items-center justify-center shrink-0 shadow-xs"
-                                                                                    title="Logged without selfie"
-                                                                                >
-                                                                                    <Camera size={16} className="opacity-50" />
-                                                                                    <span className="text-[7px] font-bold uppercase tracking-tight opacity-75 mt-0.5">No Photo</span>
-                                                                                </div>
-                                                                            )}
+                                                                            ) : null}
 
                                                                             <div className="flex-1 min-w-0 space-y-1">
                                                                                 <div className="flex items-center justify-between font-black text-slate-800 dark:text-slate-200">
@@ -1976,15 +2517,10 @@ const MobileAttendancePage = () => {
                                                         </div>
                                                     </div>
                                                 )}
-                                            </div>
-                                        )) : (
-                                            <div className="py-12 bg-white dark:bg-github-dark-subtle rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-github-dark-border flex flex-col items-center justify-center text-center">
-                                                <div className="w-16 h-16 bg-slate-50 dark:bg-github-dark-border/50 rounded-full flex items-center justify-center text-slate-300 mb-4">
-                                                    <Calendar size={32} />
                                                 </div>
-                                                <p className="text-slate-400 text-sm font-bold">No records found for today</p>
-                                            </div>
-                                        )}
+                                            );
+                                        });
+                                    })()}
                                     </div>
                                 </div>
                             </motion.div>
@@ -1997,21 +2533,21 @@ const MobileAttendancePage = () => {
                                 className="space-y-6"
                             >
                                 {/* Logs Subtabs - Standardized Icon Style */}
-                                <div className="flex items-center gap-6 px-1 overflow-x-auto no-scrollbar border-b border-slate-100 dark:border-white/5 mb-2">
+                                <div className="flex items-center gap-4 sm:gap-5 px-1 overflow-x-auto no-scrollbar border-b border-slate-100 dark:border-white/5 mb-1.5">
                                     {SUB_TABS.map((sub) => {
                                         const isActive = subTab === sub.id;
                                         return (
                                             <button
                                                 key={sub.id}
                                                 onClick={() => handleSubTabChange(sub.id)}
-                                                className={`flex items-center gap-2 py-3 relative transition-all duration-300 whitespace-nowrap ${
+                                                className={`flex items-center gap-1.5 py-2 relative transition-all duration-300 whitespace-nowrap ${
                                                     isActive 
                                                         ? 'text-indigo-600 dark:text-indigo-400' 
                                                         : 'text-slate-400 dark:text-github-dark-muted'
                                                 }`}
                                             >
-                                                <sub.icon size={16} className={isActive ? 'text-indigo-500' : 'text-slate-400'} />
-                                                <span className={`text-[11px] font-normal uppercase tracking-wider ${isActive ? 'opacity-100' : 'opacity-70'}`}>
+                                                <sub.icon size={14} className={isActive ? 'text-indigo-500' : 'text-slate-400'} />
+                                                <span className={`text-[10px] font-medium uppercase tracking-wider ${isActive ? 'opacity-100' : 'opacity-70'}`}>
                                                     {sub.label}
                                                 </span>
                                                 {isActive && (
@@ -2045,10 +2581,10 @@ const MobileAttendancePage = () => {
                                             if (info.offset.x < -80) handleSwipe('left');
                                             else if (info.offset.x > 80) handleSwipe('right');
                                         }}
-                                        className="space-y-4 pt-4"
+                                        className="space-y-3 pt-2"
                                     >
                                         {subTab === 'history' && (
-                                            <div className="space-y-4">
+                                            <div className="space-y-3">
                                                 {groupedHistoryDays.length > 0 ? groupedHistoryDays.map((day) => {
                                                     const isExpanded = expandedDays.has(day.dateKey);
                                                     const totalHoursDisplay = day.totalDayHours > 0 
@@ -2058,7 +2594,7 @@ const MobileAttendancePage = () => {
                                                     return (
                                                         <div 
                                                             key={day.dateKey} 
-                                                            className={`bg-white dark:bg-github-dark-subtle rounded-[2rem] border transition-all duration-200 shadow-sm overflow-hidden ${
+                                                            className={`bg-white dark:bg-github-dark-subtle rounded-xl border transition-all duration-200 shadow-2xs overflow-hidden ${
                                                                 isExpanded 
                                                                     ? 'border-indigo-300 dark:border-indigo-700/60 ring-1 ring-indigo-500/20' 
                                                                     : 'border-slate-100 dark:border-github-dark-border'
@@ -2067,19 +2603,19 @@ const MobileAttendancePage = () => {
                                                             {/* Day Header Summary */}
                                                             <div 
                                                                 onClick={() => toggleDayExpansion(day.dateKey)}
-                                                                className="p-5 space-y-4 cursor-pointer select-none"
+                                                                className="p-3 sm:p-3.5 space-y-2.5 cursor-pointer select-none"
                                                             >
-                                                                <div className="flex items-center gap-4">
-                                                                    <div className={`w-12 h-14 rounded-2xl flex flex-col items-center justify-center font-black shrink-0 border ${day.dayStatus === 'ABSENT' ? 'bg-slate-100 dark:bg-github-dark-subtle text-slate-500 dark:text-slate-400 border-slate-200 dark:border-github-dark-border' : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100/50'}`}>
-                                                                        <span className="text-[10px] uppercase opacity-60 leading-none mb-0.5">{day.date.toLocaleDateString('en-US', { month: 'short' })}</span>
-                                                                        <span className="text-xl leading-none">{day.date.getDate()}</span>
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className={`w-10 h-12 rounded-xl flex flex-col items-center justify-center font-bold shrink-0 border ${day.dayStatus === 'ABSENT' ? 'bg-slate-100 dark:bg-github-dark-subtle text-slate-500 dark:text-slate-400 border-slate-200 dark:border-github-dark-border' : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100/50'}`}>
+                                                                        <span className="text-[9px] uppercase opacity-70 leading-none mb-0.5">{day.date.toLocaleDateString('en-US', { month: 'short' })}</span>
+                                                                        <span className="text-base font-black leading-none">{day.date.getDate()}</span>
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <h4 className="font-black text-sm text-slate-800 dark:text-github-dark-text">
+                                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                                            <h4 className="font-bold text-xs sm:text-sm text-slate-800 dark:text-github-dark-text">
                                                                                 {day.date.toLocaleDateString('en-US', { weekday: 'long' })}
                                                                             </h4>
-                                                                            <span className={`inline-flex items-center gap-1.5 text-[9px] font-medium px-2 py-0.5 rounded-md border shadow-xs ${
+                                                                            <span className={`inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-md border shadow-2xs ${
                                                                                 day.dayStatus === 'MISSED_PUNCH' ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border-rose-200/50' :
                                                                                 day.dayStatus === 'LATE' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200/50' :
                                                                                 day.dayStatus === 'OVERTIME' ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50' :
@@ -2090,31 +2626,31 @@ const MobileAttendancePage = () => {
                                                                                 {day.dayStatus === 'MISSED_PUNCH' ? 'Missed Punch' : day.dayStatus === 'ABSENT' ? 'Absent' : day.dayStatus}
                                                                             </span>
                                                                         </div>
-                                                                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 mt-1">
-                                                                            <span className={`font-extrabold ${day.sessions.length === 0 ? 'text-slate-500 dark:text-slate-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                                                        <div className="flex items-center gap-1 text-[10px] font-medium text-slate-400 mt-0.5">
+                                                                            <span className={day.sessions.length === 0 ? 'text-slate-500 dark:text-slate-400' : 'text-indigo-600 dark:text-indigo-400 font-semibold'}>
                                                                                 {day.sessions.length} {day.sessions.length === 1 ? 'session' : 'sessions'}
                                                                             </span>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1 rounded-full leading-none">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full leading-none">
                                                                             {totalHoursDisplay}
                                                                         </span>
-                                                                        <div className={`p-1 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-indigo-600' : ''}`}>
+                                                                        <div className={`p-0.5 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-indigo-600' : ''}`}>
                                                                             <ChevronDown size={14} />
                                                                         </div>
                                                                     </div>
                                                                 </div>
                                                                 
                                                                 {/* First / Last Punch Summary Bar */}
-                                                                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-50 dark:border-github-dark-border/10">
-                                                                    <div className="bg-slate-50/50 dark:bg-github-dark-border/20 p-2.5 rounded-2xl">
-                                                                        <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">First In</span>
-                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{formatTime(day.firstIn, day.firstSession, false) || '--:--'}</span>
+                                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-50 dark:border-github-dark-border/10">
+                                                                    <div className="bg-slate-50/70 dark:bg-github-dark-border/20 p-2 rounded-xl">
+                                                                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">First In</span>
+                                                                        <span className="text-[11px] font-bold text-slate-700 dark:text-github-dark-text">{formatTime(day.firstIn, day.firstSession, false) || '--:--'}</span>
                                                                     </div>
-                                                                    <div className="bg-slate-50/50 dark:bg-github-dark-border/20 p-2.5 rounded-2xl">
-                                                                        <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Last Out</span>
-                                                                        <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.dayStatus === 'ABSENT' ? '--:--' : (day.isPastDay ? 'Missed Out' : '--:--'))}</span>
+                                                                    <div className="bg-slate-50/70 dark:bg-github-dark-border/20 p-2 rounded-xl">
+                                                                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Last Out</span>
+                                                                        <span className="text-[11px] font-bold text-slate-700 dark:text-github-dark-text">{day.lastOut ? formatTime(day.lastOut, day.lastSession, true) : (day.dayStatus === 'ABSENT' ? '--:--' : (day.isPastDay ? 'Missed Out' : '--:--'))}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -2126,14 +2662,14 @@ const MobileAttendancePage = () => {
                                                                         initial={{ opacity: 0, height: 0 }}
                                                                         animate={{ opacity: 1, height: 'auto' }}
                                                                         exit={{ opacity: 0, height: 0 }}
-                                                                        className="border-t border-slate-100 dark:border-github-dark-border/40 bg-slate-50/40 dark:bg-white/[0.015] p-4 space-y-3"
+                                                                        className="border-t border-slate-100 dark:border-github-dark-border/40 bg-slate-50/40 dark:bg-white/[0.015] p-3 space-y-2.5"
                                                                     >
-                                                                        <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                                                        <div className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">
                                                                             Individual Punches ({day.sessions.length})
                                                                         </div>
 
                                                                         {day.sessions.length === 0 ? (
-                                                                            <div className="py-4 text-center text-slate-400 dark:text-slate-500 text-xs font-medium">
+                                                                            <div className="py-3 text-center text-slate-400 dark:text-slate-500 text-xs font-medium">
                                                                                 No attendance punches recorded for this day.
                                                                             </div>
                                                                         ) : (
@@ -2146,10 +2682,10 @@ const MobileAttendancePage = () => {
                                                                                 ? (isSessionMissed ? '' : '--:--') 
                                                                                 : (s.total_hours ? `${s.total_hours} hrs` : (calculateHours(s.time_in, s.time_out) || 'N/A'));
                                                                             return (
-                                                                                <div key={s.attendance_id || sIdx} className="bg-white dark:bg-github-dark-subtle p-3 rounded-2xl border border-slate-100 dark:border-github-dark-border space-y-2.5 shadow-xs">
+                                                                                <div key={s.attendance_id || sIdx} className="bg-white dark:bg-github-dark-subtle p-2.5 rounded-xl border border-slate-100 dark:border-github-dark-border space-y-2 shadow-2xs">
                                                                                     <div className="flex items-center justify-between text-xs">
                                                                                         <div className="flex items-center gap-1.5">
-                                                                                            <span className="font-bold text-slate-700 dark:text-slate-200">Session {sIdx + 1}</span>
+                                                                                            <span className="font-bold text-slate-700 dark:text-slate-200 text-xs">Session {sIdx + 1}</span>
                                                                                             {sessionStatus === 'MISSED_PUNCH' && (
                                                                                                 <span className="px-1.5 py-0.2 rounded-full text-[8px] font-bold uppercase tracking-wider inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/40 text-slate-800 dark:text-white">
                                                                                                     <span className="w-1 h-1 rounded-full bg-rose-500"></span>
@@ -2157,22 +2693,22 @@ const MobileAttendancePage = () => {
                                                                                                 </span>
                                                                                             )}
                                                                                         </div>
-                                                                                        {sDuration && <span className="font-bold text-indigo-600 dark:text-indigo-400 text-[11px]">{sDuration}</span>}
+                                                                                        {sDuration && <span className="font-bold text-indigo-600 dark:text-indigo-400 text-[10px]">{sDuration}</span>}
                                                                                     </div>
 
                                                                                     <div className="grid grid-cols-2 gap-2 text-xs">
-                                                                                        <div className="bg-slate-50/70 dark:bg-white/5 p-2 rounded-xl">
-                                                                                            <span className="block text-[8px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">In</span>
-                                                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{formatTime(s.time_in, s, false)}</span>
+                                                                                        <div className="bg-slate-50/70 dark:bg-white/5 p-2 rounded-lg">
+                                                                                            <span className="block text-[8px] font-bold text-emerald-600 uppercase tracking-wider mb-0.5">In</span>
+                                                                                            <span className="text-[11px] font-bold text-slate-700 dark:text-github-dark-text">{formatTime(s.time_in, s, false)}</span>
                                                                                             {s.time_in_image && (
                                                                                                 <button onClick={() => setPreviewImage(s.time_in_image)} className="mt-1 w-6 h-6 rounded border border-white overflow-hidden block">
                                                                                                     <img src={s.time_in_image} alt="In" className="w-full h-full object-cover" />
                                                                                                 </button>
                                                                                             )}
                                                                                         </div>
-                                                                                        <div className="bg-slate-50/70 dark:bg-white/5 p-2 rounded-xl">
-                                                                                            <span className="block text-[8px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Out</span>
-                                                                                            <span className="text-[11px] font-black text-slate-700 dark:text-github-dark-text">{s.time_out ? formatTime(s.time_out, s, true) : (s.status === 'MISSED_PUNCH' ? 'Missed Out' : '--:--')}</span>
+                                                                                        <div className="bg-slate-50/70 dark:bg-white/5 p-2 rounded-lg">
+                                                                                            <span className="block text-[8px] font-bold text-rose-500 uppercase tracking-wider mb-0.5">Out</span>
+                                                                                            <span className="text-[11px] font-bold text-slate-700 dark:text-github-dark-text">{s.time_out ? formatTime(s.time_out, s, true) : (s.status === 'MISSED_PUNCH' ? 'Missed Out' : '--:--')}</span>
                                                                                             {s.time_out_image && (
                                                                                                 <button onClick={() => setPreviewImage(s.time_out_image)} className="mt-1 w-6 h-6 rounded border border-white overflow-hidden block">
                                                                                                     <img src={s.time_out_image} alt="Out" className="w-full h-full object-cover" />
@@ -2182,7 +2718,7 @@ const MobileAttendancePage = () => {
                                                                                     </div>
 
                                                                                     {s.late_minutes > 0 && (
-                                                                                        <div className="p-2 bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/10 rounded-xl flex items-center gap-1.5 text-[9px] font-bold text-amber-700 dark:text-amber-400">
+                                                                                        <div className="p-1.5 bg-amber-50 dark:bg-amber-500/5 border border-amber-100 dark:border-amber-500/10 rounded-lg flex items-center gap-1.5 text-[9px] font-bold text-amber-700 dark:text-amber-400">
                                                                                             <AlertCircle size={10} className="shrink-0" />
                                                                                             <span>Late by {s.late_minutes}m {s.late_reason ? `(${s.late_reason})` : ''}</span>
                                                                                         </div>
@@ -2276,16 +2812,16 @@ const MobileAttendancePage = () => {
                                         )}
 
                                 {subTab === 'analytics' && (
-                                    <div className="space-y-6">
+                                    <div className="space-y-4">
                                         {/* Date Filters Bar */}
-                                        <div className="bg-white dark:bg-github-dark-subtle p-4 rounded-[2rem] border border-slate-100 dark:border-github-dark-border shadow-sm space-y-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-                                                    <Calendar size={16} />
+                                        <div className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-2xs space-y-3">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+                                                    <Calendar size={14} />
                                                 </div>
                                                 <div>
-                                                    <h4 className="text-[10px] font-black text-slate-800 dark:text-github-dark-text uppercase tracking-wider">Analytics Period</h4>
-                                                    <p className="text-[9px] text-slate-400 dark:text-github-dark-muted font-bold mt-0.5">Filter statistics and trend charts</p>
+                                                    <h4 className="text-[10px] font-bold text-slate-800 dark:text-github-dark-text uppercase tracking-wider">Analytics Period</h4>
+                                                    <p className="text-[9px] text-slate-400 dark:text-github-dark-muted font-normal mt-0.5">Filter statistics and trend charts</p>
                                                 </div>
                                             </div>
 
@@ -2301,9 +2837,9 @@ const MobileAttendancePage = () => {
                                                         key={type.id}
                                                         type="button"
                                                         onClick={() => setAnalyticsFilterType(type.id)}
-                                                        className={`flex-1 min-w-[70px] py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all text-center whitespace-nowrap ${
+                                                        className={`flex-1 min-w-[65px] py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all text-center whitespace-nowrap ${
                                                             analyticsFilterType === type.id
-                                                                ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 shadow-sm'
+                                                                ? 'bg-white dark:bg-github-dark-subtle text-indigo-600 dark:text-indigo-400 shadow-2xs'
                                                                 : 'text-slate-500 dark:text-slate-400'
                                                         }`}
                                                     >
@@ -2324,7 +2860,7 @@ const MobileAttendancePage = () => {
                                             )}
 
                                             {analyticsFilterType === 'custom' && (
-                                                <div className="grid grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-2 gap-2.5">
                                                     <MobileDatePicker
                                                         label="Start Date"
                                                         value={analyticsStartDate}
@@ -2340,58 +2876,58 @@ const MobileAttendancePage = () => {
                                         </div>
 
                                         {analyticsLoading ? (
-                                            <div className="py-20 flex flex-col items-center justify-center bg-white dark:bg-github-dark-subtle rounded-[2.5rem] border border-slate-100 dark:border-github-dark-border shadow-sm">
-                                                <RefreshCw className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400 mb-3" />
-                                                <p className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-widest">Compiling Analytics Data...</p>
+                                            <div className="py-14 flex flex-col items-center justify-center bg-white dark:bg-github-dark-subtle rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-2xs">
+                                                <RefreshCw className="w-6 h-6 animate-spin text-indigo-600 dark:text-indigo-400 mb-2" />
+                                                <p className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-wider">Compiling Analytics Data...</p>
                                             </div>
                                         ) : (
                                             <>
                                                 {/* Premium Stats Grid */}
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-github-dark-border shadow-sm">
-                                                        <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 mb-4">
-                                                            <CheckCircle size={20} />
+                                                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                                                    <div className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-2xs">
+                                                        <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-600 mb-2.5">
+                                                            <CheckCircle size={16} />
                                                         </div>
-                                                        <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Attendance</span>
-                                                        <h4 className="text-2xl font-black text-slate-800 dark:text-github-dark-text mt-1">{presentPercentage}%</h4>
-                                                        <p className="text-[9px] font-bold text-slate-400 mt-1">{presentCount} Days Present</p>
+                                                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">Attendance</span>
+                                                        <h4 className="text-xl font-black text-slate-800 dark:text-github-dark-text mt-0.5">{presentPercentage}%</h4>
+                                                        <p className="text-[9px] font-medium text-slate-400 mt-0.5">{presentCount} Days Present</p>
                                                     </div>
-                                                    <div className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-github-dark-border shadow-sm">
-                                                        <div className="w-10 h-10 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-600 mb-4">
-                                                            <Clock size={20} />
+                                                    <div className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-2xs">
+                                                        <div className="w-8 h-8 bg-amber-50 dark:bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-600 mb-2.5">
+                                                            <Clock size={16} />
                                                         </div>
-                                                        <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Avg Shift</span>
-                                                        <h4 className="text-2xl font-black text-slate-800 dark:text-github-dark-text mt-1">{avgHours}h</h4>
-                                                        <p className="text-[9px] font-bold text-slate-400 mt-1">Per Working Day</p>
+                                                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">Avg Shift</span>
+                                                        <h4 className="text-xl font-black text-slate-800 dark:text-github-dark-text mt-0.5">{avgHours}h</h4>
+                                                        <p className="text-[9px] font-medium text-slate-400 mt-0.5">Per Working Day</p>
                                                     </div>
-                                                    <div className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-github-dark-border shadow-sm">
-                                                        <div className="w-10 h-10 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-600 mb-4">
-                                                            <AlertCircle size={20} />
+                                                    <div className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-2xs">
+                                                        <div className="w-8 h-8 bg-rose-50 dark:bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-600 mb-2.5">
+                                                            <AlertCircle size={16} />
                                                         </div>
-                                                        <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Late Arrival</span>
-                                                        <h4 className="text-2xl font-black text-slate-800 dark:text-github-dark-text mt-1">{lateCount}</h4>
-                                                        <p className="text-[9px] font-bold text-slate-400 mt-1">{latePercentage}% of shifts</p>
+                                                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">Late Arrival</span>
+                                                        <h4 className="text-xl font-black text-slate-800 dark:text-github-dark-text mt-0.5">{lateCount}</h4>
+                                                        <p className="text-[9px] font-medium text-slate-400 mt-0.5">{latePercentage}% of shifts</p>
                                                     </div>
-                                                    <div className="bg-white dark:bg-github-dark-subtle p-5 rounded-[2.5rem] border border-slate-100 dark:border-github-dark-border shadow-sm">
-                                                        <div className="w-10 h-10 bg-sky-50 dark:bg-sky-500/10 rounded-2xl flex items-center justify-center text-sky-600 mb-4">
-                                                            <BarChart3 size={20} />
+                                                    <div className="bg-white dark:bg-github-dark-subtle p-3.5 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-2xs">
+                                                        <div className="w-8 h-8 bg-sky-50 dark:bg-sky-500/10 rounded-xl flex items-center justify-center text-sky-600 mb-2.5">
+                                                            <BarChart3 size={16} />
                                                         </div>
-                                                        <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Short Shifts</span>
-                                                        <h4 className="text-2xl font-black text-slate-800 dark:text-github-dark-text mt-1">{underHoursCount}</h4>
-                                                        <p className="text-[9px] font-bold text-slate-400 mt-1">Under 8 Hours</p>
+                                                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">Short Shifts</span>
+                                                        <h4 className="text-xl font-black text-slate-800 dark:text-github-dark-text mt-0.5">{underHoursCount}</h4>
+                                                        <p className="text-[9px] font-medium text-slate-400 mt-0.5">Under 8 Hours</p>
                                                     </div>
                                                 </div>
 
                                                 {/* Trends Chart */}
-                                                <div className="bg-white dark:bg-github-dark-subtle p-6 rounded-[2.5rem] border border-slate-100 dark:border-github-dark-border shadow-sm">
-                                                    <h3 className="text-[10px] font-black text-slate-800 dark:text-github-dark-text uppercase tracking-[0.2em] mb-8 flex items-center justify-between opacity-60">
+                                                <div className="bg-white dark:bg-github-dark-subtle p-3.5 sm:p-4 rounded-2xl border border-slate-100 dark:border-github-dark-border shadow-2xs">
+                                                    <h3 className="text-[9px] font-bold text-slate-800 dark:text-github-dark-text uppercase tracking-wider mb-4 flex items-center justify-between opacity-70">
                                                         Daily Work Hours
-                                                        <div className="flex items-center gap-1.5 text-indigo-500 font-bold tracking-tight">
-                                                            <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                                        <div className="flex items-center gap-1.5 text-indigo-500 font-semibold tracking-tight">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
                                                             Trend
                                                         </div>
                                                     </h3>
-                                                    <div className="h-48 -ml-4">
+                                                    <div className="h-40 -ml-4">
                                                         <ResponsiveContainer width="100%" height="100%">
                                                             <AreaChart data={attendanceTrendData}>
                                                                 <defs>
@@ -2404,26 +2940,26 @@ const MobileAttendancePage = () => {
                                                                 <XAxis dataKey="date" hide />
                                                                 <YAxis hide />
                                                                 <RechartsTooltip 
-                                                                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', background: 'rgb(255 255 255 / 0.9)' }}
+                                                                    contentStyle={{ borderRadius: '0.75rem', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', background: 'rgb(255 255 255 / 0.95)', fontSize: '11px' }}
                                                                     itemStyle={{ color: '#6366f1', fontWeight: 'bold' }}
                                                                 />
-                                                                <Area type="monotone" dataKey="hours" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorHours)" />
+                                                                <Area type="monotone" dataKey="hours" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorHours)" />
                                                             </AreaChart>
                                                         </ResponsiveContainer>
                                                     </div>
                                                 </div>
 
                                                 {/* Download Action Section */}
-                                                <div className="bg-indigo-600 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-500/20">
+                                                <div className="bg-indigo-600 rounded-2xl p-4 sm:p-5 text-white relative overflow-hidden shadow-lg shadow-indigo-500/20">
                                                     <div className="relative z-10">
-                                                        <h3 className="text-xl font-black tracking-tight mb-2">Monthly Summary</h3>
-                                                        <p className="text-indigo-100/70 text-[11px] font-medium mb-4 max-w-[200px]">Download your detailed attendance report for {new Date(reportMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
-                                                        <div className="mb-5">
-                                                            <label className="block text-[9px] font-black uppercase text-indigo-200 tracking-wider mb-2">File Format</label>
+                                                        <h3 className="text-base sm:text-lg font-bold tracking-tight mb-1">Monthly Summary</h3>
+                                                        <p className="text-indigo-100/80 text-[10px] sm:text-xs font-normal mb-3 max-w-[240px]">Download your detailed attendance report for {new Date(reportMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
+                                                        <div className="mb-3.5">
+                                                            <label className="block text-[8px] font-bold uppercase text-indigo-200 tracking-wider mb-1.5">File Format</label>
                                                             <select
                                                                 value={fileFormat}
                                                                 onChange={(e) => setFileFormat(e.target.value)}
-                                                                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-2xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-white/20 cursor-pointer"
+                                                                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-white/30 cursor-pointer"
                                                             >
                                                                 <option value="xlsx" className="text-slate-800">Excel (xlsx)</option>
                                                                 <option value="csv" className="text-slate-800">CSV (csv)</option>
@@ -2433,15 +2969,15 @@ const MobileAttendancePage = () => {
                                                         <button
                                                             onClick={downloadReport}
                                                             disabled={isDownloading}
-                                                            className="w-full py-4 bg-white text-indigo-600 text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 active:scale-[0.98] transition-all"
+                                                            className="w-full py-2.5 bg-white text-indigo-600 text-xs font-bold uppercase tracking-wider rounded-xl shadow-md flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] transition-all"
                                                         >
-                                                            {isDownloading ? <RefreshCw className="animate-spin" size={16} /> : <Download size={16} />}
+                                                            {isDownloading ? <RefreshCw className="animate-spin" size={14} /> : <Download size={14} />}
                                                             Download Report
                                                         </button>
                                                     </div>
                                                     {/* Abstract Background Element */}
-                                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
-                                                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-sky-400/20 rounded-full -ml-12 -mb-12 blur-2xl" />
+                                                    <div className="absolute top-0 right-0 w-28 h-28 bg-white/10 rounded-full -mr-14 -mt-14 blur-2xl" />
+                                                    <div className="absolute bottom-0 left-0 w-20 h-20 bg-sky-400/20 rounded-full -ml-10 -mb-10 blur-2xl" />
                                                 </div>
                                             </>
                                         )}
@@ -2449,46 +2985,79 @@ const MobileAttendancePage = () => {
                                 )}
 
                                 {subTab === 'corrections' && (
-                                    <div className="space-y-4">
-                                        <div className="flex gap-2 mb-2">
-                                            {['pending', 'history'].map(f => (
-                                                <button
-                                                    key={f}
-                                                    onClick={() => setCorrectionFilter(f)}
-                                                    className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
-                                                        correctionFilter === f ? 'bg-slate-900 text-white border-slate-900' : 'bg-transparent border-slate-200 text-slate-400'
-                                                    }`}
-                                                >
-                                                    {f}
-                                                </button>
-                                            ))}
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                            <div className="flex gap-1.5">
+                                                {['pending', 'history'].map(f => (
+                                                    <button
+                                                        key={f}
+                                                        onClick={() => setCorrectionFilter(f)}
+                                                        className={`px-3.5 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-all ${
+                                                            correctionFilter === f ? 'bg-slate-900 text-white border-slate-900' : 'bg-transparent border-slate-200 text-slate-400'
+                                                        }`}
+                                                    >
+                                                        {f}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const todayStr = getLocalDateString();
+                                                    setCorrectionForm(prev => ({ ...prev, date: todayStr }));
+                                                    loadCorrectionDataForDate(todayStr);
+                                                    setIsCorrectionOpen(true);
+                                                }}
+                                                className="px-3 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 transition-all cursor-pointer"
+                                            >
+                                                <Plus size={13} />
+                                                <span>Request</span>
+                                            </button>
                                         </div>
 
-                                        <div className="space-y-3">
+                                        <div className="space-y-2.5">
                                             {filteredCorrections.length > 0 ? filteredCorrections.map((item, idx) => (
                                                 <div
                                                     key={item.acr_id || item.request_id || item.id}
                                                     onClick={() => handleRequestClick(item)}
-                                                    className="bg-white dark:bg-github-dark-subtle p-5 rounded-3xl border border-slate-100 dark:border-github-dark-border shadow-sm flex items-center justify-between active:scale-95 transition-all"
+                                                    className="bg-white dark:bg-github-dark-subtle p-3 rounded-xl border border-slate-100 dark:border-github-dark-border shadow-2xs flex items-center justify-between active:scale-[0.99] transition-all cursor-pointer"
                                                 >
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600">
-                                                            <FileText size={18} />
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 shrink-0">
+                                                            <FileText size={15} />
                                                         </div>
-                                                        <div>
-                                                            <h4 className="font-black text-sm text-slate-800 dark:text-github-dark-text truncate max-w-[150px] leading-none">{item.correction_type}</h4>
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-1.5">{formatCorrectionDate(item.request_date)}</p>
+                                                        <div className="min-w-0">
+                                                            <h4 className="font-bold text-xs text-slate-800 dark:text-github-dark-text truncate max-w-[150px] leading-tight">{item.correction_type}</h4>
+                                                            <p className="text-[9px] font-medium text-slate-400 uppercase mt-0.5">{formatCorrectionDate(item.request_date)}</p>
                                                         </div>
                                                     </div>
-                                                    <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${
-                                                        item.status?.toLowerCase() === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                        item.status?.toLowerCase() === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-                                                    }`}>
-                                                        {item.status || 'PENDING'}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                                                            item.status?.toLowerCase() === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                            item.status?.toLowerCase() === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'
+                                                        }`}>
+                                                            {item.status || 'PENDING'}
+                                                        </span>
+                                                        {item.status?.toLowerCase() === 'pending' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const targetDate = item.request_date ? String(item.request_date).split('T')[0] : correctionForm.date;
+                                                                    setCorrectionForm(prev => ({ ...prev, date: targetDate }));
+                                                                    loadCorrectionDataForDate(targetDate);
+                                                                    setIsCorrectionOpen(true);
+                                                                }}
+                                                                className="p-1 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/50 dark:border-indigo-800/40 transition-colors"
+                                                                title="Edit Request"
+                                                            >
+                                                                <Edit3 size={12} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )) : (
-                                                <p className="text-center text-slate-400 py-12 font-bold uppercase tracking-widest text-xs">No {correctionFilter} requests</p>
+                                                <p className="text-center text-slate-400 py-10 font-bold uppercase tracking-wider text-xs">No {correctionFilter} requests</p>
                                             )}
                                         </div>
                                     </div>
@@ -2526,8 +3095,8 @@ const MobileAttendancePage = () => {
             {showCamera && createPortal(
                 (() => {
                     const isSelfieRequired = cameraMode === 'IN'
-                        ? (myShift?.rules?.entry_requirements?.selfie ?? true)
-                        : (myShift?.rules?.exit_requirements?.selfie ?? false);
+                        ? Boolean(myShift?.rules?.entry_requirements?.selfie)
+                        : Boolean(myShift?.rules?.exit_requirements?.selfie);
 
                     return (
                         <div className="fixed inset-0 z-[9999] bg-[#070a12]/95 backdrop-blur-xl flex flex-col justify-between p-4 sm:p-6 overflow-y-auto no-scrollbar">
@@ -2625,7 +3194,7 @@ const MobileAttendancePage = () => {
                                 </div>
 
                                 {/* Late Reason Input Section */}
-                                {requireLateReason && (!isSelfieRequired || imgSrc) && (
+                                {requireLateReason && (
                                     <div className="w-full space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                         <div className="flex items-center gap-2.5 text-amber-300 bg-amber-950/40 border border-amber-500/30 p-3.5 rounded-xl text-xs font-medium">
                                             <AlertCircle size={18} className="shrink-0 text-amber-400" />
@@ -2698,352 +3267,895 @@ const MobileAttendancePage = () => {
                 document.body
             )}
 
-            {/* Correction Modal */}
+            {/* Correction Modal / Bottom Sheet Drawer */}
             <AnimatePresence>
                 {isCorrectionOpen && (
-                    <div className="fixed inset-0 z-[1000] flex items-end justify-center">
+                    <motion.div
+                        key="mobile-correction-drawer"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9000] flex items-end justify-center sm:items-center p-0 sm:p-4"
+                    >
                         <motion.div 
                             initial={{ opacity: 0 }} 
                             animate={{ opacity: 1 }} 
                             exit={{ opacity: 0 }} 
                             onClick={() => setIsCorrectionOpen(false)} 
-                            className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+                            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm cursor-pointer" 
                         />
                         <motion.div 
                             initial={{ y: '100%' }} 
                             animate={{ y: 0 }} 
                             exit={{ y: '100%' }} 
-                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                            className="relative w-full bg-white dark:bg-github-dark-subtle rounded-t-[3rem] p-8 pb-12 shadow-2xl flex flex-col max-h-[92vh] overflow-y-auto no-scrollbar border-t border-slate-100 dark:border-github-dark-border"
+                            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                            className="relative w-full max-w-lg bg-white dark:bg-github-dark-subtle rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] border border-slate-200/80 dark:border-github-dark-border z-10 overflow-hidden"
                         >
-                            {/* Handle Bar */}
-                            <div className="w-12 h-1.5 bg-slate-200 dark:bg-github-dark-border rounded-full mx-auto mb-8 shrink-0" />
-
-                            <div className="flex justify-between items-start mb-8">
-                                <div>
-                                    <h3 className="text-2xl font-black text-slate-900 dark:text-github-dark-text tracking-tight">Apply Correction</h3>
-                                    <p className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted tracking-widest mt-1">Adjust Your Attendance Records</p>
+                            {/* Modal Header */}
+                            <div className="px-4 pt-3 pb-3 border-b border-slate-100 dark:border-github-dark-border bg-gradient-to-r from-indigo-50/50 via-white to-transparent dark:from-github-dark-bg/60 dark:via-github-dark-subtle dark:to-transparent shrink-0">
+                                <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-2.5 sm:hidden" />
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-github-dark-text tracking-tight">
+                                                Attendance Correction
+                                            </h3>
+                                            {pendingRequestId && (
+                                                <span className="text-[10px] sm:text-xs font-semibold bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-800/40">
+                                                    Editing Request
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-slate-500 dark:text-github-dark-muted font-normal mt-0.5">
+                                            Submit or adjust punches for manager review
+                                        </p>
+                                    </div>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setIsCorrectionOpen(false)} 
+                                        className="p-2 rounded-xl bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all active:scale-90 cursor-pointer"
+                                        title="Close"
+                                    >
+                                        <X size={18} />
+                                    </button>
                                 </div>
-                                <button onClick={() => setIsCorrectionOpen(false)} className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-400">
-                                    <X size={24} />
-                                </button>
                             </div>
 
-                            <div className="space-y-6">
-                                {/* Date Selection */}
-                                <div className="space-y-2.5 relative z-30">
-                                    <MobileDatePicker
-                                        label="Adjustment Date"
-                                        value={correctionForm.date}
-                                        onChange={(val) => setCorrectionForm({...correctionForm, date: val})}
-                                        minDate={minAllowedCorrectionDate}
-                                        maxDate={maxAllowedCorrectionDate}
-                                    />
+                            {/* Modal Scrollable Body */}
+                            <div className="flex-1 overflow-y-auto px-3.5 sm:px-4 py-3.5 space-y-3.5 no-scrollbar">
+                                <form id="mobile-correction-form" onSubmit={handleSubmitCorrection} className="space-y-4">
 
-                                    {/* Smart Context Banner */}
-                                    {(() => {
-                                        const hasSessions = originalSessions.length > 0;
-                                        const hasOpenSession = hasSessions && originalSessions.some(s => s.time_in && !s.time_out);
-                                        if (!hasSessions) {
-                                            return (
-                                                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between text-xs">
-                                                    <span className="text-amber-700 dark:text-amber-300 font-medium">No punches found (Absent)</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setCorrectionForm({ ...correctionForm, sessions: [{ in: '09:00', out: '18:00' }] })}
-                                                        className="px-2.5 py-1 bg-amber-500 text-white font-bold text-[10px] rounded-lg uppercase tracking-wider"
-                                                    >
-                                                        Fill 9-6
-                                                    </button>
+                                    {/* Date & Category Grid */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                                        <div className="space-y-1.5">
+                                            <MobileDatePicker
+                                                label="Adjustment Date"
+                                                value={correctionForm.date}
+                                                onChange={(val) => {
+                                                    setCorrectionForm(prev => ({ ...prev, date: val }));
+                                                    loadCorrectionDataForDate(val);
+                                                }}
+                                                minDate={minAllowedCorrectionDate}
+                                                maxDate={maxAllowedCorrectionDate}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <ThemedSelect
+                                                label="Correction Category"
+                                                value={correctionForm.type}
+                                                onChange={(val) => setCorrectionForm(prev => ({ ...prev, type: val }))}
+                                                options={[
+                                                    { label: 'Missed Punch', value: 'Missed Punch' },
+                                                    { label: 'Missed Day', value: 'Missed Day' },
+                                                    { label: 'Other Reason', value: 'Other' }
+                                                ]}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {correctionForm.type === 'Other' && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="space-y-1.5"
+                                        >
+                                            <label className="block text-xs font-bold text-slate-800 dark:text-slate-100">
+                                                Specify Other Category
+                                            </label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g., Biometric sensor failure, Travel exception..."
+                                                value={correctionForm.otherType || ''}
+                                                onChange={(e) => setCorrectionForm(prev => ({ ...prev, otherType: e.target.value }))}
+                                                className="w-full h-10 px-3 bg-white dark:bg-dark-card border border-slate-200 dark:border-github-dark-border rounded-xl text-xs font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                                                required
+                                            />
+                                        </motion.div>
+                                    )}
+
+                                    {/* Existing Correction Request Notice for Selected Date */}
+                                    {existingRequestForCorrDate && (
+                                        <div className={`p-3 rounded-xl border flex items-start gap-2.5 transition-all text-xs ${
+                                            (existingRequestForCorrDate.status || '').toLowerCase() === 'approved'
+                                                ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200/80 dark:border-emerald-800/50 text-emerald-900 dark:text-emerald-200'
+                                                : (existingRequestForCorrDate.status || '').toLowerCase() === 'rejected'
+                                                    ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-200/80 dark:border-rose-800/50 text-rose-900 dark:text-rose-200'
+                                                    : 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-200/80 dark:border-amber-800/50 text-amber-900 dark:text-amber-200'
+                                        }`}>
+                                            <div className="shrink-0 mt-0.5">
+                                                {(existingRequestForCorrDate.status || '').toLowerCase() === 'approved' ? (
+                                                    <CheckCircle size={15} className="text-emerald-600 dark:text-emerald-400" />
+                                                ) : (existingRequestForCorrDate.status || '').toLowerCase() === 'rejected' ? (
+                                                    <AlertCircle size={15} className="text-rose-600 dark:text-rose-400" />
+                                                ) : (
+                                                    <FileClock size={15} className="text-amber-600 dark:text-amber-400" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="font-bold text-xs">
+                                                        {(existingRequestForCorrDate.status || '').toLowerCase() === 'approved'
+                                                            ? 'Request Already Approved'
+                                                            : (existingRequestForCorrDate.status || '').toLowerCase() === 'rejected'
+                                                                ? 'Previous Request Rejected'
+                                                                : 'Correction Request Raised for this Date'}
+                                                    </span>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize shrink-0 ${
+                                                        (existingRequestForCorrDate.status || '').toLowerCase() === 'approved'
+                                                            ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
+                                                            : (existingRequestForCorrDate.status || '').toLowerCase() === 'rejected'
+                                                                ? 'bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300'
+                                                                : 'bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300'
+                                                    }`}>
+                                                        {existingRequestForCorrDate.status || 'Pending'}
+                                                    </span>
                                                 </div>
-                                            );
-                                        }
-                                        if (hasOpenSession) {
-                                            return (
-                                                <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-between text-xs">
-                                                    <span className="text-indigo-700 dark:text-indigo-300 font-medium">In at {originalSessions[0]?.time_in} (No out)</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setCorrectionForm({ ...correctionForm, sessions: [{ in: originalSessions[0]?.time_in || '09:00', out: '18:00' }] })}
-                                                        className="px-2.5 py-1 bg-indigo-600 text-white font-bold text-[10px] rounded-lg uppercase tracking-wider"
-                                                    >
-                                                        Out: 18:00
-                                                    </button>
+                                                <p className="text-[11px] mt-1 leading-snug opacity-90 font-medium">
+                                                    {(existingRequestForCorrDate.status || '').toLowerCase() === 'approved'
+                                                        ? 'Attendance for this date was previously approved by management.'
+                                                        : (existingRequestForCorrDate.status || '').toLowerCase() === 'rejected'
+                                                            ? (existingRequestForCorrDate.review_comments ? `Admin remarks: "${existingRequestForCorrDate.review_comments}". You can submit a revised request below.` : 'Your previous request was rejected. You can submit revised details below.')
+                                                            : 'A correction request has already been submitted for this day and is pending review. Submitting below will update your request.'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Original Attendance Context Card */}
+                                    <div className="p-3.5 sm:p-4 bg-slate-50/70 dark:bg-github-dark-bg/40 border border-slate-200 dark:border-github-dark-border rounded-2xl space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <History size={16} className="text-slate-400 shrink-0" />
+                                                <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                                                    Originally Logged on {formatCorrectionDate(correctionForm.date)}
+                                                </span>
+                                            </div>
+                                            {originalSessions.length === 0 ? (
+                                                <span className="text-[10px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40 shrink-0">
+                                                    No Punches Recorded
+                                                </span>
+                                            ) : originalSessions.some(s => s.time_in && !s.time_out) ? (
+                                                <span className="text-[10px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center gap-1.5 shrink-0">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                    Active Session
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40 shrink-0">
+                                                    {originalSessions.length} Session{originalSessions.length > 1 ? 's' : ''} Recorded
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Original Sessions List & Checkpoints */}
+                                        {originalSessions.length > 0 ? (
+                                            <div className="space-y-2 pt-0.5">
+                                                {originalSessions.map((s, idx) => {
+                                                    const isActive = Boolean(s.time_in && !s.time_out);
+                                                    const checkpointsList = Array.isArray(s.checkpoints) ? s.checkpoints : [];
+                                                    return (
+                                                        <div key={idx} className="bg-white dark:bg-github-dark-subtle/80 p-3 rounded-xl border border-slate-200/80 dark:border-github-dark-border/60 space-y-2">
+                                                            <div className="flex items-center justify-between text-xs">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}`} />
+                                                                    <span className="font-bold text-slate-900 dark:text-slate-100">
+                                                                        Session #{idx + 1}
+                                                                    </span>
+                                                                    {isActive && (
+                                                                        <span className="text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
+                                                                            In Progress
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5 font-mono text-xs font-bold">
+                                                                    <span className={s.time_in ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}>
+                                                                        {s.time_in ? (formatTime ? formatTime(`2000-01-01T${s.time_in}:00`) : s.time_in) : 'Missing In'}
+                                                                    </span>
+                                                                    <span className="text-slate-400 font-bold">→</span>
+                                                                    <span className={s.time_out ? "text-rose-600 dark:text-rose-400" : "text-amber-500 dark:text-amber-400 italic"}>
+                                                                        {s.time_out ? (formatTime ? formatTime(`2000-01-01T${s.time_out}:00`) : s.time_out) : 'Not Clocked Out'}
+                                                                    </span>
+                                                                    {s.time_in && s.time_out && (
+                                                                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md ml-1">
+                                                                            {calculateSessionDurationHours(s.time_in, s.time_out).toFixed(1)} hrs
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Checkpoints shown compactly */}
+                                                            {checkpointsList.length > 0 && (
+                                                                <div className="pt-2 border-t border-slate-100 dark:border-github-dark-border/60">
+                                                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                                                        <MapPin size={13} className="text-amber-500 shrink-0" />
+                                                                        <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                                                                            Checkpoints ({checkpointsList.length})
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {checkpointsList.map((chk, cIdx) => {
+                                                                            const selfieUrl = chk.image_url || chk.image;
+                                                                            const chkTime = chk.punch_time ? (formatTime ? formatTime(chk.punch_time) : formatLocalTimeString(chk.punch_time)) : (chk.time || `Point #${cIdx + 1}`);
+                                                                            const locLabel = chk.address ? chk.address.split(',')[0] : (chk.lat && chk.lng ? `${Number(chk.lat).toFixed(2)}, ${Number(chk.lng).toFixed(2)}` : null);
+                                                                            return (
+                                                                                <div
+                                                                                    key={chk.id || cIdx}
+                                                                                    onClick={() => selfieUrl && setPreviewImage(selfieUrl)}
+                                                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50/80 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/40 ${selfieUrl ? 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40' : ''}`}
+                                                                                    title={chk.address || (selfieUrl ? 'Click to view photo' : undefined)}
+                                                                                >
+                                                                                    {selfieUrl ? (
+                                                                                        <Camera size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                                                                    ) : (
+                                                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                                                                    )}
+                                                                                    <span>#{cIdx + 1}</span>
+                                                                                    <span className="font-mono text-[11px] font-semibold">{chkTime}</span>
+                                                                                    {locLabel && (
+                                                                                        <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 max-w-[120px] truncate">
+                                                                                            • {locLabel}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 py-0.5">
+                                                No mobile or biometric punches found for this date. Enter your requested session times below.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Reason Field */}
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-800 dark:text-slate-100">
+                                            Reason <span className="text-rose-500 font-bold">*</span>
+                                        </label>
+
+                                        {/* Text Box with Attach Icon on the Right */}
+                                        <div
+                                            onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+                                            onDragLeave={() => setIsDraggingFile(false)}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                setIsDraggingFile(false);
+                                                const file = e.dataTransfer.files?.[0];
+                                                if (file) {
+                                                    setCorrAttachment(file);
+                                                    if (file.type.startsWith('image/')) {
+                                                        setCorrAttachmentPreview(URL.createObjectURL(file));
+                                                    } else {
+                                                        setCorrAttachmentPreview(null);
+                                                    }
+                                                }
+                                            }}
+                                            className={`relative flex items-center gap-2.5 bg-white dark:bg-dark-card border rounded-xl px-3.5 py-2.5 min-h-[48px] shadow-2xs transition-all ${
+                                                isDraggingFile
+                                                    ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/30'
+                                                    : 'border-slate-200 dark:border-github-dark-border focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500'
+                                            }`}
+                                        >
+                                            <textarea
+                                                value={correctionForm.reason}
+                                                onChange={(e) => setCorrectionForm(prev => ({ ...prev, reason: e.target.value }))}
+                                                placeholder="Write your message or reason for adjustment..."
+                                                rows={1}
+                                                onInput={(e) => {
+                                                    e.target.style.height = 'auto';
+                                                    e.target.style.height = `${e.target.scrollHeight}px`;
+                                                }}
+                                                className="flex-1 bg-transparent text-xs font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none resize-none min-h-[28px] max-h-32 py-0.5 px-0 leading-5"
+                                                required
+                                            />
+
+                                            <input
+                                                ref={corrFileInputRef}
+                                                type="file"
+                                                className="hidden"
+                                                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) {
+                                                        setCorrAttachment(file);
+                                                        if (file.type.startsWith('image/')) {
+                                                            setCorrAttachmentPreview(URL.createObjectURL(file));
+                                                        } else {
+                                                            setCorrAttachmentPreview(null);
+                                                        }
+                                                    }
+                                                }}
+                                            />
+
+                                            <button
+                                                type="button"
+                                                onClick={() => corrFileInputRef.current?.click()}
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+                                                title="Attach document, doctor's slip, or proof file"
+                                            >
+                                                <Paperclip size={18} />
+                                            </button>
+                                        </div>
+
+                                        {/* Attached File Preview Chip / Existing Attachment */}
+                                        {(corrAttachment || existingAttachmentUrl) && (
+                                            <div className="space-y-2 pt-1">
+                                                {corrAttachment && (
+                                                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border text-xs">
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            {corrAttachmentPreview ? (
+                                                                <img
+                                                                    src={corrAttachmentPreview}
+                                                                    alt="Attachment Preview"
+                                                                    className="w-10 h-10 object-cover rounded-lg border border-slate-200 dark:border-github-dark-border cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+                                                                    onClick={() => setPreviewImage(corrAttachmentPreview)}
+                                                                    title="Click to view full image"
+                                                                />
+                                                            ) : (
+                                                                <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                                    <FileText size={18} />
+                                                                </div>
+                                                            )}
+                                                            <div className="min-w-0">
+                                                                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[200px]">
+                                                                    {corrAttachment.name}
+                                                                </p>
+                                                                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                                                    {(corrAttachment.size / 1024).toFixed(1)} KB • Document
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            {corrAttachmentPreview && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPreviewImage(corrAttachmentPreview)}
+                                                                    className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-github-dark-border text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                                                                    title="Preview file"
+                                                                >
+                                                                    <Eye size={15} />
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setCorrAttachment(null);
+                                                                    setCorrAttachmentPreview(null);
+                                                                    if (corrFileInputRef.current) corrFileInputRef.current.value = '';
+                                                                }}
+                                                                className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 transition-colors cursor-pointer"
+                                                                title="Remove file"
+                                                            >
+                                                                <Trash2 size={15} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {existingAttachmentUrl && !corrAttachment && (
+                                                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-200/80 dark:border-github-dark-border text-xs">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <Paperclip size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                                            <span className="truncate font-bold text-slate-800 dark:text-slate-200 text-xs">Existing attached proof</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 shrink-0">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPreviewImage(existingAttachmentUrl)}
+                                                                className="text-xs font-bold underline text-indigo-600 dark:text-indigo-400 hover:opacity-80 flex items-center gap-1 cursor-pointer"
+                                                            >
+                                                                <Eye size={13} /> View
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setExistingAttachmentUrl(null)}
+                                                                className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                                                                title="Remove existing file"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Advanced: Custom Punch Timeline (Collapsible Accordion) */}
+                                    <div className="border border-slate-200 dark:border-github-dark-border rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-github-dark-bg/30 transition-all">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAdvancedOptions(prev => !prev)}
+                                            className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-slate-100/60 dark:hover:bg-github-dark-bg/60 transition-colors cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                                    <Clock size={15} />
                                                 </div>
-                                            );
-                                        }
-                                        return null;
-                                    })()}
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100">
+                                                        Advanced
+                                                    </span>
+                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-github-dark-border text-slate-600 dark:text-slate-300">
+                                                        Optional
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
+                                                    <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded-md border border-emerald-200/60 dark:border-emerald-800/40">
+                                                        {totalProposedHours.toFixed(2)} hrs
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-github-dark-bg px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-github-dark-border/60">
+                                                        Not Set
+                                                    </span>
+                                                )}
+                                                <div className={`transition-transform duration-200 ${showAdvancedOptions ? 'rotate-180' : 'rotate-0'}`}>
+                                                    <ChevronDown size={18} className="text-slate-400" />
+                                                </div>
+                                            </div>
+                                        </button>
+
+                                        <AnimatePresence>
+                                            {showAdvancedOptions && (
+                                                <motion.div
+                                                    initial={{ height: 0, opacity: 0 }}
+                                                    animate={{ height: 'auto', opacity: 1 }}
+                                                    exit={{ height: 0, opacity: 0 }}
+                                                    className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-3.5 space-y-3 bg-white dark:bg-github-dark-subtle/50"
+                                                >
+                                                    {/* Quick helper actions */}
+                                                    {originalSessions.length > 0 && (
+                                                        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-github-dark-border/60">
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleResetCorrectionToOriginal}
+                                                                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-github-dark-bg text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-github-dark-border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+                                                            >
+                                                                <RotateCcw size={13} /> Reset to Logged
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Interactive Visual Timeline */}
+                                                    <div className="overflow-x-auto no-scrollbar">
+                                                        <VisualCorrectionTimeline
+                                                            requestData={{
+                                                                original_data: originalSessions,
+                                                                proposed_data: corrSessions.filter(s => s.time_in || s.time_out),
+                                                                correction_type: correctionForm.type,
+                                                                status: 'draft'
+                                                            }}
+                                                            editable={true}
+                                                            shift={myShift}
+                                                            frameless={true}
+                                                            hideHeader={true}
+                                                            scale={0.85}
+                                                            onIncompleteChange={setTimelineHasIncomplete}
+                                                            onSessionsChange={(updated) => {
+                                                                setCorrSessions(updated.map((s, idx) => {
+                                                                    const isChk = isCheckpointRecord(s) || s.punch_type === 'normal';
+                                                                    return {
+                                                                        id: `session-${idx}-${s.time_in || s.time_out}`,
+                                                                        time_in: s.time_in || '',
+                                                                        time_out: isChk ? '' : (s.time_out || ''),
+                                                                        punch_type: isChk ? 'normal' : (s.punch_type || 'regular'),
+                                                                        address: s.address || ''
+                                                                    };
+                                                                }));
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                </form>
+                            </div>
+
+                            {/* Modal Fixed Footer */}
+                            <div className="px-3.5 sm:px-4 py-3 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/80 dark:bg-github-dark-bg/90 shrink-0 space-y-2.5">
+                                <div className="flex items-center justify-between text-xs px-0.5">
+                                    <span className="text-slate-700 dark:text-slate-300 font-bold">
+                                        Adjusted Work Time:
+                                    </span>
+                                    {corrSessions.filter(s => s.time_in || s.time_out).length > 0 ? (
+                                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm">
+                                            {totalProposedHours.toFixed(2)} hrs ({corrSessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && (s.time_in || s.time_out)).length} session{corrSessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal' && (s.time_in || s.time_out)).length !== 1 ? 's' : ''})
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
+                                            Optional (Per Remarks)
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSubmitCorrection}
+                                    disabled={hasIncompleteSession || submitLoading}
+                                    className={`w-full h-10 font-bold text-xs sm:text-sm rounded-xl transition-all flex items-center justify-center gap-2 ${
+                                        hasIncompleteSession || submitLoading
+                                            ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed opacity-60 shadow-none'
+                                            : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.99] cursor-pointer'
+                                    }`}
+                                    title={hasIncompleteSession ? "Please complete all session punch pairs (Clock IN & OUT) before requesting correction" : undefined}
+                                >
+                                    {submitLoading ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            <span>Submitting...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {pendingRequestId ? (
+                                                <Check size={16} strokeWidth={2.5} />
+                                            ) : (
+                                                <Plus size={16} strokeWidth={2.5} />
+                                            )}
+                                            <span>{pendingRequestId ? 'Review & Update Request' : 'Request Correction'}</span>
+                                        </>
+                                    )}
+                                </button>
+                                {hasIncompleteSession && (
+                                    <p className="text-xs text-center text-amber-600 dark:text-amber-400 font-semibold flex items-center justify-center gap-1.5 pt-0.5">
+                                        <AlertCircle size={14} className="shrink-0" />
+                                        <span>Please complete all session punch pairs (Clock IN &amp; OUT) before requesting correction</span>
+                                    </p>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* --- CONFIRM SUBMISSION MODAL (REVIEW STEP) --- */}
+            <AnimatePresence>
+                {showConfirmSubmit && (
+                    <motion.div
+                        key="mobile-confirm-submit-modal"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9000] flex items-end justify-center sm:items-center p-0 sm:p-4"
+                    >
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-slate-950/70 backdrop-blur-md"
+                            onClick={() => !submitLoading && setShowConfirmSubmit(false)}
+                        />
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                            className="relative bg-white dark:bg-github-dark-subtle w-full max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-github-dark-border overflow-hidden z-10 flex flex-col max-h-[92vh] text-left"
+                        >
+                            <div className="px-3.5 pt-2.5 pb-2.5 border-b border-slate-100 dark:border-github-dark-border bg-gradient-to-r from-indigo-50/70 to-transparent dark:from-github-dark-bg/50 shrink-0">
+                                <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-2 sm:hidden" />
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                                            <FileClock size={16} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-github-dark-text tracking-tight">Review Correction Request</h3>
+                                            <p className="text-[11px] font-normal text-slate-500 dark:text-github-dark-muted">
+                                                {pendingRequestId ? 'Updating Existing Request' : 'New Request Submission'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        type="button"
+                                        onClick={() => !submitLoading && setShowConfirmSubmit(false)} 
+                                        className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-github-dark-bg transition-colors cursor-pointer"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="p-3 sm:p-3.5 space-y-3 overflow-y-auto flex-1 no-scrollbar">
+                                {/* Date & Category Banner */}
+                                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-github-dark-bg/60 border border-slate-100 dark:border-github-dark-border rounded-xl">
+                                    <div>
+                                        <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">Target Date</span>
+                                        <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-github-dark-text mt-0.5">{formatCorrectionDate(correctionForm.date)}</p>
+                                    </div>
+                                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40">
+                                        {correctionForm.type === 'Other' && correctionForm.otherType ? correctionForm.otherType : correctionForm.type}
+                                    </span>
                                 </div>
 
-                                {/* Adjustment Reason Category */}
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1 uppercase">Adjustment Reason</label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {['Missed Punch', 'Missed Day', 'Other'].map(type => (
-                                            <button
-                                                key={type}
-                                                type="button"
-                                                onClick={() => setCorrectionForm({...correctionForm, type})}
-                                                className={`py-3 px-2 rounded-xl text-[10px] font-black tracking-wider transition-all border ${
-                                                    correctionForm.type === type 
-                                                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20' 
-                                                        : 'bg-slate-50 dark:bg-github-dark-bg text-slate-500 dark:text-github-dark-muted border-slate-200 dark:border-github-dark-border'
-                                                }`}
-                                            >
-                                                {type}
-                                            </button>
-                                        ))}
+                                {/* Proposed Punches Summary */}
+                                <div className="space-y-1">
+                                    <div className="flex items-center justify-between px-0.5">
+                                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Proposed Punches</span>
+                                        <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                                            Total: {totalProposedHours.toFixed(2)} hrs
+                                        </span>
+                                    </div>
+                                    <div className="p-3 bg-slate-50/60 dark:bg-github-dark-bg/40 border border-slate-100 dark:border-github-dark-border rounded-xl space-y-2">
+                                        {(() => {
+                                            const activeItems = corrSessions.filter(s => s.time_in || s.time_out);
+                                            const workSessions = activeItems.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal');
+                                            const checkpoints = activeItems.filter(s => isCheckpointRecord(s) || s.punch_type === 'normal');
+
+                                            if (activeItems.length === 0) {
+                                                return (
+                                                    <div className="py-0.5">
+                                                        <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                                                            No custom timeline punches specified.
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                                            Request will be processed based on your stated remarks & attached proof document.
+                                                        </p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <div className="space-y-2">
+                                                    {/* Work Sessions */}
+                                                    {workSessions.length > 0 && (
+                                                        <div className="space-y-1">
+                                                            {workSessions.map((s, idx) => {
+                                                                const isOvernight = Boolean(s.time_in && s.time_out && s.time_in >= s.time_out);
+                                                                const duration = calculateSessionDurationHours(s.time_in, s.time_out);
+                                                                return (
+                                                                    <div key={s.id || idx} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 dark:border-github-dark-border/50 last:border-0">
+                                                                        <span className="font-medium text-slate-500 dark:text-slate-400">Session #{idx + 1}</span>
+                                                                        <div className="flex items-center gap-1.5 font-mono">
+                                                                            <span className="text-emerald-600 dark:text-emerald-400">{s.time_in ? (formatTime ? formatTime(`2000-01-01T${s.time_in}:00`) : s.time_in) : 'Missing In'}</span>
+                                                                            <span className="text-slate-400">→</span>
+                                                                            <span className="text-rose-600 dark:text-rose-400">{s.time_out ? (formatTime ? formatTime(`2000-01-01T${s.time_out}:00`) : s.time_out) : 'Missing Out'}</span>
+                                                                            {isOvernight && (
+                                                                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-sans">Overnight</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className="text-xs font-mono text-slate-600 dark:text-slate-300">{duration.toFixed(1)} hrs</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Checkpoints Section */}
+                                                    {checkpoints.length > 0 && (
+                                                        <div className={`space-y-1 ${workSessions.length > 0 ? 'pt-2 border-t border-slate-200/60 dark:border-github-dark-border/60' : ''}`}>
+                                                            <div className="flex items-center gap-1 px-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                                                <MapPin size={11} className="shrink-0" />
+                                                                <span>Checkpoints ({checkpoints.length})</span>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                {checkpoints.map((chk, cIdx) => {
+                                                                    const chkTime = chk.time_in ? (formatTime ? formatTime(`2000-01-01T${chk.time_in}:00`) : chk.time_in) : '--:--';
+                                                                    return (
+                                                                        <div key={chk.id || cIdx} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
+                                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                                                                <span className="font-medium text-amber-900 dark:text-amber-300 text-[11px]">Point #{cIdx + 1}</span>
+                                                                                <span className="font-mono text-slate-700 dark:text-slate-200 text-[11px]">{chkTime}</span>
+                                                                                {chk.address && (
+                                                                                    <span className="text-[9px] text-slate-400 truncate max-w-[120px]" title={chk.address}>
+                                                                                        • {chk.address}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-100/70 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium shrink-0">
+                                                                                Logged
+                                                                            </span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
 
-                                {/* Reason for Adjustment */}
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] px-1 uppercase">Reason & Details</label>
-                                    <textarea
-                                        value={correctionForm.reason}
-                                        onChange={(e) => setCorrectionForm({...correctionForm, reason: e.target.value})}
-                                        className="w-full bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-2xl p-4 text-sm font-bold min-h-[100px] focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all dark:text-github-dark-text resize-none"
-                                        placeholder="Explain why this adjustment is needed..."
-                                        required
-                                    />
+                                {/* Reason & Attachment Info */}
+                                <div className="space-y-1 px-0.5">
+                                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">Reason</span>
+                                    <p className="text-xs text-slate-700 dark:text-slate-300 font-normal bg-slate-50/50 dark:bg-github-dark-bg/30 p-2.5 rounded-xl border border-slate-100 dark:border-github-dark-border">
+                                        "{correctionForm.reason}"
+                                    </p>
                                 </div>
 
-                                {/* Advanced Options Accordion */}
-                                <div className="border border-slate-200 dark:border-github-dark-border rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-github-dark-bg/30">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowMobileAdvanced(prev => !prev)}
-                                        className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-slate-100/60 dark:hover:bg-github-dark-bg/60 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-semibold text-slate-700 dark:text-github-dark-text">Advanced</span>
-                                            <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-200 dark:bg-github-dark-border text-slate-600 dark:text-slate-300">Optional</span>
-                                        </div>
-                                        <div className={`transition-transform duration-200 ${showMobileAdvanced ? 'rotate-180' : 'rotate-0'}`}>
-                                            <ChevronDown size={18} className="text-slate-400" />
-                                        </div>
-                                    </button>
+                                {(corrAttachment || existingAttachmentUrl) && (
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 rounded-xl text-emerald-700 dark:text-emerald-300 text-xs font-normal">
+                                        <Paperclip size={13} className="shrink-0" />
+                                        <span className="truncate">{corrAttachment ? corrAttachment.name : 'Existing proof document attached'}</span>
+                                    </div>
+                                )}
+                            </div>
 
-                                    <AnimatePresence>
-                                        {showMobileAdvanced && (
-                                            <motion.div
-                                                initial={{ height: 0, opacity: 0 }}
-                                                animate={{ height: 'auto', opacity: 1 }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                                className="overflow-hidden border-t border-slate-200 dark:border-github-dark-border p-4 space-y-4 bg-white dark:bg-github-dark-subtle/50"
-                                            >
-                                                {/* ── Interactive Draggable Before / After Timeline ── */}
-                                                <VisualCorrectionTimeline
-                                                    requestData={{
-                                                        original_data: originalSessions,
-                                                        proposed_data: (correctionForm.sessions || []).filter(s => s.in && s.out).map(s => ({ time_in: s.in, time_out: s.out })),
-                                                        correction_type: correctionForm.type,
-                                                        status: 'draft'
-                                                    }}
-                                                    editable={true}
-                                                    frameless={true}
-                                                    hideHeader={true}
-                                                    onSessionsChange={(updated) => {
-                                                        setCorrectionForm(prev => ({
-                                                            ...prev,
-                                                            sessions: updated.map(s => ({ in: s.time_in, out: s.time_out, punch_type: s.punch_type || 'regular' }))
-                                                        }));
-                                                    }}
-                                                />
-
-                                                <div className="flex items-center justify-between px-1">
-                                                    <label className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted tracking-[0.2em] uppercase">Session Times</label>
-                                                    <button 
-                                                        type="button"
-                                                        onClick={addSession}
-                                                        className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 tracking-widest bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1.5 rounded-lg"
-                                                    >
-                                                        + Add Session
-                                                    </button>
-                                                </div>
-
-                                                <div className="space-y-3">
-                                                    {correctionForm.sessions.map((s, idx) => (
-                                                        <div 
-                                                            key={idx} 
-                                                            className="flex items-end gap-3 p-4 rounded-[2rem] border transition-all bg-white dark:bg-github-dark-bg/50 border-slate-200 dark:border-github-dark-border shadow-sm"
-                                                        >
-                                                            <div className="flex-1 space-y-1.5">
-                                                                <label className="text-[9px] font-black text-slate-400 tracking-widest px-1">
-                                                                    {s.isExisting ? `Session ${idx + 1} In` : 'Time In'}
-                                                                </label>
-                                                                <input 
-                                                                    type="time" 
-                                                                    value={s.in || ''} 
-                                                                    onChange={(e) => updateSession(idx, 'in', e.target.value)}
-                                                                    className="w-full bg-slate-50 dark:bg-github-dark-bg rounded-xl p-3 text-xs font-bold text-slate-700 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border" 
-                                                                />
-                                                            </div>
-                                                            <div className="flex-1 space-y-1.5">
-                                                                <label className="text-[9px] font-black text-slate-400 tracking-widest px-1">
-                                                                    {s.isExisting ? `Session ${idx + 1} Out` : 'Time Out'}
-                                                                </label>
-                                                                <input 
-                                                                    type="time" 
-                                                                    value={s.out || ''} 
-                                                                    onChange={(e) => updateSession(idx, 'out', e.target.value)}
-                                                                    className="w-full bg-slate-50 dark:bg-github-dark-bg rounded-xl p-3 text-xs font-bold text-slate-700 dark:text-github-dark-text border border-slate-200 dark:border-github-dark-border" 
-                                                                />
-                                                            </div>
-                                                            {correctionForm.sessions.length > 1 && (
-                                                                <button 
-                                                                    type="button"
-                                                                    onClick={() => removeSession(idx)} 
-                                                                    className="p-3 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl"
-                                                                    title="Remove Session"
-                                                                >
-                                                                    <X size={16} />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
-
-                                <button 
-                                    onClick={handleCorrectionSubmit} 
-                                    className="w-full py-4.5 bg-indigo-600 text-white text-xs font-black tracking-[0.15em] rounded-2xl shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
+                            <div className="p-3 border-t border-slate-100 dark:border-github-dark-border bg-slate-50/50 dark:bg-github-dark-bg/80 flex items-center gap-2.5 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirmSubmit(false)}
+                                    disabled={submitLoading}
+                                    className="flex-1 py-2 text-xs font-semibold text-slate-600 dark:text-github-dark-muted hover:bg-slate-200/60 dark:hover:bg-github-dark-bg rounded-xl transition-all cursor-pointer"
                                 >
-                                    <FileClock size={18} />
-                                    Submit Adjustment Request
+                                    Back to Edit
                                 </button>
-                                <p className="text-[9px] text-center text-slate-400 font-bold mt-2 tracking-widest opacity-60 uppercase">Reviewed & verified by HR / Admin</p>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmSubmit}
+                                    disabled={submitLoading}
+                                    className="flex-1 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                    {submitLoading ? <RefreshCw className="animate-spin" size={14} /> : "Submit Request"}
+                                </button>
                             </div>
                         </motion.div>
-                    </div>
+                    </motion.div>
                 )}
             </AnimatePresence>
 
             {/* Request Details Drawer Modal */}
             <AnimatePresence>
                 {selectedRequest && (
-                    <div className="fixed inset-0 z-[1000] flex items-end justify-center">
+                    <motion.div
+                        key="mobile-selected-request-modal"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9000] flex items-end justify-center sm:items-center p-0 sm:p-4"
+                    >
                         <motion.div 
                             initial={{ opacity: 0 }} 
                             animate={{ opacity: 1 }} 
                             exit={{ opacity: 0 }} 
                             onClick={() => setSelectedRequest(null)} 
-                            className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm" 
                         />
                         <motion.div 
                             initial={{ y: '100%' }} 
                             animate={{ y: 0 }} 
                             exit={{ y: '100%' }} 
-                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                            className="relative w-full bg-white dark:bg-github-dark-subtle rounded-t-[3rem] p-8 pb-12 shadow-2xl flex flex-col max-h-[92vh] overflow-y-auto no-scrollbar border-t border-slate-100 dark:border-github-dark-border"
+                            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                            className="relative w-full max-w-lg bg-white dark:bg-github-dark-subtle rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] border border-slate-200/80 dark:border-github-dark-border z-10 overflow-hidden"
                         >
-                            {/* Handle Bar */}
-                            <div className="w-12 h-1.5 bg-slate-200 dark:bg-github-dark-border rounded-full mx-auto mb-8 shrink-0" />
-
-                            <div className="flex justify-between items-start mb-8">
-                                <div>
-                                    <h3 className="text-2xl font-black text-slate-900 dark:text-github-dark-text tracking-tight uppercase">Request Details</h3>
-                                    <p className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted uppercase tracking-widest mt-1 font-mono">ID: #{selectedRequest.acr_id || selectedRequest.id}</p>
+                            {/* Modal Header */}
+                            <div className="px-3.5 pt-2.5 pb-2.5 border-b border-slate-100 dark:border-github-dark-border shrink-0">
+                                <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-2 sm:hidden" />
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-github-dark-text">Request Details</h3>
+                                    </div>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setSelectedRequest(null)} 
+                                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-github-dark-bg rounded-lg transition-colors"
+                                    >
+                                        <X size={16} />
+                                    </button>
                                 </div>
-                                <button onClick={() => setSelectedRequest(null)} className="p-2 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-400">
-                                    <X size={24} />
-                                </button>
                             </div>
 
-                            <div className="space-y-6">
+                            {/* Modal Scrollable Body */}
+                            <div className="flex-1 overflow-y-auto px-3.5 sm:px-4 py-3 space-y-3 no-scrollbar">
                                 {/* Status Header Card */}
-                                <div className="flex items-center gap-4 bg-slate-50/50 dark:bg-github-dark-bg p-5 rounded-[2rem] border border-slate-200 dark:border-github-dark-border">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
+                                <div className="flex items-center gap-2.5 bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border shrink-0 ${
                                         selectedRequest.status?.toLowerCase() === 'approved' 
                                             ? 'bg-emerald-50 border-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:border-emerald-500/20' 
                                             : selectedRequest.status?.toLowerCase() === 'rejected'
                                                 ? 'bg-rose-50 border-rose-100 text-rose-600 dark:bg-rose-500/10 dark:border-rose-500/20'
                                                 : 'bg-amber-50 border-amber-100 text-amber-600 dark:bg-amber-500/10 dark:border-amber-500/20'
                                     }`}>
-                                        {selectedRequest.status?.toLowerCase() === 'approved' && <CheckCircle size={24} />}
-                                        {selectedRequest.status?.toLowerCase() === 'rejected' && <XCircle size={24} />}
-                                        {selectedRequest.status?.toLowerCase() !== 'approved' && selectedRequest.status?.toLowerCase() !== 'rejected' && <Clock size={24} />}
+                                        {selectedRequest.status?.toLowerCase() === 'approved' && <CheckCircle size={16} />}
+                                        {selectedRequest.status?.toLowerCase() === 'rejected' && <XCircle size={16} />}
+                                        {selectedRequest.status?.toLowerCase() !== 'approved' && selectedRequest.status?.toLowerCase() !== 'rejected' && <Clock size={16} />}
                                     </div>
                                     <div>
-                                        <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                                             selectedRequest.status?.toLowerCase() === 'approved' 
-                                                ? 'bg-emerald-100 text-emerald-700' 
+                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' 
                                                 : selectedRequest.status?.toLowerCase() === 'rejected'
-                                                    ? 'bg-red-100 text-red-700'
-                                                    : 'bg-amber-100 text-amber-700'
+                                                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'
+                                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
                                         }`}>
                                             {selectedRequest.status || 'PENDING'}
                                         </span>
-                                        <p className="text-[10px] font-bold text-slate-400 dark:text-github-dark-muted mt-1 uppercase tracking-widest">
-                                            Submitted on {selectedRequest.submitted_at ? new Date(selectedRequest.submitted_at).toLocaleDateString() : 'N/A'}
+                                        <p className="text-[11px] text-slate-500 dark:text-github-dark-muted mt-0.5 font-normal">
+                                            Submitted on {selectedRequest.submitted_at ? formatPlatformDate(selectedRequest.submitted_at) : 'N/A'}
                                         </p>
                                     </div>
                                 </div>
 
                                 {/* Details Grid */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-4 rounded-2xl border border-slate-200 dark:border-github-dark-border/50">
-                                        <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Request Date</span>
-                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text block truncate">
-                                            {selectedRequest.request_date ? new Date(selectedRequest.request_date).toLocaleDateString() : 'Invalid Date'}
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-2.5 rounded-xl border border-slate-200 dark:border-github-dark-border/50">
+                                        <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 mb-0.5">Request Date</span>
+                                        <span className="text-xs font-semibold text-slate-800 dark:text-github-dark-text block truncate">
+                                            {selectedRequest.request_date ? formatPlatformDate(selectedRequest.request_date) : 'Invalid Date'}
                                         </span>
                                     </div>
-                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-4 rounded-2xl border border-slate-200 dark:border-github-dark-border/50">
-                                        <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5 opacity-60">Correction Type</span>
-                                        <span className="text-xs font-bold text-slate-700 dark:text-github-dark-text block truncate">
+                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-2.5 rounded-xl border border-slate-200 dark:border-github-dark-border/50">
+                                        <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 mb-0.5">Correction Type</span>
+                                        <span className="text-xs font-semibold text-slate-800 dark:text-github-dark-text block truncate">
                                             {selectedRequest.correction_type}
                                         </span>
                                     </div>
                                 </div>
 
                                 {/* Reason Section */}
-                                <div className="bg-slate-50/50 dark:bg-github-dark-bg p-5 rounded-2xl border border-slate-200 dark:border-github-dark-border/50">
-                                    <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2 opacity-60">Reason for Request</span>
-                                    <div className="text-xs text-slate-600 dark:text-slate-300 italic leading-relaxed">
+                                <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50">
+                                    <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 mb-1">Reason for Request</span>
+                                    <div className="text-xs text-slate-700 dark:text-slate-300 italic leading-relaxed">
                                         "{selectedRequest.reason}"
                                     </div>
                                 </div>
 
                                 {/* Proposed Attendance */}
                                 {selectedRequest.correction_data && (
-                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-5 rounded-2xl border border-slate-200 dark:border-github-dark-border/50">
-                                        <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-4 opacity-60">Proposed Attendance</span>
-                                        <div className="space-y-3">
+                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50">
+                                        <span className="block text-[10px] font-medium text-slate-400 dark:text-slate-500 mb-2">Proposed Attendance</span>
+                                        <div className="space-y-1.5">
                                             {(typeof selectedRequest.correction_data === 'string'
                                                 ? JSON.parse(selectedRequest.correction_data).sessions
                                                 : selectedRequest.correction_data.sessions || []
                                             ).sort((a, b) => (a.time_in || "").localeCompare(b.time_in || "")).map((s, i) => (
-                                                <div key={i} className="flex items-center justify-between p-3.5 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">In</span>
-                                                        <span className="text-xs font-black text-slate-800 dark:text-github-dark-text font-mono">{s.time_in}</span>
+                                                <div key={i} className="flex items-center justify-between p-2 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-lg shadow-2xs">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                        <span className="text-[9px] font-medium text-slate-400 uppercase">In</span>
+                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">{s.time_in}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Out</span>
-                                                        <span className="text-xs font-black text-slate-800 dark:text-github-dark-text font-mono">{s.time_out}</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
+                                                        <span className="text-[9px] font-medium text-slate-400 uppercase">Out</span>
+                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">{s.time_out}</span>
                                                     </div>
                                                 </div>
                                             ))}
                                             {/* Single Session Check */}
                                             {(typeof selectedRequest.correction_data === 'string' ? JSON.parse(selectedRequest.correction_data) : selectedRequest.correction_data).time_in && (
-                                                <div className="flex items-center justify-between p-3.5 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-xl shadow-sm">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">In</span>
-                                                        <span className="text-xs font-black text-slate-800 dark:text-github-dark-text font-mono">
+                                                <div className="flex items-center justify-between p-2 bg-white dark:bg-github-dark-bg/60 border border-slate-200 dark:border-github-dark-border rounded-lg shadow-2xs">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                        <span className="text-[9px] font-medium text-slate-400 uppercase">In</span>
+                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">
                                                             {(typeof selectedRequest.correction_data === 'string' ? JSON.parse(selectedRequest.correction_data) : selectedRequest.correction_data).time_in}
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Out</span>
-                                                        <span className="text-xs font-black text-slate-800 dark:text-github-dark-text font-mono">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
+                                                        <span className="text-[9px] font-medium text-slate-400 uppercase">Out</span>
+                                                        <span className="text-xs font-medium text-slate-800 dark:text-github-dark-text font-mono">
                                                             {(typeof selectedRequest.correction_data === 'string' ? JSON.parse(selectedRequest.correction_data) : selectedRequest.correction_data).time_out}
                                                         </span>
                                                     </div>
@@ -3055,28 +4167,141 @@ const MobileAttendancePage = () => {
 
                                 {/* Admin Decision Section */}
                                 {selectedRequest.status?.toLowerCase() !== 'pending' && (
-                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-5 rounded-2xl border border-slate-200 dark:border-github-dark-border/50 border-t-4 border-t-indigo-500/20">
-                                        <span className="block text-[8px] font-black text-indigo-500 uppercase tracking-widest mb-3">Reviewer Decision</span>
-                                        <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">
+                                    <div className="bg-slate-50/50 dark:bg-github-dark-bg p-3 rounded-xl border border-slate-200 dark:border-github-dark-border/50 border-t-2 border-t-indigo-500">
+                                        <span className="block text-[10px] font-semibold text-indigo-500 mb-1">Reviewer Decision</span>
+                                        <p className="text-xs text-slate-700 dark:text-slate-300 font-normal">
                                             {selectedRequest.review_comments || "No reviewer comments provided."}
                                         </p>
-                                        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-github-dark-border/50 text-[8px] text-slate-400 font-bold uppercase tracking-widest">
-                                            Reviewed on {selectedRequest.reviewed_at ? formatCorrectionDate(selectedRequest.reviewed_at) : 'N/A'}
+                                        <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-github-dark-border/50 text-[10px] text-slate-400 font-normal">
+                                            Reviewed on {selectedRequest.reviewed_at ? formatPlatformDate(selectedRequest.reviewed_at) : 'N/A'}
                                         </div>
                                     </div>
                                 )}
+                            </div>
 
+                            {/* Modal Fixed Footer */}
+                            <div className="px-3.5 sm:px-4 py-2.5 bg-white dark:bg-github-dark-subtle border-t border-slate-100 dark:border-github-dark-border shrink-0 flex items-center gap-2">
                                 <button 
+                                    type="button"
                                     onClick={() => setSelectedRequest(null)}
-                                    className="w-full py-4 bg-slate-100 hover:bg-slate-200 dark:bg-github-dark-bg dark:hover:bg-github-dark-border text-slate-700 dark:text-github-dark-muted text-xs font-black uppercase tracking-[0.2em] rounded-2xl active:scale-[0.98] transition-all"
+                                    className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-github-dark-bg dark:hover:bg-github-dark-border text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition-colors text-center cursor-pointer"
                                 >
                                     Close Details
+                                </button>
+                                {selectedRequest.status?.toLowerCase() === 'pending' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const targetDate = selectedRequest.request_date ? String(selectedRequest.request_date).split('T')[0] : correctionForm.date;
+                                            setSelectedRequest(null);
+                                            setCorrectionForm(prev => ({ ...prev, date: targetDate }));
+                                            loadCorrectionDataForDate(targetDate);
+                                            setIsCorrectionOpen(true);
+                                        }}
+                                        className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                                    >
+                                        <Edit3 size={13} />
+                                        <span>Edit Request</span>
+                                    </button>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Standalone Late Reason Modal (No Camera Required) */}
+            {showLateReasonModal && createPortal(
+                <AnimatePresence>
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowLateReasonModal(false)}
+                            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 16 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 16 }}
+                            className="relative w-full max-w-sm bg-white dark:bg-github-dark-surface rounded-2xl p-4 sm:p-5 shadow-2xl border border-slate-100 dark:border-github-dark-border z-10"
+                        >
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                                        <AlertCircle size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-github-dark-text tracking-tight">Late Check-In</h3>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Reason Required</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowLateReasonModal(false)}
+                                    className="p-1.5 rounded-lg bg-slate-100 dark:bg-github-dark-bg text-slate-400 hover:text-slate-600 dark:hover:text-github-dark-text transition-colors"
+                                >
+                                    <X size={15} />
+                                </button>
+                            </div>
+
+                            <p className="text-xs text-slate-600 dark:text-github-dark-muted mb-3 font-medium leading-relaxed">
+                                {lateReasonMessage || "You are checking in after the shift start time. Please provide a reason to complete your check-in."}
+                            </p>
+
+                            <div className="flex flex-wrap gap-1.5 mb-2.5">
+                                {['Traffic Delay', 'Public Transit', 'Medical Issue', 'Personal Emergency', 'Client Meeting'].map((preset) => (
+                                    <button
+                                        key={preset}
+                                        type="button"
+                                        onClick={() => setLateReasonText(preset)}
+                                        className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-github-dark-muted hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 transition-colors"
+                                    >
+                                        {preset}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <textarea
+                                value={lateReasonText}
+                                onChange={(e) => setLateReasonText(e.target.value)}
+                                placeholder="Explain why you are checking in late..."
+                                rows={3}
+                                className="w-full text-xs p-2.5 bg-slate-50 dark:bg-github-dark-bg border border-slate-200 dark:border-github-dark-border rounded-xl text-slate-800 dark:text-github-dark-text placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none font-medium mb-3"
+                            />
+
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowLateReasonModal(false);
+                                        setLateReasonText('');
+                                    }}
+                                    className="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-slate-100 dark:bg-github-dark-bg text-slate-600 dark:text-github-dark-muted hover:bg-slate-200 dark:hover:bg-github-dark-border transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={!lateReasonText.trim() || isSubmitting}
+                                    onClick={() => executeDirectPunch('IN', lateReasonText.trim())}
+                                    className="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-md shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                                >
+                                    {isSubmitting ? (
+                                        <>
+                                            <RefreshCw size={13} className="animate-spin" />
+                                            <span>Submitting...</span>
+                                        </>
+                                    ) : (
+                                        <span>Confirm Check-In</span>
+                                    )}
                                 </button>
                             </div>
                         </motion.div>
                     </div>
-                )}
-            </AnimatePresence>
+                </AnimatePresence>,
+                document.body
+            )}
 
             {/* Image Preview Modal (Live Attendance Lightbox) */}
             {previewImage && createPortal(

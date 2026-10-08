@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import CustomCalendar from '../../../components/CustomCalendar';
 import SessionCheckpointsTimeline from '../components/SessionCheckpointsTimeline';
-import { getLocalDateString } from '../../../utils/dateUtils';
+import { getLocalDateString, formatPlatformDate } from '../../../utils/dateUtils';
 import { isCheckpointRecord } from '../../../utils/attendanceStatus';
 
 const MarkAttendanceTab = ({
@@ -57,10 +57,10 @@ const MarkAttendanceTab = ({
     const isToday = selectedDate === getLocalDateString(new Date());
 
     return (
-        <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-12">
             {/* Action Buttons & Punch Cards */}
             <div className="flex flex-col gap-6">
-                <div data-tour-id="att-session-actions" className={`grid grid-cols-1 ${isCheckpointAllowed ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-5`}>
+                <div data-tour-id="att-session-actions" className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     {/* Time In Card */}
                     <button
                         onClick={() => handlePunchClick('IN')}
@@ -93,50 +93,48 @@ const MarkAttendanceTab = ({
                     </button>
 
                     {/* Mark Checkpoint Card */}
-                    {isCheckpointAllowed && (
-                        <button
-                            onClick={handleOpenCheckpointModal}
-                            disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
-                            data-tour-id="att-checkpoint-btn"
-                            className={`group relative p-5 rounded-xl flex items-center justify-between transition-all duration-500 overflow-hidden border-2 cursor-pointer ${!hasActiveSession
-                                ? 'bg-slate-50/50 dark:bg-slate-900/20 border-slate-100 dark:border-white/5 opacity-40 grayscale-[0.5]'
-                                : 'bg-white dark:bg-github-dark-subtle border-slate-100 dark:border-white/10 shadow-lg hover:shadow-xl hover:border-amber-500/30 active:scale-[0.98]'
-                                }`}
-                        >
-                            <div className="flex items-center gap-4 relative z-10">
-                                <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-500 relative ${!hasActiveSession
-                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                                    : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 shadow-lg shadow-amber-500/10'
-                                    }`}>
-                                    <MapPin size={24} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
-                                    {hasActiveSession && (
-                                        <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                    <button
+                        onClick={handleOpenCheckpointModal}
+                        disabled={!hasActiveSession || isSubmitting || isMarkingCheckpoint}
+                        data-tour-id="att-checkpoint-btn"
+                        className={`group relative p-5 rounded-xl flex items-center justify-between transition-all duration-500 overflow-hidden border-2 cursor-pointer ${!hasActiveSession
+                            ? 'bg-slate-50/50 dark:bg-slate-900/20 border-slate-100 dark:border-white/5 opacity-40 grayscale-[0.5]'
+                            : 'bg-white dark:bg-github-dark-subtle border-slate-100 dark:border-white/10 shadow-lg hover:shadow-xl hover:border-amber-500/30 active:scale-[0.98]'
+                            }`}
+                    >
+                        <div className="flex items-center gap-4 relative z-10">
+                            <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all duration-500 relative ${!hasActiveSession
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 shadow-lg shadow-amber-500/10'
+                                }`}>
+                                <MapPin size={24} strokeWidth={2.5} className={hasActiveSession ? 'animate-bounce' : ''} />
+                                {hasActiveSession && (
+                                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                                    </span>
+                                )}
+                            </div>
+                            <div className="text-left">
+                                <h3 className={`text-xl font-black tracking-tight ${!hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>
+                                    {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
+                                </h3>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <p className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider opacity-60">
+                                        {!hasActiveSession ? 'Requires Active Session' : 'Record Mid-Shift Location'}
+                                    </p>
+                                    {hasActiveSession && Array.isArray(dailySessions) && dailySessions.some(s => Array.isArray(s.checkpoints) && s.checkpoints.length > 0) && (
+                                        <span className="px-1.5 py-0.5 text-[9px] font-black bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full border border-amber-500/20">
+                                            {dailySessions.reduce((acc, s) => acc + (Array.isArray(s.checkpoints) ? s.checkpoints.length : 0), 0)} logged
                                         </span>
                                     )}
                                 </div>
-                                <div className="text-left">
-                                    <h3 className={`text-xl font-black tracking-tight ${!hasActiveSession ? 'text-slate-400 dark:text-slate-600' : 'text-slate-900 dark:text-white'}`}>
-                                        {isMarkingCheckpoint ? 'Marking...' : 'Mark Checkpoint'}
-                                    </h3>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <p className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider opacity-60">
-                                            {!hasActiveSession ? 'Requires Active Session' : 'Record Mid-Shift Location'}
-                                        </p>
-                                        {hasActiveSession && Array.isArray(dailySessions) && dailySessions.some(s => Array.isArray(s.checkpoints) && s.checkpoints.length > 0) && (
-                                            <span className="px-1.5 py-0.5 text-[9px] font-black bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full border border-amber-500/20">
-                                                {dailySessions.reduce((acc, s) => acc + (Array.isArray(s.checkpoints) ? s.checkpoints.length : 0), 0)} logged
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
                             </div>
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center transition-all duration-300 group-hover:bg-amber-500/10 group-hover:text-amber-500">
-                                <ChevronRight size={20} className={!hasActiveSession ? 'text-slate-200 dark:text-slate-700' : 'text-slate-400 dark:text-slate-500'} />
-                            </div>
-                        </button>
-                    )}
+                        </div>
+                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-white/5 flex items-center justify-center transition-all duration-300 group-hover:bg-amber-500/10 group-hover:text-amber-500">
+                            <ChevronRight size={20} className={!hasActiveSession ? 'text-slate-200 dark:text-slate-700' : 'text-slate-400 dark:text-slate-500'} />
+                        </div>
+                    </button>
 
                     {/* Time Out Card */}
                     <button
@@ -286,7 +284,7 @@ const MarkAttendanceTab = ({
                     <div className="flex items-center gap-4">
                         <div className="w-1.5 h-8 bg-indigo-600 rounded-full" />
                         <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">
-                            {isToday ? "Today's Logs" : `Logs for ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                            {isToday ? "Today's Logs" : `Logs for ${formatPlatformDate(selectedDate)}`}
                         </h3>
                     </div>
                     <button
@@ -309,22 +307,42 @@ const MarkAttendanceTab = ({
 
                 {/* Daily Records List */}
                 <div className="space-y-4">
-                    {loading ? (
-                        <p className="text-center text-slate-500 py-10">Loading...</p>
+                    {loading && (!dailySessions || dailySessions.length === 0) ? (
+                        <div className="flex justify-center items-center py-10">
+                            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                        </div>
                     ) : (() => {
-                        const workSessions = Array.isArray(dailySessions) ? dailySessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal') : [];
-                        if (workSessions.length === 0) {
+                        const rawWorkSessions = Array.isArray(dailySessions) ? dailySessions.filter(s => !isCheckpointRecord(s) && s.punch_type !== 'normal') : [];
+                        if (rawWorkSessions.length === 0) {
                             return <p className="text-center text-slate-400 py-10">No attendance records for this date.</p>;
                         }
-                        return workSessions.map((session, idx) => (
-                            <div key={session.attendance_id || session.id} className="bg-white dark:bg-github-dark-subtle p-5 rounded-xl border border-slate-100 dark:border-white/5 shadow-md space-y-6 transition-all hover:shadow-xl">
+
+                        // 1. Sort chronologically (earliest first) to determine natural Session #1, #2...
+                        const sortedChronological = [...rawWorkSessions].sort((a, b) => {
+                            const tA = new Date(a.time_in || 0).getTime();
+                            const tB = new Date(b.time_in || 0).getTime();
+                            return tA - tB;
+                        });
+
+                        // 2. Attach sequential session number (Session #1 for day's first punch, etc.)
+                        const numberedSessions = sortedChronological.map((s, idx) => ({
+                            ...s,
+                            sessionNumber: idx + 1
+                        }));
+
+                        // 3. Stack format: The day's last session is at the top of the page,
+                        // and the day's first session (Session #1) is at the bottom of the page.
+                        const stackedSessions = [...numberedSessions].reverse();
+
+                        return stackedSessions.map((session) => (
+                            <div key={session.attendance_id || session.id || `session-${session.sessionNumber}`} className="bg-white dark:bg-github-dark-subtle p-5 rounded-xl border border-slate-100 dark:border-white/5 shadow-md space-y-6 transition-all hover:shadow-xl">
                                 {/* Session Header */}
                                 <div className="flex justify-between items-center pb-4 border-b border-slate-50 dark:border-white/5">
                                     <span className="text-[10px] font-black text-slate-400 dark:text-github-dark-muted uppercase tracking-[0.2em] flex items-center gap-2">
                                         <div className="p-1.5 bg-slate-50 dark:bg-white/5 rounded-lg">
                                             <Clock size={14} />
                                         </div>
-                                        Session #{workSessions.length - idx}
+                                        Session #{session.sessionNumber}
                                     </span>
                                     <div className="flex flex-col items-end gap-2">
                                         {(() => {

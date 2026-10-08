@@ -13,6 +13,7 @@ import {
     Camera
 } from 'lucide-react';
 import { isCheckpointRecord } from '../../../utils/attendanceStatus';
+import { formatPlatformDate } from '../../../utils/dateUtils';
 
 const AttendanceHistoryTab = ({
     handlePrevMonth,
@@ -305,7 +306,7 @@ const AttendanceHistoryTab = ({
                                                             </div>
                                                             <div>
                                                                 <p className="font-bold text-slate-800 dark:text-github-dark-text text-sm leading-tight">
-                                                                    {day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                                                    {formatPlatformDate(day.date)}
                                                                 </p>
                                                                 <span className={`inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-md text-[10px] font-medium shadow-xs ${style.bg} ${style.text}`}>
                                                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot || 'bg-current'}`}></span>
